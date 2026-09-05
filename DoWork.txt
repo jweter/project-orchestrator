@@ -91,5 +91,8 @@ Use evidence-derived dimensions. Never invent percent complete. Report UNKNOWN w
 COMPOUNDING EVIDENCE
 Before claiming throughput, repair latency, repeat failures, or autonomy are improving, query recent evidence windows with `project-orchestrator timeseries-report` (or `--reinvestment` for the aggregated rollup) rather than asserting a trend. Record a new evidence window from real, reproducible evidence (`project-orchestrator timeseries-record`) when a run produces measurable development-loop evidence; leave a metric UNKNOWN/INSUFFICIENT_DATA rather than inferring it. A single window, or a store with mostly UNKNOWN metrics, is not evidence of compounding — it is a data point.
 
+REINVESTMENT
+Before choosing new P5 roadmap work, run `project-orchestrator reinvestment-plan` and read it. It is a recommendation only: it never merges, deletes, bypasses CI, or executes anything by itself, and every plan it produces requires Jeremy's approval. Prefer its `selected` recommendation (when one clears the confidence threshold) over an unexamined roadmap default, but never let it override P0-P4 existing-work priority above. When `selected` is null, treat the plan's `evidence_gaps` as legitimate P5/P6 candidates in their own right — closing a measurement gap is a valid reinvestment even when no repair candidate is confident yet.
+
 CORE PRINCIPLE
 Highest-value correct progress, not maximum commits. One scheduler owns autonomous portfolio development; product repositories retain product authority.

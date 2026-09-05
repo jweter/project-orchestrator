@@ -9,6 +9,7 @@ from .decision import next_actions
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
+from .reinvestment import plan_from_store
 from .required_checks import resolve_required_checks
 from .timeseries import (
     append_window,
@@ -105,6 +106,13 @@ def timeseries_report(
     return 0
 
 
+def reinvestment_plan(since: str | None) -> int:
+    store = load_store(DEFAULT_TIMESERIES_STORE)
+    result = plan_from_store(store, since=since)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -135,6 +143,8 @@ def main() -> int:
         action="store_true",
         help="print the aggregated snapshot shape the future Reinvestment Controller will consume",
     )
+    reinvestment_plan_parser = sub.add_parser("reinvestment-plan")
+    reinvestment_plan_parser.add_argument("--since", default=None, help="ISO-8601 cutoff; only windows ending on/after this are considered")
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
@@ -154,6 +164,8 @@ def main() -> int:
         return timeseries_record(args.window)
     if args.command == "timeseries-report":
         return timeseries_report(args.since, args.project, args.repository, args.reinvestment)
+    if args.command == "reinvestment-plan":
+        return reinvestment_plan(args.since)
     raise AssertionError("unreachable")
 
 

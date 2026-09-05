@@ -56,7 +56,8 @@
       "n8n_policy",
       "compile",
       "tests",
-      "cli_validate"
+      "cli_validate",
+      "reinvestment_plan_smoke"
     ]
   },
   "promotion": {
@@ -151,5 +152,22 @@
         "a real (non-ping) GitHub check_suite event has not yet been observed end-to-end through Classify Failed PR CI and Dispatch Orchestrator Evidence"
       ]
     }
+  },
+  "reinvestment_controller": {
+    "module": "project_orchestrator.reinvestment",
+    "input_contract": "project_orchestrator.timeseries.build_reinvestment_snapshot",
+    "cli": "project-orchestrator reinvestment-plan",
+    "mode": "recommendation_only",
+    "requires_jeremy_approval": "always, in this slice",
+    "min_confidence_for_selection": 0.5,
+    "min_windows_for_confidence": 5,
+    "forbidden": [
+      "automatic_merge_of_product_prs",
+      "bypassing_required_ci",
+      "destructive_or_irreversible_action_without_jeremy_approval",
+      "overriding_product_repository_architecture_or_product_reality_policy",
+      "treating_unknown_evidence_as_known",
+      "automatic_execution_of_recommendations"
+    ]
   }
 }
