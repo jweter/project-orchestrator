@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .compatibility import load_contract, plan_change
+from .compounding import add_window, evaluate_compounding, load_series, write_series
 from .decision import next_actions
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
@@ -15,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INVENTORY = ROOT / "engineering" / "portfolio.json"
 DEFAULT_KE_COMPATIBILITY = ROOT / "engineering" / "knowledge-engine-compatibility.json"
 DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "learning-memory.json"
+DEFAULT_COMPOUNDING_SERIES = ROOT / "engineering" / "compounding-series.json"
 
 
 def validate() -> int:
@@ -67,6 +69,26 @@ def memory_add(lesson_path: Path) -> int:
     return 0
 
 
+def compounding_validate() -> int:
+    series = load_series(DEFAULT_COMPOUNDING_SERIES)
+    print(f"compounding series valid: {len(series['windows'])} verified windows")
+    return 0
+
+
+def compounding_evaluate() -> int:
+    print(json.dumps(evaluate_compounding(load_series(DEFAULT_COMPOUNDING_SERIES)), indent=2, sort_keys=True))
+    return 0
+
+
+def compounding_add(window_path: Path) -> int:
+    window = json.loads(window_path.read_text(encoding="utf-8"))
+    series = load_series(DEFAULT_COMPOUNDING_SERIES)
+    updated = add_window(series, window)
+    write_series(DEFAULT_COMPOUNDING_SERIES, updated)
+    print(f"compounding series contains {len(updated['windows'])} verified windows")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -76,6 +98,10 @@ def main() -> int:
     compatibility_parser = sub.add_parser("compat-plan")
     compatibility_parser.add_argument("change", type=Path)
     sub.add_parser("memory-validate")
+    sub.add_parser("compounding-validate")
+    sub.add_parser("compounding-evaluate")
+    compounding_add_parser = sub.add_parser("compounding-add")
+    compounding_add_parser.add_argument("window", type=Path)
     memory_add_parser = sub.add_parser("memory-add")
     memory_add_parser.add_argument("lesson", type=Path)
     collect_parser = sub.add_parser("collect")
@@ -92,6 +118,12 @@ def main() -> int:
         return plan(args.snapshot)
     if args.command == "compat-plan":
         return compatibility_plan(args.change)
+    if args.command == "compounding-validate":
+        return compounding_validate()
+    if args.command == "compounding-evaluate":
+        return compounding_evaluate()
+    if args.command == "compounding-add":
+        return compounding_add(args.window)
     if args.command == "memory-validate":
         return memory_validate()
     if args.command == "memory-add":

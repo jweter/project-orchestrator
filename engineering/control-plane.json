@@ -9,6 +9,7 @@
     "engineering/portfolio.json",
     "engineering/knowledge-engine-compatibility.json",
     "engineering/learning-memory.json",
+    "engineering/compounding-series.json",
     "docs/ARCHITECTURE.md",
     "docs/ROADMAP.md",
     "docs/project-status.yaml"
@@ -42,6 +43,7 @@
       "control_plane",
       "portfolio_inventory",
       "learning_memory",
+      "compounding_series",
       "compile",
       "tests",
       "cli_validate"
@@ -91,5 +93,12 @@
     "executable": "project-orchestrator memory-validate",
     "persist_rule": "verified, sanitized lessons only; never persist secrets, credentials, raw private Product Reality payloads, or unverified conclusions",
     "deduplication": "content-derived lesson_id"
+  },
+  "compounding_metrics": {
+    "path": "engineering/compounding-series.json",
+    "executable": "project-orchestrator compounding-evaluate",
+    "evidence_windows_required_for_claim": 3,
+    "unknown_when_insufficient": true,
+    "rule": "store verified comparable evidence windows only; report UNKNOWN with insufficient evidence and never present current empirical support as mathematical proof of indefinite exponential growth"
   }
 }

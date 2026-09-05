@@ -91,3 +91,11 @@ The planner also records forbidden boundary shortcuts already documented by the 
 A persisted lesson records the project/repository, source type/reference, symptom, root cause, fix, verification, regression protection, and residual risk. Entries must have `evidence_state=VERIFIED`; pending theories cannot become durable learning. A content-derived `lesson_id` makes repeated ingestion idempotent.
 
 Validation rejects raw/private payload fields and common secret patterns. The memory is therefore useful for preventing repeated engineering failures without becoming a credential store or a backdoor for private Product Reality artifacts. The validator is part of exact-head preflight.
+
+## Portfolio compounding evidence
+
+`engineering/compounding-series.json` stores only verified portfolio evidence windows. Each window records verified merges, median cycle time, repeat-failure rate, autonomous-completion rate, dependency unlocks, human-intervention rate, and quality regressions, plus evidence references.
+
+The evaluator requires at least three comparable-duration windows. It derives a conservative engineering-capacity index from verified throughput divided by median cycle time and requires multiplicative capacity growth in each adjacent window, zero quality regressions, non-increasing repeat failures and human intervention, and non-decreasing autonomous completion before returning `SUPPORTED_BY_CURRENT_EVIDENCE`.
+
+Even then the output explicitly states that the result is empirical support, not mathematical proof of indefinite exponential growth. With fewer than three windows, non-comparable windows, or unusable evidence, the claim is `UNKNOWN`.

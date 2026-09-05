@@ -14,8 +14,8 @@
 - [x] Required-check discovery adapter
 - [x] Cross-repository compatibility planner for Knowledge Engine
 - [x] Persistent sanitized regression/learning memory
-- [ ] Portfolio compounding time-series store — next
-- [ ] Reinvestment controller consuming measured evidence
+- [x] Portfolio compounding time-series store
+- [ ] Reinvestment controller consuming measured evidence — next
 - [ ] Scheduler-facing run report artifact
 - [ ] Product Reality debt aggregation without payload leakage
 
