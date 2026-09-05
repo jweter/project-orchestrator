@@ -186,5 +186,36 @@
       "treating_unknown_evidence_as_known",
       "automatic_execution_of_recommendations"
     ]
+  },
+  "automatic_evidence_collector": {
+    "module": "project_orchestrator.evidence_collector",
+    "cli": "project-orchestrator collect-evidence",
+    "sources": [
+      "merged pull request timestamps and check-run history (GitHub REST API)",
+      "sanitized orchestrator-observe.yml dispatch artifacts (engineering/capture_n8n_event.py output)"
+    ],
+    "measurable_metrics": [
+      "pr_creation_to_green_seconds",
+      "merge_cycle_seconds",
+      "failure_to_repair_seconds",
+      "ci_failure_count",
+      "ci_repeat_failure_count",
+      "roadmap_slices_completed_count",
+      "cross_repo_incident_count"
+    ],
+    "permanently_unknown_metrics": {
+      "blocked_waiting_seconds": "GitHub exposes only current mergeable_state, not a historical blocked timeline",
+      "preflight_failures_prevented_count": "local preflight runs leave no committed, API-accessible trace",
+      "product_reality_debt_created_count": "Product Reality is human validation, not CI-inferable",
+      "product_reality_debt_resolved_count": "Product Reality is human validation, not CI-inferable",
+      "autonomous_intervention_count": "no deterministic GitHub signal distinguishes autonomous vs. required intervention",
+      "jeremy_required_intervention_count": "no deterministic GitHub signal distinguishes autonomous vs. required intervention"
+    },
+    "idempotency": "incremental via prior window_end per (project, repository), plus explicit evidence_ref dedup independent of --since",
+    "forbidden": [
+      "ingesting raw webhook payloads, signatures, tokens, or credentials",
+      "fabricating a measurement for a metric with no reliable source",
+      "granting the reinvestment controller execution or merge authority"
+    ]
   }
 }
