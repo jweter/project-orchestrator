@@ -7,6 +7,7 @@
   "authoritative_documents": [
     "DoWork.txt",
     "engineering/portfolio.json",
+    "engineering/knowledge-engine-compatibility.json",
     "docs/ARCHITECTURE.md",
     "docs/ROADMAP.md",
     "docs/project-status.yaml"
@@ -19,7 +20,8 @@
     "never_invent_readiness_percentage",
     "knowledge_engine_is_one_coordinated_family",
     "standalone_projects_remain_isolated",
-    "scheduler_never_self_disables"
+    "scheduler_never_self_disables",
+    "knowledge_engine_shared_contracts_merge_dependency_safe"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -35,10 +37,26 @@
     "required_before_pr": true,
     "executable": "engineering/preflight.py",
     "evidence_file": "preflight-evidence.json",
-    "checks": ["control_plane", "portfolio_inventory", "compile", "tests", "cli_validate"]
+    "checks": [
+      "control_plane",
+      "portfolio_inventory",
+      "compile",
+      "tests",
+      "cli_validate"
+    ]
   },
   "promotion": {
-    "states": ["IMPLEMENTING", "PREFLIGHT_UNVERIFIED", "PREFLIGHT_GREEN", "PR_OPEN", "CI_PENDING", "GREEN", "MERGED", "PRODUCT_REALITY_PENDING", "PRODUCT_REALITY_VERIFIED"]
+    "states": [
+      "IMPLEMENTING",
+      "PREFLIGHT_UNVERIFIED",
+      "PREFLIGHT_GREEN",
+      "PR_OPEN",
+      "CI_PENDING",
+      "GREEN",
+      "MERGED",
+      "PRODUCT_REALITY_PENDING",
+      "PRODUCT_REALITY_VERIFIED"
+    ]
   },
   "work_ownership": {
     "authority": "live GitHub PRs/issues/branches/commits",
@@ -47,11 +65,23 @@
   "readiness_scoring": {
     "mode": "evidence-derived",
     "prohibit_guessed_percent_complete": true,
-    "dimensions": ["implementation", "automated_verification", "integration", "product_reality", "documentation", "security_and_policy"]
+    "dimensions": [
+      "implementation",
+      "automated_verification",
+      "integration",
+      "product_reality",
+      "documentation",
+      "security_and_policy"
+    ]
   },
   "scheduler": {
     "single_merge_authority": true,
     "max_substantial_new_slices_per_independent_project_per_run": 1,
     "never_self_disable": true
+  },
+  "compatibility_planning": {
+    "knowledge_engine_contract": "engineering/knowledge-engine-compatibility.json",
+    "executable": "project-orchestrator compat-plan",
+    "rule": "identify direct and transitive consumers before shared-contract changes; prepare dependents first for breaking changes and never knowingly leave the Knowledge Engine family broken"
   }
 }

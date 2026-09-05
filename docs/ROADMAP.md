@@ -12,8 +12,8 @@
 - [x] Branch/PR CI workflows
 - [x] Live GitHub evidence collector
 - [x] Required-check discovery adapter
-- [ ] Cross-repository compatibility planner for Knowledge Engine — next
-- [ ] Persistent sanitized regression/learning memory
+- [x] Cross-repository compatibility planner for Knowledge Engine
+- [ ] Persistent sanitized regression/learning memory — next
 - [ ] Portfolio compounding time-series store
 - [ ] Reinvestment controller consuming measured evidence
 - [ ] Scheduler-facing run report artifact
