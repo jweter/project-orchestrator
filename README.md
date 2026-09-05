@@ -22,7 +22,8 @@ The loop is fail-closed. Missing evidence is `UNKNOWN`; failed or pending gates 
 python -m pip install -e ".[dev]"
 python engineering/preflight.py
 project-orchestrator validate
-project-orchestrator plan examples/portfolio-snapshot.json\nGITHUB_TOKEN=... project-orchestrator collect --output live-evidence.json
+project-orchestrator plan examples/portfolio-snapshot.json
+GITHUB_TOKEN=... project-orchestrator collect --output live-evidence.json
 ```
 
 See `DoWork.txt`, `engineering/control-plane.json`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md`.
