@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0"]
+dev = ["pytest>=9.0", "hypothesis>=6.0"]
 
 [project.scripts]
 project-orchestrator = "project_orchestrator.cli:main"

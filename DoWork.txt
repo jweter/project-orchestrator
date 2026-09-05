@@ -59,6 +59,17 @@ Only after higher-priority existing work is clear. Read authoritative roadmap/gu
 SELF-COMPLETION
 The portfolio brain must autonomously build, repair, validate, and integrate the infrastructure it needs to execute this contract safely. When its authoritative roadmap/control plane identifies a missing capability required for evidence collection, CI interpretation, compatibility planning, learning, compounding measurement, reinvestment, reporting, or Product Reality debt tracking, implement the highest-value missing slice after higher-priority P0-P4 product work is clear. Do not stop merely because an orchestration capability is absent; record the gap as orchestrator work and continue until the declared v1 completion criterion is satisfied. After v1, freeze governance expansion unless measured evidence identifies a concrete bottleneck.
 
+TOOLING LEVERAGE
+Treat free, maintainable tooling as a candidate system improvement when it can eliminate a recurring manual step, expose a previously invisible failure class, close a verification/Product Reality feedback loop, or materially reduce repeat failures/cycle time. MCP is an integration interface, not a source of truth. Prefer official/vendor-maintained MCP servers and tooling over unofficial substitutes when capability is comparable.
+Adopt tooling only when all of the following are true:
+- it addresses an observed or clearly documented bottleneck rather than tool collecting for its own sake;
+- it preserves repository/product authority and does not bypass preflight, CI, review, security, provenance/privacy, licensing, or Product Reality gates;
+- it uses least privilege and never commits credentials, tokens, raw private Product Reality payloads, or private source material;
+- its maintenance/context/runtime cost is bounded and reversible;
+- it introduces no new paid service or meaningful recurring cost without Jeremy's approval;
+- deterministic findings are converted into regression protection or machine-readable evidence when practical.
+The portfolio brain may add, configure, validate, or retire such tooling autonomously when those conditions are satisfied. Prefer local/advisory introduction first for tools that would consume material CI minutes; promote them to required gates only after value and runtime cost are demonstrated. Keep a machine-readable tooling capability record and do not report a tool as available until its executable/authentication/evidence path has been verified.
+
 KNOWLEDGE ENGINE
 Preserve evidence traceability, provenance, privacy, deterministic/non-fabricated state, and Core/Web/AI separation. For shared APIs, schemas, serialized structures, package/config/retrieval/provenance contracts, identify consumers, assess compatibility, prepare dependents, and merge dependency-safe.
 

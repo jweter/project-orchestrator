@@ -1,4 +1,9 @@
+from hypothesis import given, strategies as st
+
 from project_orchestrator.decision import classify_pr, next_actions
+
+
+MERGEABLE_STATES = {"RESOLVED", "CONFIRMED_NONE"}
 
 
 def green_pr(number: int) -> dict:
@@ -47,6 +52,20 @@ def test_unrecognized_or_missing_required_check_state_fails_closed() -> None:
         else:
             pr["required_checks_state"] = state
         assert classify_pr(pr) == "UNCERTAIN"
+
+
+@given(st.text().filter(lambda value: value not in MERGEABLE_STATES))
+def test_arbitrary_unknown_required_check_state_never_becomes_green(state: str) -> None:
+    pr = green_pr(1)
+    pr["required_checks_state"] = state
+    assert classify_pr(pr) == "UNCERTAIN"
+
+
+@given(st.sampled_from(["failure", "cancelled", "timed_out"]))
+def test_any_terminal_required_check_failure_stays_failed(conclusion: str) -> None:
+    pr = green_pr(1)
+    pr["required_checks"][0]["conclusion"] = conclusion
+    assert classify_pr(pr) == "FAILED"
 
 
 def test_changes_requested_review_blocks_even_when_checks_are_green() -> None:
