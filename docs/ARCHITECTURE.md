@@ -43,3 +43,9 @@ The repository does not assert exponential development. It supplies the control 
 ## Security
 
 No repository secrets, credentials, private Product Reality payloads, copyrighted private scores/audio, or private generated workspaces belong here. Only redacted/sanitized evidence and repository identifiers may be persisted.
+
+## Live evidence collection
+
+`project_orchestrator.github_evidence` is the I/O boundary for GitHub observation. It collects repository metadata, default-head SHA, open PR details, raw check runs, reviews/comments, recent issues, branches, recent commits, and a sanitized projection of each repository control-plane manifest.
+
+The collector deliberately does **not** decide which check runs are required. Every collected PR therefore carries `required_checks_state: UNKNOWN` until the separate required-check discovery adapter maps current rulesets/branch protection/workflow policy onto those raw checks. This prevents a successful optional workflow from being mistaken for merge authority.

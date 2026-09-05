@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .decision import next_actions
+from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,17 +26,32 @@ def plan(snapshot_path: Path) -> int:
     return 0
 
 
+def collect(output: Path | None) -> int:
+    snapshot = collect_portfolio(str(DEFAULT_INVENTORY), UrllibGitHubTransport.from_environment())
+    rendered = json.dumps(snapshot, indent=2, sort_keys=True)
+    if output is None:
+        print(rendered)
+    else:
+        output.write_text(rendered + "\n", encoding="utf-8")
+        print(f"wrote raw live GitHub evidence to {output}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate")
     plan_parser = sub.add_parser("plan")
     plan_parser.add_argument("snapshot", type=Path)
+    collect_parser = sub.add_parser("collect")
+    collect_parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
     if args.command == "plan":
         return plan(args.snapshot)
+    if args.command == "collect":
+        return collect(args.output)
     raise AssertionError("unreachable")
 
 
