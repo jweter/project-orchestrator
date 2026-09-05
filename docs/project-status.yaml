@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-05T04:35:00Z"
+updated_at: "2026-09-05T12:24:00Z"
 state: "v1 implementation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -11,17 +11,17 @@ implementation:
   preflight: implemented
   ci: implemented
   live_github_collector: implemented
-  required_check_discovery: implemented
+  required_check_discovery: repair_in_progress
   knowledge_engine_compatibility_planner: pending
   learning_memory: pending
   compounding_timeseries: pending
   reinvestment_controller: pending
 readiness:
   implementation: "PARTIAL"
-  automated_verification: "IMPLEMENTED"
+  automated_verification: "PENDING"
   integration: "PARTIAL"
   product_reality: "NOT_APPLICABLE"
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Cross-repository compatibility planner for Knowledge Engine shared-contract changes."
+next_gate: "PR #3 review repairs: fail-closed state handling, app-pinned required checks, and Commit Status evidence; then exact-head preflight and fresh CI."

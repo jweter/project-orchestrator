@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 PRIORITY = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4, "P5": 5, "P6": 6}
+MERGEABLE_REQUIRED_CHECK_STATES = {"RESOLVED", "CONFIRMED_NONE"}
 
 
 @dataclass(frozen=True)
@@ -25,18 +26,13 @@ def classify_pr(pr: dict[str, Any]) -> str:
         return "CONFLICTED"
     if pr.get("blocked"):
         return "BLOCKED"
-
-    # Live evidence may know that comments exist without yet knowing whether
-    # they are blocking. Fail closed until a later review/comment gate resolves
-    # that ambiguity.
     if pr.get("blocking_comments_state") == "UNKNOWN":
         return "UNCERTAIN"
-
     if pr.get("blocking_reviews", 0):
         return "BLOCKED"
 
     check_state = pr.get("required_checks_state")
-    if check_state in {"UNKNOWN", "UNCERTAIN", "MISSING"}:
+    if check_state not in MERGEABLE_REQUIRED_CHECK_STATES:
         return "UNCERTAIN"
 
     checks = pr.get("required_checks")
@@ -44,6 +40,7 @@ def classify_pr(pr: dict[str, Any]) -> str:
         checks = []
     elif not isinstance(checks, list) or not checks:
         return "UNCERTAIN"
+
     conclusions = {item.get("conclusion") for item in checks}
     statuses = {item.get("status") for item in checks}
     if "missing" in statuses:
@@ -72,52 +69,19 @@ def actions_from_snapshot(snapshot: dict[str, Any]) -> list[Action]:
                 number = pr.get("number")
                 ref = f"PR #{number}" if number is not None else "PR"
                 if state == "FAILED":
-                    actions.append(
-                        Action("P1", project_id, repo_name, "repair_pr", ref, "required CI failed")
-                    )
+                    actions.append(Action("P1", project_id, repo_name, "repair_pr", ref, "required CI failed"))
                 elif state == "GREEN":
-                    actions.append(
-                        Action(
-                            "P2",
-                            project_id,
-                            repo_name,
-                            "merge_pr",
-                            ref,
-                            "all supplied required gates are green",
-                        )
-                    )
+                    actions.append(Action("P2", project_id, repo_name, "merge_pr", ref, "all supplied required gates are green"))
                 elif state in {"CONFLICTED", "BLOCKED", "UNCERTAIN"}:
-                    actions.append(
-                        Action("P3", project_id, repo_name, "resolve_pr", ref, state.lower())
-                    )
+                    actions.append(Action("P3", project_id, repo_name, "resolve_pr", ref, state.lower()))
                 elif state == "PENDING":
-                    actions.append(
-                        Action("P4", project_id, repo_name, "wait_pr", ref, "required CI pending")
-                    )
+                    actions.append(Action("P4", project_id, repo_name, "wait_pr", ref, "required CI pending"))
 
             for item in repo.get("started_work", []):
-                actions.append(
-                    Action(
-                        "P4",
-                        project_id,
-                        repo_name,
-                        "finish_started_work",
-                        item.get("ref"),
-                        item.get("reason", "started work"),
-                    )
-                )
+                actions.append(Action("P4", project_id, repo_name, "finish_started_work", item.get("ref"), item.get("reason", "started work")))
 
             if repo.get("new_roadmap_slice"):
-                actions.append(
-                    Action(
-                        "P5",
-                        project_id,
-                        repo_name,
-                        "new_roadmap_slice",
-                        None,
-                        str(repo["new_roadmap_slice"]),
-                    )
-                )
+                actions.append(Action("P5", project_id, repo_name, "new_roadmap_slice", None, str(repo["new_roadmap_slice"])))
 
     return sorted(actions, key=lambda action: action.sort_key)
 

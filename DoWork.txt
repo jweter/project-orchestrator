@@ -56,6 +56,9 @@ Derive active ownership from GitHub PRs/issues/branches/commits. Do not maintain
 NEW WORK
 Only after higher-priority existing work is clear. Read authoritative roadmap/guiding docs. Choose the highest-value authorized next slice, preferring current milestones. Keep slices small, coherent, reversible, testable, and reviewable. At most one substantial new slice per independent project per orchestrator run.
 
+SELF-COMPLETION
+The portfolio brain must autonomously build, repair, validate, and integrate the infrastructure it needs to execute this contract safely. When its authoritative roadmap/control plane identifies a missing capability required for evidence collection, CI interpretation, compatibility planning, learning, compounding measurement, reinvestment, reporting, or Product Reality debt tracking, implement the highest-value missing slice after higher-priority P0-P4 product work is clear. Do not stop merely because an orchestration capability is absent; record the gap as orchestrator work and continue until the declared v1 completion criterion is satisfied. After v1, freeze governance expansion unless measured evidence identifies a concrete bottleneck.
+
 KNOWLEDGE ENGINE
 Preserve evidence traceability, provenance, privacy, deterministic/non-fabricated state, and Core/Web/AI separation. For shared APIs, schemas, serialized structures, package/config/retrieval/provenance contracts, identify consumers, assess compatibility, prepare dependents, and merge dependency-safe.
 
