@@ -1,3 +1,4 @@
+from project_orchestrator.github_evidence import GitHubError
 from project_orchestrator.required_checks import RequiredCheckResolver
 
 
@@ -77,3 +78,16 @@ def test_required_workflow_rule_fails_closed_until_mapped() -> None:
 def test_confirmed_none_requires_live_rules_and_explicit_empty_manifest() -> None:
     pr = RequiredCheckResolver(FakeTransport(policy())).resolve_repository(repository(manifest_names=[]))["open_prs"][0]
     assert pr["required_checks_state"] == "CONFIRMED_NONE"
+
+
+def test_inaccessible_live_policy_fails_closed_instead_of_crashing() -> None:
+    repo = repository(
+        checks=[{"id": 10, "name": "CI", "status": "completed", "conclusion": "success", "app_id": 7}],
+        manifest_names=[],
+    )
+    responses = policy()
+    responses["/repos/jweter/example/branches/main/protection/required_status_checks"] = GitHubError("403 forbidden")
+    pr = RequiredCheckResolver(FakeTransport(responses)).resolve_repository(repo)["open_prs"][0]
+    assert pr["required_checks_state"] == "UNCERTAIN"
+    assert pr["required_check_policy"]["legacy_branch_protection_state"] == "UNAVAILABLE"
+    assert pr["required_check_policy"]["policy_access_errors"]

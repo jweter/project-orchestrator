@@ -119,13 +119,17 @@ class RequiredCheckResolver:
         root = _repo_root(repository)
         encoded_branch = urllib.parse.quote(branch, safe="")
 
+        policy_errors: list[str] = []
         try:
             raw_rules = self.transport.get_json(f"{root}/rules/branches/{encoded_branch}")
             if not isinstance(raw_rules, list):
                 raise GitHubError(f"effective branch rules are not a list for {repository}:{branch}")
             rules_state = "AVAILABLE"
         except GitHubNotFound:
+            raw_rules, rules_state = [], "NONE"
+        except GitHubError as exc:
             raw_rules, rules_state = [], "UNAVAILABLE"
+            policy_errors.append(f"effective_rules: {exc}")
 
         rule_requirements, required_workflows = _requirements_from_rules(raw_rules)
 
@@ -136,7 +140,10 @@ class RequiredCheckResolver:
             legacy_state = "AVAILABLE"
             legacy_requirements = _requirements_from_legacy(legacy)
         except GitHubNotFound:
-            legacy_state, legacy_requirements = "NONE_OR_UNAVAILABLE", []
+            legacy_state, legacy_requirements = "NONE", []
+        except GitHubError as exc:
+            legacy_state, legacy_requirements = "UNAVAILABLE", []
+            policy_errors.append(f"legacy_branch_protection: {exc}")
 
         manifest_state, manifest_names = _manifest_check_names(control_plane)
         live_requirements = _dedupe_requirements([*rule_requirements, *legacy_requirements])
@@ -147,6 +154,7 @@ class RequiredCheckResolver:
             "manifest_state": manifest_state,
             "manifest_check_names": sorted(manifest_names),
             "required_workflows": required_workflows,
+            "policy_access_errors": policy_errors,
         }
 
     def resolve_repository(self, repository: dict[str, Any]) -> dict[str, Any]:
@@ -203,7 +211,9 @@ class RequiredCheckResolver:
                 else:
                     required.append({**observed, "required_app_id": None, "source": "control_plane_manifest"})
 
-            if missing_live:
+            if policy["policy_access_errors"]:
+                state = "UNCERTAIN"
+            elif missing_live:
                 state = "MISSING"
             elif policy["required_workflows"]:
                 state = "UNCERTAIN"
@@ -212,7 +222,8 @@ class RequiredCheckResolver:
             elif required:
                 state = "RESOLVED"
             elif (
-                policy["effective_rules_state"] == "AVAILABLE"
+                policy["effective_rules_state"] in {"AVAILABLE", "NONE"}
+                and policy["legacy_branch_protection_state"] in {"AVAILABLE", "NONE"}
                 and policy["manifest_state"] == "DECLARED"
                 and not manifest_names
             ):
