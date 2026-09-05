@@ -1,5 +1,5 @@
 {
-  "id": "portfolioCiFailureRouter",
+  "id": "ciFailureRouter",
   "name": "Portfolio - CI Failure Router",
   "nodes": [
     {

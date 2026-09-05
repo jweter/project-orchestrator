@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from project_orchestrator.n8n_policy import (
+    N8N_MAX_WORKFLOW_ID_LENGTH,
     route_check_suite,
     route_knowledge_engine_push,
     validate_workflow_directory,
@@ -92,6 +93,19 @@ def test_committed_n8n_workflows_validate() -> None:
         "ci-failure-router.json",
         "knowledge-engine-impact-router.json",
     }
+
+
+def test_committed_workflow_ids_fit_n8n_static_data_limit() -> None:
+    for name in ("ci-failure-router.json", "knowledge-engine-impact-router.json"):
+        workflow_id = _load_workflow(name)["id"]
+        assert 0 < len(workflow_id) <= N8N_MAX_WORKFLOW_ID_LENGTH
+
+
+def test_validator_rejects_workflow_id_over_n8n_persistence_limit() -> None:
+    workflow = _load_workflow("ci-failure-router.json")
+    workflow["id"] = "x" * (N8N_MAX_WORKFLOW_ID_LENGTH + 1)
+    with pytest.raises(ValueError, match="persistence limit"):
+        validate_workflow_document(workflow)
 
 
 def test_validator_rejects_active_workflow() -> None:

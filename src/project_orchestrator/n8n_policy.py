@@ -38,6 +38,7 @@ DISPATCH_OWNER = "jweter"
 DISPATCH_REPOSITORY = "project-orchestrator"
 DISPATCH_WORKFLOW = "orchestrator-observe.yml"
 DISPATCH_REF = "main"
+N8N_MAX_WORKFLOW_ID_LENGTH = 21
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _FORBIDDEN_CODE_TOKENS = (
     "require(",
@@ -222,6 +223,15 @@ def _validate_dispatch(node: dict[str, Any]) -> None:
 
 
 def validate_workflow_document(workflow: dict[str, Any]) -> None:
+    workflow_id = workflow.get("id")
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        raise ValueError("workflow requires a stable non-empty id")
+    if len(workflow_id) > N8N_MAX_WORKFLOW_ID_LENGTH:
+        raise ValueError(
+            "workflow id exceeds n8n static-data persistence limit "
+            f"({len(workflow_id)} > {N8N_MAX_WORKFLOW_ID_LENGTH}): {workflow_id}"
+        )
+
     if workflow.get("active") is not False:
         raise ValueError("repository-tracked n8n workflows must remain inactive until runtime review")
     if "credentials" in workflow:
@@ -275,6 +285,7 @@ def validate_workflow_directory(root: Path) -> list[str]:
         raise ValueError("n8n workflow manifest must contain workflows")
 
     seen: set[str] = set()
+    seen_workflow_ids: set[str] = set()
     validated: list[str] = []
     for entry in entries:
         if not isinstance(entry, dict):
@@ -293,6 +304,10 @@ def validate_workflow_directory(root: Path) -> list[str]:
         path = root / filename
         workflow = json.loads(path.read_text(encoding="utf-8"))
         validate_workflow_document(workflow)
+        workflow_id = workflow["id"]
+        if workflow_id in seen_workflow_ids:
+            raise ValueError(f"duplicate n8n workflow id: {workflow_id}")
+        seen_workflow_ids.add(workflow_id)
         validated.append(filename)
 
     return validated
