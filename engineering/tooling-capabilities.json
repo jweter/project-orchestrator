@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "purpose": "Track portfolio-level development tooling that can close feedback loops without inventing availability or committing secrets.",
+  "policy": {
+    "prefer_official_vendor_tools": true,
+    "least_privilege": true,
+    "secrets_must_not_be_committed": true,
+    "private_product_reality_payloads_must_not_be_committed": true,
+    "paid_or_meaningful_recurring_cost_requires_jeremy": true,
+    "local_or_advisory_first_when_ci_cost_is_material": true,
+    "promote_to_required_gate_only_after_value_is_demonstrated": true,
+    "tool_availability_must_be_verified_not_assumed": true
+  },
+  "capabilities": [
+    {
+      "id": "github_mcp",
+      "category": "agent_integration",
+      "preferred_implementation": "github/github-mcp-server",
+      "status": "USER_AUTH_REQUIRED",
+      "scope": "user-level local agent configuration",
+      "benefit": "Structured repository, PR, issue, Actions, and security context for local coding agents.",
+      "security": "Use OAuth or a least-privilege PAT outside version control; never commit credentials.",
+      "setup": "docs/LOCAL_AGENT_TOOLING.md"
+    },
+    {
+      "id": "playwright_mcp",
+      "category": "product_reality",
+      "preferred_implementation": "microsoft/playwright-mcp",
+      "status": "READY_FOR_USER_SCOPE_SETUP",
+      "scope": "user-level local agent configuration",
+      "benefit": "Browser-level verification for Knowledge Engine Web and other web surfaces using accessibility snapshots and deterministic interaction.",
+      "security": "Do not persist authenticated browser state or private screenshots into repositories unless explicitly sanitized and authorized.",
+      "setup": "docs/LOCAL_AGENT_TOOLING.md"
+    },
+    {
+      "id": "hypothesis",
+      "category": "property_testing",
+      "preferred_implementation": "Hypothesis",
+      "status": "ADOPT_WHEN_INVARIANTS_IDENTIFIED",
+      "scope": "Python repositories with deterministic invariants",
+      "benefit": "Generate and shrink edge cases that example-based unit tests may miss.",
+      "promotion_rule": "Add to a repository only with at least one valuable property/regression test; do not add an unused dependency."
+    },
+    {
+      "id": "semgrep_community",
+      "category": "static_analysis",
+      "preferred_implementation": "Semgrep Community Edition",
+      "status": "EVALUATE_LOCAL_FIRST",
+      "scope": "repositories where existing linters/type checks leave a demonstrated class of security/correctness gaps",
+      "benefit": "Additional static-analysis rules for security and correctness.",
+      "promotion_rule": "Run locally/advisory first; require in CI only after signal quality and Actions runtime cost are measured."
+    },
+    {
+      "id": "trivy",
+      "category": "security",
+      "preferred_implementation": "Aqua Security Trivy",
+      "status": "EVALUATE_LOCAL_FIRST",
+      "scope": "containers, dependency/configuration surfaces, and repositories with an observed scanning gap",
+      "benefit": "Vulnerability, secret, configuration, and container scanning.",
+      "promotion_rule": "Do not duplicate an already effective repository security lane without evidence of added coverage."
+    },
+    {
+      "id": "dependabot",
+      "category": "dependency_maintenance",
+      "preferred_implementation": "GitHub Dependabot",
+      "status": "NATIVE_GITHUB_PER_REPO",
+      "scope": "dependency and GitHub Actions updates",
+      "benefit": "Automated update PRs and vulnerability-driven dependency maintenance.",
+      "promotion_rule": "Service Dependabot PRs under ordinary DoWork P1-P4 rules; never auto-merge red or materially uncertain updates."
+    },
+    {
+      "id": "openssf_scorecard",
+      "category": "supply_chain_review",
+      "preferred_implementation": "OpenSSF Scorecard",
+      "status": "OPTIONAL_LOCAL",
+      "scope": "periodic repository reality checks",
+      "benefit": "Independent supply-chain hygiene signal.",
+      "promotion_rule": "Keep local/advisory for private repositories unless a clear gap justifies CI integration."
+    }
+  ]
+}
