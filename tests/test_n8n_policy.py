@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -99,6 +100,26 @@ def test_committed_workflow_ids_fit_n8n_static_data_limit() -> None:
     for name in ("ci-failure-router.json", "knowledge-engine-impact-router.json"):
         workflow_id = _load_workflow(name)["id"]
         assert 0 < len(workflow_id) <= N8N_MAX_WORKFLOW_ID_LENGTH
+
+
+def test_committed_trigger_nodes_declare_stable_webhook_ids() -> None:
+    # A GitHub Trigger node without a node-level webhookId gets routed by
+    # n8n as /webhook/<workflowId>/<node name>/webhook, which %-encodes
+    # spaces in the name; that path was observed to be unreliable behind
+    # the Tailscale Funnel reverse proxy. Every trigger node's webhookId
+    # must be a fixed UUID so activation always produces a plain
+    # /webhook/<uuid>/webhook path instead.
+    uuid_pattern = re.compile(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    )
+    for name in ("ci-failure-router.json", "knowledge-engine-impact-router.json"):
+        workflow = _load_workflow(name)
+        triggers = [n for n in workflow["nodes"] if n["type"] == "n8n-nodes-base.githubTrigger"]
+        assert triggers, f"{name} has no GitHub Trigger nodes"
+        for node in triggers:
+            webhook_id = node.get("webhookId")
+            assert webhook_id, f"{name} node {node['name']!r} is missing a stable webhookId"
+            assert uuid_pattern.match(webhook_id), f"{name} node {node['name']!r} webhookId is not a UUID"
 
 
 def test_validator_rejects_workflow_id_over_n8n_persistence_limit() -> None:

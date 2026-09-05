@@ -4,15 +4,15 @@
   "nodes": [
     {
       "parameters":{"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"knowledge-engine-core","mode":"name"},"events":["push"],"options":{}},
-      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,-180],"id":"81111111-1111-4111-8111-111111111111","name":"knowledge-engine-core Main Push"
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,-180],"id":"81111111-1111-4111-8111-111111111111","name":"knowledge-engine-core Main Push","webhookId":"7a5060c0-97f9-46d6-8d8e-7281c9f0f5ce"
     },
     {
       "parameters":{"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"knowledge-engine-web","mode":"name"},"events":["push"],"options":{}},
-      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,0],"id":"82222222-2222-4222-8222-222222222222","name":"knowledge-engine-web Main Push"
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,0],"id":"82222222-2222-4222-8222-222222222222","name":"knowledge-engine-web Main Push","webhookId":"5357d490-ef5d-45ec-a7ad-37224a4319df"
     },
     {
       "parameters":{"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"knowledge-engine-ai","mode":"name"},"events":["push"],"options":{}},
-      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,180],"id":"83333333-3333-4333-8333-333333333333","name":"knowledge-engine-ai Main Push"
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,180],"id":"83333333-3333-4333-8333-333333333333","name":"knowledge-engine-ai Main Push","webhookId":"a20bc07a-7c18-41a8-9d1b-8093fbb235c2"
     },
     {
       "parameters":{"jsCode":"const body = $json.body ?? $json ?? {};\nconst allowed = new Set([\n  'jweter/knowledge-engine-core',\n  'jweter/knowledge-engine-web',\n  'jweter/knowledge-engine-ai',\n]);\nconst repository = body.repository?.full_name ?? '';\nconst headSha = body.after ?? '';\nif (\n  !allowed.has(repository) ||\n  body.ref !== 'refs/heads/main' ||\n  body.deleted === true ||\n  !/^[0-9a-f]{40}$/.test(headSha)\n) {\n  return [];\n}\nreturn [{\n  json: {\n    repository,\n    pr_number: '',\n    head_sha: headSha,\n    conclusion: '',\n    check_suite_id: '',\n    reason: 'knowledge_engine_main_change',\n  },\n}];"},
