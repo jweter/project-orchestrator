@@ -36,10 +36,11 @@
       "id": "hypothesis",
       "category": "property_testing",
       "preferred_implementation": "Hypothesis",
-      "status": "ADOPT_WHEN_INVARIANTS_IDENTIFIED",
-      "scope": "Python repositories with deterministic invariants",
+      "status": "ADOPTED_PROJECT_ORCHESTRATOR",
+      "scope": "project-orchestrator now; other Python repositories only when deterministic invariants justify it",
       "benefit": "Generate and shrink edge cases that example-based unit tests may miss.",
-      "promotion_rule": "Add to a repository only with at least one valuable property/regression test; do not add an unused dependency."
+      "evidence": "Property tests protect fail-closed required-check states and terminal CI failure classification in tests/test_decision.py.",
+      "promotion_rule": "Add to another repository only with at least one valuable property/regression test; do not add an unused dependency."
     },
     {
       "id": "semgrep_community",
