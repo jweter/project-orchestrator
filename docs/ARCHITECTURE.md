@@ -84,6 +84,18 @@ For a proposed shared-contract change, `project-orchestrator compat-plan` identi
 
 The planner also records forbidden boundary shortcuts already documented by the family, including direct Web imports of Core and raw Web subprocess calls to Core that bypass AI's supported `ke_client` boundary. Repository governing documents remain higher authority than this machine-readable projection.
 
+## Compounding evidence store
+
+`project_orchestrator.timeseries` and `engineering/compounding-timeseries.json` are the deterministic record of whether the development loop is actually compounding, answering the question the "Exponential-development hypothesis" section above raises but does not settle.
+
+An **evidence window** is scoped to a project (or the portfolio as a whole) and one of the five product repositories or `jweter/project-orchestrator`, spans an explicit `window_start`/`window_end`, and records a fixed set of development-loop metrics: PR creation-to-green time, failure-to-repair time, merge cycle time, CI failure/repeat-failure counts, preflight failures prevented, roadmap slices completed, Product Reality debt created/resolved, cross-repo dependency incidents, blocked/waiting time, and autonomous vs. Jeremy-required interventions.
+
+Every metric is either `MEASURED` (a numeric value, a fixed per-metric unit, a sample count, and non-empty `evidence_refs` pointing at the reproducible source — a PR URL, run ID, or similar) or explicitly `UNKNOWN`/`INSUFFICIENT_DATA` with a reason. A window can never omit a metric key to imply it silently; the schema requires all thirteen keys be present, so absence of evidence is always visible rather than absent. `window_id` is content-derived, so replaying the same evidence is idempotent and byte-deterministic on write.
+
+`aggregate_windows` rolls windows up by repository, project, or the whole portfolio using a sample-count-weighted mean over only the `MEASURED` entries, and is independent of input order (windows are re-sorted by `window_id` before folding). An aggregate is `UNKNOWN` only if every contributing window is `UNKNOWN` for that metric, and reports how many contributing windows were measured vs. unknown vs. insufficient so a rollup never quietly hides missing coverage. Nothing here asserts compounding; it only makes the trend computable once enough windows accumulate.
+
+`project-orchestrator timeseries-report` (optionally `--since`, `--project`, `--repository`) is the query surface DoWork uses to read recent evidence without touching the raw JSON store directly. `--reinvestment` prints `build_reinvestment_snapshot`: a deterministic, decision-free aggregate projection (portfolio/project/repository rollups) that is the documented interface the next roadmap slice, the Reinvestment Controller, will consume. That controller is not implemented yet — this store only supplies its input.
+
 ## Sanitized learning memory
 
 `engineering/learning-memory.json` is the durable portfolio-level record of lessons that are both resolved and verified. It is deliberately narrower than raw CI logs, review payloads, or Product Reality evidence.

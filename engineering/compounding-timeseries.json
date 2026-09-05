@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "windows": [
+    {
+      "metrics": {
+        "autonomous_intervention_count": {
+          "status": "UNKNOWN"
+        },
+        "blocked_waiting_seconds": {
+          "status": "UNKNOWN"
+        },
+        "ci_failure_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/12"
+          ],
+          "sample_count": 1,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 0
+        },
+        "ci_repeat_failure_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/12"
+          ],
+          "sample_count": 1,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 0
+        },
+        "cross_repo_incident_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/12"
+          ],
+          "sample_count": 1,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 0
+        },
+        "failure_to_repair_seconds": {
+          "status": "UNKNOWN"
+        },
+        "jeremy_required_intervention_count": {
+          "status": "UNKNOWN"
+        },
+        "merge_cycle_seconds": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/12"
+          ],
+          "sample_count": 1,
+          "status": "MEASURED",
+          "unit": "seconds",
+          "value": 327
+        },
+        "pr_creation_to_green_seconds": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/12"
+          ],
+          "sample_count": 1,
+          "status": "MEASURED",
+          "unit": "seconds",
+          "value": 26
+        },
+        "preflight_failures_prevented_count": {
+          "status": "UNKNOWN"
+        },
+        "product_reality_debt_created_count": {
+          "status": "UNKNOWN"
+        },
+        "product_reality_debt_resolved_count": {
+          "status": "UNKNOWN"
+        },
+        "roadmap_slices_completed_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/12"
+          ],
+          "sample_count": 1,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 1
+        }
+      },
+      "notes": "n8n GitHub webhook TLS trust + WEBHOOK_URL migration (PR #12): first operational activation of the n8n event layer.",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "window_end": "2026-09-05T20:01:52Z",
+      "window_id": "e9d5d04ce660ef2c86b1",
+      "window_start": "2026-09-05T19:56:25Z"
+    }
+  ]
+}
