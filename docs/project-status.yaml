@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-05T21:15:00Z"
+updated_at: "2026-09-05T21:35:00Z"
 state: "v1 implementation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -24,6 +24,20 @@ implementation:
   n8n_runtime: operational
   n8n_public_https_ingress: verified
   n8n_github_credentials: configured_and_verified
+  # Second canonical router activated and verified end-to-end: the
+  # `portfolioKnowledgeImpactRouter` id was stale (over the persistence
+  # limit, no credentials bound). Rebuilt the canonical `keImpactRouter`
+  # workflow with credentials bound and explicit UUID webhookIds (matching
+  # the ciFailureRouter fix's root cause), activated it, verified its
+  # webhook secrets persist and survive a restart, updated the external
+  # nginx gateway allowlist for its 3 new webhook paths, and confirmed a
+  # real (non-ping) `push` to `main` on knowledge-engine-core flowed
+  # through the classifier and dispatch node into a successful
+  # orchestrator-observe.yml workflow_dispatch run. The stale
+  # `portfolioKnowledgeImpactRouter`/`portfolioCiFailureRouter` rows remain
+  # inactive in the n8n database; n8n 2.38.2 has no CLI delete command, so
+  # removing them requires the editor UI (see n8n/README.md).
+  n8n_knowledge_engine_impact_router: operational
   compounding_timeseries: implemented
   # Recommendation-only in this slice: project_orchestrator.reinvestment
   # scores deterministic candidates from build_reinvestment_snapshot() and

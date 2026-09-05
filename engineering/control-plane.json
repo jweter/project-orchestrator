@@ -138,19 +138,36 @@
       "n8n security audit passes without unresolved high-risk findings"
     ],
     "activation_evidence": {
-      "verified_by": "https://github.com/jweter/project-orchestrator/pull/12",
-      "verified_at": "2026-09-05T20:01:52Z",
-      "confirmed": [
-        "outbound GitHub API TLS validates normally from inside the running container",
-        "all five product repositories have a registered check_suite webhook returning HTTP 200",
-        "each GitHub Trigger node's webhook secret persists in workflow static data",
-        "persistence survives a full n8n container restart",
-        "the corrected ciFailureRouter workflow is active"
-      ],
-      "not_yet_verified": [
-        "n8n security audit (n8n audit) has not been re-run against this configuration",
-        "a real (non-ping) GitHub check_suite event has not yet been observed end-to-end through Classify Failed PR CI and Dispatch Orchestrator Evidence"
-      ]
+      "ciFailureRouter": {
+        "verified_by": "https://github.com/jweter/project-orchestrator/pull/12",
+        "verified_at": "2026-09-05T20:01:52Z",
+        "confirmed": [
+          "outbound GitHub API TLS validates normally from inside the running container",
+          "all five product repositories have a registered check_suite webhook returning HTTP 200",
+          "each GitHub Trigger node's webhook secret persists in workflow static data",
+          "persistence survives a full n8n container restart",
+          "the corrected ciFailureRouter workflow is active"
+        ],
+        "not_yet_verified": [
+          "a real (non-ping) GitHub check_suite event has not yet been observed end-to-end through Classify Failed PR CI and Dispatch Orchestrator Evidence"
+        ]
+      },
+      "keImpactRouter": {
+        "verified_at": "2026-09-05T21:29:35Z",
+        "confirmed": [
+          "canonical keImpactRouter (short id) reconciled against the committed workflow, superseding the stale over-length portfolioKnowledgeImpactRouter id",
+          "all three GitHub Trigger nodes bound to the Portfolio webhook manager credential; the dispatch node bound to Portfolio evidence dispatch",
+          "each trigger node's webhook secret persists in workflow static data and survives a full n8n container restart",
+          "GitHub push webhooks registered on knowledge-engine-core/web/ai, all returning HTTP 200 on ping",
+          "a real (non-ping) push to main on knowledge-engine-core (PR jweter/knowledge-engine-core#484) flowed through Classify Knowledge Engine Change and Dispatch Orchestrator Evidence into a successful orchestrator-observe.yml workflow_dispatch run (GitHub Actions run 33993198767)",
+          "the working ciFailureRouter was re-verified healthy (200 on ping, secrets intact) after every change made to activate keImpactRouter"
+        ],
+        "not_yet_verified": []
+      },
+      "n8n_audit": {
+        "run_at": "2026-09-05T21:20:00Z",
+        "result": "no high-risk findings; the only report entries are the standard advisory that Code nodes can run arbitrary code, which n8n's audit raises for any workflow containing one and which this repo's own n8n_policy validator already mitigates by forbidding network-capable Code nodes"
+      }
     }
   },
   "reinvestment_controller": {
