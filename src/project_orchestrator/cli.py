@@ -10,11 +10,19 @@ from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
 from .required_checks import resolve_required_checks
+from .timeseries import (
+    append_window,
+    build_reinvestment_snapshot,
+    load_store,
+    recent_windows,
+    write_store,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INVENTORY = ROOT / "engineering" / "portfolio.json"
 DEFAULT_KE_COMPATIBILITY = ROOT / "engineering" / "knowledge-engine-compatibility.json"
 DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "learning-memory.json"
+DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "compounding-timeseries.json"
 
 
 def validate() -> int:
@@ -67,6 +75,36 @@ def memory_add(lesson_path: Path) -> int:
     return 0
 
 
+def timeseries_validate() -> int:
+    store = load_store(DEFAULT_TIMESERIES_STORE)
+    print(f"compounding timeseries valid: {len(store['windows'])} evidence windows")
+    return 0
+
+
+def timeseries_record(window_path: Path) -> int:
+    window = json.loads(window_path.read_text(encoding="utf-8"))
+    store = load_store(DEFAULT_TIMESERIES_STORE)
+    updated = append_window(store, window)
+    write_store(DEFAULT_TIMESERIES_STORE, updated)
+    print(f"compounding timeseries contains {len(updated['windows'])} evidence windows")
+    return 0
+
+
+def timeseries_report(
+    since: str | None,
+    project: str | None,
+    repository: str | None,
+    reinvestment: bool,
+) -> int:
+    store = load_store(DEFAULT_TIMESERIES_STORE)
+    if reinvestment:
+        print(json.dumps(build_reinvestment_snapshot(store, since=since), indent=2, sort_keys=True))
+        return 0
+    windows = recent_windows(store, since=since, project=project, repository=repository)
+    print(json.dumps(windows, indent=2, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -85,6 +123,18 @@ def main() -> int:
         action="store_true",
         help="resolve current required CI from live branch policy and control-plane evidence",
     )
+    sub.add_parser("timeseries-validate")
+    timeseries_record_parser = sub.add_parser("timeseries-record")
+    timeseries_record_parser.add_argument("window", type=Path)
+    timeseries_report_parser = sub.add_parser("timeseries-report")
+    timeseries_report_parser.add_argument("--since", default=None, help="ISO-8601 cutoff; only windows ending on/after this are included")
+    timeseries_report_parser.add_argument("--project", default=None)
+    timeseries_report_parser.add_argument("--repository", default=None)
+    timeseries_report_parser.add_argument(
+        "--reinvestment",
+        action="store_true",
+        help="print the aggregated snapshot shape the future Reinvestment Controller will consume",
+    )
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
@@ -98,6 +148,12 @@ def main() -> int:
         return memory_add(args.lesson)
     if args.command == "collect":
         return collect(args.output, args.resolve_required_checks)
+    if args.command == "timeseries-validate":
+        return timeseries_validate()
+    if args.command == "timeseries-record":
+        return timeseries_record(args.window)
+    if args.command == "timeseries-report":
+        return timeseries_report(args.since, args.project, args.repository, args.reinvestment)
     raise AssertionError("unreachable")
 
 

@@ -13,6 +13,7 @@ checks = [
     ("control_plane", [sys.executable, "engineering/validate_control_plane.py"]),
     ("portfolio_inventory", [sys.executable, "engineering/validate_portfolio.py"]),
     ("learning_memory", [sys.executable, "engineering/validate_learning_memory.py"]),
+    ("compounding_timeseries", [sys.executable, "engineering/validate_timeseries.py"]),
     ("tooling_capabilities", [sys.executable, "engineering/validate_tooling_capabilities.py"]),
     ("n8n_policy", [sys.executable, "engineering/validate_n8n.py"]),
     ("compile", [sys.executable, "-m", "compileall", "-q", "src", "tests", "engineering"]),

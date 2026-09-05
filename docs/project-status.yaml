@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-05T13:33:00Z"
+updated_at: "2026-09-05T20:30:00Z"
 state: "v1 implementation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -16,10 +16,15 @@ implementation:
   learning_memory: implemented
   n8n_event_router_contract: implemented
   n8n_regression_coverage: "Pinned GitHub Trigger envelopes and direct items, terminal-failure intake, and repeatable local setup"
-  n8n_runtime: user_setup_required
-  n8n_public_https_ingress: not_configured
-  n8n_github_credentials: not_configured
-  compounding_timeseries: pending
+  # Verified in PR #12 (merged): outbound GitHub API TLS validates normally
+  # from inside the running container; all five product repositories have a
+  # registered check_suite webhook returning HTTP 200 on delivery; each
+  # GitHub Trigger node's webhook secret persists and survives a full
+  # container restart; the corrected `ciFailureRouter` workflow is active.
+  n8n_runtime: operational
+  n8n_public_https_ingress: verified
+  n8n_github_credentials: configured_and_verified
+  compounding_timeseries: implemented
   reinvestment_controller: pending
 readiness:
   implementation: "PARTIAL"
@@ -29,4 +34,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Portfolio compounding time-series store using evidence windows without claiming exponential growth prematurely."
+next_gate: "Reinvestment controller consuming project_orchestrator.timeseries.build_reinvestment_snapshot to decide reinvestment, without fabricating compounding evidence the time-series store does not yet contain."

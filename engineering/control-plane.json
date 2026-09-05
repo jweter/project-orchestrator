@@ -9,6 +9,7 @@
     "engineering/portfolio.json",
     "engineering/knowledge-engine-compatibility.json",
     "engineering/learning-memory.json",
+    "engineering/compounding-timeseries.json",
     "engineering/tooling-capabilities.json",
     "n8n/workflow-manifest.json",
     "docs/ARCHITECTURE.md",
@@ -50,6 +51,7 @@
       "control_plane",
       "portfolio_inventory",
       "learning_memory",
+      "compounding_timeseries",
       "tooling_capabilities",
       "n8n_policy",
       "compile",
@@ -115,7 +117,7 @@
   },
   "n8n_orchestration": {
     "role": "event-driven transport and bounded workflow dispatch around the authoritative DoWork control plane",
-    "runtime": "self-hosted n8n Community Edition; repository integration ready, user runtime setup required",
+    "runtime": "self-hosted n8n Community Edition; repository-integrated and operationally activated (verified PR #12)",
     "workflow_manifest": "n8n/workflow-manifest.json",
     "setup_guide": "n8n/README.md",
     "mutation_boundary": "dispatch orchestrator-observe.yml only",
@@ -133,6 +135,21 @@
       "user-approved verified HTTPS ingress",
       "least-privilege GitHub credential configured at runtime",
       "n8n security audit passes without unresolved high-risk findings"
-    ]
+    ],
+    "activation_evidence": {
+      "verified_by": "https://github.com/jweter/project-orchestrator/pull/12",
+      "verified_at": "2026-09-05T20:01:52Z",
+      "confirmed": [
+        "outbound GitHub API TLS validates normally from inside the running container",
+        "all five product repositories have a registered check_suite webhook returning HTTP 200",
+        "each GitHub Trigger node's webhook secret persists in workflow static data",
+        "persistence survives a full n8n container restart",
+        "the corrected ciFailureRouter workflow is active"
+      ],
+      "not_yet_verified": [
+        "n8n security audit (n8n audit) has not been re-run against this configuration",
+        "a real (non-ping) GitHub check_suite event has not yet been observed end-to-end through Classify Failed PR CI and Dispatch Orchestrator Evidence"
+      ]
+    }
   }
 }
