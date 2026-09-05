@@ -32,6 +32,23 @@ if (-not (Test-Path $EnvPath)) {
     Write-Host "Created n8n/.env with a generated encryption key."
 }
 
+# Migrate the legacy public webhook variable used by older local setups.
+# Preserve the existing value, but normalize it to the variables consumed by
+# docker-compose.yml so upgrades do not silently fall back to localhost.
+$envText = Get-Content $EnvPath -Raw
+$legacyMatch = [regex]::Match($envText, '(?m)^PORTFOLIO_WEBHOOK_URL=(.*)$')
+$webhookMatch = [regex]::Match($envText, '(?m)^WEBHOOK_URL=(.*)$')
+if ($legacyMatch.Success -and (-not $webhookMatch.Success -or [string]::IsNullOrWhiteSpace($webhookMatch.Groups[1].Value))) {
+    $legacyUrl = $legacyMatch.Groups[1].Value.Trim()
+    $normalizedLines = Get-Content $EnvPath | Where-Object {
+        $_ -notmatch '^(PORTFOLIO_WEBHOOK_URL|WEBHOOK_URL|N8N_PROXY_HOPS)='
+    }
+    $normalizedLines += "WEBHOOK_URL=$legacyUrl"
+    $normalizedLines += "N8N_PROXY_HOPS=1"
+    Set-Content $EnvPath $normalizedLines
+    Write-Host "Migrated legacy PORTFOLIO_WEBHOOK_URL to WEBHOOK_URL and N8N_PROXY_HOPS."
+}
+
 Push-Location $N8nDir
 try {
     docker compose pull
