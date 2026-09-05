@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-05T20:30:00Z"
+updated_at: "2026-09-05T21:15:00Z"
 state: "v1 implementation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -25,7 +25,15 @@ implementation:
   n8n_public_https_ingress: verified
   n8n_github_credentials: configured_and_verified
   compounding_timeseries: implemented
-  reinvestment_controller: pending
+  # Recommendation-only in this slice: project_orchestrator.reinvestment
+  # scores deterministic candidates from build_reinvestment_snapshot() and
+  # always sets requires_jeremy_approval=true. With the store's current 2
+  # real evidence windows, every candidate's confidence is below the 0.5
+  # selection threshold, so `reinvestment-plan` currently selects nothing
+  # and instead surfaces evidence gaps (see docs/ARCHITECTURE.md) — this is
+  # the expected, fail-closed behavior at this evidence volume, not a bug.
+  reinvestment_controller: implemented_recommendation_only
+  automatic_evidence_collector: pending
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -34,4 +42,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Reinvestment controller consuming project_orchestrator.timeseries.build_reinvestment_snapshot to decide reinvestment, without fabricating compounding evidence the time-series store does not yet contain."
+next_gate: "Automatic Portfolio Evidence Collector: populate engineering/compounding-timeseries.json from reproducible GitHub/n8n/orchestrator evidence instead of manually recorded windows, then feed its output into the Reinvestment Controller."

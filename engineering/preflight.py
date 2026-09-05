@@ -19,6 +19,7 @@ checks = [
     ("compile", [sys.executable, "-m", "compileall", "-q", "src", "tests", "engineering"]),
     ("tests", [sys.executable, "-m", "pytest", "-q"]),
     ("cli_validate", [sys.executable, "-m", "project_orchestrator.cli", "validate"]),
+    ("reinvestment_plan_smoke", [sys.executable, "-m", "project_orchestrator.cli", "reinvestment-plan"]),
 ]
 
 results = []
