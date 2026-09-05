@@ -11,8 +11,8 @@
 - [x] Exact-head preflight
 - [x] Branch/PR CI workflows
 - [x] Live GitHub evidence collector
-- [ ] Required-check discovery adapter — next: map live rulesets/branch protection/workflow policy onto raw check runs without guessing
-- [ ] Cross-repository compatibility planner for Knowledge Engine
+- [x] Required-check discovery adapter
+- [ ] Cross-repository compatibility planner for Knowledge Engine — next
 - [ ] Persistent sanitized regression/learning memory
 - [ ] Portfolio compounding time-series store
 - [ ] Reinvestment controller consuming measured evidence

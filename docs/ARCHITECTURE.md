@@ -55,3 +55,17 @@ The collector deliberately does **not** decide which check runs are required. Ev
 Collection is exhaustive for list endpoints: pagination continues until a short page is observed and fails closed if the configured safety bound is exceeded. Pull-request Conversation comments and inline review comments are both retained.
 
 Active `CHANGES_REQUESTED` states are normalized per reviewer. Comment semantics remain conservative: when comments exist but their blocking status is not mechanically resolved, `blocking_comments_state` is `UNKNOWN`, which prevents the decision kernel from emitting a GREEN merge action.
+
+## Required-check resolution
+
+`project_orchestrator.required_checks` enriches raw PR evidence with the CI policy that applies to the PR base branch.
+
+Authority is layered deliberately:
+
+1. effective GitHub branch rules and legacy branch-protection required contexts are live authority;
+2. current control-plane `verification.mandatory_check_names` are policy evidence;
+3. raw check runs prove which named checks actually exist on the exact PR head.
+
+A check required by live branch policy is synthesized as `status: missing` when absent, preventing merge. A manifest-only name that is absent from the current head is **not** treated as permanently required; it produces `UNCERTAIN` because the workflow may have been renamed, retired, or made non-applicable. Required-workflow rules that cannot yet be mapped to concrete check contexts also fail closed as `UNCERTAIN`.
+
+The decision kernel accepts `CONFIRMED_NONE` only when live branch rules were successfully read and the current control plane explicitly declares an empty mandatory-check list. This allows repositories with truly no required CI to proceed without pretending that missing policy evidence is equivalent to no policy.
