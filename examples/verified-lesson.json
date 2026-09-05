@@ -1,0 +1,13 @@
+{
+  "project": "everward",
+  "repository": "jweter/Project-Everward",
+  "source_type": "ci_failure",
+  "source_ref": "example",
+  "symptom": "A deterministic verification lane failed.",
+  "root_cause": "Example root cause.",
+  "fix": "Example bounded fix.",
+  "verification": "Example exact-head verification.",
+  "regression_protection": "Example regression coverage.",
+  "residual_risk": "Example residual risk.",
+  "evidence_state": "VERIFIED"
+}

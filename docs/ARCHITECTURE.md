@@ -83,3 +83,11 @@ The deterministic planner models three supported dependency paths:
 For a proposed shared-contract change, `project-orchestrator compat-plan` identifies direct and transitive consumers and emits dependency-safe preparation and verification actions. Breaking changes require consumers to be prepared before producer merge and recommend temporary old/new compatibility when practical. Unknown contract kinds fail closed.
 
 The planner also records forbidden boundary shortcuts already documented by the family, including direct Web imports of Core and raw Web subprocess calls to Core that bypass AI's supported `ke_client` boundary. Repository governing documents remain higher authority than this machine-readable projection.
+
+## Sanitized learning memory
+
+`engineering/learning-memory.json` is the durable portfolio-level record of lessons that are both resolved and verified. It is deliberately narrower than raw CI logs, review payloads, or Product Reality evidence.
+
+A persisted lesson records the project/repository, source type/reference, symptom, root cause, fix, verification, regression protection, and residual risk. Entries must have `evidence_state=VERIFIED`; pending theories cannot become durable learning. A content-derived `lesson_id` makes repeated ingestion idempotent.
+
+Validation rejects raw/private payload fields and common secret patterns. The memory is therefore useful for preventing repeated engineering failures without becoming a credential store or a backdoor for private Product Reality artifacts. The validator is part of exact-head preflight.

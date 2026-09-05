@@ -12,6 +12,7 @@ EVIDENCE = ROOT / "preflight-evidence.json"
 checks = [
     ("control_plane", [sys.executable, "engineering/validate_control_plane.py"]),
     ("portfolio_inventory", [sys.executable, "engineering/validate_portfolio.py"]),
+    ("learning_memory", [sys.executable, "engineering/validate_learning_memory.py"]),
     ("compile", [sys.executable, "-m", "compileall", "-q", "src", "tests", "engineering"]),
     ("tests", [sys.executable, "-m", "pytest", "-q"]),
     ("cli_validate", [sys.executable, "-m", "project_orchestrator.cli", "validate"]),

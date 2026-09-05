@@ -13,8 +13,8 @@
 - [x] Live GitHub evidence collector
 - [x] Required-check discovery adapter
 - [x] Cross-repository compatibility planner for Knowledge Engine
-- [ ] Persistent sanitized regression/learning memory — next
-- [ ] Portfolio compounding time-series store
+- [x] Persistent sanitized regression/learning memory
+- [ ] Portfolio compounding time-series store — next
 - [ ] Reinvestment controller consuming measured evidence
 - [ ] Scheduler-facing run report artifact
 - [ ] Product Reality debt aggregation without payload leakage
