@@ -40,3 +40,19 @@ Use `--resolve-required-checks` to enrich raw evidence with current effective br
 ## Knowledge Engine compatibility
 
 `compat-plan` evaluates proposed Core/AI/Web shared-contract changes against the documented family boundaries and returns direct consumers, transitive consumers, and dependency-safe verification/merge actions. It never authorizes a breaking change by itself; live repository policy, preflight, CI, and each product repository's governing documents remain authoritative.
+
+## n8n event orchestration
+
+`n8n/` adds a self-hosted, event-driven orchestration layer without replacing GitHub Actions or the DoWork scheduler.
+
+The committed workflows watch PR check-suite failures across the five product repositories and main-branch changes across Knowledge Engine Core/Web/AI, reduce events to sanitized identifiers, and dispatch only the read-only/sanitizing `orchestrator-observe.yml` intake workflow. They remain inactive and credential-free in Git.
+
+The n8n policy validator is part of exact-head preflight and rejects broader GitHub mutations, embedded credentials, unsafe node types, and a competing schedule.
+
+To prepare the local runtime on Windows:
+
+```powershell
+.\scripts\setup-n8n.ps1
+```
+
+This only creates a local `127.0.0.1` runtime and imports inactive workflows. GitHub webhook activation requires a user-approved HTTPS ingress and least-privilege runtime credential. See `n8n/README.md` and `docs/N8N_ORCHESTRATION.md`.

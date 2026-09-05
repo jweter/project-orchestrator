@@ -1,0 +1,71 @@
+name: Orchestrator n8n Evidence Intake
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Canonical source repository
+        required: true
+        type: string
+      source_pr:
+        description: Source PR number, when applicable
+        required: false
+        default: ""
+        type: string
+      source_head_sha:
+        description: Exact source head SHA
+        required: true
+        type: string
+      source_conclusion:
+        description: Source check-suite conclusion
+        required: false
+        default: ""
+        type: string
+      source_check_suite_id:
+        description: Source GitHub check-suite id
+        required: false
+        default: ""
+        type: string
+      reason:
+        description: Sanitized routing reason
+        required: true
+        type: choice
+        options:
+          - ci_failure
+          - knowledge_engine_main_change
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e .
+      - name: Validate and capture sanitized event
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_PR: ${{ inputs.source_pr }}
+          SOURCE_HEAD_SHA: ${{ inputs.source_head_sha }}
+          SOURCE_CONCLUSION: ${{ inputs.source_conclusion }}
+          SOURCE_CHECK_SUITE_ID: ${{ inputs.source_check_suite_id }}
+          ROUTING_REASON: ${{ inputs.reason }}
+        run: >-
+          python engineering/capture_n8n_event.py
+          --source-repository "$SOURCE_REPOSITORY"
+          --source-pr "$SOURCE_PR"
+          --source-head-sha "$SOURCE_HEAD_SHA"
+          --source-conclusion "$SOURCE_CONCLUSION"
+          --source-check-suite-id "$SOURCE_CHECK_SUITE_ID"
+          --reason "$ROUTING_REASON"
+          --output n8n-event.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: n8n-event
+          path: n8n-event.json
+          retention-days: 30
+          if-no-files-found: error

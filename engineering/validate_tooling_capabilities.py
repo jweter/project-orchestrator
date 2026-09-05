@@ -41,7 +41,15 @@ for capability in capabilities:
     if not isinstance(capability.get("status"), str):
         raise SystemExit(f"tooling capability {capability_id} requires status")
 
-for required_id in ("github_mcp", "playwright_mcp", "hypothesis", "semgrep_community", "trivy", "dependabot"):
+for required_id in (
+    "github_mcp",
+    "playwright_mcp",
+    "n8n_orchestration",
+    "hypothesis",
+    "semgrep_community",
+    "trivy",
+    "dependabot",
+):
     if required_id not in ids:
         raise SystemExit(f"required tooling capability missing: {required_id}")
 

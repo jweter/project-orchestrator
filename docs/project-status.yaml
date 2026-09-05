@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-05T12:45:00Z"
+updated_at: "2026-09-05T13:33:00Z"
 state: "v1 implementation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -14,6 +14,11 @@ implementation:
   required_check_discovery: implemented
   knowledge_engine_compatibility_planner: implemented
   learning_memory: implemented
+  n8n_event_router_contract: implemented
+  n8n_regression_coverage: "Pinned GitHub Trigger envelopes and direct items, terminal-failure intake, and repeatable local setup"
+  n8n_runtime: user_setup_required
+  n8n_public_https_ingress: not_configured
+  n8n_github_credentials: not_configured
   compounding_timeseries: pending
   reinvestment_controller: pending
 readiness:
