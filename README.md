@@ -23,6 +23,11 @@ python -m pip install -e ".[dev]"
 python engineering/preflight.py
 project-orchestrator validate
 project-orchestrator plan examples/portfolio-snapshot.json
+GITHUB_TOKEN=... project-orchestrator collect --output live-evidence.json
 ```
 
 See `DoWork.txt`, `engineering/control-plane.json`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md`.
+
+## Live evidence
+
+`project-orchestrator collect` reads the canonical inventory and gathers raw live GitHub evidence for all five product repositories. Tokens are read only from `GITHUB_TOKEN` or `GH_TOKEN` and are never written into the output. Check runs are collected but remain explicitly unclassified as required/optional until the required-check discovery layer is applied.

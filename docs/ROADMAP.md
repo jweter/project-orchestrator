@@ -10,8 +10,8 @@
 - [x] One-new-slice-per-project fairness guard
 - [x] Exact-head preflight
 - [x] Branch/PR CI workflows
-- [ ] Live GitHub evidence collector
-- [ ] Required-check discovery adapter
+- [x] Live GitHub evidence collector
+- [ ] Required-check discovery adapter — next: map live rulesets/branch protection/workflow policy onto raw check runs without guessing
 - [ ] Cross-repository compatibility planner for Knowledge Engine
 - [ ] Persistent sanitized regression/learning memory
 - [ ] Portfolio compounding time-series store
