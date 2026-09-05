@@ -8,6 +8,7 @@
     "DoWork.txt",
     "engineering/portfolio.json",
     "engineering/knowledge-engine-compatibility.json",
+    "engineering/learning-memory.json",
     "docs/ARCHITECTURE.md",
     "docs/ROADMAP.md",
     "docs/project-status.yaml"
@@ -40,6 +41,7 @@
     "checks": [
       "control_plane",
       "portfolio_inventory",
+      "learning_memory",
       "compile",
       "tests",
       "cli_validate"
@@ -83,5 +85,11 @@
     "knowledge_engine_contract": "engineering/knowledge-engine-compatibility.json",
     "executable": "project-orchestrator compat-plan",
     "rule": "identify direct and transitive consumers before shared-contract changes; prepare dependents first for breaking changes and never knowingly leave the Knowledge Engine family broken"
+  },
+  "learning_memory": {
+    "path": "engineering/learning-memory.json",
+    "executable": "project-orchestrator memory-validate",
+    "persist_rule": "verified, sanitized lessons only; never persist secrets, credentials, raw private Product Reality payloads, or unverified conclusions",
+    "deduplication": "content-derived lesson_id"
   }
 }

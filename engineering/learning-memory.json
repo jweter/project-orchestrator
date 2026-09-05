@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "lesson_id": "75932494ff4ff97690c4",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "review_finding",
+      "source_ref": "project-orchestrator#3",
+      "symptom": "Required CI interpretation could become unsafe or unavailable when check identity, legacy commit-status evidence, or policy access was incomplete.",
+      "root_cause": "The first resolver modeled check names but not every authority dimension needed for fail-closed promotion.",
+      "fix": "Require explicit mergeable check states, retain app identity, ingest Commit Status evidence, and classify inaccessible live policy as UNCERTAIN.",
+      "verification": "Exact-head preflight and fresh PR CI passed after regression coverage for unrecognized states, wrong-app checks, legacy statuses, and inaccessible policy.",
+      "regression_protection": "Dedicated decision, GitHub-evidence, and required-check resolver tests exercise each repaired failure mode.",
+      "residual_risk": "Required-workflow rules remain UNCERTAIN until mapped to concrete workflow evidence; this is an intentional fail-closed limitation.",
+      "evidence_state": "VERIFIED"
+    }
+  ]
+}
