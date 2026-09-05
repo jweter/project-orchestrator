@@ -11,3 +11,4 @@ n8n-event.json
 private/
 .env
 .mcp.json
+n8n/pki/
