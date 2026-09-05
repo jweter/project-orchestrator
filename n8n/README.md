@@ -41,7 +41,13 @@ From the repository root in PowerShell:
 .\scripts\setup-n8n.ps1
 ```
 
-The script verifies Docker, creates `n8n/.env` with a generated encryption key if needed, starts the pinned local container on `127.0.0.1:5678`, imports the version-controlled workflows, and leaves them inactive.
+The script verifies Docker, creates `n8n/.env` with a generated encryption key if needed, starts the pinned local container on `127.0.0.1:5678`, waits for the server readiness endpoint, imports the version-controlled workflows, and leaves them inactive. Stable workflow IDs make repeated setup update the same two routers.
+
+Rerunning bootstrap replaces those routers with the committed inactive definitions, including removing runtime credential bindings. Use `docker compose up -d` from the `n8n` directory for ordinary startup after configuring credentials or activating workflows.
+
+## Development verification
+
+Local preflight requires Python 3.12 with the development dependencies and Node.js 24. Runtime regression tests execute the JavaScript from the committed workflow JSON with the pinned n8n 2.38.2 GitHub Trigger body/headers/query envelope and direct payload items, and invoke the evidence-intake CLI to ensure missing or non-failure conclusions cannot produce repair candidates. These checks do not require Docker, credentials, or webhook activation.
 
 ## GitHub credential
 

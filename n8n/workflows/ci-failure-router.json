@@ -1,4 +1,5 @@
 {
+  "id": "portfolioCiFailureRouter",
   "name": "Portfolio - CI Failure Router",
   "nodes": [
     {
@@ -22,7 +23,7 @@
       "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,360],"id":"55555555-5555-4555-8555-555555555555","name":"Project-Everward Check Suite"
     },
     {
-      "parameters": {"jsCode":"const body = $json.body ?? {};\nconst allowed = new Set([\n  'jweter/knowledge-engine-core',\n  'jweter/knowledge-engine-web',\n  'jweter/knowledge-engine-ai',\n  'jweter/rocksmith-cdlc-generator',\n  'jweter/Project-Everward',\n]);\nconst failures = new Set([\n  'failure',\n  'timed_out',\n  'cancelled',\n  'action_required',\n  'startup_failure',\n  'stale',\n]);\nconst repository = body.repository?.full_name ?? '';\nconst suite = body.check_suite ?? {};\nconst prs = Array.isArray(suite.pull_requests) ? suite.pull_requests : [];\nconst pr = prs.find((item) => Number.isInteger(item?.number));\nif (\n  !allowed.has(repository) ||\n  body.action !== 'completed' ||\n  !failures.has(suite.conclusion) ||\n  !pr ||\n  !/^[0-9a-f]{40}$/.test(suite.head_sha ?? '')\n) {\n  return [];\n}\nreturn [{\n  json: {\n    repository,\n    pr_number: pr.number,\n    head_sha: suite.head_sha,\n    conclusion: suite.conclusion,\n    check_suite_id: suite.id,\n    reason: 'ci_failure',\n  },\n}];"},
+      "parameters": {"jsCode":"const body = $json.body ?? $json ?? {};\nconst allowed = new Set([\n  'jweter/knowledge-engine-core',\n  'jweter/knowledge-engine-web',\n  'jweter/knowledge-engine-ai',\n  'jweter/rocksmith-cdlc-generator',\n  'jweter/Project-Everward',\n]);\nconst failures = new Set([\n  'failure',\n  'timed_out',\n  'cancelled',\n  'action_required',\n  'startup_failure',\n  'stale',\n]);\nconst repository = body.repository?.full_name ?? '';\nconst suite = body.check_suite ?? {};\nconst prs = Array.isArray(suite.pull_requests) ? suite.pull_requests : [];\nconst pr = prs.find((item) => Number.isInteger(item?.number));\nif (\n  !allowed.has(repository) ||\n  body.action !== 'completed' ||\n  !failures.has(suite.conclusion) ||\n  !pr ||\n  !/^[0-9a-f]{40}$/.test(suite.head_sha ?? '')\n) {\n  return [];\n}\nreturn [{\n  json: {\n    repository,\n    pr_number: pr.number,\n    head_sha: suite.head_sha,\n    conclusion: suite.conclusion,\n    check_suite_id: suite.id,\n    reason: 'ci_failure',\n  },\n}];"},
       "type":"n8n-nodes-base.code","typeVersion":2,"position":[-300,0],"id":"66666666-6666-4666-8666-666666666666","name":"Classify Failed PR CI"
     },
     {

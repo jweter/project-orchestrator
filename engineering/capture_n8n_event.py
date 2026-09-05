@@ -7,21 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from project_orchestrator.n8n_policy import (
+    FAILURE_CONCLUSIONS,
     KNOWLEDGE_ENGINE_REPOSITORIES,
     PORTFOLIO_REPOSITORIES,
 )
 
 _SHA40 = re.compile(r"^[0-9a-f]{40}$")
 _ALLOWED_REASONS = {"ci_failure", "knowledge_engine_main_change"}
-_ALLOWED_CONCLUSIONS = {
-    "",
-    "failure",
-    "timed_out",
-    "cancelled",
-    "action_required",
-    "startup_failure",
-    "stale",
-}
+_ALLOWED_CONCLUSIONS = FAILURE_CONCLUSIONS | {""}
 
 
 def main() -> int:
@@ -49,6 +42,8 @@ def main() -> int:
         raise SystemExit("unsupported source conclusion")
     if args.reason == "ci_failure" and not args.source_pr:
         raise SystemExit("ci_failure evidence requires a PR number")
+    if args.reason == "ci_failure" and args.source_conclusion not in FAILURE_CONCLUSIONS:
+        raise SystemExit("ci_failure evidence requires a terminal failure conclusion")
     if args.reason == "knowledge_engine_main_change":
         if args.source_repository not in KNOWLEDGE_ENGINE_REPOSITORIES:
             raise SystemExit("Knowledge Engine change must originate from the Knowledge Engine family")

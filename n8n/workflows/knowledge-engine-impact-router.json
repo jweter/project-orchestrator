@@ -1,4 +1,5 @@
 {
+  "id": "portfolioKnowledgeImpactRouter",
   "name": "Portfolio - Knowledge Engine Impact Router",
   "nodes": [
     {
@@ -14,7 +15,7 @@
       "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,180],"id":"83333333-3333-4333-8333-333333333333","name":"knowledge-engine-ai Main Push"
     },
     {
-      "parameters":{"jsCode":"const body = $json.body ?? {};\nconst allowed = new Set([\n  'jweter/knowledge-engine-core',\n  'jweter/knowledge-engine-web',\n  'jweter/knowledge-engine-ai',\n]);\nconst repository = body.repository?.full_name ?? '';\nconst headSha = body.after ?? '';\nif (\n  !allowed.has(repository) ||\n  body.ref !== 'refs/heads/main' ||\n  body.deleted === true ||\n  !/^[0-9a-f]{40}$/.test(headSha)\n) {\n  return [];\n}\nreturn [{\n  json: {\n    repository,\n    pr_number: '',\n    head_sha: headSha,\n    conclusion: '',\n    check_suite_id: '',\n    reason: 'knowledge_engine_main_change',\n  },\n}];"},
+      "parameters":{"jsCode":"const body = $json.body ?? $json ?? {};\nconst allowed = new Set([\n  'jweter/knowledge-engine-core',\n  'jweter/knowledge-engine-web',\n  'jweter/knowledge-engine-ai',\n]);\nconst repository = body.repository?.full_name ?? '';\nconst headSha = body.after ?? '';\nif (\n  !allowed.has(repository) ||\n  body.ref !== 'refs/heads/main' ||\n  body.deleted === true ||\n  !/^[0-9a-f]{40}$/.test(headSha)\n) {\n  return [];\n}\nreturn [{\n  json: {\n    repository,\n    pr_number: '',\n    head_sha: headSha,\n    conclusion: '',\n    check_suite_id: '',\n    reason: 'knowledge_engine_main_change',\n  },\n}];"},
       "type":"n8n-nodes-base.code","typeVersion":2,"position":[-300,0],"id":"84444444-4444-4444-8444-444444444444","name":"Classify Knowledge Engine Change"
     },
     {
