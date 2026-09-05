@@ -9,9 +9,11 @@
     "engineering/portfolio.json",
     "engineering/knowledge-engine-compatibility.json",
     "engineering/learning-memory.json",
+    "engineering/tooling-capabilities.json",
     "docs/ARCHITECTURE.md",
     "docs/ROADMAP.md",
-    "docs/project-status.yaml"
+    "docs/project-status.yaml",
+    "docs/LOCAL_AGENT_TOOLING.md"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -22,7 +24,9 @@
     "knowledge_engine_is_one_coordinated_family",
     "standalone_projects_remain_isolated",
     "scheduler_never_self_disables",
-    "knowledge_engine_shared_contracts_merge_dependency_safe"
+    "knowledge_engine_shared_contracts_merge_dependency_safe",
+    "tool_availability_is_verified_not_assumed",
+    "tooling_uses_least_privilege_and_never_commits_secrets"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -42,6 +46,7 @@
       "control_plane",
       "portfolio_inventory",
       "learning_memory",
+      "tooling_capabilities",
       "compile",
       "tests",
       "cli_validate"
@@ -91,5 +96,16 @@
     "executable": "project-orchestrator memory-validate",
     "persist_rule": "verified, sanitized lessons only; never persist secrets, credentials, raw private Product Reality payloads, or unverified conclusions",
     "deduplication": "content-derived lesson_id"
+  },
+  "tooling_leverage": {
+    "registry": "engineering/tooling-capabilities.json",
+    "setup_guide": "docs/LOCAL_AGENT_TOOLING.md",
+    "bootstrap": "scripts/setup-agent-tools.ps1",
+    "rule": "adopt free maintainable tools only when they close an observed feedback-loop gap; prefer official implementations, least privilege, local/advisory introduction before material CI cost, and never report availability before verification",
+    "preferred_mcp": [
+      "github/github-mcp-server",
+      "microsoft/playwright-mcp"
+    ],
+    "paid_or_meaningful_recurring_cost_requires_jeremy": true
   }
 }
