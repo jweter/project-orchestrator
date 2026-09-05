@@ -6,7 +6,7 @@ services:
       - "127.0.0.1:${N8N_PORT:-5678}:5678"
     environment:
       N8N_ENCRYPTION_KEY: "${N8N_ENCRYPTION_KEY:?Set N8N_ENCRYPTION_KEY in n8n/.env}"
-      WEBHOOK_URL: "${WEBHOOK_URL:-}"
+      N8N_WEBHOOK_URL: "${N8N_WEBHOOK_URL:-}"
       N8N_PROXY_HOPS: "${N8N_PROXY_HOPS:-1}"
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
       N8N_DIAGNOSTICS_ENABLED: "false"
@@ -14,9 +14,16 @@ services:
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"
       GENERIC_TIMEZONE: "America/Chicago"
       TZ: "America/Chicago"
+      # Extends Node's trusted CA store (does NOT disable verification).
+      # Needed when the host terminates outbound TLS through a local
+      # antivirus/corporate proxy (e.g. Norton Web/Mail Shield, Zscaler)
+      # whose interception root isn't in Node's bundled Mozilla CA list.
+      # See n8n/certs/README.md. Safe/no-op when the file doesn't exist.
+      NODE_EXTRA_CA_CERTS: "/usr/local/share/ca-certs/extra-ca-certs.pem"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./workflows:/workflows:ro
+      - ./certs:/usr/local/share/ca-certs:ro
 
 volumes:
   n8n_data:

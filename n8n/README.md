@@ -25,6 +25,7 @@ This v1 slice deliberately may **not**:
 
 - `docker-compose.yml` — local-only self-hosted n8n Community runtime.
 - `.env.example` — non-secret runtime template.
+- `certs/` — optional, git-ignored local CA trust extension for outbound TLS (see `certs/README.md`); needed if a host antivirus/proxy intercepts outbound HTTPS.
 - `workflow-manifest.json` — machine-readable policy boundary.
 - `workflows/ci-failure-router.json` — completed failed PR check-suite router.
 - `workflows/knowledge-engine-impact-router.json` — Knowledge Engine main-change router.
@@ -44,6 +45,8 @@ From the repository root in PowerShell:
 The script verifies Docker, creates `n8n/.env` with a generated encryption key if needed, starts the pinned local container on `127.0.0.1:5678`, waits for the server readiness endpoint, imports the version-controlled workflows, and leaves them inactive. Stable workflow IDs make repeated setup update the same two routers.
 
 Rerunning bootstrap replaces those routers with the committed inactive definitions, including removing runtime credential bindings. Use `docker compose up -d` from the `n8n` directory for ordinary startup after configuring credentials or activating workflows.
+
+**If a workflow's `id` in the committed JSON ever changes** (for example, shortening it to fit n8n's internal static-data persistence limit — see `N8N_MAX_WORKFLOW_ID_LENGTH` in `src/project_orchestrator/n8n_policy.py`), re-importing creates a *new* workflow row under the new id rather than updating the old one in place. The old id's row is left behind, inactive. There is no `n8n delete:workflow` CLI command in 2.38.2 (`update:workflow --active=false`/`unpublish:workflow` only deactivate it), so after re-importing and rebinding credentials on the new id, deactivate the old one and remove it manually from the editor's Workflows list to avoid two "canonical" copies existing at once. A workflow left running under an id over the persistence limit silently never saves its GitHub Trigger webhook secrets — every delivery gets rejected with "no webhook secret is stored" even though activation appears to succeed and the GitHub-side webhook looks correctly registered.
 
 ## Development verification
 
