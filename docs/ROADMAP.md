@@ -14,6 +14,7 @@
 - [x] Required-check discovery adapter
 - [x] Cross-repository compatibility planner for Knowledge Engine
 - [x] Persistent sanitized regression/learning memory
+- [x] Version-controlled n8n event-router/dispatch layer with fail-closed policy
 - [ ] Portfolio compounding time-series store — next
 - [ ] Reinvestment controller consuming measured evidence
 - [ ] Scheduler-facing run report artifact
@@ -22,6 +23,8 @@
 ## v1 completion criterion
 
 The orchestrator can consume live evidence for all five repositories, deterministically select the next action under DoWork, preserve ownership and dependency boundaries, produce machine-readable evidence, and prove its own changes through preflight + fresh PR CI.
+
+The n8n layer is considered **repository-integrated** when its versioned workflows and policy validators pass preflight. It is not considered **operationally activated** until the user-approved HTTPS ingress, least-privilege runtime credential, security audit, and a real webhook route have been verified.
 
 ## After v1
 

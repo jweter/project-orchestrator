@@ -1,0 +1,45 @@
+{
+  "name": "Portfolio - CI Failure Router",
+  "nodes": [
+    {
+      "parameters": {"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"knowledge-engine-core","mode":"name"},"events":["check_suite"],"options":{}},
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,-360],"id":"11111111-1111-4111-8111-111111111111","name":"knowledge-engine-core Check Suite"
+    },
+    {
+      "parameters": {"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"knowledge-engine-web","mode":"name"},"events":["check_suite"],"options":{}},
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,-180],"id":"22222222-2222-4222-8222-222222222222","name":"knowledge-engine-web Check Suite"
+    },
+    {
+      "parameters": {"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"knowledge-engine-ai","mode":"name"},"events":["check_suite"],"options":{}},
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,0],"id":"33333333-3333-4333-8333-333333333333","name":"knowledge-engine-ai Check Suite"
+    },
+    {
+      "parameters": {"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"rocksmith-cdlc-generator","mode":"name"},"events":["check_suite"],"options":{}},
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,180],"id":"44444444-4444-4444-8444-444444444444","name":"rocksmith-cdlc-generator Check Suite"
+    },
+    {
+      "parameters": {"authentication":"accessToken","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"Project-Everward","mode":"name"},"events":["check_suite"],"options":{}},
+      "type":"n8n-nodes-base.githubTrigger","typeVersion":1,"position":[-700,360],"id":"55555555-5555-4555-8555-555555555555","name":"Project-Everward Check Suite"
+    },
+    {
+      "parameters": {"jsCode":"const body = $json.body ?? {};\nconst allowed = new Set([\n  'jweter/knowledge-engine-core',\n  'jweter/knowledge-engine-web',\n  'jweter/knowledge-engine-ai',\n  'jweter/rocksmith-cdlc-generator',\n  'jweter/Project-Everward',\n]);\nconst failures = new Set([\n  'failure',\n  'timed_out',\n  'cancelled',\n  'action_required',\n  'startup_failure',\n  'stale',\n]);\nconst repository = body.repository?.full_name ?? '';\nconst suite = body.check_suite ?? {};\nconst prs = Array.isArray(suite.pull_requests) ? suite.pull_requests : [];\nconst pr = prs.find((item) => Number.isInteger(item?.number));\nif (\n  !allowed.has(repository) ||\n  body.action !== 'completed' ||\n  !failures.has(suite.conclusion) ||\n  !pr ||\n  !/^[0-9a-f]{40}$/.test(suite.head_sha ?? '')\n) {\n  return [];\n}\nreturn [{\n  json: {\n    repository,\n    pr_number: pr.number,\n    head_sha: suite.head_sha,\n    conclusion: suite.conclusion,\n    check_suite_id: suite.id,\n    reason: 'ci_failure',\n  },\n}];"},
+      "type":"n8n-nodes-base.code","typeVersion":2,"position":[-300,0],"id":"66666666-6666-4666-8666-666666666666","name":"Classify Failed PR CI"
+    },
+    {
+      "parameters": {"authentication":"accessToken","resource":"workflow","operation":"dispatch","owner":{"__rl":true,"value":"jweter","mode":"name"},"repository":{"__rl":true,"value":"project-orchestrator","mode":"name"},"workflowId":{"__rl":true,"value":"orchestrator-observe.yml","mode":"filename"},"ref":{"__rl":true,"value":"main","mode":"name"},"inputs":"={{ JSON.stringify({ source_repository: $json.repository, source_pr: String($json.pr_number ?? ''), source_head_sha: $json.head_sha, source_conclusion: $json.conclusion ?? '', source_check_suite_id: String($json.check_suite_id ?? ''), reason: $json.reason }) }}"},
+      "type":"n8n-nodes-base.github","typeVersion":1.1,"position":[40,0],"id":"77777777-7777-4777-8777-777777777777","name":"Dispatch Orchestrator Evidence"
+    }
+  ],
+  "connections": {
+    "knowledge-engine-core Check Suite":{"main":[[{"node":"Classify Failed PR CI","type":"main","index":0}]]},
+    "knowledge-engine-web Check Suite":{"main":[[{"node":"Classify Failed PR CI","type":"main","index":0}]]},
+    "knowledge-engine-ai Check Suite":{"main":[[{"node":"Classify Failed PR CI","type":"main","index":0}]]},
+    "rocksmith-cdlc-generator Check Suite":{"main":[[{"node":"Classify Failed PR CI","type":"main","index":0}]]},
+    "Project-Everward Check Suite":{"main":[[{"node":"Classify Failed PR CI","type":"main","index":0}]]},
+    "Classify Failed PR CI":{"main":[[{"node":"Dispatch Orchestrator Evidence","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"},
+  "pinData": {},
+  "tags": []
+}

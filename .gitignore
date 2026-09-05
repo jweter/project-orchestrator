@@ -7,6 +7,7 @@ dist/
 build/
 *.egg-info/
 preflight-evidence.json
+n8n-event.json
 private/
 .env
 .mcp.json

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "purpose": "Version-controlled, fail-closed n8n event routing for the portfolio control plane.",
+  "scheduler": "none",
+  "merge_authority": false,
+  "activation_requires": [
+    "user-approved verified HTTPS ingress",
+    "least-privilege GitHub credential configured in n8n",
+    "successful n8n security audit",
+    "manual review that imported workflows still match this manifest"
+  ],
+  "workflows": [
+    {
+      "file": "ci-failure-router.json",
+      "active_in_git": false,
+      "mutation_boundary": "orchestrator_workflow_dispatch_only",
+      "purpose": "Route completed failing PR check suites into a sanitized orchestrator evidence workflow."
+    },
+    {
+      "file": "knowledge-engine-impact-router.json",
+      "active_in_git": false,
+      "mutation_boundary": "orchestrator_workflow_dispatch_only",
+      "purpose": "Route Knowledge Engine main-branch changes into dependency recheck evidence."
+    }
+  ]
+}

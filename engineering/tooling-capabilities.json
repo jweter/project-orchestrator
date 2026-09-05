@@ -33,6 +33,18 @@
       "setup": "docs/LOCAL_AGENT_TOOLING.md"
     },
     {
+      "id": "n8n_orchestration",
+      "category": "workflow_orchestration",
+      "preferred_implementation": "n8n self-hosted Community Edition",
+      "status": "REPO_INTEGRATION_READY_USER_RUNTIME_SETUP_REQUIRED",
+      "scope": "event-driven portfolio routing in jweter/project-orchestrator",
+      "benefit": "Connect GitHub events to sanitized cross-repository orchestration without replacing deterministic GitHub Actions or the DoWork scheduler.",
+      "security": "Version-controlled workflows stay inactive and credential-free; public HTTPS ingress, runtime credentials, and activation require explicit review.",
+      "setup": "n8n/README.md",
+      "evidence": "n8n workflow manifest, fail-closed Python validator, tests, local-only Docker bootstrap, and orchestrator evidence-intake workflow.",
+      "promotion_rule": "Verify local runtime, security audit, least-privilege GitHub credential, and one real webhook route before expanding mutation authority."
+    },
+    {
       "id": "hypothesis",
       "category": "property_testing",
       "preferred_implementation": "Hypothesis",
