@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .compatibility import load_contract, plan_change
 from .decision import next_actions
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
@@ -11,6 +12,7 @@ from .required_checks import resolve_required_checks
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INVENTORY = ROOT / "engineering" / "portfolio.json"
+DEFAULT_KE_COMPATIBILITY = ROOT / "engineering" / "knowledge-engine-compatibility.json"
 
 
 def validate() -> int:
@@ -41,12 +43,21 @@ def collect(output: Path | None, resolve_checks: bool) -> int:
     return 0
 
 
+def compatibility_plan(change_path: Path) -> int:
+    change = json.loads(change_path.read_text(encoding="utf-8"))
+    contract = load_contract(DEFAULT_KE_COMPATIBILITY)
+    print(json.dumps(plan_change(change, contract), indent=2, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate")
     plan_parser = sub.add_parser("plan")
     plan_parser.add_argument("snapshot", type=Path)
+    compatibility_parser = sub.add_parser("compat-plan")
+    compatibility_parser.add_argument("change", type=Path)
     collect_parser = sub.add_parser("collect")
     collect_parser.add_argument("--output", type=Path)
     collect_parser.add_argument(
@@ -59,6 +70,8 @@ def main() -> int:
         return validate()
     if args.command == "plan":
         return plan(args.snapshot)
+    if args.command == "compat-plan":
+        return compatibility_plan(args.change)
     if args.command == "collect":
         return collect(args.output, args.resolve_required_checks)
     raise AssertionError("unreachable")

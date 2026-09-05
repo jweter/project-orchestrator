@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "project": "knowledge-engine",
+  "roles": {
+    "core": "jweter/knowledge-engine-core",
+    "ai": "jweter/knowledge-engine-ai",
+    "web": "jweter/knowledge-engine-web"
+  },
+  "edges": [
+    {
+      "producer": "core",
+      "consumer": "ai",
+      "contract_kinds": [
+        "cli_command",
+        "cli_flag",
+        "cli_json",
+        "retrieval_contract",
+        "provenance_contract"
+      ],
+      "boundary": "knowledge_engine_ai.ke_client",
+      "rule": "AI owns the one supported subprocess boundary to Core's ke CLI; AI must parse structured machine-readable output and sanitize failures."
+    },
+    {
+      "producer": "core",
+      "consumer": "web",
+      "contract_kinds": [
+        "database_schema",
+        "serialized_structure",
+        "provenance_contract"
+      ],
+      "boundary": "read_only_sqlalchemy_reflection",
+      "rule": "Web may reflect Core's persisted database read-only; Web must not import the knowledge_engine Python package."
+    },
+    {
+      "producer": "ai",
+      "consumer": "web",
+      "contract_kinds": [
+        "python_api",
+        "typed_model",
+        "serialized_structure",
+        "research_report_contract",
+        "provenance_contract"
+      ],
+      "boundary": "knowledge_engine_ai_python_package",
+      "rule": "Web consumes the pinned AI package revision and typed contracts; semantic fields must not be recovered by scraping narrative prose."
+    }
+  ],
+  "forbidden_boundaries": [
+    {
+      "source": "web",
+      "target": "core",
+      "kind": "python_import",
+      "reason": "Core exposes CLI and durable data boundaries, not an importable cross-process package contract for Web."
+    },
+    {
+      "source": "web",
+      "target": "core",
+      "kind": "raw_subprocess",
+      "reason": "Runtime Core CLI calls from Web must go through knowledge_engine_ai.ke_client."
+    }
+  ],
+  "change_kinds_requiring_review": [
+    "cli_command",
+    "cli_flag",
+    "cli_json",
+    "database_schema",
+    "python_api",
+    "typed_model",
+    "serialized_structure",
+    "retrieval_contract",
+    "provenance_contract",
+    "research_report_contract",
+    "package_config"
+  ],
+  "breaking_change_rule": "Prepare direct consumers first, preserve temporary compatibility when practical, verify compatibility, then merge producer dependency-safe. Never knowingly leave the family broken.",
+  "additive_change_rule": "Identify direct and transitive consumers, verify existing contracts remain compatible, then merge producer only after its own gates are GREEN."
+}

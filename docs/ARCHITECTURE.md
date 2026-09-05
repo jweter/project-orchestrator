@@ -69,3 +69,17 @@ Authority is layered deliberately:
 A check required by live branch policy is synthesized as `status: missing` when absent, preventing merge. A manifest-only name that is absent from the current head is **not** treated as permanently required; it produces `UNCERTAIN` because the workflow may have been renamed, retired, or made non-applicable. Required-workflow rules that cannot yet be mapped to concrete check contexts also fail closed as `UNCERTAIN`.
 
 The decision kernel accepts `CONFIRMED_NONE` only when live branch rules were successfully read and the current control plane explicitly declares an empty mandatory-check list. This allows repositories with truly no required CI to proceed without pretending that missing policy evidence is equivalent to no policy.
+
+## Knowledge Engine compatibility planning
+
+`engineering/knowledge-engine-compatibility.json` records only cross-repository boundaries already established by the product repositories' governing documents. It does not invent a new product architecture.
+
+The deterministic planner models three supported dependency paths:
+
+- Core machine-readable `ke` CLI contracts are consumed directly by AI through `knowledge_engine_ai.ke_client`; Web is a downstream consumer of AI.
+- Core persisted database schema is consumed read-only by Web through SQLAlchemy reflection.
+- AI typed Python contracts are consumed by Web through its pinned `knowledge-engine-ai` dependency.
+
+For a proposed shared-contract change, `project-orchestrator compat-plan` identifies direct and transitive consumers and emits dependency-safe preparation and verification actions. Breaking changes require consumers to be prepared before producer merge and recommend temporary old/new compatibility when practical. Unknown contract kinds fail closed.
+
+The planner also records forbidden boundary shortcuts already documented by the family, including direct Web imports of Core and raw Web subprocess calls to Core that bypass AI's supported `ke_client` boundary. Repository governing documents remain higher authority than this machine-readable projection.

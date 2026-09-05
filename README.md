@@ -24,6 +24,7 @@ python engineering/preflight.py
 project-orchestrator validate
 project-orchestrator plan examples/portfolio-snapshot.json
 GITHUB_TOKEN=... project-orchestrator collect --resolve-required-checks --output live-evidence.json
+project-orchestrator compat-plan examples/knowledge-engine-change.json
 ```
 
 See `DoWork.txt`, `engineering/control-plane.json`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md`.
@@ -35,3 +36,7 @@ See `DoWork.txt`, `engineering/control-plane.json`, `docs/ARCHITECTURE.md`, and 
 ## Required CI policy
 
 Use `--resolve-required-checks` to enrich raw evidence with current effective branch rules, legacy branch protection, and observed control-plane mandatory-check names. Missing or stale evidence fails closed as `UNKNOWN`, `UNCERTAIN`, or `MISSING`; the tool never guesses a green gate.
+
+## Knowledge Engine compatibility
+
+`compat-plan` evaluates proposed Core/AI/Web shared-contract changes against the documented family boundaries and returns direct consumers, transitive consumers, and dependency-safe verification/merge actions. It never authorizes a breaking change by itself; live repository policy, preflight, CI, and each product repository's governing documents remain authoritative.

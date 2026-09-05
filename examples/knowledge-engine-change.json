@@ -1,0 +1,6 @@
+{
+  "producer_role": "core",
+  "contract_kinds": ["cli_json", "provenance_contract"],
+  "breaking": true,
+  "description": "Example shared Core CLI output change"
+}
