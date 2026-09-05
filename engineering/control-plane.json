@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "portfolio_project": "Engineering Portfolio Orchestrator",
+  "repository": "jweter/project-orchestrator",
+  "repository_role": "portfolio-control-plane",
+  "source_of_truth": "live GitHub evidence plus per-repository governing documents",
+  "authoritative_documents": [
+    "DoWork.txt",
+    "engineering/portfolio.json",
+    "docs/ARCHITECTURE.md",
+    "docs/ROADMAP.md",
+    "docs/project-status.yaml"
+  ],
+  "invariants": [
+    "product_repositories_retain_product_authority",
+    "existing_work_precedes_new_work",
+    "never_merge_non_green",
+    "never_infer_product_reality",
+    "never_invent_readiness_percentage",
+    "knowledge_engine_is_one_coordinated_family",
+    "standalone_projects_remain_isolated",
+    "scheduler_never_self_disables"
+  ],
+  "definition_of_done": {
+    "implementation_complete": true,
+    "tests_required_for_change_scope": true,
+    "preflight_green_exact_head": true,
+    "fresh_pr_ci_green": true,
+    "mergeability_resolved": true,
+    "blocking_reviews_comments_resolved": true,
+    "policy_boundaries_clear": true,
+    "documentation_current": true
+  },
+  "preflight": {
+    "required_before_pr": true,
+    "executable": "engineering/preflight.py",
+    "evidence_file": "preflight-evidence.json",
+    "checks": ["control_plane", "portfolio_inventory", "compile", "tests", "cli_validate"]
+  },
+  "promotion": {
+    "states": ["IMPLEMENTING", "PREFLIGHT_UNVERIFIED", "PREFLIGHT_GREEN", "PR_OPEN", "CI_PENDING", "GREEN", "MERGED", "PRODUCT_REALITY_PENDING", "PRODUCT_REALITY_VERIFIED"]
+  },
+  "work_ownership": {
+    "authority": "live GitHub PRs/issues/branches/commits",
+    "manual_ownership_database": false
+  },
+  "readiness_scoring": {
+    "mode": "evidence-derived",
+    "prohibit_guessed_percent_complete": true,
+    "dimensions": ["implementation", "automated_verification", "integration", "product_reality", "documentation", "security_and_policy"]
+  },
+  "scheduler": {
+    "single_merge_authority": true,
+    "max_substantial_new_slices_per_independent_project_per_run": 1,
+    "never_self_disable": true
+  }
+}

@@ -1,0 +1,28 @@
+name: Preflight
+
+on:
+  push:
+    branches:
+      - "orchestrator/**"
+      - "agent/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - run: python engineering/preflight.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preflight-evidence
+          path: preflight-evidence.json
+          if-no-files-found: error

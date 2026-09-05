@@ -1,0 +1,28 @@
+# Roadmap
+
+## v1 — Portfolio brain
+
+- [x] Canonical three-project / five-repository inventory
+- [x] DoWork operating contract
+- [x] Machine-readable control plane
+- [x] Deterministic P0-P6 decision kernel
+- [x] Fail-closed PR classification
+- [x] One-new-slice-per-project fairness guard
+- [x] Exact-head preflight
+- [x] Branch/PR CI workflows
+- [ ] Live GitHub evidence collector
+- [ ] Required-check discovery adapter
+- [ ] Cross-repository compatibility planner for Knowledge Engine
+- [ ] Persistent sanitized regression/learning memory
+- [ ] Portfolio compounding time-series store
+- [ ] Reinvestment controller consuming measured evidence
+- [ ] Scheduler-facing run report artifact
+- [ ] Product Reality debt aggregation without payload leakage
+
+## v1 completion criterion
+
+The orchestrator can consume live evidence for all five repositories, deterministically select the next action under DoWork, preserve ownership and dependency boundaries, produce machine-readable evidence, and prove its own changes through preflight + fresh PR CI.
+
+## After v1
+
+Freeze governance-layer expansion unless measured evidence identifies a bottleneck. Direct most engineering capacity into product roadmap work and use the orchestrator to measure, learn, and improve the loop.

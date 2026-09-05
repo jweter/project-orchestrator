@@ -1,0 +1,21 @@
+{
+  "projects": [
+    {
+      "id": "knowledge-engine",
+      "repositories": [{
+        "name": "jweter/knowledge-engine-core",
+        "open_prs": [{
+          "number": 999,
+          "mergeable": true,
+          "blocking_reviews": 0,
+          "blocking_comments": 0,
+          "required_checks": [{"status": "completed", "conclusion": "failure"}]
+        }]
+      }]
+    },
+    {
+      "id": "rocksmith",
+      "repositories": [{"name": "jweter/rocksmith-cdlc-generator", "new_roadmap_slice": "authorized roadmap slice"}]
+    }
+  ]
+}
