@@ -99,11 +99,15 @@ def _select_observed(pr: Mapping[str, Any], name: str, app_id: int | None) -> di
             continue
         if app_id is not None and check.get("app_id") != app_id:
             continue
-        candidates.append(dict(check))
+        normalized = dict(check)
+        normalized.setdefault("evidence_kind", "check_run")
+        candidates.append(normalized)
     if app_id is None:
         for status in pr.get("status_contexts", []):
             if isinstance(status, Mapping) and status.get("name") == name:
-                candidates.append(dict(status))
+                normalized = dict(status)
+                normalized.setdefault("evidence_kind", "commit_status")
+                candidates.append(normalized)
     return max(candidates, key=_sort_key) if candidates else None
 
 
