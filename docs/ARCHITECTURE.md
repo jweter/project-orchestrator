@@ -49,3 +49,9 @@ No repository secrets, credentials, private Product Reality payloads, copyrighte
 `project_orchestrator.github_evidence` is the I/O boundary for GitHub observation. It collects repository metadata, default-head SHA, open PR details, raw check runs, reviews/comments, recent issues, branches, recent commits, and a sanitized projection of each repository control-plane manifest.
 
 The collector deliberately does **not** decide which check runs are required. Every collected PR therefore carries `required_checks_state: UNKNOWN` until the separate required-check discovery adapter maps current rulesets/branch protection/workflow policy onto those raw checks. This prevents a successful optional workflow from being mistaken for merge authority.
+
+## Review and pagination safety
+
+Collection is exhaustive for list endpoints: pagination continues until a short page is observed and fails closed if the configured safety bound is exceeded. Pull-request Conversation comments and inline review comments are both retained.
+
+Active `CHANGES_REQUESTED` states are normalized per reviewer. Comment semantics remain conservative: when comments exist but their blocking status is not mechanically resolved, `blocking_comments_state` is `UNKNOWN`, which prevents the decision kernel from emitting a GREEN merge action.

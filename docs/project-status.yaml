@@ -24,4 +24,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Required-check discovery adapter: interpret raw check runs from live policy without guessing required CI."
+next_gate: "PR #2 review corrections must pass exact-head FULL Preflight and fresh PR CI; then required-check discovery is the next v1 slice."
