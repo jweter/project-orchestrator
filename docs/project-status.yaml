@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-05T21:35:00Z"
+updated_at: "2026-09-05T22:10:00Z"
 state: "v1 implementation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -47,7 +47,23 @@ implementation:
   # and instead surfaces evidence gaps (see docs/ARCHITECTURE.md) — this is
   # the expected, fail-closed behavior at this evidence volume, not a bug.
   reinvestment_controller: implemented_recommendation_only
-  automatic_evidence_collector: pending
+  # project_orchestrator.evidence_collector (`project-orchestrator
+  # collect-evidence`) populates the store from real GitHub history:
+  # merged-PR check-run timing across every collectible repository, plus
+  # sanitized orchestrator-observe.yml dispatch artifacts for cross-repo
+  # incidents. Run live against this repository's real merge history: 14
+  # merged PRs analyzed, 1 dispatch-evidence window recorded. Newly
+  # measurable: pr_creation_to_green_seconds, merge_cycle_seconds,
+  # failure_to_repair_seconds, ci_failure_count, ci_repeat_failure_count,
+  # roadmap_slices_completed_count (project-orchestrator only),
+  # cross_repo_incident_count. Still permanently UNKNOWN from this
+  # collector (no deterministic GitHub-observable signal exists):
+  # blocked_waiting_seconds, preflight_failures_prevented_count, both
+  # Product Reality debt counts, both intervention counts. With this real
+  # evidence, `reinvestment-plan` now produces its first
+  # confidence-qualifying (>=0.5) recommendation instead of selecting
+  # nothing.
+  automatic_evidence_collector: implemented
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -56,4 +72,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Automatic Portfolio Evidence Collector: populate engineering/compounding-timeseries.json from reproducible GitHub/n8n/orchestrator evidence instead of manually recorded windows, then feed its output into the Reinvestment Controller."
+next_gate: "Scheduler-facing run report artifact, or expand the evidence collector's dispatch-artifact source to the remaining product repositories once they accumulate their own orchestrator-observe.yml dispatch history."

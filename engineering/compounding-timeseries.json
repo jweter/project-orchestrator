@@ -10,6 +10,208 @@
           "status": "UNKNOWN"
         },
         "ci_failure_count": {
+          "status": "UNKNOWN"
+        },
+        "ci_repeat_failure_count": {
+          "status": "UNKNOWN"
+        },
+        "cross_repo_incident_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/actions/runs/33973820315",
+            "https://github.com/jweter/project-orchestrator/actions/runs/33993198767"
+          ],
+          "sample_count": 2,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 2.0
+        },
+        "failure_to_repair_seconds": {
+          "status": "UNKNOWN"
+        },
+        "jeremy_required_intervention_count": {
+          "status": "UNKNOWN"
+        },
+        "merge_cycle_seconds": {
+          "status": "UNKNOWN"
+        },
+        "pr_creation_to_green_seconds": {
+          "status": "UNKNOWN"
+        },
+        "preflight_failures_prevented_count": {
+          "status": "UNKNOWN"
+        },
+        "product_reality_debt_created_count": {
+          "status": "UNKNOWN"
+        },
+        "product_reality_debt_resolved_count": {
+          "status": "UNKNOWN"
+        },
+        "roadmap_slices_completed_count": {
+          "status": "UNKNOWN"
+        }
+      },
+      "notes": "automatically collected from orchestrator-observe.yml DEPENDENCY_RECHECK_CANDIDATE dispatch(es): 2 run(s)",
+      "project": "knowledge-engine",
+      "repository": "jweter/project-orchestrator",
+      "window_end": "2026-09-05T21:29:45.586646+00:00",
+      "window_id": "3babb0abb837b0df801d",
+      "window_start": "2026-09-05T15:07:25.006580+00:00"
+    },
+    {
+      "metrics": {
+        "autonomous_intervention_count": {
+          "status": "UNKNOWN"
+        },
+        "blocked_waiting_seconds": {
+          "status": "UNKNOWN"
+        },
+        "ci_failure_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/1",
+            "https://github.com/jweter/project-orchestrator/pull/10",
+            "https://github.com/jweter/project-orchestrator/pull/11",
+            "https://github.com/jweter/project-orchestrator/pull/12",
+            "https://github.com/jweter/project-orchestrator/pull/13",
+            "https://github.com/jweter/project-orchestrator/pull/14",
+            "https://github.com/jweter/project-orchestrator/pull/15",
+            "https://github.com/jweter/project-orchestrator/pull/2",
+            "https://github.com/jweter/project-orchestrator/pull/3",
+            "https://github.com/jweter/project-orchestrator/pull/4",
+            "https://github.com/jweter/project-orchestrator/pull/5",
+            "https://github.com/jweter/project-orchestrator/pull/7",
+            "https://github.com/jweter/project-orchestrator/pull/8",
+            "https://github.com/jweter/project-orchestrator/pull/9"
+          ],
+          "sample_count": 14,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 3.0
+        },
+        "ci_repeat_failure_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/1",
+            "https://github.com/jweter/project-orchestrator/pull/10",
+            "https://github.com/jweter/project-orchestrator/pull/11",
+            "https://github.com/jweter/project-orchestrator/pull/12",
+            "https://github.com/jweter/project-orchestrator/pull/13",
+            "https://github.com/jweter/project-orchestrator/pull/14",
+            "https://github.com/jweter/project-orchestrator/pull/15",
+            "https://github.com/jweter/project-orchestrator/pull/2",
+            "https://github.com/jweter/project-orchestrator/pull/3",
+            "https://github.com/jweter/project-orchestrator/pull/4",
+            "https://github.com/jweter/project-orchestrator/pull/5",
+            "https://github.com/jweter/project-orchestrator/pull/7",
+            "https://github.com/jweter/project-orchestrator/pull/8",
+            "https://github.com/jweter/project-orchestrator/pull/9"
+          ],
+          "sample_count": 14,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 0.0
+        },
+        "cross_repo_incident_count": {
+          "status": "UNKNOWN"
+        },
+        "failure_to_repair_seconds": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/3",
+            "https://github.com/jweter/project-orchestrator/pull/5"
+          ],
+          "sample_count": 2,
+          "status": "MEASURED",
+          "unit": "seconds",
+          "value": 440.5
+        },
+        "jeremy_required_intervention_count": {
+          "status": "UNKNOWN"
+        },
+        "merge_cycle_seconds": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/1",
+            "https://github.com/jweter/project-orchestrator/pull/10",
+            "https://github.com/jweter/project-orchestrator/pull/11",
+            "https://github.com/jweter/project-orchestrator/pull/12",
+            "https://github.com/jweter/project-orchestrator/pull/13",
+            "https://github.com/jweter/project-orchestrator/pull/14",
+            "https://github.com/jweter/project-orchestrator/pull/15",
+            "https://github.com/jweter/project-orchestrator/pull/2",
+            "https://github.com/jweter/project-orchestrator/pull/3",
+            "https://github.com/jweter/project-orchestrator/pull/4",
+            "https://github.com/jweter/project-orchestrator/pull/5",
+            "https://github.com/jweter/project-orchestrator/pull/7",
+            "https://github.com/jweter/project-orchestrator/pull/8",
+            "https://github.com/jweter/project-orchestrator/pull/9"
+          ],
+          "sample_count": 14,
+          "status": "MEASURED",
+          "unit": "seconds",
+          "value": 2788.5714285714284
+        },
+        "pr_creation_to_green_seconds": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/1",
+            "https://github.com/jweter/project-orchestrator/pull/14",
+            "https://github.com/jweter/project-orchestrator/pull/15",
+            "https://github.com/jweter/project-orchestrator/pull/2",
+            "https://github.com/jweter/project-orchestrator/pull/3",
+            "https://github.com/jweter/project-orchestrator/pull/4",
+            "https://github.com/jweter/project-orchestrator/pull/5",
+            "https://github.com/jweter/project-orchestrator/pull/7",
+            "https://github.com/jweter/project-orchestrator/pull/8"
+          ],
+          "sample_count": 9,
+          "status": "MEASURED",
+          "unit": "seconds",
+          "value": 4250.555555555556
+        },
+        "preflight_failures_prevented_count": {
+          "status": "UNKNOWN"
+        },
+        "product_reality_debt_created_count": {
+          "status": "UNKNOWN"
+        },
+        "product_reality_debt_resolved_count": {
+          "status": "UNKNOWN"
+        },
+        "roadmap_slices_completed_count": {
+          "evidence_refs": [
+            "https://github.com/jweter/project-orchestrator/pull/1",
+            "https://github.com/jweter/project-orchestrator/pull/10",
+            "https://github.com/jweter/project-orchestrator/pull/11",
+            "https://github.com/jweter/project-orchestrator/pull/12",
+            "https://github.com/jweter/project-orchestrator/pull/13",
+            "https://github.com/jweter/project-orchestrator/pull/14",
+            "https://github.com/jweter/project-orchestrator/pull/15",
+            "https://github.com/jweter/project-orchestrator/pull/2",
+            "https://github.com/jweter/project-orchestrator/pull/3",
+            "https://github.com/jweter/project-orchestrator/pull/4",
+            "https://github.com/jweter/project-orchestrator/pull/5",
+            "https://github.com/jweter/project-orchestrator/pull/7",
+            "https://github.com/jweter/project-orchestrator/pull/8",
+            "https://github.com/jweter/project-orchestrator/pull/9"
+          ],
+          "sample_count": 14,
+          "status": "MEASURED",
+          "unit": "count",
+          "value": 14.0
+        }
+      },
+      "notes": "automatically collected from 14 merged pull request(s): #1, #2, #3, #4, #5, #7, #8, #9, #10, #11, #12, #13, #14, #15",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "window_end": "2026-09-05T21:37:48+00:00",
+      "window_id": "1df33ffdc838db0fdb03",
+      "window_start": "2026-09-05T04:32:08+00:00"
+    },
+    {
+      "metrics": {
+        "autonomous_intervention_count": {
+          "status": "UNKNOWN"
+        },
+        "blocked_waiting_seconds": {
+          "status": "UNKNOWN"
+        },
+        "ci_failure_count": {
           "evidence_refs": [
             "https://github.com/jweter/project-orchestrator/pull/12"
           ],

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
+from .evidence_collector import COLLECTIBLE_REPOSITORIES, collect_portfolio_windows
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
@@ -113,6 +114,26 @@ def reinvestment_plan(since: str | None) -> int:
     return 0
 
 
+def collect_evidence(repository: str | None, since: str | None, dry_run: bool) -> int:
+    transport = UrllibGitHubTransport.from_environment()
+    store = load_store(DEFAULT_TIMESERIES_STORE)
+    repositories = [repository] if repository else None
+    windows = collect_portfolio_windows(transport, store, repositories=repositories, since=since)
+    if not windows:
+        print("no new merged pull requests found; nothing to record")
+        return 0
+    updated = store
+    for window in windows:
+        updated = append_window(updated, window)
+    if dry_run:
+        print(json.dumps(windows, indent=2, sort_keys=True))
+        print(f"dry run: {len(windows)} new evidence window(s) not written")
+        return 0
+    write_store(DEFAULT_TIMESERIES_STORE, updated)
+    print(f"recorded {len(windows)} new evidence window(s); store now has {len(updated['windows'])} total")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -145,6 +166,18 @@ def main() -> int:
     )
     reinvestment_plan_parser = sub.add_parser("reinvestment-plan")
     reinvestment_plan_parser.add_argument("--since", default=None, help="ISO-8601 cutoff; only windows ending on/after this are considered")
+    collect_evidence_parser = sub.add_parser("collect-evidence")
+    collect_evidence_parser.add_argument(
+        "--repository", default=None, choices=sorted(COLLECTIBLE_REPOSITORIES),
+        help="collect only this repository; default is all portfolio repositories",
+    )
+    collect_evidence_parser.add_argument(
+        "--since", default=None,
+        help="ISO-8601 cutoff; default is the latest previously-collected window's end, or a 30-day lookback if none exists",
+    )
+    collect_evidence_parser.add_argument(
+        "--dry-run", action="store_true", help="print the windows that would be recorded without writing them",
+    )
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
@@ -166,6 +199,8 @@ def main() -> int:
         return timeseries_report(args.since, args.project, args.repository, args.reinvestment)
     if args.command == "reinvestment-plan":
         return reinvestment_plan(args.since)
+    if args.command == "collect-evidence":
+        return collect_evidence(args.repository, args.since, args.dry_run)
     raise AssertionError("unreachable")
 
 
