@@ -163,6 +163,35 @@ def test_analyze_pr_merged_despite_failing_head_never_fabricates_green() -> None
     assert analysis["pr_creation_to_green_seconds"] is None
 
 
+def test_analyze_pr_uses_exact_pr_head_not_merge_commit() -> None:
+    pr = merged_pr(15, created_at="2026-09-05T00:00:00Z", merged_at="2026-09-05T01:00:00Z")
+    pr["head"] = {"sha": "reviewed-head"}
+    commits_by_pr = {15: ["reviewed-head"]}
+    checks_by_sha = {
+        "reviewed-head": [check_run("test", "failure", "2026-09-05T00:50:00Z")],
+        "merge-sha-15": [check_run("test", "success", "2026-09-05T01:01:00Z")],
+    }
+    transport = FakeTransport(base_responses([pr], commits_by_pr, checks_by_sha))
+    analysis = analyze_merged_pr(transport, REPO, pr)
+    assert analysis["pr_creation_to_green_seconds"] is None
+
+
+def test_analyze_pr_pending_head_check_never_counts_as_green() -> None:
+    pr = merged_pr(16, created_at="2026-09-05T00:00:00Z", merged_at="2026-09-05T01:00:00Z")
+    pr["head"] = {"sha": "reviewed-head"}
+    commits_by_pr = {16: ["reviewed-head"]}
+    checks_by_sha = {
+        "reviewed-head": [
+            check_run("lint", "success", "2026-09-05T00:10:00Z"),
+            check_run("tests", None, None, status="in_progress"),
+        ],
+        "merge-sha-16": [],
+    }
+    transport = FakeTransport(base_responses([pr], commits_by_pr, checks_by_sha))
+    analysis = analyze_merged_pr(transport, REPO, pr)
+    assert analysis["pr_creation_to_green_seconds"] is None
+
+
 # --- build_evidence_window ----------------------------------------------
 
 
@@ -287,6 +316,34 @@ def test_collect_repository_window_uses_prior_window_end_as_default_since() -> N
     assert "#21" not in window["notes"]
 
 
+def test_collect_repository_window_deduplicates_manual_seed_evidence() -> None:
+    from project_orchestrator.timeseries import ALLOWED_METRIC_KEYS, append_window
+
+    pr = merged_pr(31, created_at="2026-09-05T00:00:00Z", merged_at="2026-09-05T01:00:00Z")
+    checks = {"merge-sha-31": [check_run("test", "success", "2026-09-05T00:10:00Z")]}
+    transport = FakeTransport(base_responses([pr], checks_by_sha=checks))
+    metrics = {key: {"status": "UNKNOWN"} for key in ALLOWED_METRIC_KEYS}
+    metrics["merge_cycle_seconds"] = {
+        "status": "MEASURED",
+        "value": 3600,
+        "unit": "seconds",
+        "sample_count": 1,
+        "evidence_refs": [pr["html_url"]],
+    }
+    manual = {
+        "project": "knowledge-engine",
+        "repository": REPO,
+        "window_start": "2026-09-05T00:00:00Z",
+        "window_end": "2026-09-05T01:00:00Z",
+        "notes": "manual verified seed",
+        "metrics": metrics,
+    }
+    store = append_window({"schema_version": 1, "windows": []}, manual)
+    assert collect_repository_window(
+        transport, store, REPO, since="2020-01-01T00:00:00Z"
+    ) is None
+
+
 def test_collect_portfolio_windows_rejects_unknown_repository_list() -> None:
     transport = FakeTransport({})
     store = {"schema_version": 1, "windows": []}
@@ -365,7 +422,7 @@ def test_fetch_dispatch_events_downloads_and_parses_artifact() -> None:
     archive_url = "https://example.invalid/artifact.zip"
     event = dispatch_event("DEPENDENCY_RECHECK_CANDIDATE")
     transport = FakeTransport({
-        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100": {
+        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100&page=1": {
             "workflow_runs": [run]
         },
         f"{ORCH_ROOT}/actions/runs/1/artifacts": {
@@ -384,7 +441,7 @@ def test_fetch_dispatch_events_skips_expired_artifact() -> None:
 
     run = workflow_run(2, "2026-09-05T21:29:35Z")
     transport = FakeTransport({
-        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100": {
+        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100&page=1": {
             "workflow_runs": [run]
         },
         f"{ORCH_ROOT}/actions/runs/2/artifacts": {
@@ -401,7 +458,7 @@ def test_fetch_dispatch_events_skips_unparseable_archive_without_raising() -> No
     run = workflow_run(3, "2026-09-05T21:29:35Z")
     archive_url = "https://example.invalid/bad.zip"
     transport = FakeTransport({
-        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100": {
+        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100&page=1": {
             "workflow_runs": [run]
         },
         f"{ORCH_ROOT}/actions/runs/3/artifacts": {
@@ -418,7 +475,7 @@ def test_fetch_dispatch_events_filters_by_cutoff() -> None:
 
     old_run = workflow_run(4, "2026-01-01T00:00:00Z")
     transport = FakeTransport({
-        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100": {
+        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100&page=1": {
             "workflow_runs": [old_run]
         },
     })
@@ -426,24 +483,19 @@ def test_fetch_dispatch_events_filters_by_cutoff() -> None:
     assert events == []
 
 
-def test_build_dispatch_window_counts_only_dependency_recheck_events() -> None:
+def test_build_dispatch_window_does_not_infer_incident_from_recheck_candidate() -> None:
     from datetime import datetime, timezone
 
     events = [
         {**dispatch_event("DEPENDENCY_RECHECK_CANDIDATE"), "_run_url": "https://example.invalid/1"},
-        {**dispatch_event("DEPENDENCY_RECHECK_CANDIDATE"), "_run_url": "https://example.invalid/2"},
-        {**dispatch_event("REPAIR_CANDIDATE"), "_run_url": "https://example.invalid/3"},
+        {**dispatch_event("REPAIR_CANDIDATE"), "_run_url": "https://example.invalid/2"},
     ]
     window = build_dispatch_evidence_window(
         events,
         window_start=datetime(2026, 9, 1, tzinfo=timezone.utc),
         window_end=datetime(2026, 9, 2, tzinfo=timezone.utc),
     )
-    assert window is not None
-    metric = window["metrics"]["cross_repo_incident_count"]
-    assert metric["status"] == "MEASURED"
-    assert metric["value"] == 2
-    validate_window(window)  # every other metric must still satisfy the schema as UNKNOWN
+    assert window is None
 
 
 def test_build_dispatch_window_returns_none_without_recheck_events() -> None:
@@ -463,7 +515,7 @@ def test_collect_dispatch_window_is_deterministic_on_replay() -> None:
     archive_url = "https://example.invalid/artifact.zip"
     event = dispatch_event("DEPENDENCY_RECHECK_CANDIDATE")
     transport = FakeTransport({
-        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100": {
+        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100&page=1": {
             "workflow_runs": [run]
         },
         f"{ORCH_ROOT}/actions/runs/5/artifacts": {
@@ -474,7 +526,8 @@ def test_collect_dispatch_window_is_deterministic_on_replay() -> None:
     store = {"schema_version": 1, "windows": []}
     first = collect_dispatch_window(transport, downloader, store, since="2026-01-01T00:00:00Z")
     second = collect_dispatch_window(transport, downloader, store, since="2026-01-01T00:00:00Z")
-    assert validate_window(first)["window_id"] == validate_window(second)["window_id"]
+    assert first is None
+    assert second is None
 
 
 def test_collect_portfolio_windows_includes_dispatch_window_by_default() -> None:
@@ -483,7 +536,7 @@ def test_collect_portfolio_windows_includes_dispatch_window_by_default() -> None
     event = dispatch_event("DEPENDENCY_RECHECK_CANDIDATE")
     responses = {
         f"{ORCH_ROOT}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1": [],
-        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100": {
+        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100&page=1": {
             "workflow_runs": [run]
         },
         f"{ORCH_ROOT}/actions/runs/6/artifacts": {
@@ -499,7 +552,7 @@ def test_collect_portfolio_windows_includes_dispatch_window_by_default() -> None
         since="2026-01-01T00:00:00Z",
         downloader=downloader,
     )
-    assert any(w["metrics"]["cross_repo_incident_count"]["status"] == "MEASURED" for w in windows)
+    assert windows == []
 
 
 def test_collect_repository_window_does_not_double_count_prs_on_overlapping_since() -> None:
@@ -526,7 +579,7 @@ def test_collect_dispatch_window_does_not_double_count_runs_on_overlapping_since
     archive_url = "https://example.invalid/artifact.zip"
     event = dispatch_event("DEPENDENCY_RECHECK_CANDIDATE")
     transport = FakeTransport({
-        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100": {
+        f"{ORCH_ROOT}/actions/workflows/orchestrator-observe.yml/runs?event=workflow_dispatch&status=success&per_page=100&page=1": {
             "workflow_runs": [run]
         },
         f"{ORCH_ROOT}/actions/runs/7/artifacts": {
@@ -537,7 +590,7 @@ def test_collect_dispatch_window_does_not_double_count_runs_on_overlapping_since
     store = {"schema_version": 1, "windows": []}
 
     first_window = collect_dispatch_window(transport, downloader, store, since="2026-01-01T00:00:00Z")
-    store = append_window(store, first_window)
+    assert first_window is None
 
     second_window = collect_dispatch_window(transport, downloader, store, since="2020-01-01T00:00:00Z")
     assert second_window is None
