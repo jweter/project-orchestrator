@@ -6,6 +6,7 @@ def green_pr(number: int) -> dict:
         "number": number,
         "mergeable": True,
         "required_checks": [{"status": "completed", "conclusion": "success"}],
+        "required_checks_state": "RESOLVED",
         "blocking_reviews": 0,
         "blocking_comments": 0,
         "blocking_comments_state": "CLEAR",
@@ -105,3 +106,19 @@ def test_new_work_budget_is_one_slice_per_independent_project() -> None:
     actions = next_actions(snapshot)
     assert len(actions) == 2
     assert {action.project for action in actions} == {"knowledge-engine", "rocksmith"}
+
+
+def test_confirmed_no_required_checks_can_still_be_green() -> None:
+    pr = green_pr(1)
+    pr["required_checks"] = []
+    pr["required_checks_state"] = "CONFIRMED_NONE"
+    assert classify_pr(pr) == "GREEN"
+
+
+def test_missing_required_check_is_uncertain_not_pending() -> None:
+    pr = green_pr(1)
+    pr["required_checks"] = [
+        {"name": "Security", "status": "missing", "conclusion": None}
+    ]
+    pr["required_checks_state"] = "MISSING"
+    assert classify_pr(pr) == "UNCERTAIN"

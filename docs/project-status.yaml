@@ -11,7 +11,7 @@ implementation:
   preflight: implemented
   ci: implemented
   live_github_collector: implemented
-  required_check_discovery: pending
+  required_check_discovery: implemented
   knowledge_engine_compatibility_planner: pending
   learning_memory: pending
   compounding_timeseries: pending
@@ -24,4 +24,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "PR #2 review corrections must pass exact-head FULL Preflight and fresh PR CI; then required-check discovery is the next v1 slice."
+next_gate: "Cross-repository compatibility planner for Knowledge Engine shared-contract changes."

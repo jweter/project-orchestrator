@@ -35,11 +35,19 @@ def classify_pr(pr: dict[str, Any]) -> str:
     if pr.get("blocking_reviews", 0):
         return "BLOCKED"
 
+    check_state = pr.get("required_checks_state")
+    if check_state in {"UNKNOWN", "UNCERTAIN", "MISSING"}:
+        return "UNCERTAIN"
+
     checks = pr.get("required_checks")
-    if not isinstance(checks, list) or not checks:
+    if check_state == "CONFIRMED_NONE":
+        checks = []
+    elif not isinstance(checks, list) or not checks:
         return "UNCERTAIN"
     conclusions = {item.get("conclusion") for item in checks}
     statuses = {item.get("status") for item in checks}
+    if "missing" in statuses:
+        return "UNCERTAIN"
     if conclusions & {"failure", "cancelled", "timed_out"}:
         return "FAILED"
     if any(status != "completed" for status in statuses):

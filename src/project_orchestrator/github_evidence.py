@@ -319,6 +319,13 @@ class GitHubEvidenceCollector:
             "schema_version": manifest.get("schema_version"),
             "preflight": manifest.get("preflight"),
             "promotion": manifest.get("promotion"),
+            "verification": {
+                "mandatory_check_names": (
+                    manifest.get("verification", {}).get("mandatory_check_names")
+                    if isinstance(manifest.get("verification"), Mapping)
+                    else None
+                )
+            },
             "authoritative_documents": manifest.get("authoritative_documents"),
         }
 
