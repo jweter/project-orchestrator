@@ -20,7 +20,8 @@
 - [x] Reinvestment controller consuming measured evidence (recommendation-only; see below)
 - [x] Automatic portfolio evidence collector correctness remediation
 - [x] Anti-stall blocker rotation + throughput floor
-- [ ] Deterministic repair engine — current gate
+- [x] Deterministic repair engine
+- [ ] Parallel specialist execution lanes — current gate
 - [ ] Corrected evidence re-collection and scheduler-facing run report artifact — next
 - [ ] Product Reality debt aggregation without payload leakage
 
