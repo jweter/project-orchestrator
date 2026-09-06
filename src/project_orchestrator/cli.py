@@ -12,6 +12,7 @@ from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
 from .reinvestment import plan_from_store
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
+from .specialist_lanes import build_lane_plan, validate_lane_result
 from .required_checks import resolve_required_checks
 from .timeseries import (
     append_window,
@@ -159,6 +160,22 @@ def repair_plan(
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
+
+def specialist_lane_plan(snapshot_path: Path, candidates_path: Path) -> int:
+    inventory = load_inventory(DEFAULT_INVENTORY)
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    candidates = json.loads(candidates_path.read_text(encoding="utf-8"))
+    if not isinstance(candidates, list):
+        raise ValueError("candidates must be a JSON list")
+    print(json.dumps(build_lane_plan(inventory, snapshot, candidates), indent=2, sort_keys=True))
+    return 0
+
+
+def specialist_lane_result(result_path: Path, live_default_head: str | None) -> int:
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    print(json.dumps(validate_lane_result(result, live_default_head=live_default_head), indent=2, sort_keys=True))
+    return 0
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -210,6 +227,12 @@ def main() -> int:
     repair_parser.add_argument("--iteration", type=int, default=1)
     repair_parser.add_argument("--execute", action="store_true")
     repair_parser.add_argument("--repo-root", type=Path, default=None)
+    lanes_parser = sub.add_parser("specialist-lanes")
+    lanes_parser.add_argument("--snapshot", type=Path, required=True)
+    lanes_parser.add_argument("--candidates", type=Path, required=True)
+    lane_result_parser = sub.add_parser("specialist-result")
+    lane_result_parser.add_argument("result", type=Path)
+    lane_result_parser.add_argument("--live-default-head", default=None)
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
@@ -242,6 +265,10 @@ def main() -> int:
             args.execute,
             args.repo_root,
         )
+    if args.command == "specialist-lanes":
+        return specialist_lane_plan(args.snapshot, args.candidates)
+    if args.command == "specialist-result":
+        return specialist_lane_result(args.result, args.live_default_head)
     raise AssertionError("unreachable")
 
 
