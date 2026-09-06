@@ -33,7 +33,8 @@
     "n8n_is_event_driven_and_never_competes_with_primary_scheduler",
     "n8n_has_no_merge_authority",
     "blocked_lane_does_not_monopolize_independent_projects",
-    "two_consecutive_no_advancement_runs_same_reason_is_orchestration_defect"
+    "two_consecutive_no_advancement_runs_same_reason_is_orchestration_defect",
+    "deterministic_repairs_require_repository_explicit_authority"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -227,5 +228,45 @@
       "fabricating a measurement for a metric with no reliable source",
       "granting the reinvestment controller execution or merge authority"
     ]
+  },
+  "deterministic_repair_engine": {
+    "schema_version": 1,
+    "executable": "project-orchestrator repair-plan",
+    "failure_classes": [
+      "FORMAT",
+      "IMPORT_SORT",
+      "LINT_SAFE_FIX",
+      "TEST_FAILURE",
+      "SECURITY",
+      "DEPENDENCY",
+      "TYPE_CHECK",
+      "GOVERNANCE",
+      "PROVENANCE",
+      "PRODUCT_REALITY",
+      "ENVIRONMENT",
+      "UNKNOWN"
+    ],
+    "auto_repair_eligible_classes": [
+      "FORMAT",
+      "IMPORT_SORT",
+      "LINT_SAFE_FIX"
+    ],
+    "repository_opt_in_required": true,
+    "existing_format_authority_fallback": "preflight.format_apply may authorize FORMAT only",
+    "max_iterations_per_repair_cycle": 3,
+    "full_preflight_required_after_repair": true,
+    "forbidden_auto_repair_classes": [
+      "TEST_FAILURE",
+      "SECURITY",
+      "DEPENDENCY",
+      "TYPE_CHECK",
+      "GOVERNANCE",
+      "PROVENANCE",
+      "PRODUCT_REALITY",
+      "ENVIRONMENT",
+      "UNKNOWN"
+    ],
+    "execution_boundary": "local working tree only; engine does not commit, push, open PRs, merge, weaken checks, or alter Product Reality evidence",
+    "regression_rule": "recurring verified failure fingerprints should be promoted into earlier repository-native prevention when practical"
   }
 }
