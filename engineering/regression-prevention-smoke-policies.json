@@ -1,0 +1,1 @@
+{"jweter/project-orchestrator":{"regression_prevention":{"approved_classes":["FORMAT"],"stage":"pre_commit","commands":{"FORMAT":["ruff","format","--check","."]}}}}
