@@ -57,7 +57,8 @@ implementation:
   automatic_evidence_collector: implemented_verified
   anti_stall_blocker_rotation: implemented_verified
   deterministic_repair_engine: implemented_verified
-  parallel_specialist_lanes: implementing
+  parallel_specialist_lanes: implemented_verified
+  predictive_work_decomposition: implementing
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -66,4 +67,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Verify parallel specialist execution lanes through exact-head preflight and fresh PR CI; then exercise concurrent Knowledge Engine, Rocksmith, and Everward reservations under one merge arbiter."
+next_gate: "Verify predictive work decomposition through exact-head preflight and fresh PR CI; then feed conflict-aware dependency waves into the specialist reservation engine."
