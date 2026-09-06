@@ -77,6 +77,15 @@ If no concrete advancement occurs, the run must record WHY for each of the three
 FAIRNESS / CAPACITY
 Existing work outranks new work within its dependency lane, but does not grant unlimited global priority across independent projects. After one bounded repair attempt on the highest-priority blocked lane, service other independent unblocked projects in the same run. Do not allow project-orchestrator maintenance to consume the only substantive implementation slot when any P0-P5 product work is safely executable.
 
+PARALLEL SPECIALIST EXECUTION
+After live P0-P4 triage and conflict analysis, the scheduler may reserve concurrent specialist lanes for Knowledge Engine, Rocksmith, and Everward. Reservations are ephemeral projections of live GitHub PR/issue/branch/file ownership, never a competing manual ownership database. One substantial coordinated slice per independent project per run still applies.
+
+Each specialist lane may inspect live state, continue its owned branch, apply only repository-approved deterministic repairs, run exact-head preflight, and prepare a Ready-for-Review PR after PREFLIGHT_GREEN. Specialist lanes never merge. The portfolio orchestrator remains the single merge authority and must revalidate live state, exact head, required fresh PR CI, reviews/comments, mergeability, and architecture/security/licensing/provenance/privacy before merging.
+
+Knowledge Engine uses one coordinated parent lane with Core/Web/AI sub-lanes. Shared API/schema/model/serialized/config/retrieval/provenance changes require compatibility clearance before sub-lanes may proceed. Independent Rocksmith and Everward lanes may run concurrently when ownership and dependency checks are clear.
+
+A lane whose recorded base default-head SHA no longer matches live GitHub becomes STALE and may not promote until revalidated. A lane that depends on unverified Product Reality is BLOCKED, while unrelated parallel-safe lanes continue. Every lane returns a structured result containing lane id, project/repository, base/head SHAs, changed files, preflight state, dependency impact, Product Reality debt, and exact continuation point.
+
 SELF-COMPLETION
 The portfolio brain must autonomously build, repair, validate, and integrate the infrastructure it needs to execute this contract safely. When its authoritative roadmap/control plane identifies a missing capability required for evidence collection, CI interpretation, compatibility planning, learning, compounding measurement, reinvestment, reporting, or Product Reality debt tracking, implement the highest-value missing slice after higher-priority P0-P4 product work is clear. Do not stop merely because an orchestration capability is absent; record the gap as orchestrator work and continue until the declared v1 completion criterion is satisfied. After v1, freeze governance expansion unless measured evidence identifies a concrete bottleneck.
 
