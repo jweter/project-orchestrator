@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "executable": "project-orchestrator decompose-work",
+  "purpose": "convert authoritative roadmap/design candidate slices into dependency-aware, conflict-aware parallel waves",
+  "task_source_policy": "candidate slices must be explicit and grounded in repository governing documents; engine never invents implementation tasks from prose",
+  "structural_signals": [
+    "dependency_level",
+    "downstream_unlock_count",
+    "active_file_conflicts",
+    "verification_weight",
+    "reversibility"
+  ],
+  "score_semantics": "ordinal structural priority only; never duration, ROI, probability, readiness percent, or delivery estimate",
+  "safety": {
+    "active_ownership_blocks_overlap": true,
+    "knowledge_engine_shared_contract_requires_compatibility_clearance": true,
+    "product_reality_dependencies_fail_closed": true,
+    "specialist_lane_contract_remains_authoritative": true,
+    "central_merge_arbiter_remains_authoritative": true
+  },
+  "output": [
+    "slices",
+    "recommended_parallel_waves"
+  ]
+}
