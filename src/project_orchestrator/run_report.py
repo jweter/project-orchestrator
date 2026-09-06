@@ -20,13 +20,13 @@ PROMOTION_STATES = {
     "NO_SAFE_ELIGIBLE_WORK",
 }
 RESULT_KEYS = (
-    "merged",
-    "fixed",
-    "new_prs",
-    "waiting_on_preflight",
-    "waiting_on_ci",
-    "blocked",
-    "needs_jeremy",
+    "MERGED",
+    "FIXED",
+    "NEW_PRS",
+    "WAITING_ON_PREFLIGHT",
+    "WAITING_ON_CI",
+    "BLOCKED",
+    "NEEDS_JEREMY",
 )
 
 
@@ -55,6 +55,7 @@ def validate_run_report(report: dict[str, Any]) -> dict[str, Any]:
         state = _require_text(entry.get("promotion_state"), f"projects.{project}.promotion_state")
         if state not in PROMOTION_STATES:
             raise RunReportError(f"unsupported promotion_state {state}")
+        _require_text(entry.get("implementation_verification"), f"projects.{project}.implementation_verification")
         _require_text(entry.get("active_ownership"), f"projects.{project}.active_ownership")
         _require_text(entry.get("next_gate"), f"projects.{project}.next_gate")
         reason = entry.get("reason")
@@ -89,6 +90,9 @@ def build_run_report(
     project_orchestrator: dict[str, Any],
     generated_at: str | None = None,
 ) -> dict[str, Any]:
+    unknown_result_keys = set(results) - set(RESULT_KEYS)
+    if unknown_result_keys:
+        raise RunReportError(f"unsupported result buckets: {sorted(unknown_result_keys)}")
     report = {
         "schema_version": 1,
         "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
