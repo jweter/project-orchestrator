@@ -43,7 +43,11 @@
     "specialist_reservations_are_ephemeral_live_evidence_projections",
     "work_decomposition_never_invents_tasks_or_predictive_metrics",
     "regression_prevention_requires_verified_recurrence_and_repo_authority",
-    "throughput_optimizer_uses_only_measured_evidence_and_never_overrides_priority_gates"
+    "throughput_optimizer_uses_only_measured_evidence_and_never_overrides_priority_gates",
+    "product_reality_blocks_only_dependent_lanes",
+    "product_projects_cannot_be_parked_while_parallel_safe_work_exists",
+    "rocksmith_continues_parallel_safe_development_while_product_reality_waits",
+    "everward_continues_parallel_safe_development_while_unreal_product_reality_waits"
   ],
   "definition_of_done": {
     "implementation_complete": true,
