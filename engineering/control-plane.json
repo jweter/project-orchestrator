@@ -31,7 +31,9 @@
     "tool_availability_is_verified_not_assumed",
     "tooling_uses_least_privilege_and_never_commits_secrets",
     "n8n_is_event_driven_and_never_competes_with_primary_scheduler",
-    "n8n_has_no_merge_authority"
+    "n8n_has_no_merge_authority",
+    "blocked_lane_does_not_monopolize_independent_projects",
+    "two_consecutive_no_advancement_runs_same_reason_is_orchestration_defect"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -92,7 +94,16 @@
   "scheduler": {
     "single_merge_authority": true,
     "max_substantial_new_slices_per_independent_project_per_run": 1,
-    "never_self_disable": true
+    "never_self_disable": true,
+    "max_substantive_repair_attempts_per_blocked_item_per_run": 1,
+    "blocker_rotation_required": true,
+    "blocked_item_state": "PARKED_FOR_RETRY",
+    "continue_other_independent_projects_after_blocker": true,
+    "throughput_floor_when_safe_work_exists": "at_least_one_concrete_engineering_advancement_per_run",
+    "no_advancement_repeat_threshold_runs": 2,
+    "no_advancement_repeat_action": "classify_as_P1_orchestration_defect_and_repair_control_plane_or_process",
+    "project_fairness_rule": "after one bounded repair attempt on the highest-priority blocked lane, service other unblocked independent projects in the same run",
+    "orchestrator_starvation_guard": "orchestrator maintenance must not consume the only substantive implementation slot while executable P0-P5 product work exists"
   },
   "compatibility_planning": {
     "knowledge_engine_contract": "engineering/knowledge-engine-compatibility.json",
