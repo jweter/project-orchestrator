@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "mode": "recommendation_only",
+  "minimum_windows_per_project": 3,
+  "ranking_inputs": [
+    "merge_cycle_seconds",
+    "failure_to_repair_seconds",
+    "ci_failure_count",
+    "ci_repeat_failure_count"
+  ],
+  "unknown_policy": "UNKNOWN and INSUFFICIENT_DATA are omitted, never coerced to zero",
+  "eligibility": "optimizer ranks only projects already eligible after P0-P4/product/dependency/Product Reality/ownership gates",
+  "score_semantics": "ordinal measured bottleneck severity only; never predicted gain, ROI, probability, capacity percentage, or percent complete",
+  "automatic_execution": false,
+  "merge_authority": false,
+  "exponential_claim_policy": "forbidden without sustained comparable evidence"
+}

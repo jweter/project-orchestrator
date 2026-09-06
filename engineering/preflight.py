@@ -15,6 +15,7 @@ checks = [
     ("specialist_lanes", [sys.executable, "engineering/validate_specialist_lanes.py"]),
     ("work_decomposition", [sys.executable, "engineering/validate_work_decomposition.py"]),
     ("regression_prevention", [sys.executable, "-m", "project_orchestrator.cli", "regression-prevention", "--events", "engineering/regression-prevention-smoke-events.json", "--policies", "engineering/regression-prevention-smoke-policies.json"]),
+    ("throughput_optimizer", [sys.executable, "-m", "project_orchestrator.cli", "throughput-optimize"]),
     ("learning_memory", [sys.executable, "engineering/validate_learning_memory.py"]),
     ("compounding_timeseries", [sys.executable, "engineering/validate_timeseries.py"]),
     ("tooling_capabilities", [sys.executable, "engineering/validate_tooling_capabilities.py"]),

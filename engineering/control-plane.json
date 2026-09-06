@@ -19,7 +19,8 @@
     "docs/LOCAL_AGENT_TOOLING.md",
     "engineering/specialist-lanes.json",
     "engineering/work-decomposition.json",
-    "engineering/regression-prevention.json"
+    "engineering/regression-prevention.json",
+    "engineering/throughput-optimizer.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -41,7 +42,8 @@
     "specialist_lanes_never_merge",
     "specialist_reservations_are_ephemeral_live_evidence_projections",
     "work_decomposition_never_invents_tasks_or_predictive_metrics",
-    "regression_prevention_requires_verified_recurrence_and_repo_authority"
+    "regression_prevention_requires_verified_recurrence_and_repo_authority",
+    "throughput_optimizer_uses_only_measured_evidence_and_never_overrides_priority_gates"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -341,5 +343,24 @@
       "ENVIRONMENT",
       "UNKNOWN"
     ]
+  },
+  "portfolio_throughput_optimizer": {
+    "schema_version": 1,
+    "contract": "engineering/throughput-optimizer.json",
+    "executable": "project-orchestrator throughput-optimize",
+    "mode": "recommendation_only",
+    "minimum_windows_per_project": 3,
+    "ranking_inputs": [
+      "merge_cycle_seconds",
+      "failure_to_repair_seconds",
+      "ci_failure_count",
+      "ci_repeat_failure_count"
+    ],
+    "eligibility_rule": "rank only projects already eligible after P0-P4, product authority, dependency, ownership, and Product Reality gates",
+    "unknown_policy": "UNKNOWN and INSUFFICIENT_DATA are omitted and never coerced to zero",
+    "score_semantics": "ordinal measured bottleneck severity only; never predicted gain/ROI/probability/capacity percentage/readiness percent",
+    "automatic_execution": false,
+    "merge_authority": false,
+    "exponential_claim_policy": "forbidden without sustained comparable evidence"
   }
 }

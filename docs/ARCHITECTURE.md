@@ -158,3 +158,12 @@ Every lane returns a result contract containing lane/project/repository IDs, bas
 Candidate slices must be supplied from authoritative roadmap/design evidence with explicit repository, changed-path scope, dependencies, verification weight, and reversibility. The engine never converts ambiguous prose directly into implementation tasks. It computes topological dependency levels, downstream unlock counts, active-file ownership conflicts, bounded verification burden, and reversibility to produce an ordinal structural score.
 
 Blocked ownership, unverified Product Reality dependencies, and uncleared Knowledge Engine shared-contract changes fail closed. READY slices are grouped into conflict-aware dependency waves that can then be submitted to `specialist-lanes`. All preflight, PR CI, review, Product Reality, and central merge-arbiter requirements remain unchanged.
+
+
+## Measured-Evidence Portfolio Throughput Optimizer
+
+`project_orchestrator.throughput_optimizer` ranks measured engineering bottlenecks only after higher-priority policy, product, dependency, ownership, Product Reality, decomposition, and specialist-lane eligibility gates have already decided which project lanes may execute.
+
+The optimizer consumes the existing compounding time-series snapshot. It uses measured merge-cycle time, failure-to-repair time, CI failure count, and repeat-failure count as bounded bottleneck signals. UNKNOWN and INSUFFICIENT_DATA are omitted rather than treated as zero. A project needs at least three evidence windows and at least two measured bottleneck dimensions before it can be ranked.
+
+The resulting score is ordinal bottleneck severity only. It is not a prediction of gain, ROI, delivery probability, capacity percentage, readiness, or exponential growth. The optimizer is recommendation-only, cannot execute work or merge, cannot override P0-P4 priority or fairness, and cannot override any product-repository authority or verification gate.
