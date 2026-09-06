@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "artifact": "scheduler-run-report",
+  "canonical_projects": ["knowledge-engine", "rocksmith", "everward"],
+  "required_project_fields": [
+    "promotion_state",
+    "implementation_verification",
+    "product_reality_debt",
+    "active_ownership",
+    "next_gate"
+  ],
+  "required_result_buckets": [
+    "MERGED",
+    "FIXED",
+    "NEW_PRS",
+    "WAITING_ON_PREFLIGHT",
+    "WAITING_ON_CI",
+    "BLOCKED",
+    "NEEDS_JEREMY"
+  ],
+  "rules": [
+    "Never fabricate Product Reality PASS or FAIL.",
+    "Use UNKNOWN when evidence is insufficient.",
+    "A parked lane must record the exact blocker reason and next executable action.",
+    "Knowledge Engine is one coordinated project across Core, Web, and AI.",
+    "Project Orchestrator is reported separately and is not a fourth product project.",
+    "Every repository mutation must retain its exact-head promotion state."
+  ]
+}
