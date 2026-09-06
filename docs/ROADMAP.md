@@ -24,8 +24,8 @@
 - [x] Parallel specialist execution lanes
 - [x] Predictive work decomposition
 - [x] Automatic regression prevention from repair memory
-- [ ] Portfolio throughput optimizer using measured evidence — current gate
-- [ ] Corrected evidence re-collection and scheduler-facing run report artifact — next
+- [x] Portfolio throughput optimizer using measured evidence
+- [ ] Corrected evidence re-collection and scheduler-facing run report artifact — current gate
 - [ ] Product Reality debt aggregation without payload leakage
 
 ## v1 completion criterion
