@@ -55,6 +55,8 @@ implementation:
   # Anti-stall blocker rotation is the current control-plane gate so future
   # hourly runs cannot repeatedly consume the portfolio on one blocked lane.
   automatic_evidence_collector: implemented_verified
+  anti_stall_blocker_rotation: implemented_verified
+  deterministic_repair_engine: implementing
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -63,4 +65,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Verify anti-stall blocker rotation and throughput-floor behavior; then re-collect trustworthy history and build the scheduler-facing run report artifact."
+next_gate: "Verify the deterministic repair engine through exact-head preflight and fresh PR CI; then adopt repository-approved safe repair commands and resume corrected evidence collection."
