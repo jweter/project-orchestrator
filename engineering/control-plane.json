@@ -17,7 +17,8 @@
     "docs/ROADMAP.md",
     "docs/project-status.yaml",
     "docs/LOCAL_AGENT_TOOLING.md",
-    "engineering/specialist-lanes.json"
+    "engineering/specialist-lanes.json",
+    "engineering/work-decomposition.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -37,7 +38,8 @@
     "two_consecutive_no_advancement_runs_same_reason_is_orchestration_defect",
     "deterministic_repairs_require_repository_explicit_authority",
     "specialist_lanes_never_merge",
-    "specialist_reservations_are_ephemeral_live_evidence_projections"
+    "specialist_reservations_are_ephemeral_live_evidence_projections",
+    "work_decomposition_never_invents_tasks_or_predictive_metrics"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -293,5 +295,23 @@
       "architecture/security/licensing/provenance/privacy"
     ],
     "specialist_merge_authority": false
+  },
+  "predictive_work_decomposition": {
+    "schema_version": 1,
+    "contract": "engineering/work-decomposition.json",
+    "executable": "project-orchestrator decompose-work",
+    "task_source": "explicit authoritative roadmap/design candidate slices only",
+    "invent_tasks_from_prose": false,
+    "structural_signals": [
+      "dependency_level",
+      "downstream_unlock_count",
+      "active_file_conflicts",
+      "verification_weight",
+      "reversibility"
+    ],
+    "score_semantics": "ordinal structural priority only; never duration/ROI/probability/readiness percent",
+    "output": "conflict-aware dependency waves for specialist-lane reservation",
+    "product_reality_fail_closed": true,
+    "knowledge_engine_shared_contract_requires_compatibility_clearance": true
   }
 }
