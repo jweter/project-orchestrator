@@ -18,7 +18,8 @@
     "docs/project-status.yaml",
     "docs/LOCAL_AGENT_TOOLING.md",
     "engineering/specialist-lanes.json",
-    "engineering/work-decomposition.json"
+    "engineering/work-decomposition.json",
+    "engineering/regression-prevention.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -39,7 +40,8 @@
     "deterministic_repairs_require_repository_explicit_authority",
     "specialist_lanes_never_merge",
     "specialist_reservations_are_ephemeral_live_evidence_projections",
-    "work_decomposition_never_invents_tasks_or_predictive_metrics"
+    "work_decomposition_never_invents_tasks_or_predictive_metrics",
+    "regression_prevention_requires_verified_recurrence_and_repo_authority"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -313,5 +315,31 @@
     "output": "conflict-aware dependency waves for specialist-lane reservation",
     "product_reality_fail_closed": true,
     "knowledge_engine_shared_contract_requires_compatibility_clearance": true
+  },
+  "automatic_regression_prevention": {
+    "schema_version": 1,
+    "contract": "engineering/regression-prevention.json",
+    "executable": "project-orchestrator regression-prevention",
+    "source_evidence": "VERIFIED repair/learning evidence only",
+    "minimum_verified_recurrences": 3,
+    "eligible_classes": [
+      "FORMAT",
+      "IMPORT_SORT",
+      "LINT_SAFE_FIX"
+    ],
+    "repository_explicit_authority_required": true,
+    "automatic_product_repo_mutation": false,
+    "action": "recommend earlier repository-native prevention; actual product-repo change remains normal engineering work with preflight/CI",
+    "forbidden_classes": [
+      "TEST_FAILURE",
+      "SECURITY",
+      "DEPENDENCY",
+      "TYPE_CHECK",
+      "GOVERNANCE",
+      "PROVENANCE",
+      "PRODUCT_REALITY",
+      "ENVIRONMENT",
+      "UNKNOWN"
+    ]
   }
 }

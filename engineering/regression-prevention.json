@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "minimum_verified_recurrences": 3,
+  "eligible_failure_classes": [
+    "FORMAT",
+    "IMPORT_SORT",
+    "LINT_SAFE_FIX"
+  ],
+  "source_evidence": "VERIFIED repair/learning evidence only",
+  "repository_explicit_authority_required": true,
+  "automatic_product_repo_mutation": false,
+  "forbidden_classes": [
+    "TEST_FAILURE",
+    "SECURITY",
+    "DEPENDENCY",
+    "TYPE_CHECK",
+    "GOVERNANCE",
+    "PROVENANCE",
+    "PRODUCT_REALITY",
+    "ENVIRONMENT",
+    "UNKNOWN"
+  ]
+}

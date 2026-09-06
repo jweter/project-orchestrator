@@ -58,7 +58,8 @@ implementation:
   anti_stall_blocker_rotation: implemented_verified
   deterministic_repair_engine: implemented_verified
   parallel_specialist_lanes: implemented_verified
-  predictive_work_decomposition: implementing
+  predictive_work_decomposition: implemented_verified
+  automatic_regression_prevention: implementing
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -67,4 +68,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Verify predictive work decomposition through exact-head preflight and fresh PR CI; then feed conflict-aware dependency waves into the specialist reservation engine."
+next_gate: "Verify automatic regression prevention through exact-head preflight and fresh PR CI; then build the measured-evidence portfolio throughput optimizer."

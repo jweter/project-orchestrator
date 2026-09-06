@@ -59,6 +59,10 @@ Derive active ownership from GitHub PRs/issues/branches/commits. Do not maintain
 NEW WORK
 Only after higher-priority existing work is clear. Read authoritative roadmap/guiding docs. Choose the highest-value authorized next slice, preferring current milestones. Keep slices small, coherent, reversible, testable, and reviewable. At most one substantial new slice per independent project per orchestrator run.
 
+
+AUTOMATIC REGRESSION PREVENTION
+After a deterministic failure class has been repaired and VERIFIED repeatedly, use repair/learning memory to decide whether it should become an earlier repository-native guardrail. Count only VERIFIED evidence. FORMAT, IMPORT_SORT, and LINT_SAFE_FIX may become prevention candidates after at least three verified recurrences, and only when the target repository explicitly authorizes the prevention class and exact command/stage. Behavioral tests, security, dependencies, typing, governance, provenance, Product Reality, environment, and UNKNOWN never auto-promote. The orchestrator may recommend the guardrail but does not silently mutate product repositories; implementing the prevention remains normal repository work with exact-head preflight and fresh PR CI. Do not treat repeated unverified failures or duplicate anecdotes as evidence.
+
 ANTI-STALL / BLOCKER ROTATION
 A blocker may block its own branch/project lane; it must not monopolize the portfolio scheduler. The scheduler must maximize correct portfolio throughput subject to safety gates.
 
