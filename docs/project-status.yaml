@@ -47,15 +47,14 @@ implementation:
   # and instead surfaces evidence gaps (see docs/ARCHITECTURE.md) — this is
   # the expected, fail-closed behavior at this evidence volume, not a bug.
   reinvestment_controller: implemented_recommendation_only
-  # project_orchestrator.evidence_collector is implemented, but the first
-  # automatic backfill produced invalid derived windows: it read green
-  # timing from merge commits instead of exact PR heads, could treat pending
-  # checks as green, duplicated manually seeded PR evidence, and treated
-  # DEPENDENCY_RECHECK_CANDIDATE routing events as actual cross-repo
-  # incidents. The invalid automatic windows are removed in the corrective
-  # branch; manually verified seed windows are retained. Re-collection is
-  # required only after exact-head preflight + fresh PR CI verify the fix.
-  automatic_evidence_collector: implemented_correction_pending
+  # project_orchestrator.evidence_collector correctness remediation merged
+  # in PR #17 after exact-head full preflight and fresh independent PR CI.
+  # Invalid automatically derived windows were removed while manually
+  # verified seed windows were retained. Corrected history must now be
+  # re-collected before trend/reinvestment claims resume.
+  # Anti-stall blocker rotation is the current control-plane gate so future
+  # hourly runs cannot repeatedly consume the portfolio on one blocked lane.
+  automatic_evidence_collector: implemented_verified
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -64,4 +63,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Repair and independently verify the automatic evidence collector; then re-collect trustworthy history before resuming the scheduler-facing run report artifact."
+next_gate: "Verify anti-stall blocker rotation and throughput-floor behavior; then re-collect trustworthy history and build the scheduler-facing run report artifact."
