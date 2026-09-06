@@ -56,7 +56,8 @@ implementation:
   # hourly runs cannot repeatedly consume the portfolio on one blocked lane.
   automatic_evidence_collector: implemented_verified
   anti_stall_blocker_rotation: implemented_verified
-  deterministic_repair_engine: implementing
+  deterministic_repair_engine: implemented_verified
+  parallel_specialist_lanes: implementing
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -65,4 +66,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Verify the deterministic repair engine through exact-head preflight and fresh PR CI; then adopt repository-approved safe repair commands and resume corrected evidence collection."
+next_gate: "Verify parallel specialist execution lanes through exact-head preflight and fresh PR CI; then exercise concurrent Knowledge Engine, Rocksmith, and Everward reservations under one merge arbiter."
