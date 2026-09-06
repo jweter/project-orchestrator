@@ -11,6 +11,7 @@ from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
 from .reinvestment import plan_from_store
+from .repair import build_repair_plan, execute_repair_plan, load_control_plane
 from .required_checks import resolve_required_checks
 from .timeseries import (
     append_window,
@@ -134,6 +135,30 @@ def collect_evidence(repository: str | None, since: str | None, dry_run: bool) -
     return 0
 
 
+
+def repair_plan(
+    repository: str,
+    log_path: Path,
+    control_plane_path: Path,
+    iteration: int,
+    execute: bool,
+    repo_root: Path | None,
+) -> int:
+    log_text = log_path.read_text(encoding="utf-8", errors="replace")
+    control_plane = load_control_plane(control_plane_path)
+    result = build_repair_plan(
+        repository=repository,
+        log_text=log_text,
+        control_plane=control_plane,
+        iteration=iteration,
+    )
+    if execute:
+        if repo_root is None:
+            raise ValueError("--repo-root is required with --execute")
+        result = execute_repair_plan(result, repo_root=repo_root)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -178,6 +203,13 @@ def main() -> int:
     collect_evidence_parser.add_argument(
         "--dry-run", action="store_true", help="print the windows that would be recorded without writing them",
     )
+    repair_parser = sub.add_parser("repair-plan")
+    repair_parser.add_argument("--repository", required=True)
+    repair_parser.add_argument("--log", type=Path, required=True)
+    repair_parser.add_argument("--control-plane", type=Path, required=True)
+    repair_parser.add_argument("--iteration", type=int, default=1)
+    repair_parser.add_argument("--execute", action="store_true")
+    repair_parser.add_argument("--repo-root", type=Path, default=None)
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
@@ -201,6 +233,15 @@ def main() -> int:
         return reinvestment_plan(args.since)
     if args.command == "collect-evidence":
         return collect_evidence(args.repository, args.since, args.dry_run)
+    if args.command == "repair-plan":
+        return repair_plan(
+            args.repository,
+            args.log,
+            args.control_plane,
+            args.iteration,
+            args.execute,
+            args.repo_root,
+        )
     raise AssertionError("unreachable")
 
 
