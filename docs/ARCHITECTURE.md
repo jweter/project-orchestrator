@@ -138,3 +138,14 @@ Only FORMAT, IMPORT_SORT, and LINT_SAFE_FIX are even eligible for automatic reme
 A repair cycle is bounded to three deterministic iterations. Execution is local-working-tree only: the engine does not commit, push, open PRs, merge, mutate branch protection, weaken checks, or alter Product Reality evidence. Every applied repair must be followed by the repository's complete exact-head preflight. Repeated verified fingerprints should be promoted into earlier repository-native prevention rather than remaining recurring repair work.
 
 The CLI surface is `project-orchestrator repair-plan --repository ... --log ... --control-plane ...`. Add `--execute --repo-root ...` only in an executable local checkout; planning remains side-effect free by default.
+
+
+## Parallel Specialist Execution Lanes
+
+`project_orchestrator.specialist_lanes` converts live GitHub ownership plus candidate work into ephemeral specialist reservations. The three independent product lanes are Knowledge Engine, Rocksmith, and Everward. Knowledge Engine is one coordinated parent lane with Core/Web/AI sub-lanes; one substantial coordinated slice per project per run remains the hard cap.
+
+Reservations are not stored as a manual ownership database. They are recomputed from live PRs, issues, branches, changed-file ownership, and current default-branch heads. File/issue overlap blocks competing lanes. A default-head mismatch makes the reservation `STALE`; a candidate that requires unverified Product Reality is `BLOCKED`.
+
+Specialists may inspect state, continue owned work, use repository-approved deterministic repairs, run exact-head preflight, and prepare a PR after `PREFLIGHT_GREEN`. They never merge. The portfolio orchestrator remains the sole merge arbiter and rechecks exact head, fresh required PR CI, reviews/comments, mergeability, dependency impact, architecture/security/licensing/provenance/privacy, and Product Reality boundaries before merge.
+
+Every lane returns a result contract containing lane/project/repository IDs, base/head SHAs, changed files, preflight state, dependency impact, Product Reality debt, and continuation. `project-orchestrator specialist-result` fails closed on incomplete results and marks stale bases before promotion.
