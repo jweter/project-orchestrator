@@ -59,7 +59,8 @@ implementation:
   deterministic_repair_engine: implemented_verified
   parallel_specialist_lanes: implemented_verified
   predictive_work_decomposition: implemented_verified
-  automatic_regression_prevention: implementing
+  automatic_regression_prevention: implemented_verified
+  portfolio_throughput_optimizer: implementing
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -68,4 +69,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Verify automatic regression prevention through exact-head preflight and fresh PR CI; then build the measured-evidence portfolio throughput optimizer."
+next_gate: "Verify the measured-evidence portfolio throughput optimizer through exact-head preflight and fresh PR CI; then exercise the full compounding loop across concurrent product lanes."
