@@ -21,7 +21,8 @@
 - [x] Automatic portfolio evidence collector correctness remediation
 - [x] Anti-stall blocker rotation + throughput floor
 - [x] Deterministic repair engine
-- [ ] Parallel specialist execution lanes — current gate
+- [x] Parallel specialist execution lanes
+- [ ] Predictive work decomposition — current gate
 - [ ] Corrected evidence re-collection and scheduler-facing run report artifact — next
 - [ ] Product Reality debt aggregation without payload leakage
 

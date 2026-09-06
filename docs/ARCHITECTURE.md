@@ -149,3 +149,12 @@ Reservations are not stored as a manual ownership database. They are recomputed 
 Specialists may inspect state, continue owned work, use repository-approved deterministic repairs, run exact-head preflight, and prepare a PR after `PREFLIGHT_GREEN`. They never merge. The portfolio orchestrator remains the sole merge arbiter and rechecks exact head, fresh required PR CI, reviews/comments, mergeability, dependency impact, architecture/security/licensing/provenance/privacy, and Product Reality boundaries before merge.
 
 Every lane returns a result contract containing lane/project/repository IDs, base/head SHAs, changed files, preflight state, dependency impact, Product Reality debt, and continuation. `project-orchestrator specialist-result` fails closed on incomplete results and marks stale bases before promotion.
+
+
+## Predictive Work Decomposition
+
+`project_orchestrator.work_decomposition` turns an already-authorized roadmap/design work item into explicit, small candidate slices and dependency waves for the specialist-lane planner. The term predictive here is deliberately narrow: the engine predicts **structural execution order and conflict risk**, not duration, ROI, delivery probability, or percent complete.
+
+Candidate slices must be supplied from authoritative roadmap/design evidence with explicit repository, changed-path scope, dependencies, verification weight, and reversibility. The engine never converts ambiguous prose directly into implementation tasks. It computes topological dependency levels, downstream unlock counts, active-file ownership conflicts, bounded verification burden, and reversibility to produce an ordinal structural score.
+
+Blocked ownership, unverified Product Reality dependencies, and uncleared Knowledge Engine shared-contract changes fail closed. READY slices are grouped into conflict-aware dependency waves that can then be submitted to `specialist-lanes`. All preflight, PR CI, review, Product Reality, and central merge-arbiter requirements remain unchanged.
