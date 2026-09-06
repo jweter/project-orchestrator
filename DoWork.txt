@@ -56,6 +56,24 @@ Derive active ownership from GitHub PRs/issues/branches/commits. Do not maintain
 NEW WORK
 Only after higher-priority existing work is clear. Read authoritative roadmap/guiding docs. Choose the highest-value authorized next slice, preferring current milestones. Keep slices small, coherent, reversible, testable, and reviewable. At most one substantial new slice per independent project per orchestrator run.
 
+ANTI-STALL / BLOCKER ROTATION
+A blocker may block its own branch/project lane; it must not monopolize the portfolio scheduler. The scheduler must maximize correct portfolio throughput subject to safety gates.
+
+Per run:
+- attempt at most one substantive repair cycle on the highest-priority blocked item: diagnose the first meaningful failure, apply the smallest safe fix when writable, and rerun the relevant exact-head verification;
+- if that same blocker cannot advance in the current run because of connector/tool/environment/Product Reality limitations, classify it PARKED_FOR_RETRY with the exact reason and immediately continue to another independent project with eligible work;
+- do not spend consecutive runs merely re-reporting the same unchanged blocker. On the next run, retry it once, then rotate again if still blocked;
+- a Product Reality wait blocks only work that depends on that unverified result. Continue explicitly parallel-safe implementation elsewhere in that project or another project;
+- a failed preflight blocks PR creation for that branch only. It does not block safe development in other independent projects;
+- after P0-P4 triage, every run must attempt useful execution in each unblocked independent project lane until either one substantial slice has been advanced in that project for the run or authoritative evidence shows no safe eligible work exists.
+
+THROUGHPUT FLOOR
+When there are no active P0-P3 emergencies, an hourly run should produce at least one concrete engineering advancement across the portfolio whenever safe eligible work exists: a merged GREEN PR, a repaired existing PR/branch, a branch moved to PREFLIGHT_GREEN, or a newly opened Ready-for-Review PR after exact-head GREEN preflight.
+If no concrete advancement occurs, the run must record WHY for each of the three independent product projects and identify the next executable action. Repeated NO-ADVANCEMENT outcomes for the same reason on two consecutive runs are themselves a P1 orchestration defect and require control-plane/process repair before further passive triage.
+
+FAIRNESS / CAPACITY
+Existing work outranks new work within its dependency lane, but does not grant unlimited global priority across independent projects. After one bounded repair attempt on the highest-priority blocked lane, service other independent unblocked projects in the same run. Do not allow project-orchestrator maintenance to consume the only substantive implementation slot when any P0-P5 product work is safely executable.
+
 SELF-COMPLETION
 The portfolio brain must autonomously build, repair, validate, and integrate the infrastructure it needs to execute this contract safely. When its authoritative roadmap/control plane identifies a missing capability required for evidence collection, CI interpretation, compatibility planning, learning, compounding measurement, reinvestment, reporting, or Product Reality debt tracking, implement the highest-value missing slice after higher-priority P0-P4 product work is clear. Do not stop merely because an orchestration capability is absent; record the gap as orchestrator work and continue until the declared v1 completion criterion is satisfied. After v1, freeze governance expansion unless measured evidence identifies a concrete bottleneck.
 
