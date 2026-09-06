@@ -41,6 +41,9 @@ If a repo declares preflight.required_before_pr=true, ordinary new development P
 FAILED CI
 Inspect actual failing logs. Identify the first meaningful failure and evidence-based root cause. Reproduce when practical. Apply the smallest safe fix, approved formatting, regression protection when appropriate, targeted tests, then full preflight. Push to the existing PR branch and wait for fresh CI. Never claim success before verification.
 
+DETERMINISTIC REPAIR ENGINE
+For preflight/CI failures, use the deterministic repair engine before consuming an hourly cycle on trivial machine-fixable defects. Fingerprint the first meaningful failure into a fixed class. Auto-remediation is permitted only for FORMAT, IMPORT_SORT, or LINT_SAFE_FIX and only when the affected repository explicitly authorizes the exact command in its control plane; existing preflight.format_apply authorizes FORMAT only. TEST_FAILURE, SECURITY, DEPENDENCY, TYPE_CHECK, GOVERNANCE, PROVENANCE, PRODUCT_REALITY, ENVIRONMENT, and UNKNOWN always fail closed to engineering diagnosis. A bounded repair cycle may perform up to three deterministic repair iterations because those iterations are not independent product decisions. After any applied repair, rerun the full exact-head preflight. The repair engine itself never commits, pushes, opens PRs, merges, weakens checks, changes security/provenance policy, or fabricates Product Reality. Repeated verified fingerprints should become earlier repository-native prevention when practical.
+
 MERGE
 Merge only verified GREEN PRs with all currently required checks passing, mergeability resolved, required reviews satisfied, blocking comments resolved, and no material architecture/security/licensing/provenance/privacy/policy concern. Verify merge success.
 

@@ -127,3 +127,14 @@ Every metric is either `MEASURED` (a numeric value, a fixed per-metric unit, a s
 A persisted lesson records the project/repository, source type/reference, symptom, root cause, fix, verification, regression protection, and residual risk. Entries must have `evidence_state=VERIFIED`; pending theories cannot become durable learning. A content-derived `lesson_id` makes repeated ingestion idempotent.
 
 Validation rejects raw/private payload fields and common secret patterns. The memory is therefore useful for preventing repeated engineering failures without becoming a credential store or a backdoor for private Product Reality artifacts. The validator is part of exact-head preflight.
+
+
+## Deterministic Repair Engine
+
+`project_orchestrator.repair` converts the first meaningful preflight/CI log failure into a fixed failure fingerprint and a fail-closed repair plan. The engine recognizes FORMAT, IMPORT_SORT, LINT_SAFE_FIX, TEST_FAILURE, SECURITY, DEPENDENCY, TYPE_CHECK, GOVERNANCE, PROVENANCE, PRODUCT_REALITY, ENVIRONMENT, and UNKNOWN.
+
+Only FORMAT, IMPORT_SORT, and LINT_SAFE_FIX are even eligible for automatic remediation, and eligibility still requires repository-explicit command authority. Existing `preflight.format_apply` is treated as authority for FORMAT only; broader fixes must be declared under a repository `deterministic_repair` policy. Behavioral tests, security, dependencies, type checking, governance, provenance, Product Reality, environment failures, and unknowns never auto-repair.
+
+A repair cycle is bounded to three deterministic iterations. Execution is local-working-tree only: the engine does not commit, push, open PRs, merge, mutate branch protection, weaken checks, or alter Product Reality evidence. Every applied repair must be followed by the repository's complete exact-head preflight. Repeated verified fingerprints should be promoted into earlier repository-native prevention rather than remaining recurring repair work.
+
+The CLI surface is `project-orchestrator repair-plan --repository ... --log ... --control-plane ...`. Add `--execute --repo-root ...` only in an executable local checkout; planning remains side-effect free by default.

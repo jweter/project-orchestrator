@@ -19,7 +19,8 @@
 - [x] Portfolio compounding time-series store
 - [x] Reinvestment controller consuming measured evidence (recommendation-only; see below)
 - [x] Automatic portfolio evidence collector correctness remediation
-- [ ] Anti-stall blocker rotation + throughput floor — current gate
+- [x] Anti-stall blocker rotation + throughput floor
+- [ ] Deterministic repair engine — current gate
 - [ ] Corrected evidence re-collection and scheduler-facing run report artifact — next
 - [ ] Product Reality debt aggregation without payload leakage
 
