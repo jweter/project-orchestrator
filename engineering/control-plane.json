@@ -16,7 +16,8 @@
     "docs/N8N_ORCHESTRATION.md",
     "docs/ROADMAP.md",
     "docs/project-status.yaml",
-    "docs/LOCAL_AGENT_TOOLING.md"
+    "docs/LOCAL_AGENT_TOOLING.md",
+    "engineering/specialist-lanes.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -34,7 +35,9 @@
     "n8n_has_no_merge_authority",
     "blocked_lane_does_not_monopolize_independent_projects",
     "two_consecutive_no_advancement_runs_same_reason_is_orchestration_defect",
-    "deterministic_repairs_require_repository_explicit_authority"
+    "deterministic_repairs_require_repository_explicit_authority",
+    "specialist_lanes_never_merge",
+    "specialist_reservations_are_ephemeral_live_evidence_projections"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -268,5 +271,27 @@
     ],
     "execution_boundary": "local working tree only; engine does not commit, push, open PRs, merge, weaken checks, or alter Product Reality evidence",
     "regression_rule": "recurring verified failure fingerprints should be promoted into earlier repository-native prevention when practical"
+  },
+  "parallel_specialist_lanes": {
+    "schema_version": 1,
+    "contract": "engineering/specialist-lanes.json",
+    "executable": "project-orchestrator specialist-lanes",
+    "result_validator": "project-orchestrator specialist-result",
+    "merge_authority": "portfolio-orchestrator-only",
+    "reservation_source": "live GitHub PRs/issues/branches/commits",
+    "reservation_persistence": "ephemeral",
+    "stale_rule": "default-branch head change invalidates lane until revalidated",
+    "knowledge_engine_rule": "one coordinated parent lane with Core/Web/AI sublanes; shared-contract changes require compatibility clearance",
+    "max_substantial_slices_per_independent_project_per_run": 1,
+    "lane_may_open_pr_only_after": "PREFLIGHT_GREEN",
+    "central_arbiter_rechecks": [
+      "live state",
+      "exact head",
+      "fresh required PR CI",
+      "reviews/comments",
+      "mergeability",
+      "architecture/security/licensing/provenance/privacy"
+    ],
+    "specialist_merge_authority": false
   }
 }

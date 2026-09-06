@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "merge_authority": "portfolio-orchestrator-only",
+  "lanes": {
+    "knowledge-engine": {
+      "project_id": "knowledge-engine",
+      "coordination": "coordinated-parent-with-core-web-ai-sublanes",
+      "max_substantial_slices_per_run": 1,
+      "shared_contract_requires_compatibility_clearance": true
+    },
+    "rocksmith": {
+      "project_id": "rocksmith",
+      "coordination": "standalone",
+      "max_substantial_slices_per_run": 1
+    },
+    "everward": {
+      "project_id": "everward",
+      "coordination": "standalone",
+      "max_substantial_slices_per_run": 1
+    }
+  },
+  "reservation": {
+    "authority": "derived from live GitHub PRs/issues/branches/commits",
+    "persistent_manual_ownership_database": false,
+    "file_overlap_blocks_new_lane": true,
+    "same_owned_branch_may_continue": true,
+    "default_head_change_state": "STALE"
+  },
+  "specialist_capabilities": [
+    "inspect_live_state",
+    "continue_owned_branch",
+    "apply_repository_approved_deterministic_repairs",
+    "run_exact_head_preflight",
+    "prepare_preflight_green_pr"
+  ],
+  "specialist_forbidden": [
+    "merge_pull_requests",
+    "bypass_or_weaken_preflight_or_ci",
+    "override_repository_architecture_or_product_direction",
+    "infer_product_reality",
+    "ignore_dependency_or_ownership_conflicts"
+  ],
+  "result_contract": [
+    "lane_id",
+    "project_id",
+    "repository",
+    "base_sha",
+    "head_sha",
+    "changed_files",
+    "preflight_state",
+    "dependency_impact",
+    "product_reality_debt",
+    "continuation"
+  ],
+  "central_arbiter": [
+    "revalidate_live_state",
+    "revalidate_base_and_exact_head",
+    "verify_fresh_required_pr_ci",
+    "verify_reviews_comments_and_mergeability",
+    "verify_architecture_security_licensing_provenance_privacy",
+    "merge_only_when_green"
+  ]
+}
