@@ -16,6 +16,7 @@ from .repair import build_repair_plan, execute_repair_plan, load_control_plane
 from .specialist_lanes import build_lane_plan, validate_lane_result
 from .work_decomposition import decompose_work_item
 from .required_checks import resolve_required_checks
+from .throughput_optimizer import optimize_throughput
 from .timeseries import (
     append_window,
     build_reinvestment_snapshot,
@@ -190,6 +191,12 @@ def regression_prevention(events_path: Path, policies_path: Path) -> int:
     print(json.dumps(build_prevention_plan(events,policies),indent=2,sort_keys=True))
     return 0
 
+def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
+    store=load_store(DEFAULT_TIMESERIES_STORE)
+    snapshot=build_reinvestment_snapshot(store,since=since)
+    print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
+    return 0
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -247,6 +254,9 @@ def main() -> int:
     lane_result_parser = sub.add_parser("specialist-result")
     lane_result_parser.add_argument("result", type=Path)
     lane_result_parser.add_argument("--live-default-head", default=None)
+    throughput_parser=sub.add_parser("throughput-optimize")
+    throughput_parser.add_argument("--since",default=None)
+    throughput_parser.add_argument("--eligible-project",action="append",dest="eligible_projects")
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
@@ -289,6 +299,8 @@ def main() -> int:
         return specialist_lane_plan(args.snapshot, args.candidates)
     if args.command == "specialist-result":
         return specialist_lane_result(args.result, args.live_default_head)
+    if args.command == "throughput-optimize":
+        return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
     if args.command == "decompose-work":
