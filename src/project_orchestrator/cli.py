@@ -13,6 +13,7 @@ from .learning import add_lesson, load_memory, write_memory
 from .reinvestment import plan_from_store
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
 from .specialist_lanes import build_lane_plan, validate_lane_result
+from .work_decomposition import decompose_work_item
 from .required_checks import resolve_required_checks
 from .timeseries import (
     append_window,
@@ -176,6 +177,12 @@ def specialist_lane_result(result_path: Path, live_default_head: str | None) -> 
     print(json.dumps(validate_lane_result(result, live_default_head=live_default_head), indent=2, sort_keys=True))
     return 0
 
+def work_decompose(item_path: Path, snapshot_path: Path | None) -> int:
+    item=json.loads(item_path.read_text(encoding="utf-8"))
+    snapshot=None if snapshot_path is None else json.loads(snapshot_path.read_text(encoding="utf-8"))
+    print(json.dumps(decompose_work_item(item,live_snapshot=snapshot),indent=2,sort_keys=True))
+    return 0
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -233,6 +240,9 @@ def main() -> int:
     lane_result_parser = sub.add_parser("specialist-result")
     lane_result_parser.add_argument("result", type=Path)
     lane_result_parser.add_argument("--live-default-head", default=None)
+    decompose_parser=sub.add_parser("decompose-work")
+    decompose_parser.add_argument("item",type=Path)
+    decompose_parser.add_argument("--snapshot",type=Path,default=None)
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
@@ -269,6 +279,8 @@ def main() -> int:
         return specialist_lane_plan(args.snapshot, args.candidates)
     if args.command == "specialist-result":
         return specialist_lane_result(args.result, args.live_default_head)
+    if args.command == "decompose-work":
+        return work_decompose(args.item,args.snapshot)
     raise AssertionError("unreachable")
 
 
