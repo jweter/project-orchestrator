@@ -23,7 +23,8 @@
 - [x] Deterministic repair engine
 - [x] Parallel specialist execution lanes
 - [x] Predictive work decomposition
-- [ ] Automatic regression prevention from repair memory — current gate
+- [x] Automatic regression prevention from repair memory
+- [ ] Portfolio throughput optimizer using measured evidence — current gate
 - [ ] Corrected evidence re-collection and scheduler-facing run report artifact — next
 - [ ] Product Reality debt aggregation without payload leakage
 
