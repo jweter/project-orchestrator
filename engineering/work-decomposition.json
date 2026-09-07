@@ -1,11 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "executable": "project-orchestrator decompose-work",
-  "purpose": "convert authoritative roadmap/design candidate slices into dependency-aware, conflict-aware parallel waves",
+  "purpose": "convert authoritative roadmap/design candidate slices into dependency-aware, conflict-aware parallel waves while preserving roadmap importance and exposing compounding leverage",
   "task_source_policy": "candidate slices must be explicit and grounded in repository governing documents; engine never invents implementation tasks from prose",
   "structural_signals": [
+    "roadmap_importance",
     "dependency_level",
     "downstream_unlock_count",
+    "reuse_leverage",
+    "parallelization_leverage",
+    "verification_leverage",
+    "reusable_assets",
+    "capability_unlocks",
     "active_file_conflicts",
     "verification_weight",
     "reversibility"
@@ -16,10 +22,21 @@
     "knowledge_engine_shared_contract_requires_compatibility_clearance": true,
     "product_reality_dependencies_fail_closed": true,
     "specialist_lane_contract_remains_authoritative": true,
-    "central_merge_arbiter_remains_authoritative": true
+    "central_merge_arbiter_remains_authoritative": true,
+    "roadmap_importance_outranks_leverage": true,
+    "leverage_is_tiebreaker_not_product_direction": true,
+    "explicit_unlocks_must_be_authoritative": true
   },
   "output": [
     "slices",
-    "recommended_parallel_waves"
+    "recommended_parallel_waves",
+    "recommended_next_slice"
+  ],
+  "selection_policy": [
+    "P0-P4 priority remains outside and above this P5 decomposition layer",
+    "roadmap importance outranks leverage",
+    "leverage breaks ties among otherwise eligible comparable roadmap slices",
+    "explicit downstream unlocks and reusable assets must be grounded in governing roadmap/design evidence",
+    "never create generic infrastructure solely to improve a leverage score"
   ]
 }
