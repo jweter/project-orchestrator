@@ -32,3 +32,32 @@ def test_product_reality_dependency_fails_closed():
 def test_unknown_dependency_rejected():
     x=base(); x["slices"][0]["dependencies"]=["missing"]
     with pytest.raises(ValueError,match="unknown dependencies"): decompose_work_item(x)
+
+
+def test_roadmap_importance_outranks_leverage():
+    x={"project_id":"everward","work_id":"repair","title":"repair","slices":[
+      {"slice_id":"important","repository":"jweter/Project-Everward","title":"repair core","paths":["src/repair"],"dependencies":[],"roadmap_importance":"HIGH","reuse_leverage":"LOW","parallelization_leverage":"LOW","verification_leverage":"LOW"},
+      {"slice_id":"clever","repository":"jweter/Project-Everward","title":"generic helper","paths":["src/helper"],"dependencies":[],"roadmap_importance":"LOW","reuse_leverage":"HIGH","parallelization_leverage":"HIGH","verification_leverage":"HIGH","reusable_assets":["fixture","validator"],"capability_unlocks":["future-a","future-b"]}
+    ]}
+    p=decompose_work_item(x)
+    assert p["recommended_next_slice"]=="important"
+    assert next(s for s in p["slices"] if s["slice_id"]=="important")["selection_semantics"].startswith("roadmap importance first")
+
+
+def test_leverage_breaks_tie_between_equal_roadmap_importance():
+    x={"project_id":"everward","work_id":"repair","title":"repair","slices":[
+      {"slice_id":"leaf","repository":"jweter/Project-Everward","title":"leaf","paths":["src/leaf"],"dependencies":[],"roadmap_importance":"HIGH","reuse_leverage":"LOW"},
+      {"slice_id":"foundation","repository":"jweter/Project-Everward","title":"foundation","paths":["src/foundation"],"dependencies":[],"roadmap_importance":"HIGH","reuse_leverage":"HIGH","parallelization_leverage":"HIGH","verification_leverage":"HIGH","reusable_assets":["component model","test fixture"],"capability_unlocks":["replacement","evolution"]}
+    ]}
+    p=decompose_work_item(x)
+    assert p["recommended_next_slice"]=="foundation"
+    foundation=next(s for s in p["slices"] if s["slice_id"]=="foundation")
+    assert foundation["reusable_assets"]==["component model","test fixture"]
+    assert foundation["capability_unlocks"]==["evolution","replacement"]
+
+
+def test_invalid_leverage_fails_closed():
+    x=base()
+    x["slices"][0]["reuse_leverage"]="MAGICAL"
+    with pytest.raises(ValueError,match="invalid reuse_leverage"):
+        decompose_work_item(x)
