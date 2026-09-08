@@ -87,6 +87,19 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
             for required_stage in ("SENSE", "REMEMBER", "DECIDE"):
                 if stage_result[required_stage]["state"] != "COMPLETE":
                     raise ValueError(f"{project} ELIGIBLE requires {required_stage}=COMPLETE before execution")
+            pre_change_risk_state = item.get("pre_change_risk_state")
+            if pre_change_risk_state not in {
+                "HISTORICAL_SIGNALS_PRESENT",
+                "NO_RELEVANT_VERIFIED_HISTORY",
+            }:
+                raise ValueError(
+                    f"{project} ELIGIBLE requires an explicit pre_change_risk_state before ACT"
+                )
+            pre_change_risk_ref = item.get("pre_change_risk_evidence_ref")
+            if not isinstance(pre_change_risk_ref, str) or not pre_change_risk_ref.strip():
+                raise ValueError(
+                    f"{project} ELIGIBLE requires pre_change_risk_evidence_ref before ACT"
+                )
 
         advancement = item.get("advancement", "NONE")
         if advancement not in ADVANCEMENTS:
@@ -125,6 +138,8 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
             "stages": stage_result,
             "prior_lessons_reused": sorted(set(reused)),
             "lessons_recorded": sorted(set(recorded)),
+            "pre_change_risk_state": item.get("pre_change_risk_state", "NOT_APPLICABLE"),
+            "pre_change_risk_evidence_ref": item.get("pre_change_risk_evidence_ref"),
         }
 
     advancement_rate = (
@@ -159,7 +174,7 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
         "run_closed": evidence_fresh and closed_projects == 3,
         "rules": [
             "fresh evidence is required before trend or compounding claims",
-            "ELIGIBLE projects require SENSE, REMEMBER, and DECIDE evidence before ACT",
+            "ELIGIBLE projects require SENSE, REMEMBER, DECIDE, and explicit pre-change risk evidence before ACT",
             "advancement requires ACT and VERIFY evidence",
             "LEARN and ADAPT must close explicitly or be NOT_APPLICABLE",
             "UNKNOWN never counts as a completed learning-loop stage",
