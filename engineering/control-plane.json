@@ -25,7 +25,8 @@
     "engineering/learning-effectiveness.json",
     "engineering/scheduler-run-report.json",
     "engineering/product-reality-debt.json",
-    "engineering/closed-loop-product-run.json"
+    "engineering/closed-loop-product-run.json",
+    "engineering/pre-change-risk.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -60,7 +61,8 @@
     "verified_success_patterns_and_learning_effectiveness_are_first_class_evidence",
     "scheduler_reports_product_advancement_rate_and_learning_evolution_from_explicit_evidence",
     "product_reality_debt_is_visible_sanitized_and_lane_scoped",
-    "every_live_product_run_closes_the_evidence_learning_loop_or_fails_closed"
+    "every_live_product_run_closes_the_evidence_learning_loop_or_fails_closed",
+    "pre_change_risk_uses_verified_history_before_mutation_without_invented_probability"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -391,11 +393,12 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "exercise_closed_loop_on_real_product_work",
+    "current_build_gate": "pre_change_risk_predictor_then_closed_loop_product_execution",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
       "area_specific_learning_retrieval_before_edits",
+      "pre_change_risk_predictor",
       "branch_lifecycle_manager",
       "measured_self_improvement_proposals",
       "success_pattern_memory_and_learning_effectiveness",
@@ -589,6 +592,29 @@
       "count_orchestrator_only_work_as_product_advancement",
       "infer_product_reality",
       "count_UNKNOWN_as_complete"
+    ]
+  },
+  "pre_change_risk_predictor": {
+    "schema_version": 1,
+    "contract": "engineering/pre-change-risk.json",
+    "module": "project_orchestrator.risk_predictor",
+    "cli": "project-orchestrator pre-change-risk",
+    "timing": "after candidate scope is known and before repository mutation",
+    "sources": [
+      "VERIFIED learning memory",
+      "area-specific lesson matching",
+      "repair-engine failure taxonomy"
+    ],
+    "rule": "surface historically matching failure classes and successful patterns before edits; apply prevention/reuse rules without inventing probability or overriding repository authority",
+    "no_history_state": "NO_RELEVANT_VERIFIED_HISTORY",
+    "probability_policy": "UNKNOWN unless independently measured",
+    "severity_policy": "UNKNOWN unless independently measured",
+    "forbidden": [
+      "invent_failure_probability",
+      "invent_severity",
+      "cross_pollinate_unrelated_products",
+      "treat_no_history_as_low_risk",
+      "override_product_repo_authority"
     ]
   }
 }
