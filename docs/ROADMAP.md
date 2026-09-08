@@ -35,6 +35,8 @@
 - [x] Success-pattern memory + verified learning-effectiveness measurement
 - [ ] Re-collect corrected current portfolio evidence — operational measurement task
 - [ ] Exercise the full learning loop on product work and measure outcomes — primary operational gate
+  - [x] Bind claimed advancement to concrete product execution + verification evidence
+  - [ ] Execute the contract against live Knowledge Engine, Rocksmith, and Everward work
 - [x] Product Reality debt aggregation without payload leakage
 
 ## v1 completion criterion
