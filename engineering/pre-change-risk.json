@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "artifact": "pre-change-risk-profile",
+  "cli": "project-orchestrator pre-change-risk",
+  "timing": "after candidate scope is known and before repository mutation",
+  "inputs": ["repository", "changed_paths", "change_summary", "verified learning memory"],
+  "outputs": [
+    "historical_failure_classes",
+    "successful_patterns",
+    "prevention_checklist",
+    "historical_signal_state"
+  ],
+  "semantics": {
+    "prediction": "historical evidence signal only",
+    "probability": "UNKNOWN unless independently measured",
+    "severity": "UNKNOWN unless independently measured"
+  },
+  "rules": [
+    "use the same deterministic failure-class taxonomy as the repair engine",
+    "do not cross-pollinate unrelated product repositories",
+    "successful patterns are surfaced separately from failure classes",
+    "no matching history means NO_RELEVANT_VERIFIED_HISTORY, never LOW_RISK",
+    "prevention rules inform implementation but never override repository authority"
+  ]
+}
