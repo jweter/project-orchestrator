@@ -400,5 +400,14 @@
         "claim_preflight_without_exact_head_evidence"
       ]
     }
+  },
+  "orchestration": {
+    "promotion_workflow": ".github/workflows/promote-preflight-green.yml",
+    "promotion_branch_prefixes": [
+      "orchestrator/",
+      "agent/"
+    ],
+    "exact_head_preflight_evidence_required": true,
+    "rule": "promotion requires FULL GREEN preflight evidence whose repository and head_sha exactly match the completed workflow run and the branch must still point at that SHA; fresh PR CI remains independently required"
   }
 }
