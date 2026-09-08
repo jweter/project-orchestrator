@@ -9,6 +9,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "preflight-evidence.json"
 
+
+def git_head(root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 else "UNKNOWN"
+
 checks = [
     ("control_plane", [sys.executable, "engineering/validate_control_plane.py"]),
     ("portfolio_inventory", [sys.executable, "engineering/validate_portfolio.py"]),
@@ -42,7 +53,10 @@ for name, argv in checks:
         break
 
 EVIDENCE.write_text(json.dumps({
-    "schema_version": 1,
+    "schema_version": 2,
+    "repository": "jweter/project-orchestrator",
+    "head_sha": git_head(ROOT),
+    "mode": "FULL",
     "generated_at": datetime.now(timezone.utc).isoformat(),
     "status": "GREEN" if ok else "FAILED",
     "results": results,
