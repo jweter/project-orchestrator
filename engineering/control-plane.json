@@ -393,7 +393,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "pre_change_risk_predictor_then_closed_loop_product_execution",
+    "current_build_gate": "exercise_closed_loop_on_product_work_and_measure_outcomes",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -419,7 +419,8 @@
         "claim_green_when_preflight_failed"
       ],
       "execution_boundary": "fresh local modernization branch from exact verified default head; replay only explicitly authorized unique commits; repository-approved formatting/targeted tests/full preflight; never rewrites source branch, deletes refs, pushes, opens PRs, or merges"
-    }
+    },
+    "infrastructure_expansion_policy": "freeze after v1 unless measured recurring friction, a concrete execution blocker, or a failed control invariant justifies a bounded improvement"
   },
   "orchestration": {
     "promotion_workflow": ".github/workflows/promote-preflight-green.yml",
@@ -615,6 +616,7 @@
       "cross_pollinate_unrelated_products",
       "treat_no_history_as_low_risk",
       "override_product_repo_authority"
-    ]
+    ],
+    "implementation_state": "IMPLEMENTED_VERIFIED"
   }
 }

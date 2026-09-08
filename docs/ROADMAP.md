@@ -29,12 +29,12 @@
 - [x] Autonomous branch reconciliation and modernization
 - [x] Exact-head executable preflight coverage across every product repository
 - [x] Area-specific learning retrieval before edits
-- [ ] Evidence-based pre-change risk predictor — implementation active
+- [x] Evidence-based pre-change risk predictor
 - [x] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup
 - [x] Measured self-improvement proposals from recurring orchestration friction
 - [x] Success-pattern memory + verified learning-effectiveness measurement
-- [ ] Re-collect corrected current portfolio evidence — current operational gate
-- [ ] Exercise the full learning loop on product work and measure outcomes — current operational gate
+- [ ] Re-collect corrected current portfolio evidence — operational measurement task
+- [ ] Exercise the full learning loop on product work and measure outcomes — primary operational gate
 - [x] Product Reality debt aggregation without payload leakage
 
 ## v1 completion criterion

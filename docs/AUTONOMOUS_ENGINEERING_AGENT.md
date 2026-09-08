@@ -73,8 +73,13 @@ The agent must learn from verified successes as well as failures. Successful eng
 The next operational phase is to exercise the full closed loop on real product work, record which lessons were reused, and determine from evidence whether the system is actually reducing repeat failures and repair cycles.
 
 
-### 7. Evidence-based pre-change risk predictor — ACTIVE
+### 7. Evidence-based pre-change risk predictor — COMPLETE
 
 Before mutating a known component, the agent must ask which verified failure classes and successful engineering patterns have historically matched the repository, changed paths, and change summary. The predictor uses the same deterministic failure taxonomy as the repair engine, but its semantics are historical evidence only: it does not invent probability, severity, readiness, ROI, or time-saved estimates. `NO_RELEVANT_VERIFIED_HISTORY` means exactly that; it must never be relabeled as low risk.
 
 The output is a pre-edit checklist of applicable prevention/reuse rules plus evidence references. These signals may change implementation and verification planning before CI fails, but they never override product-repository roadmap, architecture, security, licensing/provenance, privacy, CI, or Product Reality authority.
+
+
+## Operational phase
+
+The planned v1 agent capabilities are implemented and verified. The next engineering objective is not another speculative governance layer. The orchestrator must now exercise the complete loop on real Knowledge Engine, Rocksmith, and Everward work, apply pre-change risk and prior learning before mutation, and record verified outcomes afterward. New orchestrator infrastructure is justified only by measured recurring friction, a concrete execution blocker, or a failed control invariant discovered during product work.
