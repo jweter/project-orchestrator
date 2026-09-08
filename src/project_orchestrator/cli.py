@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .area_learning import retrieve_learning
 from .branch_reconciliation import build_reconciliation_plan
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
@@ -198,6 +199,19 @@ def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
     print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
     return 0
 
+def learning_retrieve(repository: str, paths: list[str], summary: str, failure_class: str | None, limit: int) -> int:
+    memory = load_memory(DEFAULT_LEARNING_MEMORY)
+    print(json.dumps(retrieve_learning(
+        memory,
+        repository=repository,
+        changed_paths=paths,
+        change_summary=summary,
+        failure_class=failure_class,
+        limit=limit,
+    ), indent=2, sort_keys=True))
+    return 0
+
+
 def branch_reconcile_plan(evidence_path: Path) -> int:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     print(json.dumps(build_reconciliation_plan(evidence), indent=2, sort_keys=True))
@@ -267,6 +281,12 @@ def main() -> int:
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
+    learning_parser = sub.add_parser("learning-retrieve")
+    learning_parser.add_argument("--repository", required=True)
+    learning_parser.add_argument("--path", action="append", dest="paths", required=True)
+    learning_parser.add_argument("--summary", default="")
+    learning_parser.add_argument("--failure-class", default=None)
+    learning_parser.add_argument("--limit", type=int, default=8)
     reconcile_parser = sub.add_parser("branch-reconcile-plan")
     reconcile_parser.add_argument("evidence", type=Path)
     decompose_parser=sub.add_parser("decompose-work")
@@ -312,6 +332,8 @@ def main() -> int:
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
+    if args.command == "learning-retrieve":
+        return learning_retrieve(args.repository, args.paths, args.summary, args.failure_class, args.limit)
     if args.command == "branch-reconcile-plan":
         return branch_reconcile_plan(args.evidence)
     if args.command == "decompose-work":
