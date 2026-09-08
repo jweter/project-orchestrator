@@ -24,7 +24,8 @@
     "docs/AUTONOMOUS_ENGINEERING_AGENT.md",
     "engineering/learning-effectiveness.json",
     "engineering/scheduler-run-report.json",
-    "engineering/product-reality-debt.json"
+    "engineering/product-reality-debt.json",
+    "engineering/closed-loop-product-run.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -58,7 +59,8 @@
     "self_improvement_requires_verified_recurring_friction_and_normal_promotion_gates",
     "verified_success_patterns_and_learning_effectiveness_are_first_class_evidence",
     "scheduler_reports_product_advancement_rate_and_learning_evolution_from_explicit_evidence",
-    "product_reality_debt_is_visible_sanitized_and_lane_scoped"
+    "product_reality_debt_is_visible_sanitized_and_lane_scoped",
+    "every_live_product_run_closes_the_evidence_learning_loop_or_fails_closed"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -389,7 +391,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "closed_loop_product_execution_with_current_evidence",
+    "current_build_gate": "exercise_closed_loop_on_real_product_work",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -557,6 +559,32 @@
       "secrets",
       "invented_pass_fail",
       "project_wide_freeze_from_lane_debt"
+    ]
+  },
+  "closed_loop_product_run": {
+    "schema_version": 1,
+    "contract": "engineering/closed-loop-product-run.json",
+    "module": "project_orchestrator.closed_loop",
+    "cli": "project-orchestrator closed-loop-report",
+    "stages": [
+      "SENSE",
+      "REMEMBER",
+      "DECIDE",
+      "ACT",
+      "VERIFY",
+      "LEARN",
+      "ADAPT"
+    ],
+    "default_max_evidence_age_seconds": 3600,
+    "trend_claim_rule": "fresh evidence required",
+    "advancement_rule": "ELIGIBLE product advancement requires ACT and VERIFY evidence",
+    "closure_rule": "LEARN and ADAPT must be COMPLETE or NOT_APPLICABLE for each independent product",
+    "forbidden": [
+      "stale_trend_claims",
+      "skip_pre_edit_learning_when_relevant",
+      "count_orchestrator_only_work_as_product_advancement",
+      "infer_product_reality",
+      "count_UNKNOWN_as_complete"
     ]
   }
 }
