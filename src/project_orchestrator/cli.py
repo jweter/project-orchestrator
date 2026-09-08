@@ -16,6 +16,7 @@ from .learning import add_lesson, load_memory, write_memory
 from .reinvestment import plan_from_store
 from .regression_prevention import build_prevention_plan
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
+from .self_improvement import build_self_improvement_proposals
 from .specialist_lanes import build_lane_plan, validate_lane_result
 from .work_decomposition import decompose_work_item
 from .required_checks import resolve_required_checks
@@ -200,6 +201,19 @@ def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
     print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
     return 0
 
+def self_improvement_plan(events_path: Path, minimum_recurrence: int) -> int:
+    events = json.loads(events_path.read_text(encoding="utf-8"))
+    memory = load_memory(DEFAULT_LEARNING_MEMORY)
+    store = load_store(DEFAULT_TIMESERIES_STORE)
+    print(json.dumps(build_self_improvement_proposals(
+        memory,
+        store,
+        events,
+        minimum_recurrence=minimum_recurrence,
+    ), indent=2, sort_keys=True))
+    return 0
+
+
 def branch_lifecycle(evidence_path: Path) -> int:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     print(json.dumps(classify_portfolio_branches(evidence), indent=2, sort_keys=True))
@@ -288,6 +302,9 @@ def main() -> int:
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
+    self_parser = sub.add_parser("self-improvement-plan")
+    self_parser.add_argument("events", type=Path)
+    self_parser.add_argument("--minimum-recurrence", type=int, default=2)
     lifecycle_parser = sub.add_parser("branch-lifecycle")
     lifecycle_parser.add_argument("evidence", type=Path)
     learning_parser = sub.add_parser("learning-retrieve")
@@ -341,6 +358,8 @@ def main() -> int:
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
+    if args.command == "self-improvement-plan":
+        return self_improvement_plan(args.events, args.minimum_recurrence)
     if args.command == "branch-lifecycle":
         return branch_lifecycle(args.evidence)
     if args.command == "learning-retrieve":
