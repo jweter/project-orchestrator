@@ -16,7 +16,7 @@ The portfolio orchestrator is the durable operating substrate for the AI enginee
 
 ## Build sequence
 
-### 1. Autonomous Branch Reconciliation + Modernization — ACTIVE
+### 1. Autonomous Branch Reconciliation + Modernization — COMPLETE
 
 Recover useful engineering trapped on stale branches without rewriting published history or creating competing PRs.
 
@@ -29,19 +29,19 @@ The deterministic planner must classify branch state from live compare evidence:
 
 Before modernization it must prove current roadmap authorization, open-PR/ownership safety, Product Reality independence, and changed-file scope. A diverged valuable branch is replayed onto a fresh branch from the exact current default head. It then follows targeted verification -> full preflight -> PR -> fresh CI.
 
-### 2. Exact-head executable preflight everywhere
+### 2. Exact-head executable preflight everywhere — COMPLETE
 
 Provide a dependable local or branch-triggered execution path for every repository so an agent can prove PREFLIGHT_GREEN without relying on unverifiable assumptions. Preflight evidence must bind to the exact branch head SHA.
 
-### 3. Area-specific learning retrieval before edits
+### 3. Area-specific learning retrieval before edits — COMPLETE
 
 Before modifying a component, retrieve verified lessons relevant to the repository, paths, contract type, and failure class. Surface prevention rules before implementation starts. Failure memory and success memory remain evidence-backed and sanitized.
 
-### 4. Branch lifecycle manager
+### 4. Branch lifecycle manager — COMPLETE
 
 Classify every non-default branch as active, PR-owned, merged-disposable, stale-but-valuable, superseded, release/hotfix-required, or uncertain. Automatically clean only branches whose safe disposal is proven. Queue stale valuable branches for modernization rather than letting engineering capital decay.
 
-### 5. Measured self-improvement proposals
+### 5. Measured self-improvement proposals — COMPLETE
 
 When evidence shows recurring orchestration friction, produce a bounded self-improvement proposal: observed bottleneck, evidence, proposed mechanism, safety boundaries, verification plan, and expected capability unlocks. Never invent ROI/probability/time saved. The orchestrator may implement authorized reversible improvements through branch -> preflight -> PR -> CI; it never weakens its own gates.
 
@@ -64,3 +64,10 @@ Track when evidence permits:
 Target: **Preventable Repeat Failure Rate = 0**.
 
 A lesson is effective only when it demonstrably prevents, detects earlier, or shortens a future failure class. If the same diagnosed failure repeatedly consumes runs, the prevention mechanism is incomplete.
+
+
+### 6. Success memory and learning effectiveness — ACTIVE
+
+The agent must learn from verified successes as well as failures. Successful engineering patterns may be persisted as `success_pattern` lessons only when supported by exact evidence. When a prior lesson is later applied, record a verified learning application and classify the observed outcome as prevention, earlier detection, shortened repair, successful-pattern reuse, no measurable effect, or UNKNOWN. Learning effectiveness is measured from these verified applications; retrieval or intention alone does not count as learning success.
+
+The next operational phase is to exercise the full closed loop on real product work, record which lessons were reused, and determine from evidence whether the system is actually reducing repeat failures and repair cycles.

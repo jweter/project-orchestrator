@@ -30,7 +30,9 @@
 - [x] Exact-head executable preflight coverage across every product repository
 - [x] Area-specific learning retrieval before edits
 - [x] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup
-- [ ] Measured self-improvement proposals from recurring orchestration friction — implementation active
+- [x] Measured self-improvement proposals from recurring orchestration friction
+- [ ] Success-pattern memory + verified learning-effectiveness measurement — implementation active
+- [ ] Exercise the full learning loop on product work and measure outcomes
 - [ ] Product Reality debt aggregation without payload leakage
 
 ## v1 completion criterion

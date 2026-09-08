@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-05T22:10:00Z"
+updated_at: "2026-09-08T02:26:00Z"
 state: "v1 implementation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -61,6 +61,13 @@ implementation:
   predictive_work_decomposition: implemented_verified
   automatic_regression_prevention: implemented_verified
   portfolio_throughput_optimizer: implemented_verified
+  branch_reconciliation: implemented_verified
+  exact_head_preflight_promotion: implemented_verified
+  area_specific_learning_retrieval: implemented_verified
+  branch_lifecycle_manager: implemented_verified
+  measured_self_improvement_proposals: implemented_verified
+  success_pattern_memory: implementation_active
+  learning_effectiveness_measurement: implementation_active
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -69,4 +76,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Re-collect corrected portfolio evidence, produce the scheduler-facing run report artifact, and exercise the full compounding loop across concurrent product lanes."
+next_gate: "Verify success-pattern memory and learning-effectiveness measurement, then re-collect corrected portfolio evidence and exercise the full learning loop on concurrent product work with scheduler-facing KPI reporting."
