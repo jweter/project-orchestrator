@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 ALLOWED_PROJECTS = {"portfolio", "knowledge-engine", "rocksmith", "everward"}
-ALLOWED_SOURCE_TYPES = {"ci_failure", "review_finding", "product_reality", "governance"}
+ALLOWED_SOURCE_TYPES = {"ci_failure", "review_finding", "product_reality", "governance", "success_pattern"}
 SECRET_PATTERNS = [
     re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
