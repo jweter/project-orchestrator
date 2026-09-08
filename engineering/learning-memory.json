@@ -14,6 +14,20 @@
       "regression_protection": "Dedicated decision, GitHub-evidence, and required-check resolver tests exercise each repaired failure mode.",
       "residual_risk": "Required-workflow rules remain UNCERTAIN until mapped to concrete workflow evidence; this is an intentional fail-closed limitation.",
       "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "96afd3d27f39a7888240",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "ci_failure",
+      "source_ref": "preflight:34182868481",
+      "symptom": "Pre-change risk predictor marked an unrelated Everward subsystem as HISTORICAL_SIGNALS_PRESENT.",
+      "root_cause": "Area-learning similarity included generic repository/path tokens such as src and simulation, so weak structural overlap was mistaken for meaningful domain overlap.",
+      "fix": "Filter generic path/repository tokens from risk matching and require either an explicit path match or at least one informative matched token before a lesson contributes to the risk profile.",
+      "verification": "Exact-head full preflight passed on commit 9675dab700fada6b6fa5c6a02f45b1261dbf7cc4 with 269 tests passing, including a regression test for unrelated same-repository paths.",
+      "regression_protection": "Pre-change risk matching must ignore generic structural tokens and preserve NO_RELEVANT_VERIFIED_HISTORY when no informative area match exists.",
+      "residual_risk": "New generic tokens introduced by future repository layouts may require extending the bounded generic-token set; explicit path matches remain authoritative evidence.",
+      "evidence_state": "VERIFIED"
     }
   ]
 }

@@ -139,6 +139,9 @@ Before claiming throughput, repair latency, repeat failures, or autonomy are imp
 REINVESTMENT
 Before choosing new P5 roadmap work, run `project-orchestrator reinvestment-plan` and read it. It is a recommendation only: it never merges, deletes, bypasses CI, or executes anything by itself, and every plan it produces requires Jeremy's approval. Prefer its `selected` recommendation (when one clears the confidence threshold) over an unexamined roadmap default, but never let it override P0-P4 existing-work priority above. When `selected` is null, treat the plan's `evidence_gaps` as legitimate P5/P6 candidates in their own right — closing a measurement gap is a valid reinvestment even when no repair candidate is confident yet.
 
+PRE-CHANGE RISK PREDICTOR
+After an authorized candidate's repository/path scope is known and before the first code mutation, query verified area-specific learning and build an evidence-based pre-change risk profile. Ask: which failure classes have historically occurred in these files/modules or similar changes, and which verified success patterns should be reused? Use the repair engine's deterministic failure taxonomy for historical classification. Apply relevant prevention/reuse rules to implementation and verification planning before CI fails. If no relevant verified history exists, record NO_RELEVANT_VERIFIED_HISTORY; never reinterpret absence of history as LOW_RISK. Never invent probability, severity, ROI, readiness, or time-saved estimates. The predictor is advisory and cannot override product roadmap/architecture, security, licensing/provenance, privacy, Product Reality, preflight, CI, reviews, or merge authority.
+
 CONTINUOUS ENGINEERING EVOLUTION
 Every run must inspect repository issues as part of the active engineering work queue, not merely PRs and CI. Prioritize issues under the same P0-P6 rules and convert actionable defects into bounded engineering work when authorized.
 
