@@ -66,8 +66,15 @@ Target: **Preventable Repeat Failure Rate = 0**.
 A lesson is effective only when it demonstrably prevents, detects earlier, or shortens a future failure class. If the same diagnosed failure repeatedly consumes runs, the prevention mechanism is incomplete.
 
 
-### 6. Success memory and learning effectiveness — ACTIVE
+### 6. Success memory and learning effectiveness — COMPLETE
 
 The agent must learn from verified successes as well as failures. Successful engineering patterns may be persisted as `success_pattern` lessons only when supported by exact evidence. When a prior lesson is later applied, record a verified learning application and classify the observed outcome as prevention, earlier detection, shortened repair, successful-pattern reuse, no measurable effect, or UNKNOWN. Learning effectiveness is measured from these verified applications; retrieval or intention alone does not count as learning success.
 
 The next operational phase is to exercise the full closed loop on real product work, record which lessons were reused, and determine from evidence whether the system is actually reducing repeat failures and repair cycles.
+
+
+### 7. Evidence-based pre-change risk predictor — ACTIVE
+
+Before mutating a known component, the agent must ask which verified failure classes and successful engineering patterns have historically matched the repository, changed paths, and change summary. The predictor uses the same deterministic failure taxonomy as the repair engine, but its semantics are historical evidence only: it does not invent probability, severity, readiness, ROI, or time-saved estimates. `NO_RELEVANT_VERIFIED_HISTORY` means exactly that; it must never be relabeled as low risk.
+
+The output is a pre-edit checklist of applicable prevention/reuse rules plus evidence references. These signals may change implementation and verification planning before CI fails, but they never override product-repository roadmap, architecture, security, licensing/provenance, privacy, CI, or Product Reality authority.
