@@ -5,6 +5,8 @@ from typing import Any
 
 REQ={"project_id","work_id","title","slices"}
 SREQ={"slice_id","repository","title","paths","dependencies"}
+IMPORTANCE={"CRITICAL":3,"HIGH":2,"MEDIUM":1,"LOW":0}
+LEVERAGE={"HIGH":2,"MEDIUM":1,"LOW":0}
 
 def _id(x:dict[str,Any])->str:
     return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(",",":")).encode()).hexdigest()[:16]
@@ -74,12 +76,32 @@ def decompose_work_item(item:dict[str,Any],*,live_snapshot:dict[str,Any]|None=No
         if not isinstance(vw,int) or not 1<=vw<=5: raise ValueError(s["slice_id"]+": verification_weight must be 1..5")
         rev=s.get("reversibility","HIGH")
         if rev not in {"HIGH","MEDIUM","LOW"}: raise ValueError(s["slice_id"]+": invalid reversibility")
+        importance=s.get("roadmap_importance","MEDIUM")
+        if importance not in IMPORTANCE: raise ValueError(s["slice_id"]+": invalid roadmap_importance")
+        reuse=s.get("reuse_leverage","LOW")
+        parallel=s.get("parallelization_leverage","LOW")
+        verification=s.get("verification_leverage","LOW")
+        for name,value in [("reuse_leverage",reuse),("parallelization_leverage",parallel),("verification_leverage",verification)]:
+            if value not in LEVERAGE: raise ValueError(s["slice_id"]+f": invalid {name}")
+        reusable_assets=s.get("reusable_assets",[])
+        if not isinstance(reusable_assets,list) or not all(isinstance(x,str) and x for x in reusable_assets):
+            raise ValueError(s["slice_id"]+": reusable_assets must be a list of non-empty strings")
+        explicit_unlocks=s.get("capability_unlocks",[])
+        if not isinstance(explicit_unlocks,list) or not all(isinstance(x,str) and x for x in explicit_unlocks):
+            raise ValueError(s["slice_id"]+": capability_unlocks must be a list of non-empty strings")
         score=unlock[s["slice_id"]]*10-levels[s["slice_id"]]*5-vw*2+{"HIGH":4,"MEDIUM":2,"LOW":0}[rev]
+        leverage_key=(LEVERAGE[reuse],LEVERAGE[parallel],LEVERAGE[verification],len(reusable_assets),len(explicit_unlocks))
         out.append({**s,"decomposition_id":_id({"work_id":item["work_id"],"slice_id":s["slice_id"],"repository":s["repository"],"paths":sorted(s["paths"])}),
                     "dependency_level":levels[s["slice_id"]],"downstream_unlock_count":unlock[s["slice_id"]],
                     "active_conflicts":sorted(str(x) for x in conflicts),"state":"BLOCKED" if reason else "READY","blocked_reason":reason,
-                    "structural_priority_score":score,"score_semantics":"ordinal structural score; not duration/ROI/probability"})
-    ready=sorted((s for s in out if s["state"]=="READY"),key=lambda s:(s["dependency_level"],-s["downstream_unlock_count"],-s["structural_priority_score"],s["repository"],s["slice_id"]))
+                    "roadmap_importance":importance,
+                    "reuse_leverage":reuse,"parallelization_leverage":parallel,"verification_leverage":verification,
+                    "reusable_assets":sorted(reusable_assets),"capability_unlocks":sorted(explicit_unlocks),
+                    "structural_priority_score":score,
+                    "selection_semantics":"roadmap importance first; leverage is a tiebreaker among otherwise eligible work",
+                    "score_semantics":"ordinal structural score; not duration/ROI/probability",
+                    "_selection_key":(-IMPORTANCE[importance],levels[s["slice_id"]],-unlock[s["slice_id"]],tuple(-x for x in leverage_key),-score,s["repository"],s["slice_id"])})
+    ready=sorted((s for s in out if s["state"]=="READY"),key=lambda s:s["_selection_key"])
     waves=[]; remaining=ready[:]
     while remaining:
         minlevel=min(s["dependency_level"] for s in remaining); wave=[]; repos=set(); paths=[]
@@ -88,6 +110,9 @@ def decompose_work_item(item:dict[str,Any],*,live_snapshot:dict[str,Any]|None=No
             wave.append(s); repos.add(s["repository"]); paths+=s["paths"]
         if not wave: break
         waves.append([s["slice_id"] for s in wave]); chosen={s["slice_id"] for s in wave}; remaining=[s for s in remaining if s["slice_id"] not in chosen]
-    return {"schema_version":1,"project_id":item["project_id"],"work_id":item["work_id"],"title":item["title"],
+    for s in out:
+        s.pop("_selection_key",None)
+    return {"schema_version":2,"project_id":item["project_id"],"work_id":item["work_id"],"title":item["title"],
             "slices":sorted(out,key=lambda s:s["slice_id"]),"recommended_parallel_waves":waves,
-            "safety_boundaries":["candidate slices must come from authoritative roadmap/design evidence","engine never invents implementation tasks from prose","structural score is ordinal, never duration/ROI/probability/percent complete","active ownership blocks overlap","Knowledge Engine shared contracts require compatibility clearance","Product Reality dependencies fail closed","specialist-lane and merge gates remain authoritative"]}
+            "recommended_next_slice":ready[0]["slice_id"] if ready else None,
+            "safety_boundaries":["candidate slices must come from authoritative roadmap/design evidence","engine never invents implementation tasks from prose","roadmap importance outranks leverage signals","leverage only breaks ties among otherwise eligible work","structural score is ordinal, never duration/ROI/probability/percent complete","active ownership blocks overlap","Knowledge Engine shared contracts require compatibility clearance","Product Reality dependencies fail closed","specialist-lane and merge gates remain authoritative"]}
