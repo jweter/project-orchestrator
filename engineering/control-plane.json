@@ -49,7 +49,8 @@
     "product_projects_cannot_be_parked_while_parallel_safe_work_exists",
     "rocksmith_continues_parallel_safe_development_while_product_reality_waits",
     "everward_continues_parallel_safe_development_while_unreal_product_reality_waits",
-    "ordinary_governed_work_branches_before_first_mutation"
+    "ordinary_governed_work_branches_before_first_mutation",
+    "relevant_verified_learning_is_retrieved_before_editing_known_areas"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -380,7 +381,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "branch_reconciliation_and_modernization",
+    "current_build_gate": "area_specific_learning_retrieval_before_edits",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -409,5 +410,28 @@
     ],
     "exact_head_preflight_evidence_required": true,
     "rule": "promotion requires FULL GREEN preflight evidence whose repository and head_sha exactly match the completed workflow run and the branch must still point at that SHA; fresh PR CI remains independently required"
+  },
+  "area_specific_learning": {
+    "schema_version": 1,
+    "module": "project_orchestrator.area_learning",
+    "cli": "project-orchestrator learning-retrieve",
+    "timing": "before repository mutation after candidate scope is known",
+    "source": "engineering/learning-memory.json VERIFIED entries only",
+    "inputs": [
+      "repository",
+      "changed_paths",
+      "change_summary",
+      "failure_class"
+    ],
+    "rule": "surface relevant prevention rules before edits; retrieved learning informs prevention but never overrides product repository authority",
+    "cross_repository_rule": "product lessons do not cross-pollinate other products; portfolio lessons require actual query overlap",
+    "no_match_state": "NO_RELEVANT_VERIFIED_LESSON",
+    "forbidden": [
+      "treat_similarity_as_authority",
+      "persist_unverified_lessons",
+      "cross_pollinate_unrelated_product_lessons",
+      "infer_Product_Reality",
+      "invent_prevention_rules"
+    ]
   }
 }
