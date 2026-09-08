@@ -7,6 +7,12 @@ from .area_learning import retrieve_learning
 from .learning import validate_memory
 from .repair import fingerprint_failure
 
+_GENERIC_MATCH_TOKENS = {
+    "src", "source", "test", "tests", "testing", "include", "lib", "app",
+    "simulation", "core", "project", "system", "change", "changed", "file",
+    "files", "failed", "failure", "passed", "green", "verify", "verified",
+}
+
 
 def build_pre_change_risk_profile(
     memory: dict[str, Any],
@@ -36,7 +42,20 @@ def build_pre_change_risk_profile(
     failure_groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     success_patterns: list[dict[str, Any]] = []
 
+    filtered_matches: list[dict[str, Any]] = []
     for match in retrieval["relevant_lessons"]:
+        informative_tokens = [
+            token
+            for token in match["matched_tokens"]
+            if token.lower() not in _GENERIC_MATCH_TOKENS
+        ]
+        if not match["matched_paths"] and not informative_tokens:
+            continue
+        filtered = dict(match)
+        filtered["informative_matched_tokens"] = informative_tokens
+        filtered_matches.append(filtered)
+
+    for match in filtered_matches:
         lesson = lessons_by_id[match["lesson_id"]]
         if lesson["source_type"] == "success_pattern":
             success_patterns.append(
@@ -44,7 +63,7 @@ def build_pre_change_risk_profile(
                     "lesson_id": lesson["lesson_id"],
                     "source_ref": lesson["source_ref"],
                     "matched_paths": match["matched_paths"],
-                    "matched_tokens": match["matched_tokens"],
+                    "matched_tokens": match["informative_matched_tokens"],
                     "successful_strategy": lesson["fix"],
                     "verification": lesson["verification"],
                     "reuse_rule": lesson["regression_protection"],
@@ -112,7 +131,7 @@ def build_pre_change_risk_profile(
         "change_summary": change_summary,
         "historical_signal_state": gate,
         "verified_lessons_considered": retrieval["verified_lessons_considered"],
-        "matched_verified_lessons": len(retrieval["relevant_lessons"]),
+        "matched_verified_lessons": len(filtered_matches),
         "historical_failure_classes": historical_failure_classes,
         "successful_patterns": success_patterns,
         "prevention_checklist": prevention_checklist,
