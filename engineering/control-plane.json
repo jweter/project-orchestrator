@@ -22,7 +22,8 @@
     "engineering/regression-prevention.json",
     "engineering/throughput-optimizer.json",
     "docs/AUTONOMOUS_ENGINEERING_AGENT.md",
-    "engineering/learning-effectiveness.json"
+    "engineering/learning-effectiveness.json",
+    "engineering/scheduler-run-report.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -54,7 +55,8 @@
     "relevant_verified_learning_is_retrieved_before_editing_known_areas",
     "branch_cleanup_is_destructive_and_requires_complete_live_disposition_evidence",
     "self_improvement_requires_verified_recurring_friction_and_normal_promotion_gates",
-    "verified_success_patterns_and_learning_effectiveness_are_first_class_evidence"
+    "verified_success_patterns_and_learning_effectiveness_are_first_class_evidence",
+    "scheduler_reports_product_advancement_rate_and_learning_evolution_from_explicit_evidence"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -385,7 +387,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "operationalize_learning_effectiveness_and_product_execution",
+    "current_build_gate": "scheduler_executive_reporting_and_product_closed_loop_execution",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -522,5 +524,16 @@
       "count_unverified_reuse",
       "persist_secrets_or_private_product_reality"
     ]
+  },
+  "scheduler_executive_reporting": {
+    "schema_version": 1,
+    "contract": "engineering/scheduler-run-report.json",
+    "module": "project_orchestrator.scheduler_report",
+    "cli": "project-orchestrator scheduler-run-report",
+    "target_product_advancement_rate": 1,
+    "target_preventable_repeat_failure_rate": 0,
+    "jeremy_help_required_even_when_nonblocking": true,
+    "rule": "report executive KPIs from explicit run evidence; orchestrator-only work cannot satisfy product throughput; eligible non-advanced projects require reason plus exact next gate",
+    "unknown_policy": "UNKNOWN is preferred to invented evidence"
   }
 }
