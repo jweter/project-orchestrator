@@ -98,3 +98,15 @@ def test_no_history_remains_explicitly_unknown_not_low_risk():
     assert result["historical_signal_state"] == "NO_RELEVANT_VERIFIED_HISTORY"
     assert result["risk_probability"] == "UNKNOWN"
     assert result["prevention_checklist"] == []
+
+
+def test_generic_same_repository_path_tokens_do_not_create_false_risk():
+    result = build_pre_change_risk_profile(
+        memory(),
+        repository="jweter/Project-Everward",
+        changed_paths=["src/simulation/new_unrelated_feature.cpp"],
+        change_summary="unrelated subsystem",
+    )
+    assert result["historical_signal_state"] == "NO_RELEVANT_VERIFIED_HISTORY"
+    assert result["historical_failure_classes"] == []
+    assert result["successful_patterns"] == []
