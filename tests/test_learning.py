@@ -65,3 +65,8 @@ def test_memory_rejects_duplicate_ids() -> None:
                 "entries": [normalized, normalized],
             }
         )
+
+
+def test_verified_success_pattern_is_allowed() -> None:
+    result = validate_lesson(lesson(source_type="success_pattern"))
+    assert result["source_type"] == "success_pattern"
