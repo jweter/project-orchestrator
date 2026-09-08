@@ -20,7 +20,8 @@
     "engineering/specialist-lanes.json",
     "engineering/work-decomposition.json",
     "engineering/regression-prevention.json",
-    "engineering/throughput-optimizer.json"
+    "engineering/throughput-optimizer.json",
+    "docs/AUTONOMOUS_ENGINEERING_AGENT.md"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -47,7 +48,8 @@
     "product_reality_blocks_only_dependent_lanes",
     "product_projects_cannot_be_parked_while_parallel_safe_work_exists",
     "rocksmith_continues_parallel_safe_development_while_product_reality_waits",
-    "everward_continues_parallel_safe_development_while_unreal_product_reality_waits"
+    "everward_continues_parallel_safe_development_while_unreal_product_reality_waits",
+    "ordinary_governed_work_branches_before_first_mutation"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -366,5 +368,37 @@
     "automatic_execution": false,
     "merge_authority": false,
     "exponential_claim_policy": "forbidden without sustained comparable evidence"
+  },
+  "autonomous_engineering_agent": {
+    "doctrine": "docs/AUTONOMOUS_ENGINEERING_AGENT.md",
+    "loop": [
+      "SENSE",
+      "REMEMBER",
+      "DECIDE",
+      "ACT",
+      "VERIFY",
+      "LEARN",
+      "ADAPT"
+    ],
+    "current_build_gate": "branch_reconciliation_and_modernization",
+    "sequence": [
+      "branch_reconciliation_and_modernization",
+      "exact_head_executable_preflight_everywhere",
+      "area_specific_learning_retrieval_before_edits",
+      "branch_lifecycle_manager",
+      "measured_self_improvement_proposals"
+    ],
+    "target_preventable_repeat_failure_rate": 0,
+    "branch_reconciliation": {
+      "module": "project_orchestrator.branch_reconciliation",
+      "cli": "project-orchestrator branch-reconcile-plan",
+      "mode": "decision_only_fail_closed",
+      "forbidden": [
+        "rewrite_published_history_to_manufacture_pr",
+        "delete_uncertain_branch",
+        "assume_stale_work_is_authorized",
+        "claim_preflight_without_exact_head_evidence"
+      ]
+    }
   }
 }
