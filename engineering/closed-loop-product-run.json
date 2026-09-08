@@ -24,7 +24,8 @@
     "LEARN and ADAPT must explicitly close or be NOT_APPLICABLE",
     "UNKNOWN never counts as completion",
     "Product Reality is lane-scoped and never inferred",
-    "orchestrator-only work does not count as product advancement"
+    "orchestrator-only work does not count as product advancement",
+    "material advancement requires explicit execution_evidence_ref and verification_evidence_ref bound to real product work"
   ],
   "pre_change_risk": {
     "allowed_states": [
@@ -33,5 +34,14 @@
     ],
     "evidence_required": true,
     "rule": "risk profile is created after scope is known and before ACT; no-history is explicit evidence, not a low-risk claim"
+  },
+  "execution_evidence": {
+    "required_for_advancement": true,
+    "rule": "ACT/VERIFY stage labels are not sufficient; advancement must cite the concrete product commit/branch/PR and its exact-head verification evidence",
+    "forbidden": [
+      "narrative-only advancement",
+      "orchestrator-only commit counted as product execution",
+      "verification claim without concrete evidence ref"
+    ]
   }
 }
