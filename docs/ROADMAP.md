@@ -25,13 +25,13 @@
 - [x] Predictive work decomposition
 - [x] Automatic regression prevention from repair memory
 - [x] Portfolio throughput optimizer using measured evidence
-- [ ] Corrected evidence re-collection and scheduler-facing run report artifact — current gate
+- [ ] Corrected evidence re-collection and scheduler-facing executive run report artifact — implementation active
 - [x] Autonomous branch reconciliation and modernization
 - [x] Exact-head executable preflight coverage across every product repository
 - [x] Area-specific learning retrieval before edits
 - [x] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup
 - [x] Measured self-improvement proposals from recurring orchestration friction
-- [ ] Success-pattern memory + verified learning-effectiveness measurement — implementation active
+- [x] Success-pattern memory + verified learning-effectiveness measurement
 - [ ] Exercise the full learning loop on product work and measure outcomes
 - [ ] Product Reality debt aggregation without payload leakage
 
