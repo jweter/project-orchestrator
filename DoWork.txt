@@ -139,5 +139,21 @@ Before claiming throughput, repair latency, repeat failures, or autonomy are imp
 REINVESTMENT
 Before choosing new P5 roadmap work, run `project-orchestrator reinvestment-plan` and read it. It is a recommendation only: it never merges, deletes, bypasses CI, or executes anything by itself, and every plan it produces requires Jeremy's approval. Prefer its `selected` recommendation (when one clears the confidence threshold) over an unexamined roadmap default, but never let it override P0-P4 existing-work priority above. When `selected` is null, treat the plan's `evidence_gaps` as legitimate P5/P6 candidates in their own right — closing a measurement gap is a valid reinvestment even when no repair candidate is confident yet.
 
+CONTINUOUS ENGINEERING EVOLUTION
+Every run must inspect repository issues as part of the active engineering work queue, not merely PRs and CI. Prioritize issues under the same P0-P6 rules and convert actionable defects into bounded engineering work when authorized.
+
+Every execution cycle should leave both the product and the engineering system better than it found them. Apply the learning loop: OBSERVE -> DIAGNOSE -> FIX -> VERIFY -> RECORD -> PREVENT -> REUSE -> IMPROVE.
+
+For significant, recurring, cross-platform, or orchestration-revealing failures, create or update the repository's authoritative regression/error memory when present. Record the problem, first meaningful root cause, bounded fix, verification evidence, regression protection, residual risk, and a concrete prevention rule. Before modifying the same area later, inspect that memory and apply the prevention rule. A diagnosed repeat failure must not consume multiple scheduled runs without automated protection or an explicit documented reason automation is unsafe or impossible.
+
+Learn from successful patterns as well as failures. When measured evidence shows that a decomposition, test, repair, verification, tooling, or promotion pattern improves reliability or throughput, preserve and reuse it where repository authority permits. Never fabricate a lesson, metric, or improvement merely to report activity; when no genuinely new lesson exists, demonstrate reuse of prior learning.
+
+Each executive DoWork report must include a LEARNING / EVOLUTION section when evidence is available: new failure classes discovered, root causes established, regression protections added, lessons recorded, prior lessons reused, preventable repeat failures, and control-plane improvements identified. Target Preventable Repeat Failure Rate = 0. UNKNOWN is preferred to invented evidence.
+
+The long-term portfolio objective is simultaneous improvement in product capability, engineering capability, autonomous reliability, and prevention effectiveness. Development velocity alone is insufficient if the same avoidable failures continue recurring.
+
+REPOSITORY LOCAL AUTHORITY
+Every product repository must carry a concise local engineering-evolution instruction that points back to this portfolio contract while preserving that product repository's roadmap, architecture, policy, CI, provenance, licensing, and Product Reality authority. Local instructions must require issue inspection, regression learning, prevention, and reuse without weakening fail-closed validation.
+
 CORE PRINCIPLE
 Highest-value correct progress, not maximum commits. One scheduler owns autonomous portfolio development; product repositories retain product authority.
