@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "artifact": "scheduler-executive-run-report",
+  "cli": "project-orchestrator scheduler-run-report",
+  "canonical_inventory": {
+    "independent_product_projects": 3,
+    "product_repositories": 5
+  },
+  "required_kpis": [
+    "independent_projects_inspected",
+    "product_repositories_inspected",
+    "eligible_projects",
+    "projects_materially_advanced",
+    "product_advancement_rate",
+    "throughput_floor_met",
+    "preventable_repeat_failure_target"
+  ],
+  "required_sections": [
+    "projects",
+    "results",
+    "project_orchestrator",
+    "learning_evolution",
+    "jeremy_can_help",
+    "management_bottom_line"
+  ],
+  "product_advancement_rate": {
+    "definition": "eligible independent product projects materially advanced divided by independent product projects explicitly proven ELIGIBLE in the run",
+    "target": 1.0,
+    "unknown_policy": "do not include UNKNOWN or NO_SAFE_ELIGIBLE_WORK projects in the denominator"
+  },
+  "learning_evolution": {
+    "preventable_repeat_failure_target": 0,
+    "unknown_policy": "UNKNOWN is preferred to invented evidence",
+    "learning_effectiveness_source": "engineering/learning-effectiveness.json"
+  },
+  "rules": [
+    "orchestrator-only work never counts as product advancement",
+    "eligible projects without advancement require a concrete reason and exact next gate",
+    "Product Reality is never inferred",
+    "Jeremy-help opportunities are reported even when they are not blockers",
+    "executive status must reflect missed repository inspection or throughput-floor violations"
+  ]
+}

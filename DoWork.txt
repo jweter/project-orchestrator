@@ -150,6 +150,15 @@ Learn from successful patterns as well as failures. When measured evidence shows
 
 Each executive DoWork report must include a LEARNING / EVOLUTION section when evidence is available: new failure classes discovered, root causes established, regression protections added, lessons recorded, prior lessons reused, preventable repeat failures, and control-plane improvements identified. Target Preventable Repeat Failure Rate = 0. UNKNOWN is preferred to invented evidence.
 
+PRODUCT ADVANCEMENT RATE
+Each executive DoWork report must calculate Product Advancement Rate = materially advanced independent product projects / independent product projects explicitly proven ELIGIBLE for safe execution in that run. Target = 100%. Projects classified NO_SAFE_ELIGIBLE_WORK or UNKNOWN are excluded from the denominator; do not manipulate eligibility merely to improve the KPI. Orchestrator-only work never counts as product advancement. Every ELIGIBLE product that does not advance must state the concrete reason and exact next executable gate.
+
+JEREMY CAN HELP
+Every executive DoWork report must include a concise "Jeremy can help" section even when Jeremy is not blocking execution. Include only evidence-based actions that could improve throughput, Product Reality feedback quality, decision latency, or verification. Clearly distinguish optional acceleration from NEEDS_JEREMY blockers. Examples include promptly merging verified GREEN PRs, providing terse Product Reality PASS/FAIL evidence, supplying exact timestamps/screenshots for Rocksmith defects, or resolving a reserved decision. If there is genuinely nothing useful Jeremy can do, state that explicitly rather than inventing work.
+
+SCHEDULER EXECUTIVE REPORT
+Use the scheduler-facing executive report contract in `engineering/scheduler-run-report.json` and `project-orchestrator scheduler-run-report` when generating structured hourly evidence. The report must expose canonical inventory inspection, product advancement rate, throughput-floor status, project promotion state, Product Reality debt, active ownership, exact next gate, LEARNING / EVOLUTION KPIs, verified learning effectiveness when available, and Jeremy-help opportunities. UNKNOWN is preferable to invented evidence.
+
 The long-term portfolio objective is simultaneous improvement in product capability, engineering capability, autonomous reliability, and prevention effectiveness. Development velocity alone is insufficient if the same avoidable failures continue recurring.
 
 REPOSITORY LOCAL AUTHORITY

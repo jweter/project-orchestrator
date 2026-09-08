@@ -66,8 +66,9 @@ implementation:
   area_specific_learning_retrieval: implemented_verified
   branch_lifecycle_manager: implemented_verified
   measured_self_improvement_proposals: implemented_verified
-  success_pattern_memory: implementation_active
-  learning_effectiveness_measurement: implementation_active
+  success_pattern_memory: implemented_verified
+  learning_effectiveness_measurement: implemented_verified
+  scheduler_executive_run_report: implementation_active
 readiness:
   implementation: "PARTIAL"
   automated_verification: "IMPLEMENTED"
@@ -76,4 +77,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Verify success-pattern memory and learning-effectiveness measurement, then re-collect corrected portfolio evidence and exercise the full learning loop on concurrent product work with scheduler-facing KPI reporting."
+next_gate: "Verify scheduler-facing executive KPI reporting, re-collect corrected portfolio evidence, then exercise the full learning loop on Knowledge Engine, Rocksmith, and Everward with measured outcomes."
