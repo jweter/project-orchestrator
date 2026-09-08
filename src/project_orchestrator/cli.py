@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .branch_reconciliation import build_reconciliation_plan
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
 from .evidence_collector import COLLECTIBLE_REPOSITORIES, collect_portfolio_windows
@@ -197,6 +198,12 @@ def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
     print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
     return 0
 
+def branch_reconcile_plan(evidence_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    print(json.dumps(build_reconciliation_plan(evidence), indent=2, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -260,6 +267,8 @@ def main() -> int:
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
+    reconcile_parser = sub.add_parser("branch-reconcile-plan")
+    reconcile_parser.add_argument("evidence", type=Path)
     decompose_parser=sub.add_parser("decompose-work")
     decompose_parser.add_argument("item",type=Path)
     decompose_parser.add_argument("--snapshot",type=Path,default=None)
@@ -303,6 +312,8 @@ def main() -> int:
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
+    if args.command == "branch-reconcile-plan":
+        return branch_reconcile_plan(args.evidence)
     if args.command == "decompose-work":
         return work_decompose(args.item,args.snapshot)
     raise AssertionError("unreachable")

@@ -155,5 +155,7 @@ The long-term portfolio objective is simultaneous improvement in product capabil
 REPOSITORY LOCAL AUTHORITY
 Every product repository must carry a concise local engineering-evolution instruction that points back to this portfolio contract while preserving that product repository's roadmap, architecture, policy, CI, provenance, licensing, and Product Reality authority. Local instructions must require issue inspection, regression learning, prevention, and reuse without weakening fail-closed validation.
 
-CORE PRINCIPLE
+DEFAULT-BRANCH WRITE GUARD
+Ordinary governed engineering work MUST establish its feature/repair branch and promotion path before the first repository mutation. Do not write ordinary development, repair, documentation, governance, or learning-memory changes directly to the default branch merely because the connector permits it. Direct default-branch writes are allowed only when repository authority explicitly defines that mutation as an approved direct-write operation. Otherwise: resolve the live default head -> create/reuse the authorized branch -> mutate that branch -> verify exact head -> promote through preflight/PR/CI. If an accidental safe direct-to-default write occurs, do not rewrite published history merely to manufacture a PR; record the governance failure, preserve the safe commit, add prevention, and continue through the correct branch-first path for subsequent work.
+
 Highest-value correct progress, not maximum commits. One scheduler owns autonomous portfolio development; product repositories retain product authority.
