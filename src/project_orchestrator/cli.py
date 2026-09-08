@@ -18,6 +18,7 @@ from .reinvestment import plan_from_store
 from .regression_prevention import build_prevention_plan
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
 from .self_improvement import build_self_improvement_proposals
+from .scheduler_report import build_scheduler_executive_report
 from .specialist_lanes import build_lane_plan, validate_lane_result
 from .work_decomposition import decompose_work_item
 from .required_checks import resolve_required_checks
@@ -220,6 +221,24 @@ def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
     print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
     return 0
 
+def scheduler_run_report(evidence_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    memory = load_memory(DEFAULT_LEARNING_MEMORY)
+    effectiveness_store = load_learning_effectiveness_store(DEFAULT_LEARNING_EFFECTIVENESS, memory)
+    effectiveness = build_report(effectiveness_store, memory)
+    print(json.dumps(build_scheduler_executive_report(
+        project_evidence=evidence["projects"],
+        results=evidence["results"],
+        project_orchestrator=evidence["project_orchestrator"],
+        product_repositories_inspected=evidence["product_repositories_inspected"],
+        learning_evolution=evidence.get("learning_evolution"),
+        learning_effectiveness=effectiveness.get("learning_effectiveness_rate"),
+        jeremy_can_help=evidence.get("jeremy_can_help"),
+        generated_at=evidence.get("generated_at"),
+    ), indent=2, sort_keys=True))
+    return 0
+
+
 def self_improvement_plan(events_path: Path, minimum_recurrence: int) -> int:
     events = json.loads(events_path.read_text(encoding="utf-8"))
     memory = load_memory(DEFAULT_LEARNING_MEMORY)
@@ -324,6 +343,8 @@ def main() -> int:
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
+    scheduler_report_parser = sub.add_parser("scheduler-run-report")
+    scheduler_report_parser.add_argument("evidence", type=Path)
     self_parser = sub.add_parser("self-improvement-plan")
     self_parser.add_argument("events", type=Path)
     self_parser.add_argument("--minimum-recurrence", type=int, default=2)
@@ -384,6 +405,8 @@ def main() -> int:
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
+    if args.command == "scheduler-run-report":
+        return scheduler_run_report(args.evidence)
     if args.command == "self-improvement-plan":
         return self_improvement_plan(args.events, args.minimum_recurrence)
     if args.command == "branch-lifecycle":
