@@ -51,7 +51,8 @@
     "everward_continues_parallel_safe_development_while_unreal_product_reality_waits",
     "ordinary_governed_work_branches_before_first_mutation",
     "relevant_verified_learning_is_retrieved_before_editing_known_areas",
-    "branch_cleanup_is_destructive_and_requires_complete_live_disposition_evidence"
+    "branch_cleanup_is_destructive_and_requires_complete_live_disposition_evidence",
+    "self_improvement_requires_verified_recurring_friction_and_normal_promotion_gates"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -382,7 +383,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "branch_lifecycle_manager",
+    "current_build_gate": "measured_self_improvement_proposals",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -459,6 +460,38 @@
       "delete_unique_unmerged_work",
       "delete_uncertain_disposition",
       "treat_stale_as_disposable_without_compare_evidence"
+    ]
+  },
+  "measured_self_improvement": {
+    "schema_version": 1,
+    "module": "project_orchestrator.self_improvement",
+    "cli": "project-orchestrator self-improvement-plan",
+    "minimum_verified_recurrence": 2,
+    "execution_authority": "proposal_only",
+    "inputs": [
+      "verified friction events",
+      "verified learning memory",
+      "measured compounding evidence"
+    ],
+    "required_output": [
+      "observed bottleneck",
+      "evidence refs",
+      "proposed mechanism",
+      "verification plan",
+      "capability unlock",
+      "safety boundaries"
+    ],
+    "unknown_policy": "predicted ROI, time saved, and success probability remain UNKNOWN unless independently measured",
+    "implementation_rule": "authorized reversible improvements still require branch -> exact-head preflight -> PR -> fresh CI",
+    "forbidden": [
+      "self_merge",
+      "weaken_ci",
+      "weaken_security",
+      "weaken_product_reality",
+      "invent_roi",
+      "invent_probability",
+      "override_product_repo_authority",
+      "destructive_action_from_proposal"
     ]
   }
 }

@@ -29,8 +29,8 @@
 - [x] Autonomous branch reconciliation and modernization
 - [x] Exact-head executable preflight coverage across every product repository
 - [x] Area-specific learning retrieval before edits
-- [ ] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup — implementation active
-- [ ] Measured self-improvement proposals from recurring orchestration friction
+- [x] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup
+- [ ] Measured self-improvement proposals from recurring orchestration friction — implementation active
 - [ ] Product Reality debt aggregation without payload leakage
 
 ## v1 completion criterion
