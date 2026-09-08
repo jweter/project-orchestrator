@@ -23,7 +23,8 @@
     "engineering/throughput-optimizer.json",
     "docs/AUTONOMOUS_ENGINEERING_AGENT.md",
     "engineering/learning-effectiveness.json",
-    "engineering/scheduler-run-report.json"
+    "engineering/scheduler-run-report.json",
+    "engineering/product-reality-debt.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -56,7 +57,8 @@
     "branch_cleanup_is_destructive_and_requires_complete_live_disposition_evidence",
     "self_improvement_requires_verified_recurring_friction_and_normal_promotion_gates",
     "verified_success_patterns_and_learning_effectiveness_are_first_class_evidence",
-    "scheduler_reports_product_advancement_rate_and_learning_evolution_from_explicit_evidence"
+    "scheduler_reports_product_advancement_rate_and_learning_evolution_from_explicit_evidence",
+    "product_reality_debt_is_visible_sanitized_and_lane_scoped"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -387,7 +389,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "scheduler_executive_reporting_and_product_closed_loop_execution",
+    "current_build_gate": "closed_loop_product_execution_with_current_evidence",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -535,5 +537,26 @@
     "jeremy_help_required_even_when_nonblocking": true,
     "rule": "report executive KPIs from explicit run evidence; orchestrator-only work cannot satisfy product throughput; eligible non-advanced projects require reason plus exact next gate",
     "unknown_policy": "UNKNOWN is preferred to invented evidence"
+  },
+  "product_reality_debt": {
+    "schema_version": 1,
+    "contract": "engineering/product-reality-debt.json",
+    "module": "project_orchestrator.product_reality",
+    "cli": "project-orchestrator product-reality-report",
+    "storage_mode": "sanitized_metadata_only",
+    "active_states": [
+      "PENDING",
+      "FAILED"
+    ],
+    "rule": "aggregate Product Reality debt by independent product and dependency_scope; active debt blocks only dependent work",
+    "forbidden": [
+      "raw_screenshots",
+      "raw_audio",
+      "private_scores",
+      "credentials",
+      "secrets",
+      "invented_pass_fail",
+      "project_wide_freeze_from_lane_debt"
+    ]
   }
 }
