@@ -7,6 +7,7 @@ from pathlib import Path
 from .area_learning import retrieve_learning
 from .branch_lifecycle import classify_portfolio_branches
 from .branch_reconciliation import build_reconciliation_plan
+from .closed_loop import validate_closed_loop_run
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
 from .evidence_collector import COLLECTIBLE_REPOSITORIES, collect_portfolio_windows
@@ -222,6 +223,12 @@ def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
     print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
     return 0
 
+def closed_loop_report(evidence_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    print(json.dumps(validate_closed_loop_run(evidence), indent=2, sort_keys=True))
+    return 0
+
+
 def product_reality_report(evidence_path: Path) -> int:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     print(json.dumps(aggregate_product_reality_debt(evidence), indent=2, sort_keys=True))
@@ -350,6 +357,8 @@ def main() -> int:
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
+    closed_loop_parser = sub.add_parser("closed-loop-report")
+    closed_loop_parser.add_argument("evidence", type=Path)
     product_reality_parser = sub.add_parser("product-reality-report")
     product_reality_parser.add_argument("evidence", type=Path)
     scheduler_report_parser = sub.add_parser("scheduler-run-report")
@@ -414,6 +423,8 @@ def main() -> int:
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
+    if args.command == "closed-loop-report":
+        return closed_loop_report(args.evidence)
     if args.command == "product-reality-report":
         return product_reality_report(args.evidence)
     if args.command == "scheduler-run-report":
