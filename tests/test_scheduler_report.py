@@ -1,0 +1,115 @@
+import pytest
+
+from project_orchestrator.scheduler_report import build_scheduler_executive_report
+
+
+RESULTS = {
+    "MERGED": [],
+    "FIXED": [],
+    "NEW_PRS": [],
+    "WAITING_ON_PREFLIGHT": [],
+    "WAITING_ON_CI": [],
+    "BLOCKED": [],
+    "NEEDS_JEREMY": [],
+}
+
+
+def p(eligibility="ELIGIBLE", advancement="SUBSTANTIAL_SLICE_ADVANCED", **overrides):
+    item = {
+        "eligibility": eligibility,
+        "advancement": advancement,
+        "promotion_state": "IMPLEMENTING",
+        "implementation_verification": "targeted tests passed",
+        "active_ownership": "orchestrator",
+        "next_gate": "exact-head preflight",
+        "product_reality_debt": [],
+    }
+    item.update(overrides)
+    return item
+
+
+def base_projects():
+    return {
+        "knowledge-engine": p(),
+        "rocksmith": p(),
+        "everward": p(),
+    }
+
+
+def build(projects=None, **kwargs):
+    return build_scheduler_executive_report(
+        project_evidence=projects or base_projects(),
+        results=RESULTS,
+        project_orchestrator={"state": "GREEN", "next_gate": "product execution"},
+        product_repositories_inspected=kwargs.pop("product_repositories_inspected", 5),
+        generated_at="2026-09-08T03:00:00Z",
+        **kwargs,
+    )
+
+
+def test_all_eligible_products_advanced_is_green():
+    report = build()
+    assert report["executive_status"] == "GREEN"
+    assert report["kpis"]["product_advancement_rate"]["value"] == 1.0
+
+
+def test_partial_advancement_is_yellow_and_requires_reason():
+    projects = base_projects()
+    projects["rocksmith"] = p(advancement="NONE", no_advancement_reason="write path unavailable")
+    report = build(projects)
+    assert report["executive_status"] == "YELLOW"
+    assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(2 / 3)
+    assert report["no_advancement_reasons"]["rocksmith"] == "write path unavailable"
+
+
+def test_missing_reason_fails_closed():
+    projects = base_projects()
+    projects["rocksmith"] = p(advancement="NONE")
+    with pytest.raises(ValueError, match="no_advancement_reason"):
+        build(projects)
+
+
+def test_no_safe_work_is_not_counted_in_denominator():
+    projects = base_projects()
+    projects["rocksmith"] = p(
+        eligibility="NO_SAFE_ELIGIBLE_WORK",
+        advancement="NONE",
+        promotion_state="NO_SAFE_ELIGIBLE_WORK",
+        reason="all roadmap candidates are dependency blocked",
+    )
+    report = build(projects)
+    rate = report["kpis"]["product_advancement_rate"]
+    assert rate["denominator"] == 2
+    assert rate["value"] == 1.0
+
+
+def test_orchestrator_only_progress_cannot_fake_product_throughput():
+    projects = {
+        name: p(advancement="NONE", no_advancement_reason="not serviced")
+        for name in ("knowledge-engine", "rocksmith", "everward")
+    }
+    report = build(projects)
+    assert report["executive_status"] == "RED"
+    assert report["kpis"]["throughput_floor_met"] is False
+
+
+def test_repository_inspection_floor_is_visible():
+    report = build(product_repositories_inspected=4)
+    assert report["executive_status"] == "RED"
+    assert report["kpis"]["product_repositories_inspected"]["status"] == "RED"
+
+
+def test_learning_effectiveness_and_jeremy_help_are_first_class():
+    report = build(
+        learning_evolution={"prior_lessons_reused": 2, "preventable_repeat_failures": 0},
+        learning_effectiveness={"status": "MEASURED", "value": 0.75},
+        jeremy_can_help=["Merge surfaced GREEN PRs promptly."],
+    )
+    assert report["learning_evolution"]["prior_lessons_reused"] == 2
+    assert report["learning_evolution"]["learning_effectiveness"]["value"] == 0.75
+    assert report["jeremy_can_help"] == ["Merge surfaced GREEN PRs promptly."]
+
+
+def test_unknown_learning_metrics_stay_unknown():
+    report = build()
+    assert report["learning_evolution"]["root_causes_established"] == "UNKNOWN"
