@@ -24,6 +24,8 @@ def project(**overrides):
         "lessons_recorded": ["lesson-2"],
         "pre_change_risk_state": "NO_RELEVANT_VERIFIED_HISTORY",
         "pre_change_risk_evidence_ref": "risk:profile",
+        "execution_evidence_ref": "commit:exact-head",
+        "verification_evidence_ref": "preflight:green",
     }
     item.update(overrides)
     return item
@@ -128,3 +130,17 @@ def test_eligible_project_requires_pre_change_risk_profile():
 def test_explicit_no_history_is_valid_pre_change_risk_evidence():
     result = validate_closed_loop_run(payload(), now=NOW)
     assert result["projects"]["everward"]["pre_change_risk_state"] == "NO_RELEVANT_VERIFIED_HISTORY"
+
+
+def test_advancement_requires_explicit_execution_reference():
+    projects = payload()["projects"]
+    projects["rocksmith"] = project(execution_evidence_ref=None)
+    with pytest.raises(ValueError, match="execution_evidence_ref"):
+        validate_closed_loop_run(payload(projects=projects), now=NOW)
+
+
+def test_advancement_requires_explicit_verification_reference():
+    projects = payload()["projects"]
+    projects["knowledge-engine"] = project(verification_evidence_ref=None)
+    with pytest.raises(ValueError, match="verification_evidence_ref"):
+        validate_closed_loop_run(payload(projects=projects), now=NOW)
