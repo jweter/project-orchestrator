@@ -26,6 +26,11 @@
 - [x] Automatic regression prevention from repair memory
 - [x] Portfolio throughput optimizer using measured evidence
 - [ ] Corrected evidence re-collection and scheduler-facing run report artifact — current gate
+- [ ] Autonomous branch reconciliation and modernization — implementation active
+- [ ] Exact-head executable preflight coverage across every product repository
+- [ ] Area-specific learning retrieval before edits
+- [ ] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup
+- [ ] Measured self-improvement proposals from recurring orchestration friction
 - [ ] Product Reality debt aggregation without payload leakage
 
 ## v1 completion criterion
