@@ -22,6 +22,8 @@ def project(**overrides):
         "stages": stages(),
         "prior_lessons_reused": ["lesson-1"],
         "lessons_recorded": ["lesson-2"],
+        "pre_change_risk_state": "NO_RELEVANT_VERIFIED_HISTORY",
+        "pre_change_risk_evidence_ref": "risk:profile",
     }
     item.update(overrides)
     return item
@@ -111,3 +113,18 @@ def test_no_safe_work_can_close_without_fake_advancement():
     projects["rocksmith"] = item
     result = validate_closed_loop_run(payload(projects=projects), now=NOW)
     assert result["kpis"]["product_advancement_rate"]["denominator"] == 2
+
+
+def test_eligible_project_requires_pre_change_risk_profile():
+    projects = payload()["projects"]
+    projects["everward"] = project(
+        pre_change_risk_state=None,
+        pre_change_risk_evidence_ref=None,
+    )
+    with pytest.raises(ValueError, match="pre_change_risk_state"):
+        validate_closed_loop_run(payload(projects=projects), now=NOW)
+
+
+def test_explicit_no_history_is_valid_pre_change_risk_evidence():
+    result = validate_closed_loop_run(payload(), now=NOW)
+    assert result["projects"]["everward"]["pre_change_risk_state"] == "NO_RELEVANT_VERIFIED_HISTORY"
