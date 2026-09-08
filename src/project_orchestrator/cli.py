@@ -14,6 +14,7 @@ from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
 from .learning_effectiveness import add_application, build_report, load_store as load_learning_effectiveness_store, write_store as write_learning_effectiveness_store
+from .product_reality import aggregate_product_reality_debt
 from .reinvestment import plan_from_store
 from .regression_prevention import build_prevention_plan
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
@@ -221,6 +222,12 @@ def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
     print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
     return 0
 
+def product_reality_report(evidence_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    print(json.dumps(aggregate_product_reality_debt(evidence), indent=2, sort_keys=True))
+    return 0
+
+
 def scheduler_run_report(evidence_path: Path) -> int:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     memory = load_memory(DEFAULT_LEARNING_MEMORY)
@@ -343,6 +350,8 @@ def main() -> int:
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
+    product_reality_parser = sub.add_parser("product-reality-report")
+    product_reality_parser.add_argument("evidence", type=Path)
     scheduler_report_parser = sub.add_parser("scheduler-run-report")
     scheduler_report_parser.add_argument("evidence", type=Path)
     self_parser = sub.add_parser("self-improvement-plan")
@@ -405,6 +414,8 @@ def main() -> int:
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
+    if args.command == "product-reality-report":
+        return product_reality_report(args.evidence)
     if args.command == "scheduler-run-report":
         return scheduler_run_report(args.evidence)
     if args.command == "self-improvement-plan":

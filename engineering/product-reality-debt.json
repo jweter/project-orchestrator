@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "artifact": "product-reality-debt",
+  "mode": "sanitized_metadata_only",
+  "active_states": ["PENDING", "FAILED"],
+  "resolved_states": ["VERIFIED", "SUPERSEDED"],
+  "rules": [
+    "never persist raw screenshots, audio, private score material, credentials, secrets, or private Product Reality payloads",
+    "Product Reality blocks only the declared dependency_scope",
+    "never infer PASS/FAIL",
+    "resolved items remain historical evidence but are not active debt"
+  ]
+}
