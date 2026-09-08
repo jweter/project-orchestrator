@@ -105,11 +105,17 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
         if advancement not in ADVANCEMENTS:
             raise ValueError(f"{project}.advancement is invalid")
 
+        execution_ref = item.get("execution_evidence_ref")
+        verification_ref = item.get("verification_evidence_ref")
         if advancement != "NONE":
             if eligibility != "ELIGIBLE":
                 raise ValueError(f"{project} advancement requires ELIGIBLE")
             if stage_result["ACT"]["state"] != "COMPLETE" or stage_result["VERIFY"]["state"] != "COMPLETE":
                 raise ValueError(f"{project} advancement requires ACT and VERIFY evidence")
+            if not isinstance(execution_ref, str) or not execution_ref.strip():
+                raise ValueError(f"{project} advancement requires execution_evidence_ref")
+            if not isinstance(verification_ref, str) or not verification_ref.strip():
+                raise ValueError(f"{project} advancement requires verification_evidence_ref")
             eligible_advanced += 1
 
         if eligibility == "ELIGIBLE" and advancement == "NONE":
@@ -140,6 +146,8 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
             "lessons_recorded": sorted(set(recorded)),
             "pre_change_risk_state": item.get("pre_change_risk_state", "NOT_APPLICABLE"),
             "pre_change_risk_evidence_ref": item.get("pre_change_risk_evidence_ref"),
+            "execution_evidence_ref": execution_ref,
+            "verification_evidence_ref": verification_ref,
         }
 
     advancement_rate = (
@@ -175,7 +183,7 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
         "rules": [
             "fresh evidence is required before trend or compounding claims",
             "ELIGIBLE projects require SENSE, REMEMBER, DECIDE, and explicit pre-change risk evidence before ACT",
-            "advancement requires ACT and VERIFY evidence",
+            "advancement requires ACT and VERIFY evidence plus explicit execution and verification refs",
             "LEARN and ADAPT must close explicitly or be NOT_APPLICABLE",
             "UNKNOWN never counts as a completed learning-loop stage",
             "Product Reality remains lane-scoped and is never inferred",
