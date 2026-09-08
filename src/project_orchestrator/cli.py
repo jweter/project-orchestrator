@@ -19,6 +19,7 @@ from .product_reality import aggregate_product_reality_debt
 from .reinvestment import plan_from_store
 from .regression_prevention import build_prevention_plan
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
+from .risk_predictor import build_pre_change_risk_profile
 from .self_improvement import build_self_improvement_proposals
 from .scheduler_report import build_scheduler_executive_report
 from .specialist_lanes import build_lane_plan, validate_lane_result
@@ -272,6 +273,18 @@ def branch_lifecycle(evidence_path: Path) -> int:
     return 0
 
 
+def pre_change_risk(repository: str, paths: list[str], summary: str, limit: int) -> int:
+    memory = load_memory(DEFAULT_LEARNING_MEMORY)
+    print(json.dumps(build_pre_change_risk_profile(
+        memory,
+        repository=repository,
+        changed_paths=paths,
+        change_summary=summary,
+        limit=limit,
+    ), indent=2, sort_keys=True))
+    return 0
+
+
 def learning_retrieve(repository: str, paths: list[str], summary: str, failure_class: str | None, limit: int) -> int:
     memory = load_memory(DEFAULT_LEARNING_MEMORY)
     print(json.dumps(retrieve_learning(
@@ -383,6 +396,11 @@ def main() -> int:
     self_parser.add_argument("--minimum-recurrence", type=int, default=2)
     lifecycle_parser = sub.add_parser("branch-lifecycle")
     lifecycle_parser.add_argument("evidence", type=Path)
+    risk_parser = sub.add_parser("pre-change-risk")
+    risk_parser.add_argument("--repository", required=True)
+    risk_parser.add_argument("--path", action="append", dest="paths", required=True)
+    risk_parser.add_argument("--summary", default="")
+    risk_parser.add_argument("--limit", type=int, default=12)
     learning_parser = sub.add_parser("learning-retrieve")
     learning_parser.add_argument("--repository", required=True)
     learning_parser.add_argument("--path", action="append", dest="paths", required=True)
@@ -450,6 +468,8 @@ def main() -> int:
         return self_improvement_plan(args.events, args.minimum_recurrence)
     if args.command == "branch-lifecycle":
         return branch_lifecycle(args.evidence)
+    if args.command == "pre-change-risk":
+        return pre_change_risk(args.repository, args.paths, args.summary, args.limit)
     if args.command == "learning-retrieve":
         return learning_retrieve(args.repository, args.paths, args.summary, args.failure_class, args.limit)
     if args.command == "branch-reconcile-plan":
