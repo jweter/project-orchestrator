@@ -50,7 +50,8 @@
     "rocksmith_continues_parallel_safe_development_while_product_reality_waits",
     "everward_continues_parallel_safe_development_while_unreal_product_reality_waits",
     "ordinary_governed_work_branches_before_first_mutation",
-    "relevant_verified_learning_is_retrieved_before_editing_known_areas"
+    "relevant_verified_learning_is_retrieved_before_editing_known_areas",
+    "branch_cleanup_is_destructive_and_requires_complete_live_disposition_evidence"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -381,7 +382,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "area_specific_learning_retrieval_before_edits",
+    "current_build_gate": "branch_lifecycle_manager",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -432,6 +433,32 @@
       "cross_pollinate_unrelated_product_lessons",
       "infer_Product_Reality",
       "invent_prevention_rules"
+    ]
+  },
+  "branch_lifecycle_manager": {
+    "schema_version": 1,
+    "module": "project_orchestrator.branch_lifecycle",
+    "cli": "project-orchestrator branch-lifecycle",
+    "classifications": [
+      "ACTIVE",
+      "PR_OWNED",
+      "ACTIVE_UNMERGED",
+      "MERGED_DISPOSABLE",
+      "STALE_VALUABLE",
+      "SUPERSEDED_OR_DISPOSABLE",
+      "RELEASE_OR_HOTFIX_REQUIRED",
+      "PRESERVED",
+      "UNCERTAIN"
+    ],
+    "deletion_rule": "delete only when complete live evidence proves no open PR, no active ownership, no release/hotfix or preservation requirement, and no unique unmerged work; default branch is never eligible",
+    "stale_value_rule": "authorized diverged unique work is queued for branch modernization rather than deleted",
+    "execution_boundary": "this slice classifies and emits deletion/recovery candidates; destructive ref deletion remains a separate connector action requiring live revalidation immediately before mutation",
+    "forbidden": [
+      "delete_default_branch",
+      "delete_open_pr_branch",
+      "delete_unique_unmerged_work",
+      "delete_uncertain_disposition",
+      "treat_stale_as_disposable_without_compare_evidence"
     ]
   }
 }
