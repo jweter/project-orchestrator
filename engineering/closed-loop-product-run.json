@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "artifact": "closed-loop-product-run",
+  "cli": "project-orchestrator closed-loop-report",
+  "required_stages": ["SENSE", "REMEMBER", "DECIDE", "ACT", "VERIFY", "LEARN", "ADAPT"],
+  "freshness": {
+    "default_max_evidence_age_seconds": 3600,
+    "rule": "stale evidence forbids trend or compounding claims"
+  },
+  "rules": [
+    "all five product repositories must be represented in the run evidence",
+    "ELIGIBLE projects require SENSE, REMEMBER, and DECIDE before execution",
+    "record prior-learning retrieval before editing known areas",
+    "material advancement requires ACT plus VERIFY evidence",
+    "LEARN and ADAPT must explicitly close or be NOT_APPLICABLE",
+    "UNKNOWN never counts as completion",
+    "Product Reality is lane-scoped and never inferred",
+    "orchestrator-only work does not count as product advancement"
+  ]
+}

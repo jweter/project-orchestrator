@@ -32,8 +32,8 @@
 - [x] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup
 - [x] Measured self-improvement proposals from recurring orchestration friction
 - [x] Success-pattern memory + verified learning-effectiveness measurement
-- [ ] Re-collect corrected current portfolio evidence
-- [ ] Exercise the full learning loop on product work and measure outcomes — current gate
+- [ ] Re-collect corrected current portfolio evidence — current operational gate
+- [ ] Exercise the full learning loop on product work and measure outcomes — current operational gate
 - [x] Product Reality debt aggregation without payload leakage
 
 ## v1 completion criterion
