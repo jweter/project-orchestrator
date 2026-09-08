@@ -13,6 +13,7 @@ from .evidence_collector import COLLECTIBLE_REPOSITORIES, collect_portfolio_wind
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
+from .learning_effectiveness import add_application, build_report, load_store as load_learning_effectiveness_store, write_store as write_learning_effectiveness_store
 from .reinvestment import plan_from_store
 from .regression_prevention import build_prevention_plan
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
@@ -33,6 +34,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INVENTORY = ROOT / "engineering" / "portfolio.json"
 DEFAULT_KE_COMPATIBILITY = ROOT / "engineering" / "knowledge-engine-compatibility.json"
 DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "learning-memory.json"
+DEFAULT_LEARNING_EFFECTIVENESS = ROOT / "engineering" / "learning-effectiveness.json"
 DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "compounding-timeseries.json"
 
 
@@ -83,6 +85,23 @@ def memory_add(lesson_path: Path) -> int:
     updated = add_lesson(memory, lesson)
     write_memory(DEFAULT_LEARNING_MEMORY, updated)
     print(f"learning memory contains {len(updated['entries'])} verified lessons")
+    return 0
+
+
+def learning_effectiveness_record(application_path: Path) -> int:
+    memory = load_memory(DEFAULT_LEARNING_MEMORY)
+    store = load_learning_effectiveness_store(DEFAULT_LEARNING_EFFECTIVENESS, memory)
+    record = json.loads(application_path.read_text(encoding="utf-8"))
+    updated = add_application(store, record, memory)
+    write_learning_effectiveness_store(DEFAULT_LEARNING_EFFECTIVENESS, updated, memory)
+    print(json.dumps(build_report(updated, memory), indent=2, sort_keys=True))
+    return 0
+
+
+def learning_effectiveness_report() -> int:
+    memory = load_memory(DEFAULT_LEARNING_MEMORY)
+    store = load_learning_effectiveness_store(DEFAULT_LEARNING_EFFECTIVENESS, memory)
+    print(json.dumps(build_report(store, memory), indent=2, sort_keys=True))
     return 0
 
 
@@ -257,6 +276,9 @@ def main() -> int:
         action="store_true",
         help="resolve current required CI from live branch policy and control-plane evidence",
     )
+    learning_effectiveness_record_parser = sub.add_parser("learning-effectiveness-record")
+    learning_effectiveness_record_parser.add_argument("application", type=Path)
+    sub.add_parser("learning-effectiveness-report")
     sub.add_parser("timeseries-validate")
     timeseries_record_parser = sub.add_parser("timeseries-record")
     timeseries_record_parser.add_argument("window", type=Path)
@@ -331,6 +353,10 @@ def main() -> int:
         return memory_add(args.lesson)
     if args.command == "collect":
         return collect(args.output, args.resolve_required_checks)
+    if args.command == "learning-effectiveness-record":
+        return learning_effectiveness_record(args.application)
+    if args.command == "learning-effectiveness-report":
+        return learning_effectiveness_report()
     if args.command == "timeseries-validate":
         return timeseries_validate()
     if args.command == "timeseries-record":
