@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+from pathlib import Path
+import subprocess
+from typing import Any, Protocol
 
 _REQUIRED = {"repository", "default_branch", "default_head_sha", "branch", "branch_head_sha", "ahead_by", "behind_by", "changed_files"}
 
@@ -128,4 +131,178 @@ def build_reconciliation_plan(evidence: dict[str, Any]) -> dict[str, Any]:
             "existing open PR ownership outranks branch modernization",
             "Product Reality blocks only work that depends on that result",
         ],
+    }
+
+
+class CommandRunner(Protocol):
+    def __call__(self, command: list[str], cwd: Path) -> "CommandResult": ...
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+
+
+def _subprocess_runner(command: list[str], cwd: Path) -> CommandResult:
+    completed = subprocess.run(
+        command,
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return CommandResult(completed.returncode, completed.stdout, completed.stderr)
+
+
+def _command_list(value: Any, field: str) -> list[list[str]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list of argv lists")
+    commands: list[list[str]] = []
+    for command in value:
+        if not isinstance(command, list) or not command or not all(
+            isinstance(part, str) and part for part in command
+        ):
+            raise ValueError(f"{field} must contain non-empty argv lists")
+        commands.append(command)
+    return commands
+
+
+def execute_reconciliation(
+    evidence: dict[str, Any],
+    *,
+    repo_root: Path,
+    modernization_branch: str,
+    unique_commits: list[str],
+    format_commands: list[list[str]] | None = None,
+    targeted_test_commands: list[list[str]] | None = None,
+    preflight_command: list[str] | None = None,
+    runner: CommandRunner = _subprocess_runner,
+) -> dict[str, Any]:
+    """Modernize authorized stale work onto exact current default, fail closed.
+
+    Execution is intentionally local and non-destructive: it creates a new
+    branch, never rewrites the stale source branch, never force-pushes, never
+    deletes refs, and never opens or merges a PR. Promotion remains gated on
+    exact-head GREEN preflight plus fresh independent PR CI.
+    """
+    plan = build_reconciliation_plan(evidence)
+    if not plan["modernization_ready"]:
+        raise ValueError("branch is not authorized and ready for modernization")
+    if not isinstance(repo_root, Path):
+        repo_root = Path(repo_root)
+    if not modernization_branch or modernization_branch in {
+        plan["branch"],
+        plan["default_branch"],
+    }:
+        raise ValueError("modernization_branch must be a new non-default branch")
+    if not unique_commits:
+        raise ValueError("unique_commits must contain the still-authorized commits to replay")
+    for sha in unique_commits:
+        _validate_sha(sha, "unique_commit")
+    formats = _command_list(format_commands, "format_commands")
+    targeted = _command_list(targeted_test_commands, "targeted_test_commands")
+    preflight = preflight_command or ["python", "engineering/preflight.py"]
+    if not isinstance(preflight, list) or not preflight or not all(
+        isinstance(part, str) and part for part in preflight
+    ):
+        raise ValueError("preflight_command must be a non-empty argv list")
+
+    transcript: list[dict[str, Any]] = []
+
+    def run(command: list[str], stage: str) -> CommandResult:
+        result = runner(command, repo_root)
+        transcript.append(
+            {
+                "stage": stage,
+                "command": command,
+                "returncode": result.returncode,
+            }
+        )
+        return result
+
+    clean = run(["git", "status", "--porcelain"], "clean_worktree")
+    if clean.returncode != 0 or clean.stdout.strip():
+        return _execution_result(plan, modernization_branch, transcript, "BLOCKED", "working tree is not clean")
+
+    live_default = run(
+        ["git", "rev-parse", plan["default_branch"]], "verify_default_head"
+    )
+    if live_default.returncode != 0 or live_default.stdout.strip() != plan["default_head_sha"]:
+        return _execution_result(
+            plan,
+            modernization_branch,
+            transcript,
+            "STALE",
+            "live default head no longer matches reconciliation evidence",
+        )
+
+    created = run(
+        ["git", "switch", "-c", modernization_branch, plan["default_head_sha"]],
+        "create_modernization_branch",
+    )
+    if created.returncode != 0:
+        return _execution_result(plan, modernization_branch, transcript, "FAILED", "could not create modernization branch")
+
+    for sha in unique_commits:
+        replay = run(["git", "cherry-pick", sha], "replay_authorized_commit")
+        if replay.returncode != 0:
+            run(["git", "cherry-pick", "--abort"], "abort_conflicted_replay")
+            return _execution_result(
+                plan,
+                modernization_branch,
+                transcript,
+                "CONFLICTED",
+                f"authorized commit {sha} did not replay cleanly",
+            )
+
+    for command in formats:
+        result = run(command, "format")
+        if result.returncode != 0:
+            return _execution_result(plan, modernization_branch, transcript, "FAILED", "repository-approved formatting failed")
+
+    for command in targeted:
+        result = run(command, "targeted_test")
+        if result.returncode != 0:
+            return _execution_result(plan, modernization_branch, transcript, "FAILED", "targeted verification failed")
+
+    verified = run(preflight, "full_preflight")
+    if verified.returncode != 0:
+        return _execution_result(plan, modernization_branch, transcript, "PREFLIGHT_FAILED", "full preflight failed")
+
+    head = run(["git", "rev-parse", "HEAD"], "capture_exact_head")
+    if head.returncode != 0 or not head.stdout.strip():
+        return _execution_result(plan, modernization_branch, transcript, "FAILED", "could not capture exact verified head")
+
+    result = _execution_result(plan, modernization_branch, transcript, "PREFLIGHT_GREEN", None)
+    result["verified_head_sha"] = head.stdout.strip()
+    result["next_action"] = "PUSH_BRANCH_THEN_OPEN_READY_PR_AFTER_REMOTE_EXACT_HEAD_REVALIDATION"
+    return result
+
+
+def _execution_result(
+    plan: dict[str, Any],
+    modernization_branch: str,
+    transcript: list[dict[str, Any]],
+    state: str,
+    blocker: str | None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "repository": plan["repository"],
+        "source_branch": plan["branch"],
+        "source_head_sha": plan["branch_head_sha"],
+        "default_head_sha": plan["default_head_sha"],
+        "modernization_branch": modernization_branch,
+        "execution_state": state,
+        "blocker": blocker,
+        "transcript": transcript,
+        "source_branch_mutated": False,
+        "destructive_action_performed": False,
+        "pr_created": False,
+        "merge_performed": False,
+        "safety_boundary": "local modernization only; push/PR/merge/deletion require their normal independent gates",
     }

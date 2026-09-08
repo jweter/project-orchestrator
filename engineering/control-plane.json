@@ -405,13 +405,17 @@
     "branch_reconciliation": {
       "module": "project_orchestrator.branch_reconciliation",
       "cli": "project-orchestrator branch-reconcile-plan",
-      "mode": "decision_only_fail_closed",
+      "mode": "bounded_local_execution_fail_closed",
       "forbidden": [
         "rewrite_published_history_to_manufacture_pr",
         "delete_uncertain_branch",
         "assume_stale_work_is_authorized",
-        "claim_preflight_without_exact_head_evidence"
-      ]
+        "claim_preflight_without_exact_head_evidence",
+        "promote_reconciliation_when_worktree_dirty_or_default_head_changed",
+        "continue_after_cherry_pick_conflict",
+        "claim_green_when_preflight_failed"
+      ],
+      "execution_boundary": "fresh local modernization branch from exact verified default head; replay only explicitly authorized unique commits; repository-approved formatting/targeted tests/full preflight; never rewrites source branch, deletes refs, pushes, opens PRs, or merges"
     }
   },
   "orchestration": {

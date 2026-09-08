@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .area_learning import retrieve_learning
 from .branch_lifecycle import classify_portfolio_branches
-from .branch_reconciliation import build_reconciliation_plan
+from .branch_reconciliation import build_reconciliation_plan, execute_reconciliation
 from .closed_loop import validate_closed_loop_run
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
@@ -291,6 +291,21 @@ def branch_reconcile_plan(evidence_path: Path) -> int:
     return 0
 
 
+def branch_reconcile_execute(execution_path: Path) -> int:
+    payload = json.loads(execution_path.read_text(encoding="utf-8"))
+    result = execute_reconciliation(
+        payload["evidence"],
+        repo_root=Path(payload["repo_root"]),
+        modernization_branch=payload["modernization_branch"],
+        unique_commits=payload["unique_commits"],
+        format_commands=payload.get("format_commands"),
+        targeted_test_commands=payload.get("targeted_test_commands"),
+        preflight_command=payload.get("preflight_command"),
+    )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -376,6 +391,8 @@ def main() -> int:
     learning_parser.add_argument("--limit", type=int, default=8)
     reconcile_parser = sub.add_parser("branch-reconcile-plan")
     reconcile_parser.add_argument("evidence", type=Path)
+    reconcile_execute_parser = sub.add_parser("branch-reconcile-execute")
+    reconcile_execute_parser.add_argument("execution", type=Path)
     decompose_parser=sub.add_parser("decompose-work")
     decompose_parser.add_argument("item",type=Path)
     decompose_parser.add_argument("--snapshot",type=Path,default=None)
@@ -437,6 +454,8 @@ def main() -> int:
         return learning_retrieve(args.repository, args.paths, args.summary, args.failure_class, args.limit)
     if args.command == "branch-reconcile-plan":
         return branch_reconcile_plan(args.evidence)
+    if args.command == "branch-reconcile-execute":
+        return branch_reconcile_execute(args.execution)
     if args.command == "decompose-work":
         return work_decompose(args.item,args.snapshot)
     raise AssertionError("unreachable")
