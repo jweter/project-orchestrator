@@ -592,8 +592,10 @@
       "skip_pre_edit_learning_when_relevant",
       "count_orchestrator_only_work_as_product_advancement",
       "infer_product_reality",
-      "count_UNKNOWN_as_complete"
-    ]
+      "count_UNKNOWN_as_complete",
+      "narrative_only_advancement"
+    ],
+    "advancement_evidence_rule": "claimed product advancement requires explicit execution_evidence_ref and verification_evidence_ref; narrative stage completion is insufficient"
   },
   "pre_change_risk_predictor": {
     "schema_version": 1,
