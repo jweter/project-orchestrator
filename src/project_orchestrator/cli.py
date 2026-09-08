@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from .area_learning import retrieve_learning
+from .branch_lifecycle import classify_portfolio_branches
 from .branch_reconciliation import build_reconciliation_plan
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
@@ -199,6 +200,12 @@ def throughput_optimize(since: str | None, eligible: list[str] | None) -> int:
     print(json.dumps(optimize_throughput(snapshot,eligible_projects=eligible),indent=2,sort_keys=True))
     return 0
 
+def branch_lifecycle(evidence_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    print(json.dumps(classify_portfolio_branches(evidence), indent=2, sort_keys=True))
+    return 0
+
+
 def learning_retrieve(repository: str, paths: list[str], summary: str, failure_class: str | None, limit: int) -> int:
     memory = load_memory(DEFAULT_LEARNING_MEMORY)
     print(json.dumps(retrieve_learning(
@@ -281,6 +288,8 @@ def main() -> int:
     prevention_parser=sub.add_parser("regression-prevention")
     prevention_parser.add_argument("--events",type=Path,required=True)
     prevention_parser.add_argument("--policies",type=Path,required=True)
+    lifecycle_parser = sub.add_parser("branch-lifecycle")
+    lifecycle_parser.add_argument("evidence", type=Path)
     learning_parser = sub.add_parser("learning-retrieve")
     learning_parser.add_argument("--repository", required=True)
     learning_parser.add_argument("--path", action="append", dest="paths", required=True)
@@ -332,6 +341,8 @@ def main() -> int:
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
         return regression_prevention(args.events,args.policies)
+    if args.command == "branch-lifecycle":
+        return branch_lifecycle(args.evidence)
     if args.command == "learning-retrieve":
         return learning_retrieve(args.repository, args.paths, args.summary, args.failure_class, args.limit)
     if args.command == "branch-reconcile-plan":
