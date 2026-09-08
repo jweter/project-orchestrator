@@ -21,7 +21,8 @@
     "engineering/work-decomposition.json",
     "engineering/regression-prevention.json",
     "engineering/throughput-optimizer.json",
-    "docs/AUTONOMOUS_ENGINEERING_AGENT.md"
+    "docs/AUTONOMOUS_ENGINEERING_AGENT.md",
+    "engineering/learning-effectiveness.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -52,7 +53,8 @@
     "ordinary_governed_work_branches_before_first_mutation",
     "relevant_verified_learning_is_retrieved_before_editing_known_areas",
     "branch_cleanup_is_destructive_and_requires_complete_live_disposition_evidence",
-    "self_improvement_requires_verified_recurring_friction_and_normal_promotion_gates"
+    "self_improvement_requires_verified_recurring_friction_and_normal_promotion_gates",
+    "verified_success_patterns_and_learning_effectiveness_are_first_class_evidence"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -383,13 +385,15 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "measured_self_improvement_proposals",
+    "current_build_gate": "operationalize_learning_effectiveness_and_product_execution",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
       "area_specific_learning_retrieval_before_edits",
       "branch_lifecycle_manager",
-      "measured_self_improvement_proposals"
+      "measured_self_improvement_proposals",
+      "success_pattern_memory_and_learning_effectiveness",
+      "exercise_closed_loop_on_product_work_and_measure_outcomes"
     ],
     "target_preventable_repeat_failure_rate": 0,
     "branch_reconciliation": {
@@ -492,6 +496,31 @@
       "invent_probability",
       "override_product_repo_authority",
       "destructive_action_from_proposal"
+    ]
+  },
+  "learning_effectiveness": {
+    "schema_version": 1,
+    "module": "project_orchestrator.learning_effectiveness",
+    "store": "engineering/learning-effectiveness.json",
+    "record_cli": "project-orchestrator learning-effectiveness-record",
+    "report_cli": "project-orchestrator learning-effectiveness-report",
+    "success_memory_source_type": "success_pattern",
+    "outcomes": [
+      "PREVENTED_FAILURE",
+      "EARLIER_DETECTION",
+      "SHORTENED_REPAIR",
+      "SUCCESS_PATTERN_REUSED",
+      "NO_MEASURABLE_EFFECT",
+      "UNKNOWN"
+    ],
+    "rule": "record only VERIFIED evidence that a known lesson was actually applied to a later change; effectiveness requires evidence of prevention, earlier detection, shorter repair, or successful-pattern reuse",
+    "unknown_policy": "UNKNOWN and insufficient evidence must never be coerced into success",
+    "target": "increase verified effective applications while driving preventable repeat failures toward zero",
+    "forbidden": [
+      "invent_effectiveness",
+      "claim_prevention_without_verified_application",
+      "count_unverified_reuse",
+      "persist_secrets_or_private_product_reality"
     ]
   }
 }
