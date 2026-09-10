@@ -28,7 +28,8 @@
     "engineering/closed-loop-product-run.json",
     "engineering/pre-change-risk.json",
     "engineering/bottleneck-watchdog.json",
-    "engineering/bottleneck-watchdog-state.json"
+    "engineering/bottleneck-watchdog-state.json",
+    "engineering/daily-bottleneck-review.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -643,5 +644,26 @@
     "rotation_rule": "the first blocked observation parks only the dependent lane and requires servicing another eligible lane",
     "flow_time_rule": "measure only explicit observed promotion transitions; never infer missing timestamps or coerce UNKNOWN to zero",
     "authority_boundary": "watchdog is advisory/enforcement state for scheduling only; it has no merge authority and cannot override product repository gates"
+  },
+  "daily_bottleneck_review": {
+    "schema_version": 1,
+    "contract": "engineering/daily-bottleneck-review.json",
+    "module": "project_orchestrator.daily_bottleneck_review",
+    "cli": "project-orchestrator daily-bottleneck-review",
+    "cadence": "daily",
+    "scope": "previous 24 hours of verified portfolio evidence",
+    "required_sequence": [
+      "refresh evidence",
+      "summarize advancement",
+      "rank blockers",
+      "select largest blocker",
+      "root cause from first meaningful verified evidence",
+      "one bounded smallest-safe repair attempt",
+      "verify",
+      "rotate if still blocked",
+      "record verified learning and prevention"
+    ],
+    "passive_status_only_report_forbidden": true,
+    "scheduler_boundary": "daily review supplements but never replaces hourly product execution"
   }
 }
