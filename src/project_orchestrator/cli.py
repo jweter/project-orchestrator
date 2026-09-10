@@ -11,6 +11,7 @@ from .branch_reconciliation import build_reconciliation_plan, execute_reconcilia
 from .closed_loop import validate_closed_loop_run
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
+from .daily_bottleneck_review import build_daily_bottleneck_review
 from .evidence_collector import COLLECTIBLE_REPOSITORIES, collect_portfolio_windows
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
@@ -51,6 +52,19 @@ def bottleneck_watchdog(evidence_path: Path, state_path: Path | None) -> int:
     updated = apply_watchdog_run(state=state, run=evidence)
     target.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(updated, indent=2, sort_keys=True))
+    return 0
+
+
+def daily_bottleneck_review(state_path: Path, events_path: Path | None) -> int:
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    events = []
+    if events_path is not None:
+        events = json.loads(events_path.read_text(encoding="utf-8"))
+    report = build_daily_bottleneck_review(
+        watchdog_state=state,
+        observed_events=events,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
     return 0
 
 
@@ -406,6 +420,9 @@ def main() -> int:
     watchdog_parser = sub.add_parser("bottleneck-watchdog")
     watchdog_parser.add_argument("evidence", type=Path)
     watchdog_parser.add_argument("--state", type=Path, default=None)
+    daily_bottleneck_parser = sub.add_parser("daily-bottleneck-review")
+    daily_bottleneck_parser.add_argument("--state", type=Path, default=DEFAULT_BOTTLENECK_WATCHDOG_STATE)
+    daily_bottleneck_parser.add_argument("--events", type=Path, default=None)
     self_parser = sub.add_parser("self-improvement-plan")
     self_parser.add_argument("events", type=Path)
     self_parser.add_argument("--minimum-recurrence", type=int, default=2)
@@ -481,6 +498,8 @@ def main() -> int:
         return scheduler_run_report(args.evidence)
     if args.command == "bottleneck-watchdog":
         return bottleneck_watchdog(args.evidence, args.state)
+    if args.command == "daily-bottleneck-review":
+        return daily_bottleneck_review(args.state, args.events)
     if args.command == "self-improvement-plan":
         return self_improvement_plan(args.events, args.minimum_recurrence)
     if args.command == "branch-lifecycle":
