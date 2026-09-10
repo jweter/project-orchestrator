@@ -28,6 +28,20 @@
       "regression_protection": "Pre-change risk matching must ignore generic structural tokens and preserve NO_RELEVANT_VERIFIED_HISTORY when no informative area match exists.",
       "residual_risk": "New generic tokens introduced by future repository layouts may require extending the bounded generic-token set; explicit path matches remain authoritative evidence.",
       "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "c4bd76b9c34032fa6a67",
+      "project": "rocksmith",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "source_type": "product_reality",
+      "source_ref": "rocksmith-cdlc-generator#431",
+      "symptom": "Bass, Lead, and Rhythm projected the same symbolic material about 4.64 seconds late, with a later structural landmark remaining about two measures late while audio and click timing stayed correct.",
+      "root_cause": "Repeated constant-tempo phrase evidence allowed score-to-recording alignment to select a later plausible beat phase; the defect was shared phase/translation selection rather than tempo drift, audio beat-grid error, or per-arrangement mapping.",
+      "fix": "Route Guitar Pro alignment through symbolic beat-index to authoritative audio-beat phase mapping and reject the retired free-floating seconds-shift approach.",
+      "verification": "Merged PR #568 includes an early-phrase versus later-repeat regression and its inspected head completed CI, Windows Desktop, security, golden verification, control-plane, and execution-director workflows successfully.",
+      "regression_protection": "For structured Guitar Pro timing, preserve symbolic beat coordinates, include repeated-riff early-versus-late phase regression coverage, and never introduce song-specific constant offsets or another periodic onset heuristic before EOF/beat-phase parity evidence.",
+      "residual_risk": "Packaged Product Reality remains required to confirm the first entrance near 7.13 seconds, the later structural landmark near 77.8 seconds at the correct bar, and no later drift.",
+      "evidence_state": "VERIFIED"
     }
   ]
 }
