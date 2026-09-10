@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "artifact": "daily-bottleneck-review",
+  "cadence": "daily",
+  "scope": "previous 24 hours of verified portfolio evidence",
+  "sequence": [
+    "update live portfolio evidence",
+    "summarize concrete product advancement",
+    "rank active blockers from watchdog state",
+    "select the largest evidence-backed blocker",
+    "perform root-cause analysis from actual failure evidence",
+    "make one bounded smallest-safe repair attempt when authorized",
+    "verify the repair",
+    "if still blocked, park only the dependent lane and rotate to parallel-safe product work",
+    "record the lesson and prevention rule when verified"
+  ],
+  "largest_blocker_ranking": [
+    "P0-P6 priority",
+    "consecutive repeated no-advancement count",
+    "deterministic project/lane tie-break"
+  ],
+  "root_cause_rule": "Never infer root cause from a red badge or blocker label. Use the first meaningful verified failure evidence; otherwise root cause is UNKNOWN.",
+  "success_condition": "The daily review ends with either verified blocker reduction/removal or an exact next gate plus continued parallel-safe product advancement.",
+  "forbidden": [
+    "passive daily status-only reporting when repairable evidence exists",
+    "fabricated root cause",
+    "project-wide parking caused by one dependent lane",
+    "weakening CI/preflight/security/provenance/Product Reality gates",
+    "letting daily orchestrator analysis replace hourly product execution"
+  ]
+}
