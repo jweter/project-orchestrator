@@ -112,29 +112,94 @@ def test_jeremy_merge_does_not_count_as_current_run_advancement():
         )
         for name in ("knowledge-engine", "rocksmith", "everward")
     }
-    projects["everward"] = p(
-        advancement="MERGED_GREEN_PR",
-        advancement_actor="JEREMY",
-        advancement_note="Jeremy merged PR #213 before this run could claim it",
-        no_advancement_reason="the orchestrator performed no subsequent Everward advancement",
+    report = build(
+        projects,
+        external_state_changes={
+            "everward": [
+                {
+                    "advancement": "MERGED_GREEN_PR",
+                    "actor": "JEREMY",
+                    "note": "Jeremy merged PR #213 before this run could claim it",
+                }
+            ]
+        },
     )
-    report = build(projects)
     assert report["executive_status"] == "RED"
     assert report["kpis"]["projects_materially_advanced"] == 0
     assert report["kpis"]["throughput_floor_met"] is False
-    assert report["external_state_changes"]["everward"]["actor"] == "JEREMY"
+    assert report["external_state_changes"]["everward"][0]["actor"] == "JEREMY"
+
+
+def test_external_change_and_orchestrator_progress_can_coexist():
+    report = build(
+        external_state_changes={
+            "everward": [
+                {
+                    "advancement": "MERGED_GREEN_PR",
+                    "actor": "JEREMY",
+                    "note": "Jeremy merged the previous item before re-triage",
+                }
+            ]
+        }
+    )
+    assert report["kpis"]["projects_materially_advanced"] == 3
+    assert report["kpis"]["throughput_floor_met"] is True
+    assert report["external_state_changes"]["everward"][0]["actor"] == "JEREMY"
+
+
+def test_external_change_remains_visible_when_project_becomes_ineligible():
+    projects = base_projects()
+    projects["everward"] = p(
+        eligibility="NO_SAFE_ELIGIBLE_WORK",
+        advancement="NONE",
+        advancement_actor=None,
+        promotion_state="NO_SAFE_ELIGIBLE_WORK",
+        reason="all remaining candidates are dependency blocked",
+    )
+    report = build(
+        projects,
+        external_state_changes={
+            "everward": [
+                {
+                    "advancement": "MERGED_GREEN_PR",
+                    "actor": "JEREMY",
+                    "note": "Jeremy merged the last eligible item before this run",
+                }
+            ]
+        },
+    )
+    assert report["external_state_changes"]["everward"][0]["advancement"] == "MERGED_GREEN_PR"
+    assert report["kpis"]["product_advancement_rate"]["denominator"] == 2
 
 
 def test_external_ci_completion_does_not_count_as_run_advancement():
     projects = base_projects()
     projects["rocksmith"] = p(
-        advancement="PREFLIGHT_GREEN",
-        advancement_actor="EXTERNAL_AUTOMATION",
+        advancement="NONE",
+        advancement_actor=None,
         no_advancement_reason="CI completed externally; no orchestrator product action followed",
     )
-    report = build(projects)
+    report = build(
+        projects,
+        external_state_changes={
+            "rocksmith": [
+                {
+                    "advancement": "PREFLIGHT_GREEN",
+                    "actor": "EXTERNAL_AUTOMATION",
+                    "note": "external CI completed",
+                }
+            ]
+        },
+    )
     assert report["kpis"]["projects_materially_advanced"] == 2
     assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(2 / 3)
+
+
+def test_non_orchestrator_advancement_actor_fails_closed():
+    projects = base_projects()
+    projects["everward"] = p(advancement_actor="JEREMY")
+    with pytest.raises(ValueError, match="record outside actions in external_state_changes"):
+        build(projects)
 
 
 def test_unknown_advancement_actor_fails_closed():
