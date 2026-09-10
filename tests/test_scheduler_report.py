@@ -18,6 +18,7 @@ def p(eligibility="ELIGIBLE", advancement="SUBSTANTIAL_SLICE_ADVANCED", **overri
     item = {
         "eligibility": eligibility,
         "advancement": advancement,
+        "advancement_actor": "ORCHESTRATOR" if advancement != "NONE" else None,
         "promotion_state": "IMPLEMENTING",
         "implementation_verification": "targeted tests passed",
         "active_ownership": "orchestrator",
@@ -55,7 +56,11 @@ def test_all_eligible_products_advanced_is_green():
 
 def test_partial_advancement_is_yellow_and_requires_reason():
     projects = base_projects()
-    projects["rocksmith"] = p(advancement="NONE", no_advancement_reason="write path unavailable")
+    projects["rocksmith"] = p(
+        advancement="NONE",
+        advancement_actor=None,
+        no_advancement_reason="write path unavailable",
+    )
     report = build(projects)
     assert report["executive_status"] == "YELLOW"
     assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(2 / 3)
@@ -64,7 +69,7 @@ def test_partial_advancement_is_yellow_and_requires_reason():
 
 def test_missing_reason_fails_closed():
     projects = base_projects()
-    projects["rocksmith"] = p(advancement="NONE")
+    projects["rocksmith"] = p(advancement="NONE", advancement_actor=None)
     with pytest.raises(ValueError, match="no_advancement_reason"):
         build(projects)
 
@@ -74,6 +79,7 @@ def test_no_safe_work_is_not_counted_in_denominator():
     projects["rocksmith"] = p(
         eligibility="NO_SAFE_ELIGIBLE_WORK",
         advancement="NONE",
+        advancement_actor=None,
         promotion_state="NO_SAFE_ELIGIBLE_WORK",
         reason="all roadmap candidates are dependency blocked",
     )
@@ -85,12 +91,122 @@ def test_no_safe_work_is_not_counted_in_denominator():
 
 def test_orchestrator_only_progress_cannot_fake_product_throughput():
     projects = {
-        name: p(advancement="NONE", no_advancement_reason="not serviced")
+        name: p(
+            advancement="NONE",
+            advancement_actor=None,
+            no_advancement_reason="not serviced",
+        )
         for name in ("knowledge-engine", "rocksmith", "everward")
     }
     report = build(projects)
     assert report["executive_status"] == "RED"
     assert report["kpis"]["throughput_floor_met"] is False
+
+
+def test_jeremy_merge_does_not_count_as_current_run_advancement():
+    projects = {
+        name: p(
+            advancement="NONE",
+            advancement_actor=None,
+            no_advancement_reason="not serviced",
+        )
+        for name in ("knowledge-engine", "rocksmith", "everward")
+    }
+    report = build(
+        projects,
+        external_state_changes={
+            "everward": [
+                {
+                    "advancement": "MERGED_GREEN_PR",
+                    "actor": "JEREMY",
+                    "note": "Jeremy merged PR #213 before this run could claim it",
+                }
+            ]
+        },
+    )
+    assert report["executive_status"] == "RED"
+    assert report["kpis"]["projects_materially_advanced"] == 0
+    assert report["kpis"]["throughput_floor_met"] is False
+    assert report["external_state_changes"]["everward"][0]["actor"] == "JEREMY"
+
+
+def test_external_change_and_orchestrator_progress_can_coexist():
+    report = build(
+        external_state_changes={
+            "everward": [
+                {
+                    "advancement": "MERGED_GREEN_PR",
+                    "actor": "JEREMY",
+                    "note": "Jeremy merged the previous item before re-triage",
+                }
+            ]
+        }
+    )
+    assert report["kpis"]["projects_materially_advanced"] == 3
+    assert report["kpis"]["throughput_floor_met"] is True
+    assert report["external_state_changes"]["everward"][0]["actor"] == "JEREMY"
+
+
+def test_external_change_remains_visible_when_project_becomes_ineligible():
+    projects = base_projects()
+    projects["everward"] = p(
+        eligibility="NO_SAFE_ELIGIBLE_WORK",
+        advancement="NONE",
+        advancement_actor=None,
+        promotion_state="NO_SAFE_ELIGIBLE_WORK",
+        reason="all remaining candidates are dependency blocked",
+    )
+    report = build(
+        projects,
+        external_state_changes={
+            "everward": [
+                {
+                    "advancement": "MERGED_GREEN_PR",
+                    "actor": "JEREMY",
+                    "note": "Jeremy merged the last eligible item before this run",
+                }
+            ]
+        },
+    )
+    assert report["external_state_changes"]["everward"][0]["advancement"] == "MERGED_GREEN_PR"
+    assert report["kpis"]["product_advancement_rate"]["denominator"] == 2
+
+
+def test_external_ci_completion_does_not_count_as_run_advancement():
+    projects = base_projects()
+    projects["rocksmith"] = p(
+        advancement="NONE",
+        advancement_actor=None,
+        no_advancement_reason="CI completed externally; no orchestrator product action followed",
+    )
+    report = build(
+        projects,
+        external_state_changes={
+            "rocksmith": [
+                {
+                    "advancement": "PREFLIGHT_GREEN",
+                    "actor": "EXTERNAL_AUTOMATION",
+                    "note": "external CI completed",
+                }
+            ]
+        },
+    )
+    assert report["kpis"]["projects_materially_advanced"] == 2
+    assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(2 / 3)
+
+
+def test_non_orchestrator_advancement_actor_fails_closed():
+    projects = base_projects()
+    projects["everward"] = p(advancement_actor="JEREMY")
+    with pytest.raises(ValueError, match="record outside actions in external_state_changes"):
+        build(projects)
+
+
+def test_unknown_advancement_actor_fails_closed():
+    projects = base_projects()
+    projects["everward"] = p(advancement_actor="UNKNOWN")
+    with pytest.raises(ValueError, match="advancement_actor must be known"):
+        build(projects)
 
 
 def test_repository_inspection_floor_is_visible():

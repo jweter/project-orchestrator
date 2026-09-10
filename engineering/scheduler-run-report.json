@@ -19,14 +19,26 @@
     "projects",
     "results",
     "project_orchestrator",
+    "external_state_changes",
     "learning_evolution",
     "jeremy_can_help",
     "management_bottom_line"
   ],
   "product_advancement_rate": {
-    "definition": "eligible independent product projects materially advanced divided by independent product projects explicitly proven ELIGIBLE in the run",
+    "definition": "eligible independent product projects materially advanced by the current orchestrator run divided by independent product projects explicitly proven ELIGIBLE in the run",
     "target": 1.0,
     "unknown_policy": "do not include UNKNOWN or NO_SAFE_ELIGIBLE_WORK projects in the denominator"
+  },
+  "advancement_attribution": {
+    "counted_actor": "ORCHESTRATOR",
+    "external_actors": [
+      "JEREMY",
+      "EXTERNAL_AUTOMATION",
+      "OTHER"
+    ],
+    "rule": "Only concrete engineering actions actually performed by the current orchestrator run count toward projects_materially_advanced, product_advancement_rate, or throughput_floor_met.",
+    "external_rule": "Jeremy/manual merges, CI completions, bot actions, and other state changes observed during the run must be reported under external_state_changes and never claimed as this run's output.",
+    "continuation_rule": "If an external action finishes the previously highest-priority item before or during the run, re-triage immediately and continue to the next eligible product action rather than ending the run on the external completion."
   },
   "learning_evolution": {
     "preventable_repeat_failure_target": 0,
@@ -34,8 +46,10 @@
     "learning_effectiveness_source": "engineering/learning-effectiveness.json"
   },
   "rules": [
-    "orchestrator-only work never counts as product advancement",
-    "eligible projects without advancement require a concrete reason and exact next gate",
+    "orchestrator-only control-plane work never counts as product advancement",
+    "only current-run ORCHESTRATOR product actions satisfy the throughput floor",
+    "Jeremy/manual merges and external state changes are visible but do not count as current-run product advancement",
+    "eligible projects without orchestrator advancement require a concrete reason and exact next gate",
     "Product Reality is never inferred",
     "Jeremy-help opportunities are reported even when they are not blockers",
     "executive status must reflect missed repository inspection or throughput-floor violations"

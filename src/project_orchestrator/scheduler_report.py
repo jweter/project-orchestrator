@@ -12,6 +12,14 @@ ADVANCEMENTS = {
     "SUBSTANTIAL_SLICE_ADVANCED",
 }
 
+ADVANCEMENT_ACTORS = {
+    "ORCHESTRATOR",
+    "JEREMY",
+    "EXTERNAL_AUTOMATION",
+    "OTHER",
+    "UNKNOWN",
+}
+
 
 def build_scheduler_executive_report(
     *,
@@ -19,6 +27,7 @@ def build_scheduler_executive_report(
     results: dict[str, list[str]],
     project_orchestrator: dict[str, Any],
     product_repositories_inspected: int,
+    external_state_changes: dict[str, list[dict[str, str]]] | None = None,
     learning_evolution: dict[str, Any] | None = None,
     learning_effectiveness: dict[str, Any] | None = None,
     jeremy_can_help: list[str] | None = None,
@@ -26,8 +35,10 @@ def build_scheduler_executive_report(
 ) -> dict[str, Any]:
     """Build the scheduler-facing executive report from explicit run evidence.
 
-    This wraps the canonical run-report artifact with management KPIs without
-    weakening the underlying evidence contract.
+    Only work actually performed by the current orchestrator run may satisfy
+    product advancement or the throughput floor. Human merges, external CI
+    completions, and other outside state changes are supplied separately so a
+    project can record both an external event and later orchestrator progress.
     """
     if isinstance(product_repositories_inspected, bool) or not isinstance(product_repositories_inspected, int):
         raise ValueError("product_repositories_inspected must be an integer")
@@ -36,8 +47,9 @@ def build_scheduler_executive_report(
 
     canonical_projects: dict[str, dict[str, Any]] = {}
     eligible: list[str] = []
-    advanced: list[str] = []
+    orchestrator_advanced: list[str] = []
     no_advancement: dict[str, str] = {}
+    external_changes = _validate_external_state_changes(external_state_changes or {})
 
     for project in PROJECT_KEYS:
         if project not in project_evidence:
@@ -53,14 +65,31 @@ def build_scheduler_executive_report(
         if eligibility == "NO_SAFE_ELIGIBLE_WORK" and advancement != "NONE":
             raise ValueError(f"{project} cannot advance while NO_SAFE_ELIGIBLE_WORK")
 
+        actor = evidence.get("advancement_actor", "UNKNOWN" if advancement != "NONE" else None)
+        if advancement != "NONE":
+            if actor not in ADVANCEMENT_ACTORS:
+                raise ValueError(f"{project}.advancement_actor is invalid")
+            if actor == "UNKNOWN":
+                raise ValueError(
+                    f"{project}.advancement_actor must be known when advancement is claimed"
+                )
+            if actor != "ORCHESTRATOR":
+                raise ValueError(
+                    f"{project}.advancement_actor must be ORCHESTRATOR; record outside actions in external_state_changes"
+                )
+
         if eligibility == "ELIGIBLE":
             eligible.append(project)
+
         if advancement != "NONE":
-            advanced.append(project)
-        elif eligibility == "ELIGIBLE":
+            orchestrator_advanced.append(project)
+
+        if eligibility == "ELIGIBLE" and project not in orchestrator_advanced:
             reason = evidence.get("no_advancement_reason")
             if not isinstance(reason, str) or not reason.strip():
-                raise ValueError(f"{project} requires no_advancement_reason when eligible but not advanced")
+                raise ValueError(
+                    f"{project} requires no_advancement_reason when eligible but not advanced by this orchestrator run"
+                )
             no_advancement[project] = reason.strip()
 
         canonical_projects[project] = {
@@ -79,7 +108,7 @@ def build_scheduler_executive_report(
         generated_at=generated_at,
     )
 
-    eligible_advanced = [project for project in advanced if project in eligible]
+    eligible_advanced = [project for project in orchestrator_advanced if project in eligible]
     if eligible:
         advancement_rate: dict[str, Any] = {
             "status": "MEASURED",
@@ -93,7 +122,7 @@ def build_scheduler_executive_report(
             "reason": "no independent product project was proven ELIGIBLE",
         }
 
-    throughput_floor_met = bool(advanced) or not eligible
+    throughput_floor_met = bool(orchestrator_advanced) or not eligible
     learning = learning_evolution or {}
 
     kpis = {
@@ -104,7 +133,7 @@ def build_scheduler_executive_report(
             "status": "GREEN" if product_repositories_inspected == 5 else "RED",
         },
         "eligible_projects": len(eligible),
-        "projects_materially_advanced": len(advanced),
+        "projects_materially_advanced": len(orchestrator_advanced),
         "product_advancement_rate": advancement_rate,
         "throughput_floor_met": throughput_floor_met,
         "preventable_repeat_failure_target": 0,
@@ -119,6 +148,7 @@ def build_scheduler_executive_report(
         "projects": canonical["projects"],
         "results": canonical["results"],
         "project_orchestrator": canonical["project_orchestrator"],
+        "external_state_changes": external_changes,
         "no_advancement_reasons": no_advancement,
         "learning_evolution": {
             "new_failure_classes": _count_or_unknown(learning.get("new_failure_classes")),
@@ -136,10 +166,45 @@ def build_scheduler_executive_report(
             "UNKNOWN is preferred to invented evidence",
             "Product Reality is never inferred",
             "the advancement-rate denominator includes only projects explicitly proven ELIGIBLE",
-            "orchestrator-only work does not count as product advancement",
+            "only current-run ORCHESTRATOR actions count as product advancement",
+            "Jeremy/manual merges and external state changes are reported separately and never satisfy the throughput floor",
+            "a project may report external state changes and orchestrator advancement in the same run",
+            "external state changes remain reportable even when the project is NO_SAFE_ELIGIBLE_WORK after re-triage",
+            "orchestrator-only control-plane work does not count as product advancement",
             "every eligible non-advanced product must state why and identify its next gate",
         ],
     }
+
+
+def _validate_external_state_changes(
+    changes: dict[str, list[dict[str, str]]],
+) -> dict[str, list[dict[str, str]]]:
+    if not isinstance(changes, dict):
+        raise ValueError("external_state_changes must be a mapping")
+    normalized: dict[str, list[dict[str, str]]] = {}
+    for project, events in changes.items():
+        if project not in PROJECT_KEYS:
+            raise ValueError(f"external_state_changes contains unknown project: {project}")
+        if not isinstance(events, list):
+            raise ValueError(f"external_state_changes.{project} must be a list")
+        normalized_events: list[dict[str, str]] = []
+        for event in events:
+            if not isinstance(event, dict):
+                raise ValueError(f"external_state_changes.{project} entries must be mappings")
+            advancement = event.get("advancement")
+            actor = event.get("actor")
+            note = event.get("note")
+            if advancement not in ADVANCEMENTS:
+                raise ValueError(f"external_state_changes.{project}.advancement is invalid")
+            if actor not in ADVANCEMENT_ACTORS - {"ORCHESTRATOR"}:
+                raise ValueError(f"external_state_changes.{project}.actor must be external")
+            if not isinstance(note, str) or not note.strip():
+                raise ValueError(f"external_state_changes.{project}.note must be non-empty")
+            normalized_events.append(
+                {"advancement": advancement, "actor": actor, "note": note.strip()}
+            )
+        normalized[project] = normalized_events
+    return normalized
 
 
 def _count_or_unknown(value: Any) -> int | str:
@@ -167,10 +232,10 @@ def _executive_status(kpis: dict[str, Any]) -> str:
 
 def _bottom_line(kpis: dict[str, Any], no_advancement: dict[str, str]) -> str:
     if not kpis["throughput_floor_met"]:
-        return "Throughput floor missed: safe eligible product work existed but no concrete product advancement was recorded."
+        return "Throughput floor missed: safe eligible product work existed but this orchestrator run produced no concrete product advancement."
     rate = kpis["product_advancement_rate"]
     if rate.get("status") == "MEASURED" and rate.get("value") == 1.0:
-        return "All product projects proven eligible this run materially advanced."
+        return "All product projects proven eligible this run materially advanced through orchestrator-executed work."
     if no_advancement:
-        return "Portfolio advanced, but at least one eligible product did not; inspect its recorded reason and exact next gate."
+        return "Portfolio advanced, but at least one eligible product did not advance through this orchestrator run; inspect its recorded reason and exact next gate."
     return "No complete eligible-project denominator was proven; do not claim full portfolio utilization."
