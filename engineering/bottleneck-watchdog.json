@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "artifact": "bottleneck-watchdog",
+  "purpose": "Persist lane-level liveness, repeated blocker fingerprints, and observed promotion flow time without turning lane blockers into project-wide stalls.",
+  "lane_state": [
+    "project",
+    "promotion_state",
+    "next_gate",
+    "eligible",
+    "last_observed_at",
+    "last_advancement_at",
+    "blocker_fingerprint",
+    "consecutive_same_blocker_no_advancement_runs",
+    "promotion_history",
+    "flow_durations_seconds"
+  ],
+  "promotion_timestamps": [
+    "RESERVED",
+    "IMPLEMENTING",
+    "PREFLIGHT_UNVERIFIED",
+    "PREFLIGHT_GREEN",
+    "PR_OPEN",
+    "CI_PENDING",
+    "GREEN",
+    "MERGED"
+  ],
+  "rules": {
+    "same_no_advancement_fingerprint_escalates_after_runs": 2,
+    "first_blocked_run": "PARKED_FOR_RETRY lane only, then rotate to another eligible lane",
+    "second_consecutive_identical_blocker": "P1 ORCHESTRATION_DEFECT requiring changed execution strategy or control-plane/process repair",
+    "project_wide_parking": "forbidden while any parallel-safe eligible lane exists",
+    "flow_time": "measure only from explicit observed promotion transition timestamps; UNKNOWN is never coerced to zero"
+  },
+  "forbidden": [
+    "fabricating timestamps",
+    "fabricating eligibility",
+    "fabricating Product Reality",
+    "converting missing flow evidence to zero",
+    "using watchdog state as merge authority",
+    "letting orchestrator maintenance displace executable product P0-P5 work"
+  ]
+}
