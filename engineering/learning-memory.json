@@ -28,6 +28,34 @@
       "regression_protection": "Pre-change risk matching must ignore generic structural tokens and preserve NO_RELEVANT_VERIFIED_HISTORY when no informative area match exists.",
       "residual_risk": "New generic tokens introduced by future repository layouts may require extending the bounded generic-token set; explicit path matches remain authoritative evidence.",
       "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "82307517b6a84525a141",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "governance",
+      "source_ref": "DoWork runs 2026-09-07 through 2026-09-09",
+      "symptom": "Independent product projects could remain idle across scheduled runs while the orchestrator repeatedly reported the same lane blocker or Product Reality dependency.",
+      "root_cause": "Anti-stall policy existed, but repeated blocker fingerprints, last advancement time, and promotion-flow timestamps were not persisted as enforceable scheduler state.",
+      "fix": "Add a deterministic bottleneck watchdog that persists lane-level blocker fingerprints and advancement state, escalates the same eligible no-progress fingerprint after two runs to a P1 orchestration defect, and requires lane rotation.",
+      "verification": "Watchdog unit tests cover first-run rotation, second-run P1 escalation, blocker changes, advancement reset, explicit-timestamp flow duration, and fail-closed missing evidence.",
+      "regression_protection": "Every scheduled run should feed explicit lane evidence through the watchdog; a repeated identical eligible no-advancement fingerprint may not be passively reported for a third run.",
+      "residual_risk": "The watchdog can only enforce what the scheduler records; incomplete or false eligibility evidence must continue to fail closed and cannot be inferred.",
+      "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "faa0bd9dd4ac586d2166",
+      "project": "rocksmith",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "source_type": "ci_failure",
+      "source_ref": "PR #565 / Actions run 34424780074",
+      "symptom": "Required PR workflows concluded action_required before creating any jobs, so the PR could not reach GREEN and there was no failing test traceback to repair.",
+      "root_cause": "The blockage occurs before job execution in GitHub Actions; job listing returned zero jobs and a bounded failed-job rerun was rejected by GitHub with HTTP 403 because the workflow run cannot be retried.",
+      "fix": "Classify this fingerprint as a pre-job GitHub Actions/platform or approval gate, park only the dependent CI lane, and rotate to parallel-safe Rocksmith work instead of repeatedly searching for nonexistent job logs.",
+      "verification": "Live workflow-run evidence for PR #565 showed action_required across six workflows, the CI run exposed zero jobs before and after retry, and the retry request returned 403 cannot be retried.",
+      "regression_protection": "When action_required has zero jobs, do not classify it as a test failure; attempt workflow-run and job retrieval once, record the pre-job fingerprint, and continue independent product work.",
+      "residual_risk": "The connector evidence does not expose the underlying GitHub approval or policy reason, so the exact platform-side cause remains UNKNOWN until GitHub surfaces additional evidence or a human resolves the gate.",
+      "evidence_state": "VERIFIED"
     }
   ]
 }
