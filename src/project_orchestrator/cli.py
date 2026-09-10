@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .area_learning import retrieve_learning
 from .branch_lifecycle import classify_portfolio_branches
+from .bottleneck_watchdog import apply_watchdog_run
 from .branch_reconciliation import build_reconciliation_plan, execute_reconciliation
 from .closed_loop import validate_closed_loop_run
 from .compatibility import load_contract, plan_change
@@ -40,6 +41,17 @@ DEFAULT_KE_COMPATIBILITY = ROOT / "engineering" / "knowledge-engine-compatibilit
 DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "learning-memory.json"
 DEFAULT_LEARNING_EFFECTIVENESS = ROOT / "engineering" / "learning-effectiveness.json"
 DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "compounding-timeseries.json"
+DEFAULT_BOTTLENECK_WATCHDOG_STATE = ROOT / "engineering" / "bottleneck-watchdog-state.json"
+
+
+def bottleneck_watchdog(evidence_path: Path, state_path: Path | None) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    target = state_path or DEFAULT_BOTTLENECK_WATCHDOG_STATE
+    state = json.loads(target.read_text(encoding="utf-8")) if target.exists() else None
+    updated = apply_watchdog_run(state=state, run=evidence)
+    target.write_text(json.dumps(updated, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(updated, indent=2, sort_keys=True))
+    return 0
 
 
 def validate() -> int:
@@ -391,6 +403,9 @@ def main() -> int:
     product_reality_parser.add_argument("evidence", type=Path)
     scheduler_report_parser = sub.add_parser("scheduler-run-report")
     scheduler_report_parser.add_argument("evidence", type=Path)
+    watchdog_parser = sub.add_parser("bottleneck-watchdog")
+    watchdog_parser.add_argument("evidence", type=Path)
+    watchdog_parser.add_argument("--state", type=Path, default=None)
     self_parser = sub.add_parser("self-improvement-plan")
     self_parser.add_argument("events", type=Path)
     self_parser.add_argument("--minimum-recurrence", type=int, default=2)
@@ -464,6 +479,8 @@ def main() -> int:
         return product_reality_report(args.evidence)
     if args.command == "scheduler-run-report":
         return scheduler_run_report(args.evidence)
+    if args.command == "bottleneck-watchdog":
+        return bottleneck_watchdog(args.evidence, args.state)
     if args.command == "self-improvement-plan":
         return self_improvement_plan(args.events, args.minimum_recurrence)
     if args.command == "branch-lifecycle":
