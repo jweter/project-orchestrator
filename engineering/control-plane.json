@@ -26,7 +26,9 @@
     "engineering/scheduler-run-report.json",
     "engineering/product-reality-debt.json",
     "engineering/closed-loop-product-run.json",
-    "engineering/pre-change-risk.json"
+    "engineering/pre-change-risk.json",
+    "engineering/bottleneck-watchdog.json",
+    "engineering/bottleneck-watchdog-state.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -620,5 +622,26 @@
       "override_product_repo_authority"
     ],
     "implementation_state": "IMPLEMENTED_VERIFIED"
+  },
+  "bottleneck_watchdog": {
+    "schema_version": 1,
+    "contract": "engineering/bottleneck-watchdog.json",
+    "state_store": "engineering/bottleneck-watchdog-state.json",
+    "module": "project_orchestrator.bottleneck_watchdog",
+    "cli": "project-orchestrator bottleneck-watchdog",
+    "escalation_threshold_consecutive_runs": 2,
+    "tracked_lane_fields": [
+      "last_advancement_at",
+      "promotion_state",
+      "next_gate",
+      "blocker_fingerprint",
+      "consecutive_same_blocker_no_advancement_runs",
+      "promotion_history",
+      "flow_durations_seconds"
+    ],
+    "escalation_rule": "two consecutive eligible no-advancement runs with the same blocker fingerprint become a P1 orchestration defect; execution strategy/control plane must change before another passive report",
+    "rotation_rule": "the first blocked observation parks only the dependent lane and requires servicing another eligible lane",
+    "flow_time_rule": "measure only explicit observed promotion transitions; never infer missing timestamps or coerce UNKNOWN to zero",
+    "authority_boundary": "watchdog is advisory/enforcement state for scheduling only; it has no merge authority and cannot override product repository gates"
   }
 }
