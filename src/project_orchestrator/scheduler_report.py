@@ -27,6 +27,7 @@ def build_scheduler_executive_report(
     results: dict[str, list[str]],
     project_orchestrator: dict[str, Any],
     product_repositories_inspected: int,
+    external_state_changes: dict[str, list[dict[str, str]]] | None = None,
     learning_evolution: dict[str, Any] | None = None,
     learning_effectiveness: dict[str, Any] | None = None,
     jeremy_can_help: list[str] | None = None,
@@ -36,8 +37,8 @@ def build_scheduler_executive_report(
 
     Only work actually performed by the current orchestrator run may satisfy
     product advancement or the throughput floor. Human merges, external CI
-    completions, and other outside state changes remain visible but cannot be
-    claimed as this run's engineering output.
+    completions, and other outside state changes are supplied separately so a
+    project can record both an external event and later orchestrator progress.
     """
     if isinstance(product_repositories_inspected, bool) or not isinstance(product_repositories_inspected, int):
         raise ValueError("product_repositories_inspected must be an integer")
@@ -47,8 +48,8 @@ def build_scheduler_executive_report(
     canonical_projects: dict[str, dict[str, Any]] = {}
     eligible: list[str] = []
     orchestrator_advanced: list[str] = []
-    external_state_changes: dict[str, dict[str, str]] = {}
     no_advancement: dict[str, str] = {}
+    external_changes = _validate_external_state_changes(external_state_changes or {})
 
     for project in PROJECT_KEYS:
         if project not in project_evidence:
@@ -72,18 +73,16 @@ def build_scheduler_executive_report(
                 raise ValueError(
                     f"{project}.advancement_actor must be known when advancement is claimed"
                 )
+            if actor != "ORCHESTRATOR":
+                raise ValueError(
+                    f"{project}.advancement_actor must be ORCHESTRATOR; record outside actions in external_state_changes"
+                )
 
         if eligibility == "ELIGIBLE":
             eligible.append(project)
 
-        if advancement != "NONE" and actor == "ORCHESTRATOR":
+        if advancement != "NONE":
             orchestrator_advanced.append(project)
-        elif advancement != "NONE":
-            external_state_changes[project] = {
-                "advancement": advancement,
-                "actor": actor,
-                "note": evidence.get("advancement_note", "external state change observed"),
-            }
 
         if eligibility == "ELIGIBLE" and project not in orchestrator_advanced:
             reason = evidence.get("no_advancement_reason")
@@ -149,7 +148,7 @@ def build_scheduler_executive_report(
         "projects": canonical["projects"],
         "results": canonical["results"],
         "project_orchestrator": canonical["project_orchestrator"],
-        "external_state_changes": external_state_changes,
+        "external_state_changes": external_changes,
         "no_advancement_reasons": no_advancement,
         "learning_evolution": {
             "new_failure_classes": _count_or_unknown(learning.get("new_failure_classes")),
@@ -169,10 +168,43 @@ def build_scheduler_executive_report(
             "the advancement-rate denominator includes only projects explicitly proven ELIGIBLE",
             "only current-run ORCHESTRATOR actions count as product advancement",
             "Jeremy/manual merges and external state changes are reported separately and never satisfy the throughput floor",
+            "a project may report external state changes and orchestrator advancement in the same run",
+            "external state changes remain reportable even when the project is NO_SAFE_ELIGIBLE_WORK after re-triage",
             "orchestrator-only control-plane work does not count as product advancement",
             "every eligible non-advanced product must state why and identify its next gate",
         ],
     }
+
+
+def _validate_external_state_changes(
+    changes: dict[str, list[dict[str, str]]],
+) -> dict[str, list[dict[str, str]]]:
+    if not isinstance(changes, dict):
+        raise ValueError("external_state_changes must be a mapping")
+    normalized: dict[str, list[dict[str, str]]] = {}
+    for project, events in changes.items():
+        if project not in PROJECT_KEYS:
+            raise ValueError(f"external_state_changes contains unknown project: {project}")
+        if not isinstance(events, list):
+            raise ValueError(f"external_state_changes.{project} must be a list")
+        normalized_events: list[dict[str, str]] = []
+        for event in events:
+            if not isinstance(event, dict):
+                raise ValueError(f"external_state_changes.{project} entries must be mappings")
+            advancement = event.get("advancement")
+            actor = event.get("actor")
+            note = event.get("note")
+            if advancement not in ADVANCEMENTS:
+                raise ValueError(f"external_state_changes.{project}.advancement is invalid")
+            if actor not in ADVANCEMENT_ACTORS - {"ORCHESTRATOR"}:
+                raise ValueError(f"external_state_changes.{project}.actor must be external")
+            if not isinstance(note, str) or not note.strip():
+                raise ValueError(f"external_state_changes.{project}.note must be non-empty")
+            normalized_events.append(
+                {"advancement": advancement, "actor": actor, "note": note.strip()}
+            )
+        normalized[project] = normalized_events
+    return normalized
 
 
 def _count_or_unknown(value: Any) -> int | str:
