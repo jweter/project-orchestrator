@@ -127,6 +127,9 @@ Preserve documented design pillars, deterministic simulation, player agency, dif
 HUMAN ESCALATION
 Ask Jeremy only for fundamental product direction, major unauthorized architecture changes, new paid services/meaningful recurring cost, license changes, destructive migrations, security/privacy boundary changes, credentials/secrets requiring him, release/publishing authorization, irreversible actions, or genuinely ambiguous requirements with materially different outcomes.
 
+DAILY BOTTLENECK REVIEW
+Once per day, the portfolio brain must perform a 24-hour development-path review in addition to hourly execution. Refresh live evidence, summarize actual product advancement, rank active blocker fingerprints, and select the largest evidence-backed blocker by P0-P6 priority then recurrence. Descend to the first meaningful failure evidence and establish root cause when the evidence supports it; otherwise record UNKNOWN rather than guessing. Make one bounded smallest-safe repair attempt when authorized, verify it, and if the blocker remains, park only that dependent lane and continue parallel-safe product work. The daily review must end with either verified blocker reduction/removal or an exact next gate plus continued product execution. Record significant verified lessons and prevention rules in regression/learning memory. Daily analysis must never become a substitute for hourly implementation throughput.
+
 SCHEDULER PERSISTENCE
 NEVER disable, pause, suspend, or delete DoWork Hourly unless Jeremy explicitly instructs it. Blockers are retried on later runs while safe work proceeds elsewhere.
 
