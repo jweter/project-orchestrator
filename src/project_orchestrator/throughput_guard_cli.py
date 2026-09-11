@@ -4,9 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
+from .fast_gate import build_repository_fast_gate_plan
 from .throughput_guard import (
     build_active_work_lease,
-    build_fast_gate_plan,
     build_issue_ledger_event,
     classify_promotion_failure,
     compute_rework_kpis,
@@ -58,7 +58,7 @@ def main() -> int:
         control_plane = _load(args.control_plane)
         if not isinstance(control_plane, dict):
             raise ValueError("control-plane must be an object")
-        result = build_fast_gate_plan(
+        result = build_repository_fast_gate_plan(
             repository=args.repository,
             control_plane=control_plane,
             changed_paths=args.changed_paths,
