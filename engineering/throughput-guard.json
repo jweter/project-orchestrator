@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "purpose": "Reduce avoidable verification churn and merge races without weakening canonical preflight, PR CI, review, policy, or Product Reality gates.",
+  "execution_order": [
+    "live_state_and_issue_triage",
+    "pre_change_risk_and_learning",
+    "active_work_lease_acquire",
+    "implementation_or_repair",
+    "fast_gate",
+    "canonical_exact_head_preflight",
+    "ready_for_review_pr",
+    "fresh_pr_ci_and_review",
+    "active_work_lease_release",
+    "central_merge_revalidation",
+    "merge",
+    "issue_ledger_update",
+    "rework_kpi_record"
+  ],
+  "fast_gate": {
+    "mode": "repository_opt_in_only",
+    "executable": "project-orchestrator-throughput fast-gate-plan",
+    "command_authority": "target repository engineering/control-plane.json fast_gate.commands",
+    "selection": "changed path extensions/prefixes plus explicitly-declared always commands",
+    "fail_fast": true,
+    "canonical_preflight_still_required": true,
+    "may_open_pr_on_fast_gate_green_alone": false,
+    "forbidden": [
+      "inventing commands not authorized by the target repository",
+      "treating FAST_GATE as a substitute for full exact-head preflight",
+      "weakening or skipping tests to improve first-pass rate"
+    ]
+  },
+  "active_work_lease": {
+    "persistence": "ephemeral_per_run",
+    "authority": "live branch/head/actor evidence; never a manual ownership database",
+    "active_states": ["IMPLEMENTING", "REPAIRING"],
+    "release_state": "RELEASED",
+    "exact_head_rule": "an active lease matching repository+branch+PR head blocks merge",
+    "stale_rule": "an active lease for the same branch at another head blocks merge until revalidated",
+    "merge_authority_after_release": "central orchestrator must still revalidate exact head, required CI, reviews/comments, mergeability, and policy",
+    "forbidden": [
+      "persisting leases as a competing ownership database",
+      "using a lease to bypass P0-P4 priorities",
+      "using lease release as evidence of GREEN"
+    ]
+  },
+  "promotion_failure_classifier": {
+    "executable": "project-orchestrator-throughput classify-failure",
+    "classes": [
+      "CODE_FAILURE",
+      "TEST_FAILURE",
+      "QUALITY_FAILURE",
+      "REVIEW_FAILURE",
+      "PLATFORM_GATE",
+      "PRODUCT_REALITY_PENDING",
+      "POLICY_FAILURE",
+      "ENVIRONMENT_FAILURE",
+      "UNKNOWN"
+    ],
+    "zero_job_action_required_rule": "PLATFORM_GATE",
+    "unknown_rule": "fail closed; do not infer root cause",
+    "repair_engine_relationship": "classification routes the scheduler; deterministic repair.py remains the lower-level formatter/import/lint repair authority"
+  },
+  "issue_execution_ledger": {
+    "executable": "project-orchestrator-throughput issue-ledger",
+    "actor": "ORCHESTRATOR",
+    "required_fields": [
+      "promotion_state",
+      "next_gate",
+      "event_at"
+    ],
+    "include_when_known": [
+      "branch",
+      "exact_head_sha",
+      "verification",
+      "failure_class",
+      "product_reality_debt"
+    ],
+    "update_points": [
+      "implementation_started",
+      "preflight_failed_or_green",
+      "pr_opened",
+      "ci_failed_or_green",
+      "parked_for_retry",
+      "merged",
+      "product_reality_state_changed"
+    ],
+    "rule": "Issue comments are the human-visible execution ledger; repository code/CI/governing docs remain product authority."
+  },
+  "rework_kpis": {
+    "executable": "project-orchestrator-throughput rework-kpis",
+    "metrics": {
+      "first_pass_preflight_rate": {
+        "definition": "records with exactly one preflight attempt divided by records with explicit preflight-attempt evidence",
+        "target": ">=0.90"
+      },
+      "merge_race_count": {
+        "definition": "explicitly observed cases where a merge/external completion raced an active implementing or repairing lane",
+        "target": 0
+      },
+      "post_merge_correctness_hotfix_rate": {
+        "definition": "merged records requiring an explicit correctness hotfix divided by merged records with explicit hotfix evidence",
+        "target": "<0.05"
+      },
+      "median_implementation_to_merge_seconds": {
+        "definition": "median elapsed time from explicit implementation_started_at to merged_at across records containing both timestamps",
+        "target": "trend_down_without_quality_regression"
+      }
+    },
+    "missing_evidence": "UNKNOWN, never zero",
+    "target_semantics": "targets guide process improvement and are not claims of current performance"
+  },
+  "risk_based_review": {
+    "specialist_review_required_before_merge_for": [
+      "physics_or_math_boundary_changes",
+      "persistence_or_schema_migration_changes",
+      "security_or_privacy_boundary_changes",
+      "provenance_or_licensing_boundary_changes",
+      "cross_repository_contract_changes"
+    ],
+    "ordinary_low_risk_changes": "retain normal repository review requirements",
+    "rule": "risk-based review adds scrutiny where historical cost is high; it never removes an existing required review"
+  }
+}
