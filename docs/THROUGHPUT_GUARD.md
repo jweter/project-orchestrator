@@ -7,19 +7,39 @@ The Throughput Guard removes recurring engineering friction between implementati
 For governed work, the scheduler uses this order:
 
 1. inspect live PRs, issues, branches, roadmaps, and repository control-plane authority;
-2. retrieve relevant verified learning and pre-change risk evidence;
-3. acquire an **ephemeral active-work lease** for the exact repository/branch/head while `IMPLEMENTING` or `REPAIRING`;
-4. implement the bounded change;
-5. run **FAST_GATE** using only commands explicitly authorized by the target repository;
-6. run the repository's canonical full exact-head preflight;
-7. open a Ready-for-Review PR only after the normal preflight gate is satisfied;
-8. wait for fresh PR CI and review evidence;
-9. release the active-work lease;
-10. central merge authority revalidates exact head, required CI, reviews/comments, mergeability, security/licensing/provenance/privacy, and Product Reality policy;
-11. merge only if GREEN;
-12. update the related GitHub issue execution ledger and record rework evidence.
+2. run the **Branch Hygiene Guard** against non-default branches and fail closed on uncertain disposition;
+3. retrieve relevant verified learning and pre-change risk evidence;
+4. acquire an **ephemeral active-work lease** for the exact repository/branch/head while `IMPLEMENTING` or `REPAIRING`;
+5. implement the bounded change;
+6. run **FAST_GATE** using only commands explicitly authorized by the target repository;
+7. run the repository's canonical full exact-head preflight;
+8. open a Ready-for-Review PR only after the normal preflight gate is satisfied;
+9. wait for fresh PR CI and review evidence;
+10. release the active-work lease;
+11. central merge authority revalidates exact head, required CI, reviews/comments, mergeability, security/licensing/provenance/privacy, and Product Reality policy;
+12. merge only if GREEN;
+13. update the related GitHub issue execution ledger and record rework evidence;
+14. re-check branch disposition after merge so positively verified disposable branches do not accumulate.
 
 FAST_GATE is a cheap earlier feedback stage. It never replaces canonical preflight or fresh PR CI.
+
+## Branch Hygiene Guard
+
+Branch hygiene is now a first-class portfolio control across the five product repositories plus `project-orchestrator`. The existing `project-orchestrator branch-lifecycle` classifier is the authoritative evidence-safe classifier for non-default branches.
+
+Each branch is classified from live evidence into one of these operational groups:
+
+- **ACTIVE / PR_OWNED / ACTIVE_UNMERGED** — preserve and continue the existing lane;
+- **MERGED_DISPOSABLE / SUPERSEDED_OR_DISPOSABLE** — eligible for deletion only when disposition is proven and no unique unmerged work remains;
+- **STALE_VALUABLE** — preserve and place into recovery/modernization review when authorized;
+- **RELEASE_OR_HOTFIX_REQUIRED / PRESERVED** — explicitly protected;
+- **UNCERTAIN** — fail closed; investigate before any destructive action.
+
+Deletion is never based on branch age alone. A branch may be deleted only after live evidence proves all applicable safety conditions: it is not the default branch, no open PR or active-work lease owns it, it is not needed for release/hotfix work, merge or supersession disposition is proven, and the branch has no unique unmerged commits (`ahead_by == 0` or equivalent verified ancestry evidence). A merged PR by itself is not sufficient because commits may have been pushed to the branch after merge.
+
+The daily bottleneck review must report branch hygiene beside the engineering effectiveness score when evidence is available, including total non-default branches, active/PR-owned counts, delete-safe count, stale-review count, recovery/integration count, protected count, branches deleted during the run, residual unresolved count, oldest unresolved branch when known, and unique-work-loss risk. Missing branch evidence is `UNKNOWN`, never interpreted as clean.
+
+Automatic cleanup is restricted to branches positively classified delete-safe from complete live evidence. Unique, ambiguous, protected, actively owned, or PR-owned branches always fail closed.
 
 ## FAST_GATE authority
 
@@ -129,5 +149,7 @@ The Throughput Guard cannot:
 - create a durable manual ownership database;
 - invent executable commands not authorized by the target repository;
 - merge while an active/stale lease exists;
+- delete a branch with unique or uncertain unmerged work;
+- delete a default, protected, release/hotfix, PR-owned, or actively leased branch without evidence-safe disposition;
 - weaken security, provenance, privacy, licensing, architecture, or review gates;
 - turn KPI targets into claims of measured performance.
