@@ -1,8 +1,9 @@
 {
-  "schema_version": 1,
-  "purpose": "Reduce avoidable verification churn and merge races without weakening canonical preflight, PR CI, review, policy, or Product Reality gates.",
+  "schema_version": 2,
+  "purpose": "Reduce avoidable verification churn, merge races, and stale-branch accumulation without weakening canonical preflight, PR CI, review, policy, or Product Reality gates.",
   "execution_order": [
     "live_state_and_issue_triage",
+    "branch_hygiene_review",
     "pre_change_risk_and_learning",
     "active_work_lease_acquire",
     "implementation_or_repair",
@@ -14,8 +15,64 @@
     "central_merge_revalidation",
     "merge",
     "issue_ledger_update",
-    "rework_kpi_record"
+    "rework_kpi_record",
+    "branch_hygiene_post_merge_recheck"
   ],
+  "branch_hygiene": {
+    "module": "project_orchestrator.branch_lifecycle",
+    "executable": "project-orchestrator branch-lifecycle",
+    "scope": "all non-default branches across the five product repositories plus project-orchestrator",
+    "run_points": [
+      "daily_bottleneck_review",
+      "periodic_DoWork_housekeeping",
+      "after_successful_merge_when_branch_state_changes"
+    ],
+    "classifications": {
+      "ACTIVE": "live active-work ownership; preserve",
+      "PR_OWNED": "open PR owns the branch; preserve",
+      "ACTIVE_UNMERGED": "unique current work remains; continue or promote through normal gates",
+      "MERGED_DISPOSABLE": "merged disposition is proven and no unique unmerged commits remain; delete-safe",
+      "SUPERSEDED_OR_DISPOSABLE": "no unique work remains and disposition is proven; delete-safe",
+      "STALE_VALUABLE": "unique authorized work remains on a diverged branch; recover or modernize rather than delete",
+      "RELEASE_OR_HOTFIX_REQUIRED": "branch is explicitly retained for release/hotfix use; preserve",
+      "PRESERVED": "explicit preservation reason exists; preserve",
+      "UNCERTAIN": "evidence is incomplete; fail closed and review"
+    },
+    "delete_preconditions": [
+      "branch_is_not_default_branch",
+      "complete_live_disposition_evidence_is_available",
+      "no_open_pr_owns_branch",
+      "no_active_work_lease_or_live_ownership_exists",
+      "no_release_or_hotfix_requirement_exists",
+      "merge_or_supersession_disposition_is_proven",
+      "ahead_by_is_zero_or_equivalent_unique_commit_check_proves_no_unmerged_work",
+      "safe_to_delete_is_true"
+    ],
+    "automatic_action": "delete only positively verified delete-safe branches; all ambiguous or uniquely divergent branches fail closed",
+    "modernization_rule": "STALE_VALUABLE branches enter a recovery/modernization queue only when roadmap authorization and reconciliation evidence support it",
+    "report_fields": [
+      "total_non_default_branches",
+      "active_count",
+      "pr_owned_count",
+      "delete_safe_count",
+      "stale_review_count",
+      "recover_or_integrate_count",
+      "protected_count",
+      "branches_deleted_this_run",
+      "residual_unresolved_count",
+      "oldest_unresolved_branch_when_known",
+      "unique_work_loss_risk"
+    ],
+    "daily_effectiveness_relationship": "branch hygiene is an operational control reported beside the scorecard; missing branch evidence is UNKNOWN and never treated as clean",
+    "forbidden": [
+      "deleting a branch solely because it is old",
+      "deleting a branch with unique unmerged commits",
+      "deleting a branch owned by an open PR or active work lease",
+      "assuming a merged PR means later branch commits are merged",
+      "treating UNKNOWN or incomplete evidence as delete-safe",
+      "deleting protected/default/release/hotfix branches without explicit evidence-safe disposition"
+    ]
+  },
   "fast_gate": {
     "mode": "repository_opt_in_only",
     "executable": "project-orchestrator-throughput fast-gate-plan",
