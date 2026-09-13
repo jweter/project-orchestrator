@@ -20,6 +20,8 @@
     "ELIGIBLE projects require SENSE, REMEMBER, and DECIDE before execution",
     "record prior-learning retrieval before editing known areas",
     "ELIGIBLE projects require explicit pre-change risk evidence before ACT",
+    "ELIGIBLE projects require explicit Agent Action Guard evidence before ACT",
+    "ACT and material advancement require agent_action_guard_state=READY",
     "material advancement requires ACT plus VERIFY evidence",
     "LEARN and ADAPT must explicitly close or be NOT_APPLICABLE",
     "UNKNOWN never counts as completion",
@@ -34,6 +36,17 @@
     ],
     "evidence_required": true,
     "rule": "risk profile is created after scope is known and before ACT; no-history is explicit evidence, not a low-risk claim"
+  },
+  "agent_action_guard": {
+    "allowed_states": [
+      "READY",
+      "GATHER_CONTEXT",
+      "APPROVAL_REQUIRED",
+      "FORBIDDEN"
+    ],
+    "evidence_required": true,
+    "ready_required_for_act": true,
+    "rule": "DECIDE must evaluate exact-head context, exact error for failure-driven retries, learning lookup, and resource/cost envelope before ACT"
   },
   "execution_evidence": {
     "required_for_advancement": true,
