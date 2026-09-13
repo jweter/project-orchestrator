@@ -1,0 +1,46 @@
+{
+  "min_repositories": 2,
+  "min_projects": 2,
+  "lessons": [
+    {
+      "lesson_id": "ke-exact-head-independent-verification",
+      "repository": "jweter/knowledge-engine-core",
+      "project": "knowledge-engine",
+      "pattern_key": "exact-head-independent-verification",
+      "mechanism": "verify the exact candidate head independently before promotion",
+      "applicability_conditions": [
+        "candidate change has a deterministic verification path"
+      ],
+      "counterexamples": [
+        "irreducibly subjective Product Reality acceptance"
+      ],
+      "evidence_refs": [
+        "ci:knowledge-engine-core:green"
+      ],
+      "verified_outcome": "EARLIER_DETECTION",
+      "verified_outcome_ref": "learning:ke:exact-head",
+      "domain_independent": true,
+      "product_requirement_transfer": false
+    },
+    {
+      "lesson_id": "rocksmith-exact-head-independent-verification",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "project": "rocksmith",
+      "pattern_key": "exact-head-independent-verification",
+      "mechanism": "verify the exact candidate head independently before promotion",
+      "applicability_conditions": [
+        "candidate change has a deterministic verification path"
+      ],
+      "counterexamples": [
+        "irreducibly subjective Product Reality acceptance"
+      ],
+      "evidence_refs": [
+        "worker:rocksmith:verified"
+      ],
+      "verified_outcome": "SUCCESSFUL_PATTERN_REUSE",
+      "verified_outcome_ref": "learning:rocksmith:exact-head",
+      "domain_independent": true,
+      "product_requirement_transfer": false
+    }
+  ]
+}
