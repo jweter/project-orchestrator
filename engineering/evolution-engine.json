@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "name": "Evolution Engine",
+  "issue": 52,
+  "philosophy": "Fix_It-style evidence-governed engineering improvement",
+  "closed_loop": [
+    "observe",
+    "diagnose",
+    "repair",
+    "verify",
+    "remember",
+    "prevent",
+    "compare",
+    "improve",
+    "promote"
+  ],
+  "stages": [
+    "REPAIR",
+    "REPLACEMENT",
+    "UPGRADE",
+    "REDESIGN",
+    "EVOLUTION"
+  ],
+  "execution_authority": "PLAN_ONLY_UNLESS_EXISTING_REPOSITORY_POLICY_SEPARATELY_AUTHORIZES_THE_ACTION",
+  "evidence_policy": {
+    "promotion_requires_verified_evidence": true,
+    "unknown_remains_unknown": true,
+    "unverified_events_may_not_drive_promotion": true,
+    "success_patterns_are_first_class_learning_evidence": true,
+    "before_after_measurement_required_for_evolution": true,
+    "measured_degradation_blocks_evolution": true,
+    "minimum_default_before_after_sample_count": 2
+  },
+  "learning_effects": [
+    "PREVENTED",
+    "SHORTENED",
+    "NO_CHANGE",
+    "UNKNOWN"
+  ],
+  "project_isolation": {
+    "product_requirements_may_cross_unrelated_projects": false,
+    "portfolio_process_patterns_may_be_reused_when_repository_authority_permits": true,
+    "knowledge_engine_cross_repo_coordination_remains_allowed": true
+  },
+  "review_gate": {
+    "current_head_binding_required": true,
+    "stale_review_requires_revalidation": true,
+    "unresolved_material_commented_finding_blocks_merge": true,
+    "informational_comment_blocks_merge_by_default": false,
+    "material_categories": [
+      "correctness",
+      "safety",
+      "architecture",
+      "security",
+      "provenance",
+      "privacy",
+      "licensing",
+      "project_policy"
+    ]
+  },
+  "reserved_human_decisions": [
+    "fundamental_product_direction",
+    "unauthorized_major_architecture_change",
+    "new_paid_service_or_meaningful_recurring_cost",
+    "license_change",
+    "destructive_migration",
+    "security_or_privacy_boundary_change",
+    "credential_or_secret_owner_action",
+    "release_or_publishing_authorization",
+    "irreversible_action",
+    "genuinely_ambiguous_materially_different_product_outcome",
+    "irreducibly_subjective_product_reality"
+  ],
+  "never_weaken": [
+    "tests",
+    "required_ci",
+    "review",
+    "security",
+    "privacy",
+    "provenance",
+    "licensing",
+    "architecture_authority",
+    "product_reality",
+    "project_isolation"
+  ],
+  "cli": "project-orchestrator-evolve",
+  "documentation": "docs/EVOLUTION_ENGINE.md"
+}
