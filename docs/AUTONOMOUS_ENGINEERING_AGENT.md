@@ -6,13 +6,13 @@ The portfolio orchestrator is the durable operating substrate for the AI enginee
 
 **SENSE -> REMEMBER -> DECIDE -> ACT -> VERIFY -> LEARN -> ADAPT**
 
-- **Sense:** live GitHub state, issues, PRs, CI logs, branches, roadmaps, architecture, policies, and Product Reality debt.
-- **Remember:** verified failure memory, successful engineering patterns, compatibility lessons, area-specific prevention rules, and sanitized evidence.
-- **Decide:** P0-P6 triage, dependency-aware decomposition, ownership checks, blocker rotation, throughput optimization, **plus context-before-action and resource-budget gating**. Exact-head scope, repository authority, component/schema metadata, evidence references, exact errors for failure-driven retries, and a compute/network/write/concurrency/paid-cost estimate are inputs to the decision rather than new lifecycle stages.
-- **Act:** implement, repair, modernize branches, test, preflight, open PRs, and merge only verified GREEN work when the Agent Action Guard returns `READY` and all normal authority permits execution.
-- **Verify:** exact-head preflight, fresh independent PR CI, reviews/comments, mergeability, policy checks, and human Product Reality where required.
-- **Learn:** capture root cause, bounded fix, regression protection, residual risk, prevention rule, and measured successful patterns.
-- **Adapt:** convert repeated friction into safe orchestrator improvements through the same governed promotion path.
+- **Sense:** live GitHub state, issues, PRs, CI logs, branches, roadmaps, architecture, policies, Product Reality debt, and evidence-backed experiment opportunities.
+- **Remember:** verified failure memory, successful engineering patterns, experiment ancestry, compatibility lessons, area-specific prevention rules, and sanitized evidence.
+- **Decide:** P0-P6 triage, dependency-aware decomposition, ownership checks, blocker rotation, throughput optimization, context-before-action, hypothesis selection, bounded experiment design, and resource-budget gating.
+- **Act:** implement, repair, modernize branches, or execute bounded experiments only when the Agent Action Guard returns `READY`, the Portfolio Resource Scheduler returns `SCHEDULED`, and all normal authority permits execution.
+- **Verify:** exact-head preflight, fresh independent PR CI, reviews/comments, mergeability, policy checks, human Product Reality where required, and independent experiment verification.
+- **Learn:** capture root cause, bounded fix, experiment outcome, rejected hypotheses, regression protection, residual risk, prevention rule, and measured successful patterns.
+- **Adapt:** convert repeated verified evidence into replacement/upgrade/redesign/evolution proposals; distill cross-repo patterns only after independent domain-neutral evidence earns promotion.
 
 ## Build sequence
 
@@ -59,7 +59,12 @@ Track when evidence permits:
 - recurring CI failure classes;
 - product projects advanced per eligible run;
 - routine human intervention;
-- Product Reality incorrectly freezing independent engineering.
+- Product Reality incorrectly freezing independent engineering;
+- anonymous retries versus lineage-bound experiments;
+- duplicate experiments prevented;
+- candidate hypotheses rejected by evidence before promotion;
+- resource contention prevented;
+- cross-repo patterns promoted only after independent evidence.
 
 Target: **Preventable Repeat Failure Rate = 0**.
 
@@ -69,34 +74,37 @@ A lesson is effective only when it demonstrably prevents, detects earlier, or sh
 
 The agent must learn from verified successes as well as failures. Successful engineering patterns may be persisted as `success_pattern` lessons only when supported by exact evidence. When a prior lesson is later applied, record a verified learning application and classify the observed outcome as prevention, earlier detection, shortened repair, successful-pattern reuse, no measurable effect, or UNKNOWN. Learning effectiveness is measured from these verified applications; retrieval or intention alone does not count as learning success.
 
-The next operational phase is to exercise the full closed loop on real product work, record which lessons were reused, and determine from evidence whether the system is actually reducing repeat failures and repair cycles.
-
 ### 7. Evidence-based pre-change risk predictor — COMPLETE
 
 Before mutating a known component, the agent must ask which verified failure classes and successful engineering patterns have historically matched the repository, changed paths, and change summary. The predictor uses the same deterministic failure taxonomy as the repair engine, but its semantics are historical evidence only: it does not invent probability, severity, readiness, ROI, or time-saved estimates. `NO_RELEVANT_VERIFIED_HISTORY` means exactly that; it must never be relabeled as low risk.
 
 The output is a pre-edit checklist of applicable prevention/reuse rules plus evidence references. These signals may change implementation and verification planning before CI fails, but they never override product-repository roadmap, architecture, security, licensing/provenance, privacy, CI, or Product Reality authority.
 
-### 8. Context-first Agent Action Guard — IMPLEMENTED, PENDING PROMOTION
+### 8. Context-first Agent Action Guard — COMPLETE
 
-Production agent orchestration evidence shows that action APIs alone are insufficient: agents need exact operational context and resource awareness before autonomous fan-out. The portfolio therefore adds a deterministic pre-action gate inside **DECIDE**.
+Before autonomous implementation, repair retry, or experiment-like work, the agent builds a context package proving exact repository head, bounded scope, authority, context lookup, learning lookup, evidence references, exact error for retries/failure-driven work, and an explicit compute/network/write/concurrency/paid-cost envelope.
 
-Before autonomous implementation, repair retry, or experiment-like work, the agent must build a context package proving:
-
-- exact repository head and bounded scope;
-- repository/roadmap authority reference;
-- relevant component/schema/context references;
-- evidence references;
-- learning lookup was performed;
-- context lookup was performed;
-- exact failure/error reference for retries or failure-driven work.
-
-It must also estimate compute seconds, network calls, write operations, concurrency, and paid external cost. The gate returns `READY`, `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, or `FORBIDDEN`. Unknown paid cost requires approval; explicit hard-cap violations are forbidden. Reserved-human, destructive, and irreversible boundaries still require approval.
+The guard returns `READY`, `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, or `FORBIDDEN`. Unknown paid cost requires approval; explicit hard-cap violations are forbidden. Reserved-human, destructive, and irreversible boundaries still require approval.
 
 The guard is planning authority only. It emits no executable commands and cannot bypass CI, review, security, provenance/licensing, privacy, Product Reality, or repository architecture authority. See `docs/AGENT_ACTION_GUARD.md` and #57.
 
+### 9. Autonomous Engineering Scientist — IMPLEMENTED, PENDING PROMOTION
+
+The next layer treats autonomous engineering as a controlled experimental discipline:
+
+**Observe -> formulate hypothesis -> retrieve prior evidence -> design bounded experiment -> estimate cost -> execute -> measure -> compare -> reject or retain -> independently verify -> record -> generalize -> repeat.**
+
+This capability has four coordinated mechanisms:
+
+1. **Experiment Lineage + Bounded Hypothesis Competition** — every attempt has exact baseline/candidate heads, ancestry, hypothesis, measurement contract, resource estimate, result, and independent verification. Competing fixes are comparable only under the same baseline and measurement contract; no clear winner is invented within tolerance.
+2. **Portfolio Resource Scheduler** — schedules only `READY` actions under explicit compute/network/write/concurrency/cost/exclusive-resource capacity. P0-P6 remains authoritative and fairness applies only within equal priority.
+3. **Opportunity Sweeper** — converts already-evidenced gaps into reversible, bounded, deterministically measurable experiment proposals. It is downstream of triage/reinvestment/roadmaps and never invents ROI, probability, severity, percent complete, or product need.
+4. **Cross-Repo Pattern Distillation** — promotes only repeatedly verified domain-independent engineering mechanisms across independent repositories/projects. Product-specific requirements never transfer across projects and fuzzy semantic generalization is forbidden.
+
+The scientist loop does not execute commands by itself. Candidate execution remains under existing governed lanes and independent verification remains mandatory. See `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`, `engineering/autonomous-engineering-scientist.json`, and #59.
+
 ## Operational phase
 
-The v1 closed loop is now being hardened with context-before-action and resource-aware autonomy inside the existing DECIDE stage. Product work remains the proving ground: exercise the loop on real Knowledge Engine, Rocksmith, and Everward work; retrieve exact errors before retries; apply pre-change learning and risk context before mutation; estimate resource/cost fan-out before execution; and record verified outcomes afterward.
+Product work is the proving ground. Exercise the full loop on real Knowledge Engine, Rocksmith, and Everward work. Use experiment lineage when more than one deterministic repair hypothesis exists; schedule bounded competition only when resources allow; convert evidence-backed neglected gaps into cheap experiments; and distill mechanisms across projects only after verified independent outcomes.
 
-New orchestrator infrastructure is justified only by measured recurring friction, a concrete execution blocker, a failed control invariant, or a secondary effect created by increased autonomy.
+New orchestrator infrastructure is justified only by measured recurring friction, a concrete execution blocker, a failed control invariant, a secondary effect created by increased autonomy, or verified experiment evidence showing that the current mechanism should be replaced, upgraded, redesigned, or evolved.

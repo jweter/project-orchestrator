@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "artifact": "autonomous-engineering-scientist",
+  "purpose": "Turn autonomous engineering work into bounded, evidence-driven experiments with lineage, controlled resource allocation, evidence-only opportunity discovery, and verified cross-repo learning.",
+  "cli": "project-orchestrator-scientist",
+  "scientific_loop": [
+    "OBSERVE",
+    "FORMULATE_HYPOTHESIS",
+    "RETRIEVE_PRIOR_EVIDENCE",
+    "DESIGN_BOUNDED_EXPERIMENT",
+    "ESTIMATE_COST",
+    "ACTION_GUARD",
+    "EXECUTE",
+    "MEASURE",
+    "COMPARE",
+    "INDEPENDENT_VERIFY",
+    "RECORD",
+    "GENERALIZE",
+    "REPEAT"
+  ],
+  "experiment_lineage": {
+    "required": [
+      "project",
+      "repository",
+      "baseline_head_sha",
+      "candidate_head_sha",
+      "hypothesis_id",
+      "hypothesis",
+      "baseline_ref",
+      "measurement_contract",
+      "scope_refs",
+      "evidence_refs",
+      "resource_estimate",
+      "action_guard_state"
+    ],
+    "retry_rule": "attempt > 1 requires parent_experiment_id",
+    "comparison_rule": "competitors must share repository, exact baseline, and measurement contract",
+    "promotion_rule": "only COMPLETE + VERIFIED_PASS + no safety violations may compete for promotion",
+    "tie_rule": "within measurement tolerance produces NO_CLEAR_WINNER; do not invent a tiebreaker"
+  },
+  "hypothesis_competition": {
+    "default_max_candidates": 3,
+    "candidate_count_semantics": "default planning bound only; actual execution still requires Agent Action Guard and resource scheduling",
+    "independent_verification_required": true,
+    "fixer_may_self_verify": false
+  },
+  "resource_scheduler": {
+    "priority_authority": "P0-P6 remains authoritative",
+    "fairness": "round_robin_by_project_within_same_priority",
+    "tracked_capacity": [
+      "compute_seconds",
+      "network_calls",
+      "write_operations",
+      "concurrency",
+      "external_cost_usd",
+      "exclusive_resource_slots"
+    ],
+    "examples_of_exclusive_resources": [
+      "ollama",
+      "unreal",
+      "rocksmith_local_runtime"
+    ],
+    "non_ready_rule": "Agent Action Guard state other than READY is not schedulable",
+    "execution_authority": "SCHEDULE_ONLY"
+  },
+  "opportunity_sweeper": {
+    "position": "downstream of live triage, roadmaps, reality checks, throughput optimization, and reinvestment planning",
+    "question": "Which already-evidenced gap can be converted into a cheap, reversible, measurable experiment now?",
+    "eligible_sources": [
+      "recurring_failure",
+      "product_reality_debt",
+      "stale_valuable_work",
+      "reality_check_gap",
+      "coverage_gap",
+      "performance_regression",
+      "todo_or_roadmap_evidence",
+      "reinvestment_candidate",
+      "jeremy_intervention",
+      "evidence_observability_gap"
+    ],
+    "autonomous_experiment_requirements": [
+      "explicit evidence",
+      "bounded scope",
+      "reversible",
+      "deterministic measurement",
+      "explicit measurement contract"
+    ],
+    "deduplication_key": "repository + scope_refs + measurement_contract.contract_id",
+    "ranking": "P0-P6 priority then explicit evidence breadth; never invented ROI/probability/severity/percent-complete",
+    "default_max_proposals": 5,
+    "execution_authority": "PROPOSAL_ONLY"
+  },
+  "pattern_distillation": {
+    "grouping": "exact explicit pattern_key only",
+    "default_min_repositories": 2,
+    "default_min_projects": 2,
+    "required_outcome_classes": [
+      "PREVENTED_FAILURE",
+      "EARLIER_DETECTION",
+      "SHORTENED_REPAIR",
+      "SUCCESSFUL_PATTERN_REUSE",
+      "VERIFIED_CORRECTNESS_IMPROVEMENT"
+    ],
+    "domain_rule": "domain-specific product requirements never transfer across projects",
+    "promotion_state": "PORTFOLIO_PATTERN_CANDIDATE is evidence for a governed proposal, not automatic adoption"
+  },
+  "existing_gates_preserved": [
+    "DoWork priority and anti-stall rules",
+    "product repository architecture and roadmap authority",
+    "Agent Action Guard",
+    "pre-change risk and verified learning retrieval",
+    "canonical exact-head preflight",
+    "fresh PR CI",
+    "review and current-head blocking comments",
+    "security and privacy",
+    "licensing and provenance",
+    "Product Reality",
+    "reserved-human decisions",
+    "central merge arbitration"
+  ],
+  "forbidden": [
+    "treating experiment count as product success",
+    "comparing candidates with different baselines or measurement contracts",
+    "promoting an unverified candidate",
+    "inventing a resource budget or treating missing capacity as available",
+    "inventing opportunities without evidence",
+    "fuzzy cross-repo generalization of product behavior",
+    "transferring domain-specific product requirements between projects",
+    "allowing the experiment author to substitute for independent verification",
+    "using fairness to preempt higher P0-P6 priority work"
+  ]
+}

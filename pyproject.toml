@@ -16,6 +16,7 @@ dev = ["pytest>=9.0", "hypothesis>=6.0"]
 project-orchestrator = "project_orchestrator.cli:main"
 project-orchestrator-throughput = "project_orchestrator.throughput_guard_cli:main"
 project-orchestrator-evolve = "project_orchestrator.evolution_cli:main"
+project-orchestrator-scientist = "project_orchestrator.scientist_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

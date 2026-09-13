@@ -1,0 +1,48 @@
+{
+  "actions": [
+    {
+      "action_id": "ke-core-hypothesis-a",
+      "project": "knowledge-engine",
+      "repository": "jweter/knowledge-engine-core",
+      "priority": 3,
+      "action_guard_state": "READY",
+      "resource_estimate": {
+        "compute_seconds_estimate": 1200,
+        "network_calls_estimate": 8,
+        "write_operations_estimate": 2,
+        "concurrency_estimate": 1,
+        "external_cost_usd_estimate": 0,
+        "exclusive_resources": ["ollama"]
+      },
+      "evidence_refs": ["issue:#59"]
+    },
+    {
+      "action_id": "rocksmith-alignment-hypothesis-a",
+      "project": "rocksmith",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "priority": 3,
+      "action_guard_state": "READY",
+      "resource_estimate": {
+        "compute_seconds_estimate": 900,
+        "network_calls_estimate": 2,
+        "write_operations_estimate": 1,
+        "concurrency_estimate": 1,
+        "external_cost_usd_estimate": 0,
+        "exclusive_resources": []
+      },
+      "evidence_refs": ["issue:#59"]
+    }
+  ],
+  "capacity": {
+    "compute_seconds": 3600,
+    "network_calls": 50,
+    "write_operations": 10,
+    "concurrency": 2,
+    "external_cost_usd": 0,
+    "exclusive_resource_slots": {
+      "ollama": 1,
+      "unreal": 1,
+      "rocksmith_local_runtime": 1
+    }
+  }
+}

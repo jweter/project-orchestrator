@@ -1,0 +1,39 @@
+{
+  "project": "knowledge-engine",
+  "repository": "jweter/knowledge-engine-core",
+  "baseline_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "candidate_head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "hypothesis_id": "core-cli-contract-fix-v1",
+  "hypothesis": "A bounded CLI output-contract correction will make the verified failing test pass without regressing the remaining canonical preflight.",
+  "baseline_ref": "worker:#56:canonical-preflight",
+  "measurement_contract": {
+    "contract_id": "core-canonical-preflight-v1",
+    "primary_metric": "failed_tests",
+    "direction": "MINIMIZE",
+    "tolerance": 0,
+    "required_metrics": [
+      "failed_tests",
+      "passed_tests"
+    ]
+  },
+  "scope_refs": [
+    "tests/test_cli.py",
+    "src/knowledge_engine_core/cli.py"
+  ],
+  "evidence_refs": [
+    "issue:#59",
+    "worker:#56:canonical-preflight"
+  ],
+  "resource_estimate": {
+    "compute_seconds_estimate": 900,
+    "network_calls_estimate": 5,
+    "write_operations_estimate": 2,
+    "concurrency_estimate": 1,
+    "external_cost_usd_estimate": 0,
+    "exclusive_resources": []
+  },
+  "action_guard_state": "READY",
+  "attempt": 1,
+  "state": "PLANNED",
+  "verification_state": "UNVERIFIED"
+}

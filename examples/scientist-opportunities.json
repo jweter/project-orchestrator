@@ -1,0 +1,55 @@
+{
+  "max_proposals": 3,
+  "opportunities": [
+    {
+      "opportunity_id": "ke-core-repeat-preflight-failure",
+      "project": "knowledge-engine",
+      "repository": "jweter/knowledge-engine-core",
+      "source_type": "recurring_failure",
+      "priority": 3,
+      "scope_refs": ["tests/test_cli.py", "src/knowledge_engine_core/cli.py"],
+      "evidence_refs": ["worker:#56:canonical-preflight"],
+      "hypothesis": "A bounded output-contract correction will eliminate the repeated canonical preflight failure.",
+      "measurement_contract": {
+        "contract_id": "core-cli-contract-v1",
+        "primary_metric": "failed_tests",
+        "direction": "MINIMIZE",
+        "tolerance": 0,
+        "required_metrics": ["failed_tests", "passed_tests"]
+      },
+      "reversible": true,
+      "bounded_scope": true,
+      "deterministic_measurement": true,
+      "active_coverage_refs": [],
+      "measured_signals": [
+        {
+          "name": "failed_tests",
+          "value": 4,
+          "evidence_ref": "worker:#56:canonical-preflight"
+        }
+      ]
+    },
+    {
+      "opportunity_id": "everward-subjective-fun",
+      "project": "everward",
+      "repository": "jweter/Project-Everward",
+      "source_type": "product_reality_debt",
+      "priority": 4,
+      "scope_refs": ["player-experience"],
+      "evidence_refs": ["product-reality:fun-pending"],
+      "hypothesis": "The current build is subjectively fun enough for human acceptance.",
+      "measurement_contract": {
+        "contract_id": "subjective-fun-v1",
+        "primary_metric": "human_acceptance",
+        "direction": "MAXIMIZE",
+        "tolerance": 0,
+        "required_metrics": ["human_acceptance"]
+      },
+      "reversible": true,
+      "bounded_scope": true,
+      "deterministic_measurement": false,
+      "active_coverage_refs": [],
+      "measured_signals": []
+    }
+  ]
+}

@@ -1,11 +1,19 @@
 # Claude Code instructions
 
-Follow `AGENTS.md`, `DoWork.txt`, `docs/EVOLUTION_ENGINE.md`, `docs/EVOLUTION_WORKER_HANDOFF.md`, and `docs/AGENT_ACTION_GUARD.md`.
+Follow `AGENTS.md`, `DoWork.txt`, `docs/EVOLUTION_ENGINE.md`, `docs/EVOLUTION_WORKER_HANDOFF.md`, `docs/AGENT_ACTION_GUARD.md`, and `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`.
 
 The orchestrator is a policy and evidence system. Keep decision logic pure/deterministic where practical; isolate GitHub I/O from ranking logic; preserve fail-closed semantics; add regression tests for every corrected orchestration failure.
 
 Use the Fix_It progression deliberately: **Repair -> Replacement -> Upgrade -> Redesign -> Evolution**. Do not jump stages merely to create activity. Evolution requires verified before/after evidence and must never weaken review, CI, security, privacy, provenance, licensing, architecture, Product Reality, or project-isolation gates.
 
+Operate experiment-like autonomous engineering as a scientific loop: **Observe -> formulate hypothesis -> retrieve prior evidence -> design bounded experiment -> estimate cost -> execute -> measure -> compare -> reject or retain -> independently verify -> record -> generalize -> repeat.** Code changes are hypotheses. Retries require lineage. Competing candidates must share an exact baseline and measurement contract. Do not invent a winner when the evidence is within tolerance or incomparable.
+
 Before autonomous implementation, repair retries, or experiment-like fan-out, build an exact-head action context and evaluate the Agent Action Guard. Retrieve exact failure evidence instead of guessing from summaries, prove context/learning lookup happened, and estimate compute/network/write/concurrency/paid-service cost. Only `READY` may continue autonomously; `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, and `FORBIDDEN` stop execution until their boundary is resolved. The guard itself never executes commands.
+
+After `READY`, route candidate work through the Portfolio Resource Scheduler. Preserve P0-P6 priority; apply fairness only within equal priority; honor explicit exclusive resources and capacity. Do not let separate workers independently overcommit the same local or external resource.
+
+Use the Opportunity Sweeper to convert existing evidence-backed gaps into bounded experiments, not to invent speculative features. Prefer reversible, deterministic measurements with explicit scope and measurement contracts. Deduplicate against active work and equivalent active experiments.
+
+Treat Cross-Repo Pattern Distillation as an earned promotion path. Local lessons stay local until independent repositories and projects show verified domain-independent outcomes. Group by explicit pattern keys only and never transfer product-specific behavior or requirements across projects.
 
 Treat unattended workers as independent verification/evidence producers. Route their sanitized exact-head results through the Evolution worker handoff. Execute only repository-explicit deterministic safe repairs automatically; otherwise perform bounded engineering diagnosis on a governed branch and require independent verification before recording a repair as successful learning.
