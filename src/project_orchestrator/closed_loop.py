@@ -5,6 +5,7 @@ from typing import Any
 
 PROJECTS = ("knowledge-engine", "rocksmith", "everward")
 LOOP_STAGES = ("SENSE", "REMEMBER", "DECIDE", "ACT", "VERIFY", "LEARN", "ADAPT")
+ACTION_GUARD_STATES = {"READY", "GATHER_CONTEXT", "APPROVAL_REQUIRED", "FORBIDDEN"}
 ADVANCEMENTS = {
     "MERGED_GREEN_PR",
     "REPAIRED_EXISTING_WORK",
@@ -82,6 +83,9 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
                     raise ValueError(f"{project}.stages.{stage} BLOCKED requires reason")
             stage_result[stage] = evidence
 
+        action_guard_state = item.get("agent_action_guard_state")
+        action_guard_ref = item.get("agent_action_guard_evidence_ref")
+
         if eligibility == "ELIGIBLE":
             eligible += 1
             for required_stage in ("SENSE", "REMEMBER", "DECIDE"):
@@ -100,6 +104,18 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
                 raise ValueError(
                     f"{project} ELIGIBLE requires pre_change_risk_evidence_ref before ACT"
                 )
+            if action_guard_state not in ACTION_GUARD_STATES:
+                raise ValueError(
+                    f"{project} ELIGIBLE requires an explicit agent_action_guard_state before ACT"
+                )
+            if not isinstance(action_guard_ref, str) or not action_guard_ref.strip():
+                raise ValueError(
+                    f"{project} ELIGIBLE requires agent_action_guard_evidence_ref before ACT"
+                )
+            if stage_result["ACT"]["state"] == "COMPLETE" and action_guard_state != "READY":
+                raise ValueError(
+                    f"{project} ACT=COMPLETE requires agent_action_guard_state=READY"
+                )
 
         advancement = item.get("advancement", "NONE")
         if advancement not in ADVANCEMENTS:
@@ -110,6 +126,8 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
         if advancement != "NONE":
             if eligibility != "ELIGIBLE":
                 raise ValueError(f"{project} advancement requires ELIGIBLE")
+            if action_guard_state != "READY":
+                raise ValueError(f"{project} advancement requires agent_action_guard_state=READY")
             if stage_result["ACT"]["state"] != "COMPLETE" or stage_result["VERIFY"]["state"] != "COMPLETE":
                 raise ValueError(f"{project} advancement requires ACT and VERIFY evidence")
             if not isinstance(execution_ref, str) or not execution_ref.strip():
@@ -132,8 +150,6 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
         lessons_reused += len(set(reused))
         lessons_recorded += len(set(recorded))
 
-        # A run is closed for a product only if learning/adaptation were either
-        # explicitly completed or proven not applicable. UNKNOWN is not closure.
         learning_closed = stage_result["LEARN"]["state"] in {"COMPLETE", "NOT_APPLICABLE"}
         adapt_closed = stage_result["ADAPT"]["state"] in {"COMPLETE", "NOT_APPLICABLE"}
         if learning_closed and adapt_closed:
@@ -146,6 +162,8 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
             "lessons_recorded": sorted(set(recorded)),
             "pre_change_risk_state": item.get("pre_change_risk_state", "NOT_APPLICABLE"),
             "pre_change_risk_evidence_ref": item.get("pre_change_risk_evidence_ref"),
+            "agent_action_guard_state": action_guard_state or "NOT_APPLICABLE",
+            "agent_action_guard_evidence_ref": action_guard_ref,
             "execution_evidence_ref": execution_ref,
             "verification_evidence_ref": verification_ref,
         }
@@ -182,7 +200,8 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
         "run_closed": evidence_fresh and closed_projects == 3,
         "rules": [
             "fresh evidence is required before trend or compounding claims",
-            "ELIGIBLE projects require SENSE, REMEMBER, DECIDE, and explicit pre-change risk evidence before ACT",
+            "ELIGIBLE projects require SENSE, REMEMBER, DECIDE, explicit pre-change risk evidence, and Agent Action Guard evidence before ACT",
+            "ACT and advancement require agent_action_guard_state=READY",
             "advancement requires ACT and VERIFY evidence plus explicit execution and verification refs",
             "LEARN and ADAPT must close explicitly or be NOT_APPLICABLE",
             "UNKNOWN never counts as a completed learning-loop stage",

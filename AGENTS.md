@@ -8,13 +8,17 @@ Read, in order:
 5. `docs/project-status.yaml`
 6. `docs/EVOLUTION_ENGINE.md`
 7. `docs/EVOLUTION_WORKER_HANDOFF.md`
-8. `docs/REMOTE_PREFLIGHT.md`
+8. `docs/AGENT_ACTION_GUARD.md`
+9. `engineering/agent-action-guard.json`
+10. `docs/REMOTE_PREFLIGHT.md`
 
 This repository coordinates product repositories; it does not replace their governing documents.
 
 Never infer missing GitHub state, invent Product Reality, invent percent complete, merge red/pending/uncertain code, bypass per-repository preflight/CI, create competing ownership, disable DoWork, or commit secrets/private Product Reality payloads.
 
 Use the Evolution Engine for verified recurring failures and successful engineering patterns: repair the smallest defect first, remember verified learning, move prevention earlier, and promote a mechanism to portfolio-wide evolution only after comparable measured evidence proves improvement without weakening gates. Never transfer unrelated product requirements between projects.
+
+Before autonomous implementation, repair retry, or experiment-like fan-out, use the Agent Action Guard. Retrieve exact live context and relevant verified learning first; failure-driven work/retries require an exact error reference. Estimate compute, network calls, write operations, concurrency, and any paid external cost. `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, and `FORBIDDEN` are hard stops for autonomous execution. `READY` grants only pre-action clearance and never bypasses repository-native architecture, CI, review, security, privacy, licensing/provenance, Product Reality, or reserved-human gates.
 
 Route sanitized unattended-worker results through `docs/EVOLUTION_WORKER_HANDOFF.md`: safe deterministic repairs may execute only under existing repository-explicit repair authority; all other defects remain bounded engineering work; the fixer never proves its own repair; Product Reality, environment failures, and reserved human decisions remain separate fail-closed lanes.
 

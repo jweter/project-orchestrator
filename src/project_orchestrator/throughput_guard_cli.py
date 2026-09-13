@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .agent_action_guard import build_agent_action_context, evaluate_agent_action_guard
 from .fast_gate import build_repository_fast_gate_plan
 from .throughput_guard import (
     build_active_work_lease,
@@ -35,6 +36,12 @@ def main() -> int:
     fast.add_argument("--changed-path", action="append", dest="changed_paths", required=True)
     fast.add_argument("--execute", action="store_true")
     fast.add_argument("--repo-root", type=Path)
+
+    action_context = sub.add_parser("action-context")
+    action_context.add_argument("input", type=Path)
+
+    action_gate = sub.add_parser("action-gate")
+    action_gate.add_argument("input", type=Path)
 
     classify = sub.add_parser("classify-failure")
     classify.add_argument("evidence", type=Path)
@@ -68,6 +75,30 @@ def main() -> int:
                 raise ValueError("--repo-root is required with --execute")
             result = execute_fast_gate(result, repo_root=args.repo_root)
         _print(result)
+        return 0
+
+    if args.command == "action-context":
+        payload = _load(args.input)
+        if not isinstance(payload, dict):
+            raise ValueError("input must be an object")
+        _print(build_agent_action_context(**payload))
+        return 0
+
+    if args.command == "action-gate":
+        payload = _load(args.input)
+        if not isinstance(payload, dict):
+            raise ValueError("input must be an object")
+        required = {"context", "resources", "policy"}
+        missing = sorted(required - payload.keys())
+        if missing:
+            raise ValueError(f"input missing fields: {missing}")
+        _print(
+            evaluate_agent_action_guard(
+                context=payload["context"],
+                resources=payload["resources"],
+                policy=payload["policy"],
+            )
+        )
         return 0
 
     payload = _load(args.evidence if hasattr(args, "evidence") else args.records)
