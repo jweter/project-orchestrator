@@ -24,6 +24,8 @@ def project(**overrides):
         "lessons_recorded": ["lesson-2"],
         "pre_change_risk_state": "NO_RELEVANT_VERIFIED_HISTORY",
         "pre_change_risk_evidence_ref": "risk:profile",
+        "agent_action_guard_state": "READY",
+        "agent_action_guard_evidence_ref": "action-guard:ready",
         "execution_evidence_ref": "commit:exact-head",
         "verification_evidence_ref": "preflight:green",
     }
@@ -130,6 +132,39 @@ def test_eligible_project_requires_pre_change_risk_profile():
 def test_explicit_no_history_is_valid_pre_change_risk_evidence():
     result = validate_closed_loop_run(payload(), now=NOW)
     assert result["projects"]["everward"]["pre_change_risk_state"] == "NO_RELEVANT_VERIFIED_HISTORY"
+
+
+def test_eligible_project_requires_action_guard_evidence():
+    projects = payload()["projects"]
+    projects["knowledge-engine"] = project(
+        agent_action_guard_state=None,
+        agent_action_guard_evidence_ref=None,
+    )
+    with pytest.raises(ValueError, match="agent_action_guard_state"):
+        validate_closed_loop_run(payload(projects=projects), now=NOW)
+
+
+def test_act_cannot_complete_when_action_guard_is_not_ready():
+    projects = payload()["projects"]
+    projects["knowledge-engine"] = project(agent_action_guard_state="GATHER_CONTEXT")
+    with pytest.raises(ValueError, match="ACT=COMPLETE requires agent_action_guard_state=READY"):
+        validate_closed_loop_run(payload(projects=projects), now=NOW)
+
+
+def test_non_ready_action_guard_can_block_without_fake_advancement():
+    item = project(
+        advancement="NONE",
+        agent_action_guard_state="APPROVAL_REQUIRED",
+        no_advancement_reason="paid external cost requires approval",
+    )
+    s = item["stages"]
+    s["ACT"] = {"state": "BLOCKED", "reason": "Agent Action Guard requires approval"}
+    s["VERIFY"] = {"state": "NOT_APPLICABLE"}
+    projects = payload()["projects"]
+    projects["rocksmith"] = item
+    result = validate_closed_loop_run(payload(projects=projects), now=NOW)
+    assert result["projects"]["rocksmith"]["agent_action_guard_state"] == "APPROVAL_REQUIRED"
+    assert result["kpis"]["eligible_projects_advanced"] == 2
 
 
 def test_advancement_requires_explicit_execution_reference():
