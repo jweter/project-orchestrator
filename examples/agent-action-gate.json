@@ -1,0 +1,50 @@
+{
+  "context": {
+    "schema_version": 1,
+    "project": "knowledge-engine",
+    "repository": "jweter/knowledge-engine-core",
+    "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "action_id": "repair-core-preflight",
+    "objective": "repair a verified canonical preflight failure",
+    "authority_ref": "issue:#57",
+    "scope_refs": [
+      "tests/test_discovery_broker.py"
+    ],
+    "context_refs": [
+      "engineering/control-plane.json",
+      "docs/ARCHITECTURE.md"
+    ],
+    "evidence_refs": [
+      "worker:#56:canonical-preflight"
+    ],
+    "prior_lesson_refs": [],
+    "context_lookup_performed": true,
+    "learning_lookup_performed": true,
+    "failure_or_retry": true,
+    "exact_error_ref": "logs:preflight-core:test_discovery_broker",
+    "attempt": 2,
+    "reserved_human_decision": false,
+    "destructive": false,
+    "irreversible": false
+  },
+  "resources": {
+    "compute_seconds_estimate": 900,
+    "network_calls_estimate": 10,
+    "write_operations_estimate": 2,
+    "concurrency_estimate": 1,
+    "uses_paid_external_service": false,
+    "external_cost_usd_estimate": null
+  },
+  "policy": {
+    "max_compute_seconds_without_approval": 3600,
+    "hard_compute_seconds": 14400,
+    "max_network_calls_without_approval": 50,
+    "hard_network_calls": 500,
+    "max_write_operations_without_approval": 10,
+    "hard_write_operations": 100,
+    "max_concurrency_without_approval": 4,
+    "hard_concurrency": 12,
+    "max_external_cost_usd_without_approval": 0,
+    "hard_external_cost_usd": 50
+  }
+}
