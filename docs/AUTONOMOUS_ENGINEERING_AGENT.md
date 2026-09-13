@@ -4,14 +4,12 @@ The portfolio orchestrator is the durable operating substrate for the AI enginee
 
 ## Closed-loop model
 
-**SENSE -> REMEMBER -> CONTEXT -> BUDGET -> DECIDE -> ACT -> VERIFY -> LEARN -> ADAPT**
+**SENSE -> REMEMBER -> DECIDE -> ACT -> VERIFY -> LEARN -> ADAPT**
 
 - **Sense:** live GitHub state, issues, PRs, CI logs, branches, roadmaps, architecture, policies, and Product Reality debt.
 - **Remember:** verified failure memory, successful engineering patterns, compatibility lessons, area-specific prevention rules, and sanitized evidence.
-- **Context:** exact-head scope, repository authority, component/schema metadata, evidence references, and the exact error before failure-driven retries.
-- **Budget:** explicit estimates for compute, network calls, write operations, concurrency, and paid external cost before autonomous fan-out.
-- **Decide:** P0-P6 triage, dependency-aware decomposition, ownership checks, blocker rotation, throughput optimization, and the Agent Action Guard result.
-- **Act:** implement, repair, modernize branches, test, preflight, open PRs, and merge only verified GREEN work when the action is authorized.
+- **Decide:** P0-P6 triage, dependency-aware decomposition, ownership checks, blocker rotation, throughput optimization, **plus context-before-action and resource-budget gating**. Exact-head scope, repository authority, component/schema metadata, evidence references, exact errors for failure-driven retries, and a compute/network/write/concurrency/paid-cost estimate are inputs to the decision rather than new lifecycle stages.
+- **Act:** implement, repair, modernize branches, test, preflight, open PRs, and merge only verified GREEN work when the Agent Action Guard returns `READY` and all normal authority permits execution.
 - **Verify:** exact-head preflight, fresh independent PR CI, reviews/comments, mergeability, policy checks, and human Product Reality where required.
 - **Learn:** capture root cause, bounded fix, regression protection, residual risk, prevention rule, and measured successful patterns.
 - **Adapt:** convert repeated friction into safe orchestrator improvements through the same governed promotion path.
@@ -81,7 +79,7 @@ The output is a pre-edit checklist of applicable prevention/reuse rules plus evi
 
 ### 8. Context-first Agent Action Guard — IMPLEMENTED, PENDING PROMOTION
 
-Production agent orchestration evidence shows that action APIs alone are insufficient: agents need exact operational context and resource awareness before autonomous fan-out. The portfolio therefore adds a deterministic pre-action gate.
+Production agent orchestration evidence shows that action APIs alone are insufficient: agents need exact operational context and resource awareness before autonomous fan-out. The portfolio therefore adds a deterministic pre-action gate inside **DECIDE**.
 
 Before autonomous implementation, repair retry, or experiment-like work, the agent must build a context package proving:
 
@@ -99,6 +97,6 @@ The guard is planning authority only. It emits no executable commands and cannot
 
 ## Operational phase
 
-The v1 closed loop is now being hardened with context-before-action and resource-aware autonomy. Product work remains the proving ground: exercise the loop on real Knowledge Engine, Rocksmith, and Everward work; retrieve exact errors before retries; apply pre-change learning and risk context before mutation; estimate resource/cost fan-out before execution; and record verified outcomes afterward.
+The v1 closed loop is now being hardened with context-before-action and resource-aware autonomy inside the existing DECIDE stage. Product work remains the proving ground: exercise the loop on real Knowledge Engine, Rocksmith, and Everward work; retrieve exact errors before retries; apply pre-change learning and risk context before mutation; estimate resource/cost fan-out before execution; and record verified outcomes afterward.
 
 New orchestrator infrastructure is justified only by measured recurring friction, a concrete execution blocker, a failed control invariant, or a secondary effect created by increased autonomy.
