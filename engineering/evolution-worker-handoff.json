@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "name": "Evolution Worker Handoff",
+  "issue": 54,
+  "input_authority": "sanitized exact-head unattended-worker or independent verification evidence",
+  "canonical_statuses": [
+    "PASS",
+    "FAIL",
+    "REVIEW_REQUIRED",
+    "PRODUCT_REALITY_REQUIRED",
+    "ENVIRONMENT_FAILURE"
+  ],
+  "next_actions": [
+    "VERIFIED_PASS",
+    "SAFE_AUTO_REPAIR_AVAILABLE",
+    "VERIFY_REPAIR",
+    "ENGINEERING_REPAIR_REQUIRED",
+    "GATHER_EVIDENCE",
+    "ENVIRONMENT_RETRY",
+    "PRODUCT_REALITY_REQUIRED",
+    "HUMAN_DECISION_REQUIRED",
+    "MEASURE_PREVENTION",
+    "EVOLUTION_VERIFIED"
+  ],
+  "exact_head_required": true,
+  "project_repository_identity_required": true,
+  "raw_private_payloads_forbidden": true,
+  "secret_material_forbidden": true,
+  "safe_auto_repair_authority": "existing project_orchestrator.repair repository-explicit deterministic repair policy only",
+  "safe_auto_repair_classes": [
+    "FORMAT",
+    "IMPORT_SORT",
+    "LINT_SAFE_FIX"
+  ],
+  "non_autofix_classes": [
+    "TEST_FAILURE",
+    "SECURITY",
+    "DEPENDENCY",
+    "TYPE_CHECK",
+    "GOVERNANCE",
+    "PROVENANCE",
+    "PRODUCT_REALITY",
+    "ENVIRONMENT",
+    "UNKNOWN"
+  ],
+  "repair_success_authority": "independent repository-native exact-head verification after repair",
+  "environment_failure_semantics": "lane-scoped; never silently convert to product defect",
+  "product_reality_semantics": "separate authority; never auto-cleared by worker or Evolution Engine",
+  "learning_memory_rule": "persist only sanitized independently VERIFIED repair lessons",
+  "evolution_rule": "reassess stable pattern_id against verified recurrence, prevention, learning effect, and comparable before/after measurements",
+  "project_isolation": true,
+  "cli": "project-orchestrator-evolve worker-handoff",
+  "documentation": "docs/EVOLUTION_WORKER_HANDOFF.md"
+}
