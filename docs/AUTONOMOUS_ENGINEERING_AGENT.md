@@ -4,12 +4,14 @@ The portfolio orchestrator is the durable operating substrate for the AI enginee
 
 ## Closed-loop model
 
-**SENSE -> REMEMBER -> DECIDE -> ACT -> VERIFY -> LEARN -> ADAPT**
+**SENSE -> REMEMBER -> CONTEXT -> BUDGET -> DECIDE -> ACT -> VERIFY -> LEARN -> ADAPT**
 
 - **Sense:** live GitHub state, issues, PRs, CI logs, branches, roadmaps, architecture, policies, and Product Reality debt.
 - **Remember:** verified failure memory, successful engineering patterns, compatibility lessons, area-specific prevention rules, and sanitized evidence.
-- **Decide:** P0-P6 triage, dependency-aware decomposition, ownership checks, blocker rotation, and throughput optimization.
-- **Act:** implement, repair, modernize branches, test, preflight, open PRs, and merge only verified GREEN work.
+- **Context:** exact-head scope, repository authority, component/schema metadata, evidence references, and the exact error before failure-driven retries.
+- **Budget:** explicit estimates for compute, network calls, write operations, concurrency, and paid external cost before autonomous fan-out.
+- **Decide:** P0-P6 triage, dependency-aware decomposition, ownership checks, blocker rotation, throughput optimization, and the Agent Action Guard result.
+- **Act:** implement, repair, modernize branches, test, preflight, open PRs, and merge only verified GREEN work when the action is authorized.
 - **Verify:** exact-head preflight, fresh independent PR CI, reviews/comments, mergeability, policy checks, and human Product Reality where required.
 - **Learn:** capture root cause, bounded fix, regression protection, residual risk, prevention rule, and measured successful patterns.
 - **Adapt:** convert repeated friction into safe orchestrator improvements through the same governed promotion path.
@@ -65,13 +67,11 @@ Target: **Preventable Repeat Failure Rate = 0**.
 
 A lesson is effective only when it demonstrably prevents, detects earlier, or shortens a future failure class. If the same diagnosed failure repeatedly consumes runs, the prevention mechanism is incomplete.
 
-
 ### 6. Success memory and learning effectiveness — COMPLETE
 
 The agent must learn from verified successes as well as failures. Successful engineering patterns may be persisted as `success_pattern` lessons only when supported by exact evidence. When a prior lesson is later applied, record a verified learning application and classify the observed outcome as prevention, earlier detection, shortened repair, successful-pattern reuse, no measurable effect, or UNKNOWN. Learning effectiveness is measured from these verified applications; retrieval or intention alone does not count as learning success.
 
 The next operational phase is to exercise the full closed loop on real product work, record which lessons were reused, and determine from evidence whether the system is actually reducing repeat failures and repair cycles.
-
 
 ### 7. Evidence-based pre-change risk predictor — COMPLETE
 
@@ -79,7 +79,26 @@ Before mutating a known component, the agent must ask which verified failure cla
 
 The output is a pre-edit checklist of applicable prevention/reuse rules plus evidence references. These signals may change implementation and verification planning before CI fails, but they never override product-repository roadmap, architecture, security, licensing/provenance, privacy, CI, or Product Reality authority.
 
+### 8. Context-first Agent Action Guard — IMPLEMENTED, PENDING PROMOTION
+
+Production agent orchestration evidence shows that action APIs alone are insufficient: agents need exact operational context and resource awareness before autonomous fan-out. The portfolio therefore adds a deterministic pre-action gate.
+
+Before autonomous implementation, repair retry, or experiment-like work, the agent must build a context package proving:
+
+- exact repository head and bounded scope;
+- repository/roadmap authority reference;
+- relevant component/schema/context references;
+- evidence references;
+- learning lookup was performed;
+- context lookup was performed;
+- exact failure/error reference for retries or failure-driven work.
+
+It must also estimate compute seconds, network calls, write operations, concurrency, and paid external cost. The gate returns `READY`, `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, or `FORBIDDEN`. Unknown paid cost requires approval; explicit hard-cap violations are forbidden. Reserved-human, destructive, and irreversible boundaries still require approval.
+
+The guard is planning authority only. It emits no executable commands and cannot bypass CI, review, security, provenance/licensing, privacy, Product Reality, or repository architecture authority. See `docs/AGENT_ACTION_GUARD.md` and #57.
 
 ## Operational phase
 
-The planned v1 agent capabilities are implemented and verified. The next engineering objective is not another speculative governance layer. The orchestrator must now exercise the complete loop on real Knowledge Engine, Rocksmith, and Everward work, apply pre-change risk and prior learning before mutation, and record verified outcomes afterward. New orchestrator infrastructure is justified only by measured recurring friction, a concrete execution blocker, or a failed control invariant discovered during product work.
+The v1 closed loop is now being hardened with context-before-action and resource-aware autonomy. Product work remains the proving ground: exercise the loop on real Knowledge Engine, Rocksmith, and Everward work; retrieve exact errors before retries; apply pre-change learning and risk context before mutation; estimate resource/cost fan-out before execution; and record verified outcomes afterward.
+
+New orchestrator infrastructure is justified only by measured recurring friction, a concrete execution blocker, a failed control invariant, or a secondary effect created by increased autonomy.
