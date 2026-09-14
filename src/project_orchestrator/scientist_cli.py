@@ -12,6 +12,7 @@ from .engineering_scientist import (
     sweep_opportunities,
     validate_scientist_cycle,
 )
+from .lvn_dispatch import build_lvn_request, select_lvn_candidates
 
 
 def _load(path: Path):
@@ -33,6 +34,8 @@ def main() -> int:
         "opportunity-sweep",
         "pattern-distill",
         "validate-cycle",
+        "lvn-select",
+        "lvn-request",
     ):
         child = sub.add_parser(command)
         child.add_argument("input", type=Path)
@@ -69,6 +72,16 @@ def main() -> int:
         if not isinstance(payload, dict):
             raise ValueError("input must be an object")
         _print(validate_scientist_cycle(payload))
+        return 0
+    if args.command == "lvn-select":
+        if not isinstance(payload, dict):
+            raise ValueError("input must be an object")
+        _print(select_lvn_candidates(**payload))
+        return 0
+    if args.command == "lvn-request":
+        if not isinstance(payload, dict):
+            raise ValueError("input must be an object")
+        _print(build_lvn_request(**payload))
         return 0
     raise AssertionError("unreachable")
 
