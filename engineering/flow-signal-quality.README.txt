@@ -1,5 +1,0 @@
-Commands:
-- project-orchestrator-throughput classify-workflow <evidence.json>
-- project-orchestrator-throughput stale-promotion-recovery <evidence.json>
-- project-orchestrator-throughput reconciliation-pr-plan <evidence.json>
-- project-orchestrator-throughput diagnostic-churn <records.json>
