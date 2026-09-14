@@ -1,0 +1,1 @@
+PROMOTION_STALE is a routing state, never a pass. Exact-head preflight, fresh PR CI, reviews, mergeability, and policy gates remain mandatory.
