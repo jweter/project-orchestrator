@@ -1,1 +1,0 @@
-Avoidable diagnostic churn is evidence-only: count investigations whose condition was explicitly known non-actionable before investigation began. Missing evidence remains UNKNOWN.
