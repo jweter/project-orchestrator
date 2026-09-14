@@ -6,6 +6,12 @@ from pathlib import Path
 
 from .agent_action_guard import build_agent_action_context, evaluate_agent_action_guard
 from .fast_gate import build_repository_fast_gate_plan
+from .flow_signal import (
+    build_reconciliation_pr_plan,
+    build_stale_promotion_recovery,
+    classify_workflow_outcome,
+    compute_diagnostic_churn,
+)
 from .throughput_guard import (
     build_active_work_lease,
     build_issue_ledger_event,
@@ -45,6 +51,18 @@ def main() -> int:
 
     classify = sub.add_parser("classify-failure")
     classify.add_argument("evidence", type=Path)
+
+    workflow = sub.add_parser("classify-workflow")
+    workflow.add_argument("evidence", type=Path)
+
+    stale = sub.add_parser("stale-promotion-recovery")
+    stale.add_argument("evidence", type=Path)
+
+    reconcile_pr = sub.add_parser("reconciliation-pr-plan")
+    reconcile_pr.add_argument("evidence", type=Path)
+
+    churn = sub.add_parser("diagnostic-churn")
+    churn.add_argument("records", type=Path)
 
     lease_create = sub.add_parser("lease-create")
     lease_create.add_argument("evidence", type=Path)
@@ -106,6 +124,26 @@ def main() -> int:
         if not isinstance(payload, dict):
             raise ValueError("evidence must be an object")
         _print(classify_promotion_failure(payload))
+        return 0
+    if args.command == "classify-workflow":
+        if not isinstance(payload, dict):
+            raise ValueError("evidence must be an object")
+        _print(classify_workflow_outcome(payload))
+        return 0
+    if args.command == "stale-promotion-recovery":
+        if not isinstance(payload, dict):
+            raise ValueError("evidence must be an object")
+        _print(build_stale_promotion_recovery(payload))
+        return 0
+    if args.command == "reconciliation-pr-plan":
+        if not isinstance(payload, dict):
+            raise ValueError("evidence must be an object")
+        _print(build_reconciliation_pr_plan(payload))
+        return 0
+    if args.command == "diagnostic-churn":
+        if not isinstance(payload, list):
+            raise ValueError("records must be a list")
+        _print(compute_diagnostic_churn(payload))
         return 0
     if args.command == "lease-create":
         if not isinstance(payload, dict):
