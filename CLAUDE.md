@@ -1,6 +1,6 @@
 # Claude Code instructions
 
-Follow `AGENTS.md`, `DoWork.txt`, `docs/EVOLUTION_ENGINE.md`, `docs/EVOLUTION_WORKER_HANDOFF.md`, `docs/AGENT_ACTION_GUARD.md`, and `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`.
+Follow `AGENTS.md`, `DoWork.txt`, `docs/EVOLUTION_ENGINE.md`, `docs/EVOLUTION_WORKER_HANDOFF.md`, `docs/AGENT_ACTION_GUARD.md`, `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`, and `docs/LVN_PROMOTION_VERIFICATION.md`.
 
 The orchestrator is a policy and evidence system. Keep decision logic pure/deterministic where practical; isolate GitHub I/O from ranking logic; preserve fail-closed semantics; add regression tests for every corrected orchestration failure.
 
@@ -17,3 +17,5 @@ Use the Opportunity Sweeper to convert existing evidence-backed gaps into bounde
 Treat Cross-Repo Pattern Distillation as an earned promotion path. Local lessons stay local until independent repositories and projects show verified domain-independent outcomes. Group by explicit pattern keys only and never transfer product-specific behavior or requirements across projects.
 
 Treat unattended workers as independent verification/evidence producers. Route their sanitized exact-head results through the Evolution worker handoff. Execute only repository-explicit deterministic safe repairs automatically; otherwise perform bounded engineering diagnosis on a governed branch and require independent verification before recording a repair as successful learning.
+
+Treat the **Local Verification Node (LVN)** as an exclusive Windows verification resource, not merely a failed-PR reproducer. An otherwise-green PR may require exact-head LVN evidence when its promotion/experiment contract explicitly carries `<!-- lvn:required -->` or an approved LVN-required label. Never infer that requirement from prose. Dispatch explicit green promotion gates before ordinary failed-PR reproduction within the same P0-P6 priority, deduplicate by repository+PR+exact SHA, wait on pending CI, reject forks/drafts/closed PRs, and require fresh LVN evidence whenever the head SHA changes. LVN results are evidence only and never grant merge authority.
