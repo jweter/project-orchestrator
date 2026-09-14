@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "purpose": "Preserve fail-closed promotion while separating true engineering defects from stale-head safety refusals, non-applicable workflows, and known platform gates.",
   "workflow_signal": {
     "states": {
@@ -45,13 +45,15 @@
     "merge_during_recovery": false
   },
   "reconciliation_pr_routing": {
-    "github_actions_role": "derive live status, commit generated status, push only an authorized reconciliation branch",
-    "portfolio_orchestrator_role": "create or continue the PR using the authorized GitHub connection, then enforce normal PR CI/review gates",
+    "github_actions_role": "derive live status, commit generated status, push only an authorized reconciliation source branch",
+    "portfolio_orchestrator_role": "read the exact generated payload from the bot source head, re-materialize it onto a fresh orchestrator-authored promotion branch rooted at the current default head, run exact-head preflight, then create the PR and enforce normal PR CI/review gates",
     "github_actions_may_create_pr": false,
+    "direct_pr_from_github_actions_commit": false,
+    "materialization_required_for_github_actions_authored_source": true,
     "authorized_branch_prefixes": [
       "automation/status-reconcile"
     ],
-    "least_privilege_reason": "Avoid broad GITHUB_TOKEN PR permissions and workflow-recursion ambiguity while keeping branch generation automated."
+    "least_privilege_reason": "Avoid broad GITHUB_TOKEN PR permissions and GitHub recursion suppression while keeping branch generation automated and fresh PR CI trustworthy."
   },
   "diagnostic_churn": {
     "metric": "avoidable_diagnostic_churn",
@@ -67,6 +69,7 @@
   "safety": [
     "Do not weaken exact-head verification.",
     "Do not convert stale or non-applicable state into GREEN.",
+    "Do not reuse suppressed checks from a bot-authored source commit as fresh PR CI for a different promotion head.",
     "Do not let operational severity override repository-required CI or review gates.",
     "Do not grant GitHub Actions broader PR authority merely to avoid a routing step."
   ]
