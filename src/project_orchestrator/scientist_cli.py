@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .emerging_compute import assess_compute_benchmark_result, evaluate_compute_substrates
 from .engineering_scientist import (
     build_experiment_record,
     compare_hypotheses,
@@ -36,6 +37,8 @@ def main() -> int:
         "validate-cycle",
         "lvn-select",
         "lvn-request",
+        "compute-evaluate",
+        "compute-assess",
     ):
         child = sub.add_parser(command)
         child.add_argument("input", type=Path)
@@ -82,6 +85,16 @@ def main() -> int:
         if not isinstance(payload, dict):
             raise ValueError("input must be an object")
         _print(build_lvn_request(**payload))
+        return 0
+    if args.command == "compute-evaluate":
+        if not isinstance(payload, dict):
+            raise ValueError("input must be an object")
+        _print(evaluate_compute_substrates(**payload))
+        return 0
+    if args.command == "compute-assess":
+        if not isinstance(payload, dict):
+            raise ValueError("input must be an object")
+        _print(assess_compute_benchmark_result(**payload))
         return 0
     raise AssertionError("unreachable")
 
