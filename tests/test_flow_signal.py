@@ -103,7 +103,7 @@ def test_stale_recovery_can_reuse_exact_current_head_evidence_only() -> None:
     assert result["next_action"] == "REVALIDATE_CI_REVIEWS_AND_MERGEABILITY"
 
 
-def test_bot_reconciliation_branch_routes_pr_creation_to_orchestrator() -> None:
+def test_bot_reconciliation_branch_requires_orchestrator_materialization() -> None:
     result = build_reconciliation_pr_plan(
         {
             "repository": "jweter/knowledge-engine-ai",
@@ -115,9 +115,12 @@ def test_bot_reconciliation_branch_routes_pr_creation_to_orchestrator() -> None:
             "branch_pushed": True,
         }
     )
-    assert result["action"] == "CREATE_PR_VIA_ORCHESTRATOR_CONNECTION"
+    assert result["schema_version"] == 2
+    assert result["action"] == "MATERIALIZE_ORCHESTRATOR_PROMOTION_BRANCH"
+    assert result["materialization_required"] is True
     assert result["github_actions_may_create_pr"] is False
     assert result["merge_allowed"] is False
+    assert "full exact-head preflight" in result["next_gate"]
 
 
 def test_reconciliation_pr_plan_fails_closed_for_unauthorized_branch() -> None:
@@ -133,6 +136,7 @@ def test_reconciliation_pr_plan_fails_closed_for_unauthorized_branch() -> None:
         }
     )
     assert result["action"] == "BLOCKED_UNAUTHORIZED_BRANCH"
+    assert result["materialization_required"] is False
     assert result["merge_allowed"] is False
 
 
