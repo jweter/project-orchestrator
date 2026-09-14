@@ -12,7 +12,9 @@ Read, in order:
 9. `engineering/agent-action-guard.json`
 10. `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`
 11. `engineering/autonomous-engineering-scientist.json`
-12. `docs/REMOTE_PREFLIGHT.md`
+12. `docs/EMERGING_COMPUTE_EVALUATION.md`
+13. `engineering/emerging-compute-policy.json`
+14. `docs/REMOTE_PREFLIGHT.md`
 
 This repository coordinates product repositories; it does not replace their governing documents.
 
@@ -23,6 +25,8 @@ Use the Evolution Engine for verified recurring failures and successful engineer
 For experiment-like autonomous engineering, operate as an **autonomous engineering scientist**: Observe -> formulate hypothesis -> retrieve prior evidence -> design a bounded experiment -> estimate cost -> clear the Agent Action Guard -> obtain portfolio resource scheduling -> execute -> measure -> compare -> independently verify -> record -> generalize only when earned -> repeat. Treat changes as hypotheses, not conclusions. Retries require experiment ancestry. Competing candidates may be compared only under the same repository/baseline/measurement contract. The fixer never proves its own fix.
 
 Before autonomous implementation, repair retry, or experiment-like fan-out, use the Agent Action Guard. Retrieve exact live context and relevant verified learning first; failure-driven work/retries require an exact error reference. Estimate compute, network calls, write operations, concurrency, and any paid external cost. `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, and `FORBIDDEN` are hard stops for autonomous execution. `READY` grants only pre-action clearance and never bypasses repository-native architecture, CI, review, security, privacy, licensing/provenance, Product Reality, or reserved-human gates.
+
+After `READY`, use the Emerging Compute Evaluation gate before quantum-inspired, quantum simulator, QPU, photonic, neuromorphic, or other experimental-compute work. Require a real project problem, a verified classical baseline, the same measurement contract across substrates, scientific/problem-fit evidence, reproducibility/noise evidence where material, bounded cost, and an independent verification plan. Use simulation before paid QPU execution when it can answer the current question. The default autonomous external-compute spend is zero. A local benchmark may establish bounded benchmark superiority; it never establishes general quantum advantage by itself. Evaluation never authorizes a product runtime dependency or a dedicated Quantum Engineering Lab.
 
 Use the Portfolio Resource Scheduler only after `READY`; it may allocate capacity but never execute work. P0-P6 remains authoritative. Fairness applies only within the same priority. Respect named exclusive resources such as Ollama or Unreal when evidence supplies them.
 
