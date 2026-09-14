@@ -142,11 +142,15 @@ def build_stale_promotion_recovery(evidence: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_reconciliation_pr_plan(evidence: dict[str, Any]) -> dict[str, Any]:
-    """Route bot-generated reconciliation branches to central PR authority.
+    """Route bot-generated reconciliation branches through central promotion authority.
 
-    Product workflows may push an authorized branch, but the orchestrator's
-    GitHub connection owns PR creation. This avoids granting broad pull-request
-    creation rights to GITHUB_TOKEN and avoids recursion-suppression surprises.
+    GitHub suppresses downstream workflow execution for commits created with the
+    default GITHUB_TOKEN. Therefore the orchestrator must not open a normal PR
+    directly from the bot-authored branch and then expect fresh PR CI. Instead it
+    re-materializes the generated payload from the exact bot head onto a fresh
+    branch rooted at the current default branch using the orchestrator's GitHub
+    connection. That orchestrator-authored promotion branch then follows ordinary
+    preflight, PR CI, review, and merge gates.
     """
     if not isinstance(evidence, dict):
         raise ValueError("evidence must be an object")
@@ -166,6 +170,7 @@ def build_reconciliation_pr_plan(evidence: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(branch_pushed, bool):
         raise ValueError("branch_pushed must be boolean")
 
+    bot_authored = source_actor in {"github-actions[bot]", "github-actions"}
     authorized = any(branch.startswith(prefix) for prefix in prefixes)
     if not authorized:
         action = "BLOCKED_UNAUTHORIZED_BRANCH"
@@ -173,13 +178,14 @@ def build_reconciliation_pr_plan(evidence: dict[str, Any]) -> dict[str, Any]:
         action = "WAIT_FOR_BRANCH_PUSH"
     elif open_pr_number is not None:
         action = "CONTINUE_EXISTING_PR"
-    elif source_actor not in {"github-actions[bot]", "github-actions"}:
+    elif not bot_authored:
         action = "CENTRAL_REVIEW_REQUIRED"
     else:
-        action = "CREATE_PR_VIA_ORCHESTRATOR_CONNECTION"
+        action = "MATERIALIZE_ORCHESTRATOR_PROMOTION_BRANCH"
 
+    materialization_required = action == "MATERIALIZE_ORCHESTRATOR_PROMOTION_BRANCH"
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "repository": repository,
         "branch": branch,
         "head_sha": head_sha,
@@ -187,12 +193,17 @@ def build_reconciliation_pr_plan(evidence: dict[str, Any]) -> dict[str, Any]:
         "authorized_branch": authorized,
         "open_pr_number": open_pr_number,
         "action": action,
+        "bot_authored_source": bot_authored,
+        "materialization_required": materialization_required,
         "pr_creation_authority": "PORTFOLIO_ORCHESTRATOR_GITHUB_CONNECTION",
         "github_actions_may_create_pr": False,
         "merge_allowed": False,
-        "next_gate": "fresh PR CI and normal review gates after central PR creation"
-        if action == "CREATE_PR_VIA_ORCHESTRATOR_CONNECTION"
-        else "resolve the routing state before PR creation",
+        "next_gate": (
+            "copy only the exact generated payload onto an orchestrator-authored branch rooted at the current default head; run full exact-head preflight; then open a normal PR and require fresh PR CI"
+            if materialization_required
+            else "resolve the routing state before PR creation"
+        ),
+        "safety_rule": "never reuse suppressed bot-commit PR checks as evidence for an orchestrator-authored promotion head",
     }
 
 
