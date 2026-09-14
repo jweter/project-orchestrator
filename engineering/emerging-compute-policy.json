@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "policy_id": "portfolio-emerging-compute-v1",
+  "principle": "new compute substrates are experimental instruments, not architecture commitments",
+  "supported_substrate_classes": [
+    "CLASSICAL_CPU",
+    "CLASSICAL_GPU",
+    "CLASSICAL_ACCELERATOR",
+    "QUANTUM_INSPIRED",
+    "QUANTUM_SIMULATOR",
+    "QUANTUM_HARDWARE",
+    "PHOTONIC",
+    "NEUROMORPHIC",
+    "OTHER_EXPERIMENTAL"
+  ],
+  "autonomy": {
+    "max_external_cost_usd_without_approval": 0.0,
+    "hardware_requires_simulator_first_when_applicable": true,
+    "minimum_stochastic_replicates_or_shots": 1,
+    "minimum_independent_verifications_for_benchmark_superiority": 2,
+    "reject_unmarked_general_quantum_advantage_claims": true
+  },
+  "required_dimensions": [
+    "problem_fit",
+    "scientific_validity",
+    "measured_advantage",
+    "reproducibility_noise",
+    "compute_and_financial_cost",
+    "operational_complexity",
+    "project_value"
+  ],
+  "candidate_states": [
+    "ELIGIBLE_FOR_BOUNDED_EXPERIMENT",
+    "BASELINE_REQUIRED",
+    "GATHER_EVIDENCE",
+    "SIMULATE_FIRST",
+    "APPROVAL_REQUIRED",
+    "NOT_JUSTIFIED",
+    "FORBIDDEN"
+  ],
+  "claim_rule": "local benchmark superiority never establishes general quantum advantage",
+  "runtime_dependency_rule": "evaluation alone never authorizes a product runtime dependency",
+  "quantum_lab_activation": {
+    "calendar_triggered": false,
+    "requires_real_project_problem": true,
+    "requires_verified_classical_baseline": true,
+    "requires_surviving_bounded_experiment": true,
+    "requires_reusable_cross_project_value": true,
+    "requires_bounded_resource_plan": true
+  }
+}
