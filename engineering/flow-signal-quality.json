@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "purpose": "Preserve fail-closed promotion while separating true engineering defects from stale-head safety refusals, non-applicable workflows, and known platform gates.",
+  "workflow_signal": {
+    "states": {
+      "VERIFIED_GREEN": {
+        "severity": "GREEN",
+        "counts_as_product_failure": false
+      },
+      "PROMOTION_STALE": {
+        "severity": "YELLOW",
+        "counts_as_product_failure": false,
+        "required_recovery": "re-establish exact-head evidence before promotion"
+      },
+      "NOT_APPLICABLE": {
+        "severity": "NEUTRAL",
+        "counts_as_product_failure": false
+      },
+      "PLATFORM_GATE": {
+        "severity": "RED",
+        "counts_as_product_failure": false,
+        "required_recovery": "repair or reroute orchestration/platform capability"
+      },
+      "ACTIONABLE_FAILURE": {
+        "severity": "RED",
+        "counts_as_product_failure": true,
+        "required_recovery": "actual log forensics and bounded repair"
+      },
+      "PENDING": {
+        "severity": "YELLOW",
+        "counts_as_product_failure": false
+      }
+    },
+    "rule": "Only exact evidence may classify a workflow. UNKNOWN remains fail-closed and must never be painted green."
+  },
+  "stale_promotion": {
+    "state": "PROMOTION_STALE",
+    "automatic_recovery": [
+      "capture current branch head",
+      "compare current head to exact verified head",
+      "reuse preflight evidence only when it names the exact current head",
+      "otherwise run full exact-head preflight",
+      "after exact-head evidence is restored, re-check fresh PR CI, reviews/comments, mergeability, architecture, security, licensing, provenance, privacy, and Product Reality policy"
+    ],
+    "merge_during_recovery": false
+  },
+  "reconciliation_pr_routing": {
+    "github_actions_role": "derive live status, commit generated status, push only an authorized reconciliation branch",
+    "portfolio_orchestrator_role": "create or continue the PR using the authorized GitHub connection, then enforce normal PR CI/review gates",
+    "github_actions_may_create_pr": false,
+    "authorized_branch_prefixes": [
+      "automation/status-reconcile"
+    ],
+    "least_privilege_reason": "Avoid broad GITHUB_TOKEN PR permissions and workflow-recursion ambiguity while keeping branch generation automated."
+  },
+  "diagnostic_churn": {
+    "metric": "avoidable_diagnostic_churn",
+    "definition": "A diagnostic investigation that explicit evidence says was already known to be non-actionable before the investigation began.",
+    "inputs": [
+      "diagnostic_investigation",
+      "known_non_actionable_before_investigation"
+    ],
+    "missing_evidence": "UNKNOWN",
+    "target": null,
+    "use": "Identify repeated scheduler effort spent rediscovering stale-head, non-applicable, or already-understood platform conditions."
+  },
+  "safety": [
+    "Do not weaken exact-head verification.",
+    "Do not convert stale or non-applicable state into GREEN.",
+    "Do not let operational severity override repository-required CI or review gates.",
+    "Do not grant GitHub Actions broader PR authority merely to avoid a routing step."
+  ]
+}

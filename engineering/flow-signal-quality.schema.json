@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flow Signal Evidence",
+  "type": "object",
+  "properties": {
+    "applicable": {"type": ["boolean", "null"]},
+    "expected_head_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "actual_head_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "workflow_status": {"type": ["string", "null"]},
+    "workflow_conclusion": {"type": ["string", "null"]},
+    "jobs_count": {"type": "integer", "minimum": 0},
+    "log_text": {"type": "string"}
+  },
+  "additionalProperties": true
+}
