@@ -1,0 +1,20 @@
+{
+  "stale_head": {
+    "applicable": true,
+    "expected_head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "actual_head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "workflow_status": "completed",
+    "workflow_conclusion": "failure"
+  },
+  "reconciliation_pr": {
+    "repository": "jweter/knowledge-engine-ai",
+    "branch": "automation/status-reconcile",
+    "head_sha": "26112dd91d24c08cd5ad305894dd94c9cea93960",
+    "source_actor": "github-actions[bot]",
+    "authorized_branch_prefixes": [
+      "automation/status-reconcile"
+    ],
+    "open_pr_number": null,
+    "branch_pushed": true
+  }
+}
