@@ -1,0 +1,1 @@
+Bot workflows may push authorized reconciliation branches. The portfolio orchestrator's GitHub connection creates the PR; GitHub Actions does not need PR-create authority.
