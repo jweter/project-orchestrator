@@ -1,1 +1,0 @@
-Non-applicable, stale, pending, and unknown states must never satisfy a GREEN merge gate. Classification improves routing and reporting only; it does not weaken verification.
