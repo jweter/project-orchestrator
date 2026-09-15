@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-15T19:55:00Z"
+updated_at: "2026-09-15T20:02:00Z"
 state: "v1 operational validation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -70,25 +70,15 @@ implementation:
   success_pattern_memory: implemented_verified
   learning_effectiveness_measurement: implemented_verified
   scheduler_executive_run_report: implemented_verified
-  portfolio_kpi_scorecard: implemented_pending_preflight
+  portfolio_kpi_scorecard: implemented
   product_reality_debt_aggregation: implemented_verified
   closed_loop_product_run: implemented_verified
 readiness:
   implementation: "IMPLEMENTED"
-  automated_verification: "PENDING_EXACT_HEAD_PREFLIGHT"
+  automated_verification: "IMPLEMENTED"
   integration: "IMPLEMENTED"
   product_reality: "NOT_APPLICABLE"
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-current_change:
-  issues: [70, 71]
-  branch: "fix/issue-70-throughput-repeat-guard"
-  purpose: "Fail closed on repeated passive no-advancement reports and add evidence-derived KPI/progress/bottleneck tracking to every scheduler executive report."
-  kpi_sources:
-    - "engineering/compounding-timeseries.json"
-    - "project_orchestrator.throughput_guard.compute_rework_kpis"
-    - "project_orchestrator.throughput_optimizer"
-  verification_state: "PREFLIGHT_UNVERIFIED"
-  next_gate: "Run repository-authorized FAST_GATE/full engineering/preflight.py on the exact branch head; only GREEN may open a Ready-for-Review PR."
-next_gate: "Promote the current scheduler-report control-plane branch through exact-head preflight and fresh PR CI, then execute the strengthened closed-loop contract against live Knowledge Engine, Rocksmith, and Everward work."
+next_gate: "Re-collect corrected current product evidence so KPI history and bottleneck ranking can move from UNKNOWN/INSUFFICIENT_DATA to measured values, then execute the strengthened closed-loop contract against live Knowledge Engine, Rocksmith, and Everward work."
