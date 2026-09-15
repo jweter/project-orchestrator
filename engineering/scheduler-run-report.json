@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "artifact": "scheduler-executive-run-report",
   "cli": "project-orchestrator scheduler-run-report",
   "canonical_inventory": {
@@ -16,6 +16,7 @@
     "preventable_repeat_failure_target"
   ],
   "required_sections": [
+    "portfolio_kpis",
     "projects",
     "results",
     "project_orchestrator",
@@ -28,6 +29,46 @@
     "definition": "eligible independent product projects materially advanced by the current orchestrator run divided by independent product projects explicitly proven ELIGIBLE in the run",
     "target": 1.0,
     "unknown_policy": "do not include UNKNOWN or NO_SAFE_ELIGIBLE_WORK projects in the denominator"
+  },
+  "portfolio_kpis": {
+    "module": "project_orchestrator.portfolio_kpis",
+    "history_source": "engineering/compounding-timeseries.json",
+    "rework_source": "explicit current-run rework evidence fields interpreted by project_orchestrator.throughput_guard.compute_rework_kpis",
+    "bottleneck_source": "project_orchestrator.throughput_optimizer",
+    "required_sections": [
+      "rework_quality",
+      "delivery_progress",
+      "bottlenecks",
+      "evidence_coverage"
+    ],
+    "rework_quality": {
+      "first_pass_preflight_rate": {"target": ">=0.90"},
+      "merge_race_count": {"target": 0},
+      "post_merge_correctness_hotfix_rate": {"target": "<0.05"},
+      "median_implementation_to_merge_seconds": {"target": "trend_down_without_quality_regression"}
+    },
+    "delivery_progress_metrics": {
+      "pr_creation_to_green_seconds": "trend_down",
+      "merge_cycle_seconds": "trend_down",
+      "failure_to_repair_seconds": "trend_down",
+      "ci_failure_count": "trend_down",
+      "ci_repeat_failure_count": 0,
+      "blocked_waiting_seconds": "trend_down",
+      "roadmap_slices_completed_count": "trend_up"
+    },
+    "scope": [
+      "portfolio",
+      "each of the three independent product projects",
+      "each of the five product repositories"
+    ],
+    "bottleneck_rule": "Rank only currently eligible projects and only when the measured-evidence sufficiency rules of project_orchestrator.throughput_optimizer are satisfied. Missing projects remain visible as INSUFFICIENT_DATA.",
+    "unknown_policy": "UNKNOWN and INSUFFICIENT_DATA are explicit; neither is converted to zero or omitted from the scorecard.",
+    "forbidden": [
+      "percent_complete guesses",
+      "invented ROI or capacity",
+      "predicted time saved without measured evidence",
+      "using a KPI or bottleneck rank to override P0-P4 priority, Product Reality, ownership, preflight, CI, review, or product authority"
+    ]
   },
   "advancement_attribution": {
     "counted_actor": "ORCHESTRATOR",
@@ -52,6 +93,8 @@
     "eligible projects without orchestrator advancement require a concrete reason and exact next gate",
     "Product Reality is never inferred",
     "Jeremy-help opportunities are reported even when they are not blockers",
-    "executive status must reflect missed repository inspection or throughput-floor violations"
+    "executive status must reflect missed repository inspection or throughput-floor violations",
+    "portfolio KPI history is evidence-derived and missing evidence stays visible",
+    "bottleneck ranking is advisory and never becomes merge or scheduling authority"
   ]
 }

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
+from .portfolio_kpis import build_portfolio_kpi_scorecard
 from .run_report import PROJECT_KEYS, build_run_report
+from .timeseries import load_store
 
 ADVANCEMENTS = {
     "MERGED_GREEN_PR",
@@ -20,6 +23,8 @@ ADVANCEMENT_ACTORS = {
     "UNKNOWN",
 }
 
+DEFAULT_TIMESERIES_STORE = Path(__file__).resolve().parents[2] / "engineering" / "compounding-timeseries.json"
+
 
 def build_scheduler_executive_report(
     *,
@@ -31,6 +36,8 @@ def build_scheduler_executive_report(
     learning_evolution: dict[str, Any] | None = None,
     learning_effectiveness: dict[str, Any] | None = None,
     jeremy_can_help: list[str] | None = None,
+    previous_no_advancement_reasons: dict[str, str] | None = None,
+    timeseries_store: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Build the scheduler-facing executive report from explicit run evidence.
@@ -39,16 +46,28 @@ def build_scheduler_executive_report(
     product advancement or the throughput floor. Human merges, external CI
     completions, and other outside state changes are supplied separately so a
     project can record both an external event and later orchestrator progress.
+
+    If an eligible project repeats the same no-advancement reason from the
+    preceding run, fail closed instead of allowing another passive report. The
+    caller must repair the orchestration defect or materially attempt the
+    product lane before producing a normal completion.
+
+    The report also includes a portfolio KPI scorecard. Historical delivery
+    metrics come from the canonical compounding time-series store; rework KPIs
+    are computed only from explicit fields supplied in current project evidence;
+    measured bottlenecks delegate to the existing throughput optimizer.
     """
     if isinstance(product_repositories_inspected, bool) or not isinstance(product_repositories_inspected, int):
         raise ValueError("product_repositories_inspected must be an integer")
     if not 0 <= product_repositories_inspected <= 5:
         raise ValueError("product_repositories_inspected must be between 0 and 5")
 
+    previous_reasons = _validate_previous_no_advancement_reasons(previous_no_advancement_reasons or {})
     canonical_projects: dict[str, dict[str, Any]] = {}
     eligible: list[str] = []
     orchestrator_advanced: list[str] = []
     no_advancement: dict[str, str] = {}
+    repeated_no_advancement: dict[str, str] = {}
     external_changes = _validate_external_state_changes(external_state_changes or {})
 
     for project in PROJECT_KEYS:
@@ -90,7 +109,10 @@ def build_scheduler_executive_report(
                 raise ValueError(
                     f"{project} requires no_advancement_reason when eligible but not advanced by this orchestrator run"
                 )
-            no_advancement[project] = reason.strip()
+            normalized_reason = reason.strip()
+            no_advancement[project] = normalized_reason
+            if previous_reasons.get(project) == normalized_reason:
+                repeated_no_advancement[project] = normalized_reason
 
         canonical_projects[project] = {
             "promotion_state": evidence.get("promotion_state", "PREFLIGHT_UNVERIFIED"),
@@ -100,6 +122,13 @@ def build_scheduler_executive_report(
             "reason": evidence.get("reason"),
             "product_reality_debt": evidence.get("product_reality_debt", []),
         }
+
+    if repeated_no_advancement:
+        projects = ", ".join(sorted(repeated_no_advancement))
+        raise ValueError(
+            "P1 orchestration defect: repeated eligible no-advancement reason for "
+            f"{projects}; repair the control plane/process or materially attempt the product lane before completion"
+        )
 
     canonical = build_run_report(
         projects=canonical_projects,
@@ -139,12 +168,20 @@ def build_scheduler_executive_report(
         "preventable_repeat_failure_target": 0,
     }
 
+    store = timeseries_store if timeseries_store is not None else load_store(DEFAULT_TIMESERIES_STORE)
+    portfolio_kpis = build_portfolio_kpi_scorecard(
+        store,
+        rework_records=_extract_rework_records(project_evidence),
+        eligible_projects=eligible,
+    )
+
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": canonical["generated_at"],
         "executive_status": _executive_status(kpis),
         "canonical_inventory": {"independent_product_projects": 3, "product_repositories": 5},
         "kpis": kpis,
+        "portfolio_kpis": portfolio_kpis,
         "projects": canonical["projects"],
         "results": canonical["results"],
         "project_orchestrator": canonical["project_orchestrator"],
@@ -172,8 +209,43 @@ def build_scheduler_executive_report(
             "external state changes remain reportable even when the project is NO_SAFE_ELIGIBLE_WORK after re-triage",
             "orchestrator-only control-plane work does not count as product advancement",
             "every eligible non-advanced product must state why and identify its next gate",
+            "a repeated eligible no-advancement reason fails closed as a P1 orchestration defect",
+            "portfolio KPI history comes from canonical evidence rather than guessed completion percentages",
+            "bottleneck ranking remains advisory and cannot override product or promotion gates",
         ],
     }
+
+
+def _extract_rework_records(project_evidence: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    fields = {
+        "preflight_attempts",
+        "merge_race",
+        "merged",
+        "post_merge_correctness_hotfix",
+        "implementation_started_at",
+        "merged_at",
+    }
+    records: list[dict[str, Any]] = []
+    for project in PROJECT_KEYS:
+        evidence = project_evidence[project]
+        record = {key: evidence[key] for key in fields if key in evidence}
+        if record:
+            record["project"] = project
+            records.append(record)
+    return records
+
+
+def _validate_previous_no_advancement_reasons(reasons: dict[str, str]) -> dict[str, str]:
+    if not isinstance(reasons, dict):
+        raise ValueError("previous_no_advancement_reasons must be a mapping")
+    normalized: dict[str, str] = {}
+    for project, reason in reasons.items():
+        if project not in PROJECT_KEYS:
+            raise ValueError(f"previous_no_advancement_reasons contains unknown project: {project}")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"previous_no_advancement_reasons.{project} must be non-empty")
+        normalized[project] = reason.strip()
+    return normalized
 
 
 def _validate_external_state_changes(
