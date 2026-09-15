@@ -74,6 +74,49 @@ def test_missing_reason_fails_closed():
         build(projects)
 
 
+def test_repeated_no_advancement_reason_is_p1_orchestration_defect():
+    projects = {
+        name: p(
+            advancement="NONE",
+            advancement_actor=None,
+            no_advancement_reason="eligible product work was triaged but not serviced",
+        )
+        for name in ("knowledge-engine", "rocksmith", "everward")
+    }
+    with pytest.raises(ValueError, match="P1 orchestration defect"):
+        build(
+            projects,
+            previous_no_advancement_reasons={
+                name: "eligible product work was triaged but not serviced"
+                for name in ("knowledge-engine", "rocksmith", "everward")
+            },
+        )
+
+
+def test_changed_no_advancement_reason_may_report_once_for_new_evidence():
+    projects = base_projects()
+    projects["rocksmith"] = p(
+        advancement="NONE",
+        advancement_actor=None,
+        no_advancement_reason="repository-native preflight executable unavailable in current environment",
+    )
+    report = build(
+        projects,
+        previous_no_advancement_reasons={"rocksmith": "private Product Reality pending"},
+    )
+    assert report["executive_status"] == "YELLOW"
+    assert report["no_advancement_reasons"]["rocksmith"].startswith("repository-native preflight")
+
+
+def test_orchestrator_advancement_clears_prior_no_advancement_reason():
+    report = build(
+        previous_no_advancement_reasons={
+            "knowledge-engine": "eligible product work was triaged but not serviced"
+        }
+    )
+    assert report["kpis"]["projects_materially_advanced"] == 3
+
+
 def test_no_safe_work_is_not_counted_in_denominator():
     projects = base_projects()
     projects["rocksmith"] = p(
