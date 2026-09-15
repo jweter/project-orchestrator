@@ -54,6 +54,26 @@ def test_missing_projects_and_repositories_remain_visible():
     assert scorecard["bottlenecks"]["selection_state"] == "INSUFFICIENT_DATA"
 
 
+def test_orchestrator_only_windows_do_not_make_product_portfolio_look_measured():
+    scorecard = build_portfolio_kpi_scorecard(
+        {
+            "schema_version": 1,
+            "windows": [_window("portfolio", "jweter/project-orchestrator", 1)],
+        },
+        eligible_projects=["knowledge-engine", "rocksmith", "everward"],
+    )
+
+    assert scorecard["delivery_progress"]["portfolio"]["status"] == "INSUFFICIENT_DATA"
+    assert scorecard["evidence_coverage"]["product_windows"] == 0
+    assert scorecard["evidence_coverage"]["source_store_windows"] == 1
+    assert scorecard["evidence_coverage"]["orchestrator_only_windows_excluded"] == 1
+    assert scorecard["evidence_coverage"]["missing_product_projects"] == [
+        "everward",
+        "knowledge-engine",
+        "rocksmith",
+    ]
+
+
 def test_measured_project_can_be_selected_as_bottleneck_only_after_evidence_floor():
     store = {
         "schema_version": 1,
@@ -135,4 +155,4 @@ def test_scheduler_report_embeds_scorecard_and_extracts_current_run_rework_evide
     assert report["schema_version"] == 2
     assert "portfolio_kpis" in report
     assert report["portfolio_kpis"]["rework_quality"]["first_pass_preflight_rate"]["value"] == 1.0
-    assert report["portfolio_kpis"]["evidence_coverage"]["total_windows"] == 0
+    assert report["portfolio_kpis"]["evidence_coverage"]["product_windows"] == 0
