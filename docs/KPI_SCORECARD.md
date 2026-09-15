@@ -15,6 +15,8 @@ The scorecard does **not** create a second metrics database. It projects existin
 - explicit current-run rework evidence through `project_orchestrator.throughput_guard.compute_rework_kpis`;
 - measured bottleneck ranking through `project_orchestrator.throughput_optimizer`.
 
+`jweter/project-orchestrator` may have its own evidence windows in the shared time-series store, but those windows are excluded from product-portfolio KPI health. The orchestrator is a control plane, not a fourth product; its own fast merges must never make Knowledge Engine, Rocksmith, or Everward look measured or healthy when product evidence is missing.
+
 ## Scorecard layers
 
 ### 1. Current-run execution
@@ -46,7 +48,7 @@ These KPIs are computed only from explicit records supplied to the run. Missing 
 
 ### 3. Delivery progress
 
-Historical progress comes from the canonical compounding time-series store. The report shows the same curated metrics at three scopes: portfolio, independent product project, and each product repository.
+Historical progress comes from the canonical compounding time-series store. The report shows the same curated metrics at three scopes: portfolio, independent product project, and each product repository. Product-portfolio aggregation includes only the three independent product projects / five product repositories and excludes orchestrator-only windows.
 
 | Metric | Direction / target |
 | --- | --- |
@@ -83,8 +85,9 @@ The bottleneck score is an ordinal measured-severity signal. It is not predicted
 
 Every scheduler report now includes evidence coverage so missing KPI data itself becomes actionable engineering information:
 
-- total evidence windows;
-- latest recorded window end;
+- product evidence-window count;
+- source-store window count and how many orchestrator-only windows were excluded;
+- latest recorded product-window end;
 - window count by independent product project;
 - window count by each product repository;
 - product projects with no evidence windows;
