@@ -33,12 +33,17 @@ def build_portfolio_kpi_scorecard(
     rework_records: list[dict[str, Any]] | None = None,
     eligible_projects: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Build a fail-closed portfolio KPI view from existing evidence contracts.
+    """Build a fail-closed product-portfolio KPI view from existing evidence.
 
     The scorecard deliberately creates no second metrics store. Delivery metrics
     come from the canonical compounding time-series projection, rework metrics
     come from explicit throughput-guard records, and bottleneck ranking delegates
     to the existing measured-only optimizer.
+
+    Historical windows for ``jweter/project-orchestrator`` are intentionally
+    excluded from product KPIs. The control plane is not a fourth product and its
+    own merge performance must never make the three-product portfolio appear
+    measured or healthy when product evidence is absent.
     """
     if eligible_projects is None:
         eligible = list(PROJECT_KEYS)
@@ -50,7 +55,17 @@ def build_portfolio_kpi_scorecard(
             raise ValueError(f"eligible_projects contains unknown projects: {', '.join(unknown)}")
         eligible = sorted(set(eligible_projects))
 
-    snapshot = build_reinvestment_snapshot(store)
+    source_windows = store.get("windows", [])
+    if not isinstance(source_windows, list):
+        raise ValueError("timeseries store windows must be a list")
+    product_windows = [
+        window
+        for window in source_windows
+        if isinstance(window, dict) and window.get("project") in PROJECT_KEYS
+    ]
+    product_store = {"schema_version": store.get("schema_version", 1), "windows": product_windows}
+
+    snapshot = build_reinvestment_snapshot(product_store)
     rework = compute_rework_kpis(rework_records or [])
     rework_quality = {
         key: {**value, "target": REWORK_TARGETS[key]}
@@ -81,9 +96,12 @@ def build_portfolio_kpi_scorecard(
         repository: delivery_progress["by_repository"][repository]["window_count"]
         for repository in sorted(EXPECTED_REPOSITORIES)
     }
-    windows = store.get("windows", [])
-    latest_window_end = max(
-        (window.get("window_end") for window in windows if isinstance(window, dict) and window.get("window_end")),
+    latest_product_window_end = max(
+        (
+            window.get("window_end")
+            for window in product_windows
+            if isinstance(window, dict) and window.get("window_end")
+        ),
         default=None,
     )
 
@@ -93,8 +111,10 @@ def build_portfolio_kpi_scorecard(
         "delivery_progress": delivery_progress,
         "bottlenecks": bottlenecks,
         "evidence_coverage": {
-            "total_windows": snapshot.get("generated_from_window_count", 0),
-            "latest_window_end": latest_window_end,
+            "product_windows": snapshot.get("generated_from_window_count", 0),
+            "source_store_windows": len(source_windows),
+            "orchestrator_only_windows_excluded": len(source_windows) - len(product_windows),
+            "latest_product_window_end": latest_product_window_end,
             "project_window_counts": project_window_counts,
             "repository_window_counts": repository_window_counts,
             "missing_product_projects": sorted(
@@ -106,6 +126,7 @@ def build_portfolio_kpi_scorecard(
         },
         "rules": [
             "UNKNOWN and INSUFFICIENT_DATA are never converted to zero",
+            "product KPIs exclude project-orchestrator windows because it is not a fourth product",
             "delivery metrics reuse the canonical compounding time-series store",
             "rework metrics require explicit evidence records",
             "bottleneck ranking is measured-only and advisory",
