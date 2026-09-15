@@ -16,12 +16,44 @@ implementation:
   learning_memory: implemented
   n8n_event_router_contract: implemented
   n8n_regression_coverage: "Pinned GitHub Trigger envelopes and direct items, terminal-failure intake, and repeatable local setup"
+  # Verified in PR #12 (merged): outbound GitHub API TLS validates normally
+  # from inside the running container; all five product repositories have a
+  # registered check_suite webhook returning HTTP 200 on delivery; each
+  # GitHub Trigger node's webhook secret persists and survives a full
+  # container restart; the corrected `ciFailureRouter` workflow is active.
   n8n_runtime: operational
   n8n_public_https_ingress: verified
   n8n_github_credentials: configured_and_verified
+  # Second canonical router activated and verified end-to-end: the
+  # `portfolioKnowledgeImpactRouter` id was stale (over the persistence
+  # limit, no credentials bound). Rebuilt the canonical `keImpactRouter`
+  # workflow with credentials bound and explicit UUID webhookIds (matching
+  # the ciFailureRouter fix's root cause), activated it, verified its
+  # webhook secrets persist and survive a restart, updated the external
+  # nginx gateway allowlist for its 3 new webhook paths, and confirmed a
+  # real (non-ping) `push` to `main` on knowledge-engine-core flowed
+  # through the classifier and dispatch node into a successful
+  # orchestrator-observe.yml workflow_dispatch run. The stale
+  # `portfolioKnowledgeImpactRouter`/`portfolioCiFailureRouter` rows remain
+  # inactive in the n8n database; n8n 2.38.2 has no CLI delete command, so
+  # removing them requires the editor UI (see n8n/README.md).
   n8n_knowledge_engine_impact_router: operational
   compounding_timeseries: implemented
+  # Recommendation-only in this slice: project_orchestrator.reinvestment
+  # scores deterministic candidates from build_reinvestment_snapshot() and
+  # always sets requires_jeremy_approval=true. With the store's current 2
+  # real evidence windows, every candidate's confidence is below the 0.5
+  # selection threshold, so `reinvestment-plan` currently selects nothing
+  # and instead surfaces evidence gaps (see docs/ARCHITECTURE.md) — this is
+  # the expected, fail-closed behavior at this evidence volume, not a bug.
   reinvestment_controller: implemented_recommendation_only
+  # project_orchestrator.evidence_collector correctness remediation merged
+  # in PR #17 after exact-head full preflight and fresh independent PR CI.
+  # Invalid automatically derived windows were removed while manually
+  # verified seed windows were retained. Corrected history must now be
+  # re-collected before trend/reinvestment claims resume.
+  # Anti-stall blocker rotation is the current control-plane gate so future
+  # hourly runs cannot repeatedly consume the portfolio on one blocked lane.
   automatic_evidence_collector: implemented_verified
   anti_stall_blocker_rotation: implemented_verified
   deterministic_repair_engine: implemented_verified
@@ -59,4 +91,4 @@ current_change:
     - "project_orchestrator.throughput_optimizer"
   verification_state: "PREFLIGHT_UNVERIFIED"
   next_gate: "Run repository-authorized FAST_GATE/full engineering/preflight.py on the exact branch head; only GREEN may open a Ready-for-Review PR."
-next_gate: "Promote the current scheduler-report control-plane branch through exact-head preflight and fresh PR CI, then continue measuring live Knowledge Engine, Rocksmith, and Everward product work."
+next_gate: "Promote the current scheduler-report control-plane branch through exact-head preflight and fresh PR CI, then execute the strengthened closed-loop contract against live Knowledge Engine, Rocksmith, and Everward work."
