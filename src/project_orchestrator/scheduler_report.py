@@ -31,6 +31,7 @@ def build_scheduler_executive_report(
     learning_evolution: dict[str, Any] | None = None,
     learning_effectiveness: dict[str, Any] | None = None,
     jeremy_can_help: list[str] | None = None,
+    previous_no_advancement_reasons: dict[str, str] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Build the scheduler-facing executive report from explicit run evidence.
@@ -39,16 +40,23 @@ def build_scheduler_executive_report(
     product advancement or the throughput floor. Human merges, external CI
     completions, and other outside state changes are supplied separately so a
     project can record both an external event and later orchestrator progress.
+
+    If an eligible project repeats the same no-advancement reason from the
+    preceding run, fail closed instead of allowing another passive report. The
+    caller must repair the orchestration defect or materially attempt the
+    product lane before producing a normal completion.
     """
     if isinstance(product_repositories_inspected, bool) or not isinstance(product_repositories_inspected, int):
         raise ValueError("product_repositories_inspected must be an integer")
     if not 0 <= product_repositories_inspected <= 5:
         raise ValueError("product_repositories_inspected must be between 0 and 5")
 
+    previous_reasons = _validate_previous_no_advancement_reasons(previous_no_advancement_reasons or {})
     canonical_projects: dict[str, dict[str, Any]] = {}
     eligible: list[str] = []
     orchestrator_advanced: list[str] = []
     no_advancement: dict[str, str] = {}
+    repeated_no_advancement: dict[str, str] = {}
     external_changes = _validate_external_state_changes(external_state_changes or {})
 
     for project in PROJECT_KEYS:
@@ -90,7 +98,10 @@ def build_scheduler_executive_report(
                 raise ValueError(
                     f"{project} requires no_advancement_reason when eligible but not advanced by this orchestrator run"
                 )
-            no_advancement[project] = reason.strip()
+            normalized_reason = reason.strip()
+            no_advancement[project] = normalized_reason
+            if previous_reasons.get(project) == normalized_reason:
+                repeated_no_advancement[project] = normalized_reason
 
         canonical_projects[project] = {
             "promotion_state": evidence.get("promotion_state", "PREFLIGHT_UNVERIFIED"),
@@ -100,6 +111,13 @@ def build_scheduler_executive_report(
             "reason": evidence.get("reason"),
             "product_reality_debt": evidence.get("product_reality_debt", []),
         }
+
+    if repeated_no_advancement:
+        projects = ", ".join(sorted(repeated_no_advancement))
+        raise ValueError(
+            "P1 orchestration defect: repeated eligible no-advancement reason for "
+            f"{projects}; repair the control plane/process or materially attempt the product lane before completion"
+        )
 
     canonical = build_run_report(
         projects=canonical_projects,
@@ -172,8 +190,22 @@ def build_scheduler_executive_report(
             "external state changes remain reportable even when the project is NO_SAFE_ELIGIBLE_WORK after re-triage",
             "orchestrator-only control-plane work does not count as product advancement",
             "every eligible non-advanced product must state why and identify its next gate",
+            "a repeated eligible no-advancement reason fails closed as a P1 orchestration defect",
         ],
     }
+
+
+def _validate_previous_no_advancement_reasons(reasons: dict[str, str]) -> dict[str, str]:
+    if not isinstance(reasons, dict):
+        raise ValueError("previous_no_advancement_reasons must be a mapping")
+    normalized: dict[str, str] = {}
+    for project, reason in reasons.items():
+        if project not in PROJECT_KEYS:
+            raise ValueError(f"previous_no_advancement_reasons contains unknown project: {project}")
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError(f"previous_no_advancement_reasons.{project} must be non-empty")
+        normalized[project] = reason.strip()
+    return normalized
 
 
 def _validate_external_state_changes(
