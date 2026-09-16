@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-16T12:18:00Z"
+updated_at: "2026-09-16T14:20:00Z"
 state: "v1 operational validation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -47,6 +47,7 @@ implementation:
   ecc_selective_adoption_gap_analysis: implemented_verified
   harness_inventory_audit: implemented_verified
   context_budget_observability: implemented_verified
+  harness_security_audit: implemented_pending_final_pr_gate
   agent_evaluation_suite: implemented_verified
   agent_evaluation_kpi_bridge: implemented_verified
   ai_regression_fault_fixtures: implemented_verified
@@ -55,14 +56,16 @@ implementation:
   repository_skill_extraction: implemented_verified
   repository_skill_task_selector: implemented_verified
   first_repository_skill_pilot: implemented_verified_contract_unmeasured_effectiveness
+  learning_candidate_bridge: implemented_pending_final_pr_gate
+  transient_cross_harness_memory: implemented_pending_final_pr_gate
   product_reality_debt_aggregation: implemented_verified
   closed_loop_product_run: implemented_verified
 readiness:
   implementation: "IMPLEMENTED"
-  automated_verification: "VERIFIED_EXACT_HEAD_PREFLIGHT_AND_PR_CI"
+  automated_verification: "PENDING_EXACT_HEAD_PREFLIGHT_AND_PR_CI_FOR_ECC_COMPLETION"
   integration: "IMPLEMENTED"
   product_reality: "NOT_APPLICABLE"
   documentation: "IMPLEMENTED"
-  security_and_policy: "IMPLEMENTED"
+  security_and_policy: "IMPLEMENTED_PENDING_FINAL_GATE"
 percent_complete: "UNKNOWN"
-next_gate: "Use the first repository-skill pilot on a real matching engineering change and record verified effectiveness before calling the skill proven. Configure and run at least two real local agent configurations for Phase C comparison evidence. Product-repository skills require their own verified product history/lessons before creation."
+next_gate: "Pass exact-head canonical preflight and fresh PR CI for ECC completion, then run the six-repository harness/context/security audit and pinned multi-agent evaluation matrix. Treat repository-skill effectiveness as UNMEASURED until repeated verified product outcomes exist. Use resulting evidence to identify the next product gaps."
