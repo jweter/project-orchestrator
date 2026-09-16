@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "loop_id": "dowork-hourly",
+  "loop_type": "REGULATOR",
+  "cadence": "hourly",
+  "task_repeats": true,
+  "goal": {
+    "machine_decidable": true,
+    "acceptance_criteria": [
+      "inspect all five product repositories plus project-orchestrator before portfolio decisions",
+      "apply P0-P6 priority and anti-stall rotation from current authority",
+      "attempt concrete product advancement when safe eligible work exists",
+      "never promote or merge through failed, pending, missing-required-check, conflicted, or materially uncertain gates",
+      "persist evidence-backed KPI telemetry without counting telemetry as product advancement"
+    ]
+  },
+  "verification": {
+    "automated": true,
+    "evidence_sources": [
+      "exact-head repository preflight where required",
+      "fresh pull-request CI on the exact head",
+      "live GitHub mergeability, review, comment, and required-check state",
+      "repository-specific policy and Product Reality gates"
+    ]
+  },
+  "anti_goodhart": {
+    "metric_is_never_merge_authority": true,
+    "protected_invariants": [
+      "product repository authority overrides portfolio KPI optimization",
+      "control-plane work never counts as product advancement",
+      "external actor progress never counts as current-run orchestrator advancement",
+      "UNKNOWN is never coerced to zero or success",
+      "Product Reality is never fabricated",
+      "throughput floor cannot weaken quality, security, licensing, provenance, privacy, or architecture gates"
+    ]
+  },
+  "retries": {
+    "max_substantive_repair_attempts_per_blocked_item_per_run": 1,
+    "on_exhaustion": "PARK_DEPENDENT_LANE_WITH_EXACT_REASON_AND_ROTATE"
+  },
+  "judge": {
+    "independent_from_builder": true,
+    "deterministic": true,
+    "builder_may_modify_acceptance": false,
+    "evidence_sources": [
+      "repository canonical preflight",
+      "independent fresh PR CI",
+      "central merge authority re-check",
+      "specialist review when risk class requires it"
+    ]
+  },
+  "ambiguity": {
+    "material_ambiguity_action": "ESCALATE_OR_DEFER",
+    "front_load_requirements": true
+  },
+  "context": {
+    "fresh_live_state_required": true,
+    "missing_evidence_policy": "FAIL_CLOSED",
+    "authoritative_sources": [
+      "DoWork.txt",
+      "engineering/control-plane.json",
+      "engineering/portfolio.json",
+      "engineering/throughput-guard.json",
+      "docs/ARCHITECTURE.md",
+      "docs/ROADMAP.md",
+      "docs/project-status.yaml when present",
+      "each product repository roadmap, architecture, CI, policy, licensing/provenance, and Product Reality authority",
+      "live GitHub state"
+    ]
+  },
+  "authority": {
+    "automated_actions": [
+      "inspect repository and issue state",
+      "reserve an authorized implementation lane",
+      "implement bounded repository-authorized changes",
+      "run authorized FAST_GATE and full preflight",
+      "open a ready pull request only after required exact-head preflight is green",
+      "repair a failing branch within bounded policy",
+      "merge an objectively green pull request when all repository gates are satisfied",
+      "record issue-ledger transitions and KPI telemetry"
+    ],
+    "human_only_actions": [
+      "fundamental product-direction change",
+      "major architecture change not already authorized",
+      "new paid service or meaningful recurring cost",
+      "license change",
+      "destructive migration",
+      "security or privacy boundary change",
+      "credential or secret action requiring the user",
+      "release or publishing authorization",
+      "irreversible action",
+      "materially ambiguous requirement with meaningfully different outcomes"
+    ],
+    "product_reality_may_be_inferred": false
+  },
+  "regulator": {
+    "no_safe_change_action": "NO_OP_WITH_REASON",
+    "unchanged_state_is_failure": false,
+    "healthy_waiting_is_allowed_when_evidence_backed": true
+  },
+  "evidence": {
+    "state_transitions_require_refs": true,
+    "unknown_is_zero": false,
+    "telemetry_counts_as_product_advancement": false
+  },
+  "upstream_inspiration": {
+    "repository": "affaan-m/ECC",
+    "capability": "loop-design-check",
+    "license": "MIT",
+    "adaptation_rule": "concepts only; project-orchestrator authority and DoWork semantics remain canonical"
+  }
+}
