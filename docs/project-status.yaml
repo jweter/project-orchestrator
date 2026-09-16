@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-15T20:02:00Z"
+updated_at: "2026-09-16T01:38:00Z"
 state: "v1 operational validation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -71,6 +71,9 @@ implementation:
   learning_effectiveness_measurement: implemented_verified
   scheduler_executive_run_report: implemented_verified
   portfolio_kpi_scorecard: implemented
+  durable_kpi_event_ledger: implemented_verified
+  durable_kpi_run_snapshots: implemented_verified
+  rolling_kpi_reports_24h_7d_30d: implemented_verified
   product_reality_debt_aggregation: implemented_verified
   closed_loop_product_run: implemented_verified
 readiness:
@@ -81,4 +84,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Re-collect corrected current product evidence so KPI history and bottleneck ranking can move from UNKNOWN/INSUFFICIENT_DATA to measured values, then execute the strengthened closed-loop contract against live Knowledge Engine, Rocksmith, and Everward work."
+next_gate: "Begin recording PR/CI/branch/issue transitions into the durable KPI ledger on each run, finalize one snapshot per run, re-collect corrected current product evidence, then use the 24h/7d/30d reports to identify measured bottlenecks without reconstructing missing history."
