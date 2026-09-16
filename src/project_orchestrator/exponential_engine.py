@@ -55,12 +55,14 @@ def _normalize_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, An
         project = item.get("project")
         if project not in PROJECTS:
             continue
+        registry_allows = item.get("registry_ready") is not False and item.get("terminal_source") is not True
         ready = (
             item.get("state", "UNKNOWN") in {"P4", "P5"}
             and item.get("dependencies_clear") is True
             and item.get("conflict_free") is True
             and item.get("product_reality_required") is not True
             and item.get("actively_owned") is not True
+            and registry_allows
         )
         normalized.append({**item, "dispatch_state": "READY" if ready else "BLOCKED"})
     return normalized
