@@ -39,7 +39,7 @@ def catalog() -> dict:
         "schema_version": 1,
         "skills": [
             {
-                "skill_key": "risk-similarity-false-positive-guard",
+                "skill_key": "historical-similarity-false-positive-guard",
                 "project": "portfolio",
                 "repository": "jweter/project-orchestrator",
                 "status": "PILOT_READY",
