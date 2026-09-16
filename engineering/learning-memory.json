@@ -28,6 +28,20 @@
       "regression_protection": "Pre-change risk matching must ignore generic structural tokens and preserve NO_RELEVANT_VERIFIED_HISTORY when no informative area match exists.",
       "residual_risk": "New generic tokens introduced by future repository layouts may require extending the bounded generic-token set; explicit path matches remain authoritative evidence.",
       "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "87de7c75a743170a96a7",
+      "project": "knowledge-engine",
+      "repository": "jweter/knowledge-engine-ai",
+      "source_type": "success_pattern",
+      "source_ref": "knowledge-engine-ai#162",
+      "symptom": "Research Report conclusion rows could classify evidence as class-level, indirect-context, or unavailable without explicitly naming the missing direct evidence, allowing a structurally valid report to obscure an important evidence gap.",
+      "root_cause": "The report parser validated evidence IDs and directness values independently but did not couple non-direct classifications to the required missing_direct_evidence disclosure.",
+      "fix": "Mirror the model-facing evidence-boundary instruction with a deterministic parser invariant that rejects class-level, indirect-context, or unavailable rows when missing_direct_evidence is null, and add regression coverage for the hidden-gap case.",
+      "verification": "Exact implementation head 7aae594b26b9834300702ad6798086c680329b99 passed canonical preflight before PR creation and fresh PR CI for Quality, Golden Verification, Security, Control Plane, and Execution Director before merge in knowledge-engine-ai#162.",
+      "regression_protection": "Research Report parser tests must fail closed when non-direct evidence classifications omit explicit missing-direct-evidence disclosure; prompt guidance remains additive rather than authoritative.",
+      "residual_risk": "Structural directness validation does not prove that free-text report citations resolve to known EvidenceRecord IDs or that the final report is semantically correct and readable; those require separate deterministic citation checks and Product Reality acceptance.",
+      "evidence_state": "VERIFIED"
     }
   ]
 }
