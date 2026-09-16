@@ -18,6 +18,7 @@ project-orchestrator-throughput = "project_orchestrator.throughput_guard_cli:mai
 project-orchestrator-evolve = "project_orchestrator.evolution_cli:main"
 project-orchestrator-scientist = "project_orchestrator.scientist_cli:main"
 project-orchestrator-kpi = "project_orchestrator.kpi_cli:main"
+project-orchestrator-loop-audit = "project_orchestrator.loop_audit:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
