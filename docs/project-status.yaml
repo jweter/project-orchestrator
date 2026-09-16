@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-16T14:20:00Z"
+updated_at: "2026-09-16T15:22:00Z"
 state: "v1 operational validation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -47,7 +47,7 @@ implementation:
   ecc_selective_adoption_gap_analysis: implemented_verified
   harness_inventory_audit: implemented_verified
   context_budget_observability: implemented_verified
-  harness_security_audit: implemented_pending_final_pr_gate
+  harness_security_audit: implemented_verified
   agent_evaluation_suite: implemented_verified
   agent_evaluation_kpi_bridge: implemented_verified
   ai_regression_fault_fixtures: implemented_verified
@@ -56,16 +56,17 @@ implementation:
   repository_skill_extraction: implemented_verified
   repository_skill_task_selector: implemented_verified
   first_repository_skill_pilot: implemented_verified_contract_unmeasured_effectiveness
-  learning_candidate_bridge: implemented_pending_final_pr_gate
-  transient_cross_harness_memory: implemented_pending_final_pr_gate
+  learning_candidate_bridge: implemented_verified
+  transient_cross_harness_memory: implemented_verified
   product_reality_debt_aggregation: implemented_verified
   closed_loop_product_run: implemented_verified
+  six_repository_harness_audit_workflow: implemented_prefight_green_pr_ci_pending
 readiness:
   implementation: "IMPLEMENTED"
-  automated_verification: "PENDING_EXACT_HEAD_PREFLIGHT_AND_PR_CI_FOR_ECC_COMPLETION"
+  automated_verification: "ECC_CORE_VERIFIED; SIX_REPOSITORY_OPERATIONAL_AUDIT_PR_CI_PENDING"
   integration: "IMPLEMENTED"
   product_reality: "NOT_APPLICABLE"
   documentation: "IMPLEMENTED"
-  security_and_policy: "IMPLEMENTED_PENDING_FINAL_GATE"
+  security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Pass exact-head canonical preflight and fresh PR CI for ECC completion, then run the six-repository harness/context/security audit and pinned multi-agent evaluation matrix. Treat repository-skill effectiveness as UNMEASURED until repeated verified product outcomes exist. Use resulting evidence to identify the next product gaps."
+next_gate: "Fresh PR CI for #94 must execute the six-repository harness/context/security audit against exact checked-out revisions and prove all six declared repositories are audited with zero unverified roots and zero blocking security findings. After that, run the pinned multi-agent evaluation matrix and collect repeated product-outcome evidence before claiming repository-skill effectiveness."
