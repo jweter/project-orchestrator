@@ -20,6 +20,7 @@ project-orchestrator-scientist = "project_orchestrator.scientist_cli:main"
 project-orchestrator-kpi = "project_orchestrator.kpi_cli:main"
 project-orchestrator-loop-audit = "project_orchestrator.loop_audit:main"
 project-orchestrator-harness-audit = "project_orchestrator.harness_audit:main"
+project-orchestrator-agent-eval = "project_orchestrator.agent_eval:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
