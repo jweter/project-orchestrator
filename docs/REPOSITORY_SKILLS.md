@@ -43,7 +43,7 @@ A skill does **not** become proven merely because its source lesson is verified.
 
 ## First pilot
 
-The initial pilot is `risk-similarity-false-positive-guard` for `jweter/project-orchestrator`.
+The initial pilot is `historical-similarity-false-positive-guard` for `jweter/project-orchestrator`.
 
 Its evidence comes from verified lesson `96afd3d27f39a7888240` plus regression-history commit `9675dab700fada6b6fa5c6a02f45b1261dbf7cc4`. The skill is triggered only for the risk-predictor/area-learning paths or explicit task phrases such as `risk predictor` and `path similarity`.
 
