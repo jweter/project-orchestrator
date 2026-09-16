@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "suite_id": "project-orchestrator-regression-v1",
+  "purpose": "Measure coding-agent quality on pinned deterministic regressions without using Product Reality or creating a second KPI store.",
+  "advisory_only": true,
+  "product_reality_may_be_inferred": false,
+  "canonical_kpi_ledger": "engineering/kpi-events.jsonl",
+  "tasks": [
+    {
+      "task_id": "loop-self-judging",
+      "title": "Restore independent autonomous-loop judgment",
+      "repository": "jweter/project-orchestrator",
+      "acceptance_kind": "DETERMINISTIC",
+      "prompt": "A regression disabled the independent-judge guard in the autonomous loop audit. Restore fail-closed detection without weakening any other authority, Product Reality, retry, or Goodhart boundary.",
+      "baseline_ref": "f914023261956aefd91af4bdf5898e1855c584a0",
+      "fault_fixture_ref": "engineering/agent-eval-fixtures/loop-self-judging.patch",
+      "measurement_contract_ref": "tests/test_loop_audit.py::test_builder_cannot_be_its_own_unconstrained_judge",
+      "verification_commands": [
+        "python -m pytest -q tests/test_loop_audit.py::test_builder_cannot_be_its_own_unconstrained_judge",
+        "python engineering/preflight.py"
+      ],
+      "required_stages": [
+        "PREFLIGHT"
+      ]
+    },
+    {
+      "task_id": "harness-secret-literal",
+      "title": "Restore MCP literal-secret detection",
+      "repository": "jweter/project-orchestrator",
+      "acceptance_kind": "DETERMINISTIC",
+      "prompt": "A regression disabled literal secret-like value detection for MCP descriptors. Restore the deterministic fail-closed check while preserving environment-variable references and read-only harness behavior.",
+      "baseline_ref": "f914023261956aefd91af4bdf5898e1855c584a0",
+      "fault_fixture_ref": "engineering/agent-eval-fixtures/harness-secret-literal.patch",
+      "measurement_contract_ref": "tests/test_harness_audit.py::test_literal_secret_like_mcp_value_is_red",
+      "verification_commands": [
+        "python -m pytest -q tests/test_harness_audit.py::test_literal_secret_like_mcp_value_is_red tests/test_harness_audit.py::test_environment_reference_in_mcp_is_not_flagged_as_literal_secret",
+        "python engineering/preflight.py"
+      ],
+      "required_stages": [
+        "PREFLIGHT"
+      ]
+    },
+    {
+      "task_id": "kpi-unknown-preservation",
+      "title": "Restore UNKNOWN preservation in KPI telemetry",
+      "repository": "jweter/project-orchestrator",
+      "acceptance_kind": "DETERMINISTIC",
+      "prompt": "A regression converts missing KPI evidence into a measured state. Restore UNKNOWN semantics so missing transition pairs are never silently treated as measured success or zero.",
+      "baseline_ref": "f914023261956aefd91af4bdf5898e1855c584a0",
+      "fault_fixture_ref": "engineering/agent-eval-fixtures/kpi-unknown-preservation.patch",
+      "measurement_contract_ref": "tests/test_kpi_telemetry.py::test_missing_pairs_stay_unknown_instead_of_becoming_zero",
+      "verification_commands": [
+        "python -m pytest -q tests/test_kpi_telemetry.py::test_missing_pairs_stay_unknown_instead_of_becoming_zero",
+        "python engineering/preflight.py"
+      ],
+      "required_stages": [
+        "PREFLIGHT"
+      ]
+    }
+  ]
+}
