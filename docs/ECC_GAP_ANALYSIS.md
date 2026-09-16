@@ -45,9 +45,9 @@ ECC's general guidance emphasizes retaining human judgment. This portfolio alrea
 | `harness-audit` | We validate product/control-plane state, not the whole agent harness footprint | Agent/rule/hook/MCP/skill drift can accumulate unnoticed | **ADOPTED / ADAPTED** | project-orchestrator | Detect stale/duplicate/conflicting harness config and reduce avoidable context/tool failures |
 | `context-budget` | No prior first-class measurement of injected repository rules, skills, MCP descriptors, or persistent context cost | Context can become a hidden throughput/quality bottleneck | **ADOPTED / ADAPTED** | project-orchestrator | Measured context overhead and trend; identify removable low-value context without quality regression |
 | `security-scan` / AgentShield concepts | Repo security/provenance gates exist | Harness permissions, hooks, MCP servers, prompt-injection surfaces, and local agent config need a separate threat model | **PILOT** | orchestrator + local agent harness | Actionable findings with low false-positive rate; no duplication of normal source-code scanners |
-| `agent-eval` | KPI system measures portfolio flow, not per-agent capability consistency | No controlled benchmark of different coding-agent configurations on our own tasks | **ADAPT** | orchestrator evaluation suite | Pass rate, deterministic gate success, intervention burden, runtime/cost where measurable |
-| `skill-create` from git history | Verified learning memory stores diagnosed lessons | We do not systematically distill repeated repo conventions into task-triggered execution guidance | **ADAPT** | one repo at a time | Fewer repeated convention/test failures after generated skill is reviewed and verified |
-| `ai-regression-testing` | Normal tests + regression memory exist | Same-model builder/reviewer correlated failure is not explicitly measured | **ADAPT** | all projects selectively | Independent or adversarial regression catches defects normal implementation loop missed |
+| `agent-eval` | KPI system measures portfolio flow, not per-agent capability consistency | No controlled benchmark of different coding-agent configurations on our own tasks | **ADOPTED / ADAPTED** | orchestrator evaluation suite | Pass rate, deterministic gate success, intervention burden, runtime/cost where measurable |
+| `skill-create` from git history | Verified learning memory stores diagnosed lessons | We did not systematically distill repeated repo conventions into task-triggered execution guidance | **ADOPTED / ADAPTED** | one repo at a time | Fewer repeated convention/test failures after a verified skill is used and measured |
+| `ai-regression-testing` | Normal tests + regression memory exist | Same-model builder/reviewer correlated failure is not explicitly measured | **ADOPTED CORE / PRODUCT PILOT** | orchestrator first; products selectively | Independent or adversarial regression catches defects normal implementation loop missed |
 | `continuous-learning-v2` | Strong verified learning memory + effectiveness measurement | ECC can discover more candidate patterns earlier | **DEFER, THEN BRIDGE** | project-scoped candidate layer only | Candidate instinct must be independently verified before entering authoritative memory |
 | Memory Vault | GitHub + learning memory preserve durable truth; sessions can still lose transient handoff context | Cross-harness/session transfer of non-authoritative context could improve continuity | **DEFER / PILOT** | local agent handoffs | Less repeated rediscovery without stale-context errors or policy injection |
 | `contract-first` | KE compatibility planner already models Core→AI→Web contracts | Generic contract discipline may catch API changes outside modeled KE paths | **SELECTIVE** | Knowledge Engine, future external APIs | Additional incompatibility caught without creating parallel schema authority |
@@ -139,9 +139,9 @@ Highest leverage:
 1. loop-design audit — implemented and preflight-gated;
 2. harness audit — implemented in Phase B;
 3. context budget — implemented in Phase B;
-4. agent evaluation + AI regression harness;
-5. verified skill extraction;
-6. candidate-learning bridge / memory handoff.
+4. agent evaluation + AI regression harness — implemented in Phase C;
+5. verified skill extraction — implemented in Phase D;
+6. candidate-learning bridge / memory handoff — deferred until measured value supports Phase E.
 
 ## Conflict and compatibility analysis
 
@@ -170,7 +170,7 @@ Success criterion: malformed/unsafe DoWork loop design fails preflight before it
 
 ### Phase B — harness observability
 
-**Status: implemented in the current Phase B slice; exact-head preflight and fresh PR CI are the remaining promotion gates.**
+**Status: implemented and verified through exact-head preflight + fresh PR CI in PR #81. Operational six-repository audit evidence is still required before claiming measured portfolio benefit.**
 
 The read-only harness inventory/audit and context-budget report now measure:
 
@@ -191,32 +191,38 @@ Success criterion: identify at least one real source of context, security, or ex
 
 ### Phase C — agent quality measurement
 
-Build a small repository-native agent evaluation set using real regression tasks and deterministic gates. Track:
+**Status: evaluation harness verified in PR #83; disposable exact-baseline matrix runner verified in PR #85. Comparative agent-quality claims remain blocked until at least two real local agent/configurations execute the same pinned tasks.**
+
+The implemented harness tracks:
 
 - first-pass preflight/CI success;
 - repair iterations;
 - human intervention;
 - elapsed execution time when available;
 - repeated failure classes;
-- product-correctness acceptance where deterministic evidence exists.
+- deterministic acceptance only where an objective oracle exists.
 
-Tie results into existing KPI telemetry; do not create a second KPI store.
+Results use the existing KPI telemetry; no second KPI store exists. Product Reality remains outside automated scoring.
 
 ### Phase D — AI regression and repository-specific skills
 
-Use git history + verified regression memory to propose task-triggered skills. A proposed skill must identify:
+**Status: verified-history skill extraction and explicit task/path selection implemented and verified in PR #87. The first project-orchestrator pilot has a verified evidence contract but effectiveness is deliberately `UNMEASURED` until used on a real matching change.**
 
-- source commits/issues/lessons;
+A repository skill must identify:
+
+- verified source lessons;
+- exact history commit refs;
 - exact repository scope;
-- applicable paths/task patterns;
+- applicable paths/task triggers;
 - prevention rule;
-- deterministic verification.
+- deterministic verification;
+- residual risk.
 
-Promote only after review/verification. Re-measure whether the skill reduces repeat failures.
+Selection is explicit only; fuzzy similarity and cross-repository transfer are prohibited. Product-repository skills are not created until their own verified lessons/history support them. Re-measure whether each adopted skill reduces repeat failures, catches defects earlier, shortens repair, or enables verified successful reuse.
 
 ### Phase E — cross-harness transient memory
 
-Only after the earlier phases show value, pilot Memory-Vault-like session handoff for **untrusted transient context**. Durable truth stays in GitHub/control-plane/verified learning memory. Every handoff must declare freshness and source; stale context cannot override live repository state.
+Only after the earlier phases show measured value, pilot Memory-Vault-like session handoff for **untrusted transient context**. Durable truth stays in GitHub/control-plane/verified learning memory. Every handoff must declare freshness and source; stale context cannot override live repository state.
 
 ## KPI linkage
 
@@ -238,12 +244,12 @@ No single metric can authorize expansion. A capability that improves speed while
 
 ## Licensing and provenance
 
-ECC is MIT licensed. This integration currently vendors **no ECC source code** and takes no runtime dependency on ECC. The loop audit and harness/context audit are original implementations derived from general harness/loop-safety concepts described by ECC. If a future phase copies or substantially modifies ECC code, retain the required MIT copyright/license notice for that copied portion and document its provenance explicitly.
+ECC is MIT licensed. This integration currently vendors **no ECC source code** and takes no runtime dependency on ECC. The loop audit, harness/context audit, evaluation harness, and repository-skill extraction are original implementations derived from general harness/loop-safety/agent-evaluation/skill-extraction concepts described by ECC. If a future phase copies or substantially modifies ECC code, retain the required MIT copyright/license notice for that copied portion and document its provenance explicitly.
 
 ## Next exact gates
 
-1. canonical exact-head preflight for the Phase B harness/context-audit slice;
-2. fresh PR CI;
-3. merge only if all project-orchestrator gates remain GREEN;
-4. run the audit against a full local six-repository workspace and record actual findings;
-5. remediate only measured material friction; otherwise stop Phase B expansion and return capacity to product work.
+1. run the harness/context audit against the full local six-repository workspace and record actual findings;
+2. configure and execute the pinned Phase C matrix against at least two real local agent/configurations before making comparative claims;
+3. use the first Phase D repository skill on a real matching engineering change and record verified effectiveness evidence;
+4. mine verified product-repository history and add product skills one at a time only where the evidence contract is satisfied;
+5. begin Phase E transient-memory work only if the earlier phases demonstrate measured value rather than additional context/governance overhead.

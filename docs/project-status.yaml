@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-16T12:08:00Z"
+updated_at: "2026-09-16T12:18:00Z"
 state: "v1 operational validation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -52,17 +52,17 @@ implementation:
   ai_regression_fault_fixtures: implemented_verified
   agent_evaluation_reports: implemented_verified
   disposable_agent_eval_matrix_runner: implemented_verified
-  repository_skill_extraction: implemented
-  repository_skill_task_selector: implemented
-  first_repository_skill_pilot: implemented_unmeasured
+  repository_skill_extraction: implemented_verified
+  repository_skill_task_selector: implemented_verified
+  first_repository_skill_pilot: implemented_verified_contract_unmeasured_effectiveness
   product_reality_debt_aggregation: implemented_verified
   closed_loop_product_run: implemented_verified
 readiness:
   implementation: "IMPLEMENTED"
-  automated_verification: "PENDING_EXACT_HEAD_PREFLIGHT"
+  automated_verification: "VERIFIED_EXACT_HEAD_PREFLIGHT_AND_PR_CI"
   integration: "IMPLEMENTED"
   product_reality: "NOT_APPLICABLE"
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Pass exact-head canonical preflight and fresh PR CI for Phase D verified repository-skill extraction. After merge, use the first advisory pilot on a real matching change and record verified effectiveness before calling the skill proven; product-repository skills require verified product history/lessons first."
+next_gate: "Use the first repository-skill pilot on a real matching engineering change and record verified effectiveness before calling the skill proven. Configure and run at least two real local agent configurations for Phase C comparison evidence. Product-repository skills require their own verified product history/lessons before creation."
