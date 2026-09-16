@@ -4,6 +4,7 @@ import copy
 
 import pytest
 
+from project_orchestrator.learning import validate_lesson
 from project_orchestrator.skill_extraction import (
     SkillExtractionError,
     build_report,
@@ -12,26 +13,26 @@ from project_orchestrator.skill_extraction import (
 )
 
 
+def lesson() -> dict:
+    return validate_lesson(
+        {
+            "project": "portfolio",
+            "repository": "jweter/project-orchestrator",
+            "source_type": "ci_failure",
+            "source_ref": "preflight:34182868481",
+            "symptom": "generic overlap fabricated risk",
+            "root_cause": "generic structural tokens created weak overlap",
+            "fix": "filter generic tokens and require informative evidence",
+            "verification": "exact-head preflight passed",
+            "regression_protection": "preserve NO_RELEVANT_VERIFIED_HISTORY without informative matches",
+            "residual_risk": "new generic layout tokens may appear",
+            "evidence_state": "VERIFIED",
+        }
+    )
+
+
 def memory() -> dict:
-    return {
-        "schema_version": 1,
-        "entries": [
-            {
-                "lesson_id": "96afd3d27f39a7888240",
-                "project": "portfolio",
-                "repository": "jweter/project-orchestrator",
-                "source_type": "ci_failure",
-                "source_ref": "preflight:34182868481",
-                "symptom": "generic overlap fabricated risk",
-                "root_cause": "generic structural tokens created weak overlap",
-                "fix": "filter generic tokens and require informative evidence",
-                "verification": "exact-head preflight passed",
-                "regression_protection": "preserve NO_RELEVANT_VERIFIED_HISTORY without informative matches",
-                "residual_risk": "new generic layout tokens may appear",
-                "evidence_state": "VERIFIED",
-            }
-        ],
-    }
+    return {"schema_version": 1, "entries": [lesson()]}
 
 
 def catalog() -> dict:
@@ -44,7 +45,7 @@ def catalog() -> dict:
                 "repository": "jweter/project-orchestrator",
                 "status": "PILOT_READY",
                 "authority": "ADVISORY_ONLY",
-                "source_lesson_ids": ["96afd3d27f39a7888240"],
+                "source_lesson_ids": [lesson()["lesson_id"]],
                 "history_refs": ["commit:9675dab700fada6b6fa5c6a02f45b1261dbf7cc4"],
                 "path_patterns": ["src/project_orchestrator/risk_predictor.py"],
                 "task_triggers": ["risk predictor", "path similarity"],
