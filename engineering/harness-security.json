@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "mode": "READ_ONLY",
+  "purpose": "Deterministically audit agent-harness security surfaces without replacing repository-native security scanners or creating a second authority.",
+  "safety": {
+    "auto_fix": false,
+    "repository_policy_remains_authoritative": true,
+    "product_reality_may_be_inferred": false,
+    "block_at_or_above": "HIGH"
+  },
+  "surface_patterns": [
+    {"glob": ".mcp.json"},
+    {"glob": "mcp.json"},
+    {"glob": ".vscode/mcp.json"},
+    {"glob": ".claude/settings*.json"},
+    {"glob": ".claude/**/*.json"},
+    {"glob": ".codex/config.toml"},
+    {"glob": ".codex/**/*.toml"},
+    {"glob": ".github/workflows/*.yml"},
+    {"glob": ".github/workflows/*.yaml"}
+  ],
+  "untrusted_content_handlers": [],
+  "repositories": [
+    {"name": "jweter/project-orchestrator"},
+    {"name": "jweter/knowledge-engine-core"},
+    {"name": "jweter/knowledge-engine-web"},
+    {"name": "jweter/knowledge-engine-ai"},
+    {"name": "jweter/rocksmith-cdlc-generator"},
+    {"name": "jweter/Project-Everward"}
+  ]
+}

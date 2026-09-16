@@ -9,6 +9,7 @@ build/
 preflight-evidence.json
 n8n-event.json
 .agent-eval-runs/
+.orchestrator-memory/
 private/
 .env
 .mcp.json
