@@ -33,6 +33,40 @@
       "residual_risk": "Future repository layouts may introduce new generic tokens; explicit path matches and fail-closed NO_RELEVANT_VERIFIED_HISTORY behavior remain the safety boundary.",
       "effectiveness_state": "UNMEASURED",
       "product_reality_may_be_inferred": false
+    },
+    {
+      "skill_key": "research-report-evidence-boundary-validator",
+      "project": "knowledge-engine",
+      "repository": "jweter/knowledge-engine-ai",
+      "status": "PILOT_READY",
+      "authority": "ADVISORY_ONLY",
+      "source_lesson_ids": [
+        "87de7c75a743170a96a7"
+      ],
+      "history_refs": [
+        "commit:7aae594b26b9834300702ad6798086c680329b99"
+      ],
+      "path_patterns": [
+        "knowledge_engine_ai/copilot/research_report.py",
+        "tests/copilot/test_research_report.py"
+      ],
+      "task_triggers": [
+        "citation integrity",
+        "evidence directness",
+        "grounded synthesis",
+        "missing direct evidence",
+        "report provenance",
+        "research report"
+      ],
+      "problem": "Model-facing Research Report instructions can describe a correct evidence boundary while structurally valid model output still violates that boundary unless the parser independently enforces it.",
+      "prevention_rule": "For Research Report evidence and provenance changes, mirror every model-facing evidence-boundary rule with a deterministic fail-closed validator over known EvidenceRecord identities/directness and a regression test; prompt compliance is never authority.",
+      "verification_commands": [
+        "poetry run pytest -q tests/copilot/test_research_report.py",
+        "python engineering/preflight.py"
+      ],
+      "residual_risk": "Structural validators cannot establish final scientific semantics, readability, or Monster golden-case Product Reality; those remain separate evidence and acceptance gates.",
+      "effectiveness_state": "UNMEASURED",
+      "product_reality_may_be_inferred": false
     }
   ]
 }
