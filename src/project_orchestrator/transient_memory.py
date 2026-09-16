@@ -73,39 +73,21 @@ def save_memory(
 ) -> dict[str, Any]:
     vault = Path(root)
     init_vault(vault)
-    _validate_text(title, "title", max_bytes=512)
-    _validate_text(body, "body", max_bytes=MAX_BODY_BYTES)
-    _validate_slug(kind, "kind", allowed=ALLOWED_KINDS)
+    _validate_text(title, "title", 512)
+    _validate_text(body, "body", MAX_BODY_BYTES)
+    _validate_slug(kind, "kind", ALLOWED_KINDS)
     _validate_slug(source_harness, "source_harness")
     targets = _normalize_slugs(target_harnesses, "target_harnesses", allow_all=True)
-    if not targets:
-        raise TransientMemoryError("target_harnesses must not be empty")
     normalized_tags = _normalize_slugs(tags, "tags")
     normalized_links = _normalize_links(links)
-
-    payload_for_secret_scan = {
-        "title": title,
-        "body": body,
-        "source_harness": source_harness,
-        "target_harnesses": targets,
-        "tags": normalized_tags,
-        "links": normalized_links,
-    }
-    if _contains_secret(payload_for_secret_scan):
+    if not targets:
+        raise TransientMemoryError("target_harnesses must not be empty")
+    if _contains_secret({"title": title, "body": body, "source": source_harness, "targets": targets, "tags": normalized_tags, "links": normalized_links}):
         raise TransientMemoryError("transient memory appears to contain secret material")
 
     timestamp = created_at or datetime.now(timezone.utc).isoformat()
     seed = json.dumps(
-        {
-            "title": title,
-            "body": body,
-            "kind": kind,
-            "source_harness": source_harness,
-            "target_harnesses": targets,
-            "tags": normalized_tags,
-            "links": normalized_links,
-            "created_at": timestamp,
-        },
+        {"title": title, "body": body, "kind": kind, "source_harness": source_harness, "target_harnesses": targets, "tags": normalized_tags, "links": normalized_links, "created_at": timestamp},
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -140,23 +122,7 @@ def save_memory(
 def validate_document(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise TransientMemoryError("memory document must be an object")
-    required = {
-        "schema",
-        "id",
-        "title",
-        "kind",
-        "trust",
-        "authority",
-        "status",
-        "source_harness",
-        "target_harnesses",
-        "tags",
-        "links",
-        "created_at",
-        "body",
-        "auto_promotion_allowed",
-        "product_reality_may_be_inferred",
-    }
+    required = {"schema", "id", "title", "kind", "trust", "authority", "status", "source_harness", "target_harnesses", "tags", "links", "created_at", "body", "auto_promotion_allowed", "product_reality_may_be_inferred"}
     missing = sorted(required - set(payload))
     if missing:
         raise TransientMemoryError(f"memory document missing required fields: {missing}")
@@ -164,9 +130,9 @@ def validate_document(payload: dict[str, Any]) -> dict[str, Any]:
         raise TransientMemoryError("unsupported memory schema")
     if not isinstance(payload["id"], str) or not payload["id"].startswith("mem_"):
         raise TransientMemoryError("memory id is invalid")
-    _validate_text(payload["title"], "title", max_bytes=512)
-    _validate_text(payload["body"], "body", max_bytes=MAX_BODY_BYTES)
-    _validate_slug(payload["kind"], "kind", allowed=ALLOWED_KINDS)
+    _validate_text(payload["title"], "title", 512)
+    _validate_text(payload["body"], "body", MAX_BODY_BYTES)
+    _validate_slug(payload["kind"], "kind", ALLOWED_KINDS)
     _validate_slug(payload["source_harness"], "source_harness")
     targets = _normalize_slugs(payload["target_harnesses"], "target_harnesses", allow_all=True)
     tags = _normalize_slugs(payload["tags"], "tags")
@@ -185,7 +151,6 @@ def validate_document(payload: dict[str, Any]) -> dict[str, Any]:
         raise TransientMemoryError("created_at must be non-empty")
     if _contains_secret(payload):
         raise TransientMemoryError("transient memory appears to contain secret material")
-
     normalized = dict(payload)
     normalized["target_harnesses"] = targets
     normalized["tags"] = tags
@@ -198,41 +163,26 @@ def doctor(root: str | Path) -> dict[str, Any]:
     if not vault.exists():
         return {"schema_version": 1, "status": "GREEN", "document_count": 0, "problems": []}
     if vault.is_symlink():
-        return {
-            "schema_version": 1,
-            "status": "RED",
-            "document_count": 0,
-            "problems": [{"code": "SYMLINK_ROOT", "path": str(vault)}],
-        }
-
+        return {"schema_version": 1, "status": "RED", "document_count": 0, "problems": [{"code": "SYMLINK_ROOT", "path": str(vault)}]}
     problems: list[dict[str, Any]] = []
     protection = vault / ".protection"
     if not protection.exists() or protection.is_symlink():
         problems.append({"code": "PROTECTION_MISSING_OR_UNSAFE", "path": ".protection"})
     elif protection.read_text(encoding="utf-8") != PROTECTION_TEXT:
         problems.append({"code": "PROTECTION_MISMATCH", "path": ".protection"})
-
     documents, scan_problems, truncated = _scan(vault)
     problems.extend(scan_problems)
     if truncated:
         problems.append({"code": "SCAN_TRUNCATED", "path": str(vault)})
     ids = [item["id"] for item in documents]
-    duplicates = sorted({item for item in ids if ids.count(item) > 1})
-    for duplicate in duplicates:
+    for duplicate in sorted({item for item in ids if ids.count(item) > 1}):
         problems.append({"code": "DUPLICATE_ID", "id": duplicate})
-
     known = set(ids)
     for document in documents:
         for link in document["links"]:
             if link not in known:
                 problems.append({"code": "BROKEN_LINK", "id": document["id"], "target": link})
-
-    return {
-        "schema_version": 1,
-        "status": "RED" if problems else "GREEN",
-        "document_count": len(documents),
-        "problems": problems,
-    }
+    return {"schema_version": 1, "status": "RED" if problems else "GREEN", "document_count": len(documents), "problems": problems}
 
 
 def read_memory(root: str | Path, memory_id: str, *, target_harness: str | None = None) -> dict[str, Any]:
@@ -248,40 +198,30 @@ def read_memory(root: str | Path, memory_id: str, *, target_harness: str | None 
     return _public_document(document, include_body=True)
 
 
-def search_memory(
-    root: str | Path,
-    query: str,
-    *,
-    target_harness: str | None = None,
-    limit: int = 10,
-) -> dict[str, Any]:
-    _validate_text(query, "query", max_bytes=2048)
-    if limit < 1 or limit > MAX_RESULTS:
+def search_memory(root: str | Path, query: str, *, target_harness: str | None = None, limit: int = 10) -> dict[str, Any]:
+    _validate_text(query, "query", 2048)
+    if not 1 <= limit <= MAX_RESULTS:
         raise TransientMemoryError(f"limit must be between 1 and {MAX_RESULTS}")
     documents, problems, truncated = _scan(Path(root))
     tokens = set(TOKEN_RE.findall(query.lower()))
     scored: list[tuple[int, str, dict[str, Any]]] = []
     for document in documents:
-        if document["status"] != "ACTIVE":
+        if document["status"] != "ACTIVE" or (target_harness is not None and not _target_allows(document, target_harness)):
             continue
-        if target_harness is not None and not _target_allows(document, target_harness):
-            continue
-        haystack = " ".join(
-            [document["title"], document["body"], " ".join(document["tags"]), document["kind"]]
-        ).lower()
+        haystack = " ".join([document["title"], document["body"], " ".join(document["tags"]), document["kind"]]).lower()
         score = sum(haystack.count(token) for token in tokens)
         if score:
             scored.append((score, document["created_at"], document))
     scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    diagnostics = list(problems)
+    if truncated:
+        diagnostics.append({"code": "SCAN_TRUNCATED"})
     return {
         "schema_version": 1,
         "query": query,
-        "complete_inventory": not problems and not truncated,
-        "diagnostics": problems + ([{"code": "SCAN_TRUNCATED"}] if truncated else []),
-        "results": [
-            {**_public_document(document, include_body=True), "lexical_score": score}
-            for score, _, document in scored[:limit]
-        ],
+        "complete_inventory": not diagnostics,
+        "diagnostics": diagnostics,
+        "results": [{**_public_document(document, include_body=True), "lexical_score": score} for score, _, document in scored[:limit]],
         "recalled_context_is_authority": False,
     }
 
@@ -302,8 +242,7 @@ def _scan(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]
         if not path.is_file() or path.suffix != ".json":
             continue
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            document = validate_document(payload)
+            document = validate_document(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError, TransientMemoryError) as exc:
             problems.append({"code": "INVALID_DOCUMENT", "path": path.name, "detail": str(exc)})
             continue
@@ -315,22 +254,12 @@ def _scan(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]
 
 
 def _public_document(document: dict[str, Any], *, include_body: bool) -> dict[str, Any]:
-    result = {
-        "schema": document["schema"],
-        "id": document["id"],
-        "title": document["title"],
-        "kind": document["kind"],
-        "trust": document["trust"],
-        "authority": document["authority"],
-        "status": document["status"],
-        "source_harness": document["source_harness"],
-        "target_harnesses": list(document["target_harnesses"]),
-        "tags": list(document["tags"]),
-        "links": list(document["links"]),
-        "created_at": document["created_at"],
-        "auto_promotion_allowed": False,
-        "product_reality_may_be_inferred": False,
-    }
+    result = {key: document[key] for key in ("schema", "id", "title", "kind", "trust", "authority", "status", "source_harness", "target_harnesses", "tags", "links", "created_at")}
+    result["target_harnesses"] = list(result["target_harnesses"])
+    result["tags"] = list(result["tags"])
+    result["links"] = list(result["links"])
+    result["auto_promotion_allowed"] = False
+    result["product_reality_may_be_inferred"] = False
     if include_body:
         result["body"] = document["body"]
     return result
@@ -367,14 +296,14 @@ def _normalize_links(values: Iterable[str]) -> list[str]:
     return output
 
 
-def _validate_slug(value: Any, field: str, *, allowed: set[str] | None = None) -> None:
+def _validate_slug(value: Any, field: str, allowed: set[str] | None = None) -> None:
     if not isinstance(value, str) or not SLUG_RE.fullmatch(value):
         raise TransientMemoryError(f"{field} must be a bounded lowercase slug")
     if allowed is not None and value not in allowed:
         raise TransientMemoryError(f"{field} is unsupported")
 
 
-def _validate_text(value: Any, field: str, *, max_bytes: int) -> None:
+def _validate_text(value: Any, field: str, max_bytes: int) -> None:
     if not isinstance(value, str) or not value.strip():
         raise TransientMemoryError(f"{field} must be non-empty text")
     if len(value.encode("utf-8")) > max_bytes:
@@ -397,71 +326,45 @@ def _self_test() -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary) / "vault"
         init_vault(root)
-        saved = save_memory(
-            root,
-            title="handoff",
-            body="Continue deterministic citation validation.",
-            kind="handoff",
-            source_harness="codex",
-            target_harnesses=["claude"],
-            tags=["research-report"],
-            created_at="2026-09-16T00:00:00+00:00",
-        )
+        saved = save_memory(root, title="handoff", body="Continue deterministic citation validation.", kind="handoff", source_harness="codex", target_harnesses=["claude"], tags=["research-report"], created_at="2026-09-16T00:00:00+00:00")
         search = search_memory(root, "citation validation", target_harness="claude")
         read = read_memory(root, saved["id"], target_harness="claude")
-        health = doctor(root)
-        if not search["results"] or read["body"] != "Continue deterministic citation validation.":
-            raise TransientMemoryError("self-test retrieval failed")
-        if health["status"] != "GREEN":
-            raise TransientMemoryError("self-test doctor failed")
+        if not search["results"] or read["body"] != "Continue deterministic citation validation." or doctor(root)["status"] != "GREEN":
+            raise TransientMemoryError("self-test failed")
         return {"status": "GREEN", "memory_id": saved["id"]}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Local create-only transient cross-harness memory")
     sub = parser.add_subparsers(dest="command", required=True)
-
     init_cmd = sub.add_parser("init")
     init_cmd.add_argument("--root", default=DEFAULT_ROOT_NAME)
-
     save_cmd = sub.add_parser("save")
     save_cmd.add_argument("--root", default=DEFAULT_ROOT_NAME)
     save_cmd.add_argument("--title", required=True)
     save_cmd.add_argument("--body", required=True)
     save_cmd.add_argument("--kind", default="handoff")
     save_cmd.add_argument("--source-harness", required=True)
-    save_cmd.add_argument("--target", action="append", default=["all"])
+    save_cmd.add_argument("--target", action="append", default=[])
     save_cmd.add_argument("--tag", action="append", default=[])
-
     search_cmd = sub.add_parser("search")
     search_cmd.add_argument("query")
     search_cmd.add_argument("--root", default=DEFAULT_ROOT_NAME)
     search_cmd.add_argument("--target-harness")
     search_cmd.add_argument("--limit", type=int, default=10)
-
     read_cmd = sub.add_parser("read")
     read_cmd.add_argument("memory_id")
     read_cmd.add_argument("--root", default=DEFAULT_ROOT_NAME)
     read_cmd.add_argument("--target-harness")
-
     doctor_cmd = sub.add_parser("doctor")
     doctor_cmd.add_argument("--root", default=DEFAULT_ROOT_NAME)
-
     sub.add_parser("self-test")
-
     args = parser.parse_args(argv)
+
     if args.command == "init":
         output = init_vault(args.root)
     elif args.command == "save":
-        output = save_memory(
-            args.root,
-            title=args.title,
-            body=args.body,
-            kind=args.kind,
-            source_harness=args.source_harness,
-            target_harnesses=args.target,
-            tags=args.tag,
-        )
+        output = save_memory(args.root, title=args.title, body=args.body, kind=args.kind, source_harness=args.source_harness, target_harnesses=args.target or ["all"], tags=args.tag)
     elif args.command == "search":
         output = search_memory(args.root, args.query, target_harness=args.target_harness, limit=args.limit)
     elif args.command == "read":
@@ -470,7 +373,6 @@ def main(argv: list[str] | None = None) -> int:
         output = doctor(args.root)
     else:
         output = _self_test()
-
     print(json.dumps(output, indent=2, sort_keys=True))
     return 1 if output.get("status") == "RED" else 0
 
