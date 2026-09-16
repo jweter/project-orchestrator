@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-16T02:08:00Z"
+updated_at: "2026-09-16T09:38:00Z"
 state: "v1 operational validation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -42,9 +42,11 @@ implementation:
   durable_kpi_event_ledger: implemented_verified
   durable_kpi_run_snapshots: implemented_verified
   rolling_kpi_reports_24h_7d_30d: implemented_verified
-  autonomy_loop_contract: implemented
-  autonomy_loop_structural_audit: implemented
-  ecc_selective_adoption_gap_analysis: implemented
+  autonomy_loop_contract: implemented_verified
+  autonomy_loop_structural_audit: implemented_verified
+  ecc_selective_adoption_gap_analysis: implemented_verified
+  harness_inventory_audit: implemented
+  context_budget_observability: implemented
   product_reality_debt_aggregation: implemented_verified
   closed_loop_product_run: implemented_verified
 readiness:
@@ -55,4 +57,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Pass exact-head canonical preflight and fresh PR CI for the autonomy-loop audit, then use the new KPI telemetry to decide whether ECC-derived harness audit/context-budget work is justified by measured friction."
+next_gate: "Run exact-head canonical preflight for the Phase B harness/context audit, then open a focused PR for fresh independent CI. After merge, collect a full local six-repository harness report and use measured findings to decide whether any remediation or Phase C agent-evaluation work is justified."
