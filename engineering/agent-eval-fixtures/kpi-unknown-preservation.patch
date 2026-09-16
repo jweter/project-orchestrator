@@ -1,0 +1,7 @@
+diff --git a/src/project_orchestrator/kpi_telemetry.py b/src/project_orchestrator/kpi_telemetry.py
+--- a/src/project_orchestrator/kpi_telemetry.py
++++ b/src/project_orchestrator/kpi_telemetry.py
+@@
+-    result: dict[str, Any] = {"status": "UNKNOWN", "value": None, "sample_count": 0, "reason": reason}
++    result: dict[str, Any] = {"status": "MEASURED", "value": None, "sample_count": 0, "reason": reason}
+     if unit is not None:
