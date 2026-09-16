@@ -31,6 +31,7 @@
 - [x] Deterministic autonomous-loop structural audit adapted from ECC loop-design concepts
 - [x] ECC selective-adoption gap analysis with product-specific guardrails
 - [x] Read-only harness inventory/audit + repository context-budget observability
+- [x] Deterministic agent-evaluation + AI-regression measurement harness using the canonical KPI ledger
 - [x] Autonomous branch reconciliation and modernization
 - [x] Exact-head executable preflight coverage across every product repository
 - [x] Area-specific learning retrieval before edits
@@ -56,7 +57,7 @@ The scheduler executive report now carries a KPI scorecard defined in `docs/KPI_
 
 Durable flow telemetry is defined in `docs/KPI_TELEMETRY.md`. PR, CI, branch, and issue transitions can be recorded once into the append-only `engineering/kpi-events.jsonl` ledger and projected into append-only per-run snapshots plus 24-hour, 7-day, and 30-day flow reports. The telemetry layer preserves existing KPI definitions/targets as authority, excludes control-plane activity from product-flow health, and leaves incomplete evidence `UNKNOWN` instead of reconstructing or guessing missing history.
 
-Selective ECC adoption is governed by `docs/ECC_GAP_ANALYSIS.md`. The first adopted technique is a deterministic structural audit of the DoWork autonomous regulator: machine-decidable acceptance, independent verification, bounded repair, anti-Goodhart invariants, fresh fail-closed evidence, explicit automated-vs-human authority, and safe no-op semantics are now versioned and preflight-gated. Phase B adds `engineering/harness-audit.json` plus `project_orchestrator.harness_audit`: a read-only inventory/scanner that measures repository-resident instruction/skill/agent/MCP/hook surfaces, reports context bytes and approximate tokens, detects duplicate context and unsafe MCP literals, and leaves unmounted repositories explicitly UNVERIFIED. Context measurements remain advisory evidence rather than merge authority.
+Selective ECC adoption is governed by `docs/ECC_GAP_ANALYSIS.md`. The first adopted technique is a deterministic structural audit of the DoWork autonomous regulator: machine-decidable acceptance, independent verification, bounded repair, anti-Goodhart invariants, fresh fail-closed evidence, explicit automated-vs-human authority, and safe no-op semantics are now versioned and preflight-gated. Phase B adds `engineering/harness-audit.json` plus `project_orchestrator.harness_audit`: a read-only inventory/scanner that measures repository-resident instruction/skill/agent/MCP/hook surfaces, reports context bytes and approximate tokens, detects duplicate context and unsafe MCP literals, and leaves unmounted repositories explicitly UNVERIFIED. Phase C adds `engineering/agent-eval-suite.json` plus `project_orchestrator.agent_eval`: pinned fault-injection tasks, deterministic acceptance, first-pass/repair/intervention/elapsed-time reporting, and like-for-like agent configuration comparisons. Evaluation outcomes are written into the existing KPI ledger rather than a competing store, and Product Reality cannot be scored by this harness.
 
 ## After v1
 
