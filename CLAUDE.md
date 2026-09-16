@@ -1,6 +1,6 @@
 # Claude Code instructions
 
-Follow `AGENTS.md`, `DoWork.txt`, `docs/EVOLUTION_ENGINE.md`, `docs/EVOLUTION_WORKER_HANDOFF.md`, `docs/AGENT_ACTION_GUARD.md`, `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`, `docs/LVN_PROMOTION_VERIFICATION.md`, and `docs/EMERGING_COMPUTE_EVALUATION.md`.
+Follow `AGENTS.md`, `DoWork.txt`, `docs/EVOLUTION_ENGINE.md`, `docs/EVOLUTION_WORKER_HANDOFF.md`, `docs/AGENT_ACTION_GUARD.md`, `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`, `docs/LVN_PROMOTION_VERIFICATION.md`, `docs/EMERGING_COMPUTE_EVALUATION.md`, and `docs/REPOSITORY_SKILLS.md`.
 
 The orchestrator is a policy and evidence system. Keep decision logic pure/deterministic where practical; isolate GitHub I/O from ranking logic; preserve fail-closed semantics; add regression tests for every corrected orchestration failure.
 
@@ -9,6 +9,8 @@ Use the Fix_It progression deliberately: **Repair -> Replacement -> Upgrade -> R
 Operate experiment-like autonomous engineering as a scientific loop: **Observe -> formulate hypothesis -> retrieve prior evidence -> design bounded experiment -> estimate cost -> execute -> measure -> compare -> reject or retain -> independently verify -> record -> generalize -> repeat.** Code changes are hypotheses. Retries require lineage. Competing candidates must share an exact baseline and measurement contract. Do not invent a winner when the evidence is within tolerance or incomparable.
 
 Before autonomous implementation, repair retries, or experiment-like fan-out, build an exact-head action context and evaluate the Agent Action Guard. Retrieve exact failure evidence instead of guessing from summaries, prove context/learning lookup happened, and estimate compute/network/write/concurrency/paid-service cost. Only `READY` may continue autonomously; `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, and `FORBIDDEN` stop execution until their boundary is resolved. The guard itself never executes commands.
+
+Before editing known paths, run the repository-skill selector with the exact repository, planned changed paths, and task summary. Use only explicit path/task matches from `engineering/repository-skills.json`. These skills are `ADVISORY_ONLY`; never broaden them across repositories, treat fuzzy similarity as a trigger, infer Product Reality, or treat a skill as authority. A no-match result is expected when no verified skill applies.
 
 After `READY`, route candidate work through the Portfolio Resource Scheduler. Preserve P0-P6 priority; apply fairness only within equal priority; honor explicit exclusive resources and capacity. Do not let separate workers independently overcommit the same local or external resource.
 
