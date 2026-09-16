@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "skills": [
+    {
+      "skill_key": "risk-similarity-false-positive-guard",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "status": "PILOT_READY",
+      "authority": "ADVISORY_ONLY",
+      "source_lesson_ids": [
+        "96afd3d27f39a7888240"
+      ],
+      "history_refs": [
+        "commit:9675dab700fada6b6fa5c6a02f45b1261dbf7cc4"
+      ],
+      "path_patterns": [
+        "src/project_orchestrator/area_learning.py",
+        "src/project_orchestrator/risk_predictor.py",
+        "tests/test_risk_predictor.py"
+      ],
+      "task_triggers": [
+        "area learning",
+        "historical signals",
+        "path similarity",
+        "risk predictor"
+      ],
+      "problem": "Weak generic repository/path token overlap can be mistaken for meaningful historical evidence and fabricate a risk signal for an unrelated subsystem.",
+      "prevention_rule": "Ignore generic structural path/repository tokens and require either an explicit path match or at least one informative matched token before verified history contributes to the risk profile.",
+      "verification_commands": [
+        "python -m pytest -q tests/test_risk_predictor.py",
+        "python engineering/preflight.py"
+      ],
+      "residual_risk": "Future repository layouts may introduce new generic tokens; explicit path matches and fail-closed NO_RELEVANT_VERIFIED_HISTORY behavior remain the safety boundary.",
+      "effectiveness_state": "UNMEASURED",
+      "product_reality_may_be_inferred": false
+    }
+  ]
+}
