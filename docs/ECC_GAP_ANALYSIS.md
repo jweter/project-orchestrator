@@ -41,9 +41,9 @@ ECC's general guidance emphasizes retaining human judgment. This portfolio alrea
 
 | ECC capability / family | Existing portfolio coverage | Gap | Decision | Initial scope | Evidence of value required |
 |---|---|---|---|---|---|
-| `loop-design-check` | Anti-stall, throughput guard, deterministic gates exist | No single structural audit for judge independence, retry bounds, Goodhart risk, dead-band semantics | **ADOPT / ADAPT NOW** | project-orchestrator | Preflight prevents malformed loop contract; no repeated passive-loop failure without explicit disposition |
-| `harness-audit` | We validate product/control-plane state, not the whole agent harness footprint | Agent/rule/hook/MCP/skill drift can accumulate unnoticed | **ADAPT NEXT** | project-orchestrator | Detect stale/duplicate/conflicting harness config and reduce avoidable context/tool failures |
-| `context-budget` | No first-class measurement of injected rules, tools, skills, MCP descriptions, or persistent context cost | Context can become a hidden throughput/quality bottleneck | **ADAPT NEXT** | project-orchestrator | Measured context overhead and trend; identify removable low-value context without quality regression |
+| `loop-design-check` | Anti-stall, throughput guard, deterministic gates exist | No single structural audit for judge independence, retry bounds, Goodhart risk, dead-band semantics | **ADOPTED / ADAPTED** | project-orchestrator | Preflight prevents malformed loop contract; no repeated passive-loop failure without explicit disposition |
+| `harness-audit` | We validate product/control-plane state, not the whole agent harness footprint | Agent/rule/hook/MCP/skill drift can accumulate unnoticed | **ADOPTED / ADAPTED** | project-orchestrator | Detect stale/duplicate/conflicting harness config and reduce avoidable context/tool failures |
+| `context-budget` | No prior first-class measurement of injected repository rules, skills, MCP descriptors, or persistent context cost | Context can become a hidden throughput/quality bottleneck | **ADOPTED / ADAPTED** | project-orchestrator | Measured context overhead and trend; identify removable low-value context without quality regression |
 | `security-scan` / AgentShield concepts | Repo security/provenance gates exist | Harness permissions, hooks, MCP servers, prompt-injection surfaces, and local agent config need a separate threat model | **PILOT** | orchestrator + local agent harness | Actionable findings with low false-positive rate; no duplication of normal source-code scanners |
 | `agent-eval` | KPI system measures portfolio flow, not per-agent capability consistency | No controlled benchmark of different coding-agent configurations on our own tasks | **ADAPT** | orchestrator evaluation suite | Pass rate, deterministic gate success, intervention burden, runtime/cost where measurable |
 | `skill-create` from git history | Verified learning memory stores diagnosed lessons | We do not systematically distill repeated repo conventions into task-triggered execution guidance | **ADAPT** | one repo at a time | Fewer repeated convention/test failures after generated skill is reviewed and verified |
@@ -136,9 +136,9 @@ Hard boundary: generic harness guidance cannot move mechanical truth into Unreal
 
 Highest leverage:
 
-1. loop-design audit — implemented in this slice;
-2. harness audit;
-3. context budget;
+1. loop-design audit — implemented and preflight-gated;
+2. harness audit — implemented in Phase B;
+3. context budget — implemented in Phase B;
 4. agent evaluation + AI regression harness;
 5. verified skill extraction;
 6. candidate-learning bridge / memory handoff.
@@ -156,9 +156,9 @@ Highest leverage:
 
 ## Adoption roadmap
 
-### Phase A — now: structural loop safety
+### Phase A — structural loop safety
 
-**Status: implementation slice in progress.**
+**Status: implemented and verified through exact-head preflight + PR CI in PR #77.**
 
 - autonomy loop contract;
 - deterministic audit;
@@ -170,14 +170,20 @@ Success criterion: malformed/unsafe DoWork loop design fails preflight before it
 
 ### Phase B — harness observability
 
-Implement a read-only harness inventory/audit and context-budget report. Measure:
+**Status: implemented in the current Phase B slice; exact-head preflight and fresh PR CI are the remaining promotion gates.**
 
-- static instruction/rule bytes/tokens when calculable;
-- active skill/agent/tool descriptions;
-- hooks and MCP integrations;
-- duplicate/conflicting instruction surfaces;
-- stale or unreachable configuration;
-- least-privilege concerns.
+The read-only harness inventory/audit and context-budget report now measure:
+
+- static repository instruction/rule bytes and approximate tokens;
+- task-triggered skill/agent/tool-descriptor context when present;
+- repository workflow hooks and MCP descriptors;
+- exact duplicate context surfaces;
+- missing required surfaces for mounted repositories;
+- explicit authority overlap;
+- literal secret-like MCP values;
+- unmounted repositories as `UNVERIFIED` rather than inferred state.
+
+The first version intentionally does not use a language model to decide whether two prose instructions semantically conflict. It uses deterministic path, hash, budget, authority, and configuration evidence only.
 
 Do **not** auto-delete configuration in the first version.
 
@@ -226,17 +232,18 @@ ECC adoption is successful only when the durable KPI/event system provides evide
 - branch hygiene debt;
 - issue advancement rate;
 - hours with product movement;
-- context overhead once Phase B instruments it.
+- context overhead now instrumented by Phase B.
 
 No single metric can authorize expansion. A capability that improves speed while increasing correctness hotfixes, Product Reality debt, security risk, or human cleanup is not a successful adoption.
 
 ## Licensing and provenance
 
-ECC is MIT licensed. This integration currently vendors **no ECC source code** and takes no runtime dependency on ECC. The loop audit is an original implementation derived from general loop-safety concepts described by ECC's `loop-design-check`. If a future phase copies or substantially modifies ECC code, retain the required MIT copyright/license notice for that copied portion and document its provenance explicitly.
+ECC is MIT licensed. This integration currently vendors **no ECC source code** and takes no runtime dependency on ECC. The loop audit and harness/context audit are original implementations derived from general harness/loop-safety concepts described by ECC. If a future phase copies or substantially modifies ECC code, retain the required MIT copyright/license notice for that copied portion and document its provenance explicitly.
 
 ## Next exact gates
 
-1. canonical exact-head preflight for this loop-audit slice;
+1. canonical exact-head preflight for the Phase B harness/context-audit slice;
 2. fresh PR CI;
 3. merge only if all project-orchestrator gates remain GREEN;
-4. collect KPI evidence before beginning Phase B unless a newly observed P0-P4 harness defect requires earlier action.
+4. run the audit against a full local six-repository workspace and record actual findings;
+5. remediate only measured material friction; otherwise stop Phase B expansion and return capacity to product work.
