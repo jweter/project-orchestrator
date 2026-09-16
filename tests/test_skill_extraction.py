@@ -31,8 +31,30 @@ def lesson() -> dict:
     )
 
 
+def product_lesson() -> dict:
+    return validate_lesson(
+        {
+            "project": "knowledge-engine",
+            "repository": "jweter/knowledge-engine-ai",
+            "source_type": "success_pattern",
+            "source_ref": "knowledge-engine-ai#162",
+            "symptom": "non-direct Research Report evidence could hide missing direct evidence",
+            "root_cause": "directness and missing-direct-evidence disclosure were validated independently",
+            "fix": "pair the model instruction with a deterministic parser invariant and regression test",
+            "verification": "exact-head preflight and fresh PR CI passed before merge",
+            "regression_protection": "fail closed when non-direct evidence omits the direct-evidence gap",
+            "residual_risk": "free-text citations and Product Reality remain separate gates",
+            "evidence_state": "VERIFIED",
+        }
+    )
+
+
 def memory() -> dict:
     return {"schema_version": 1, "entries": [lesson()]}
+
+
+def product_memory() -> dict:
+    return {"schema_version": 1, "entries": [lesson(), product_lesson()]}
 
 
 def catalog() -> dict:
@@ -58,6 +80,33 @@ def catalog() -> dict:
             }
         ],
     }
+
+
+def product_catalog() -> dict:
+    payload = copy.deepcopy(catalog())
+    payload["skills"].append(
+        {
+            "skill_key": "research-report-evidence-boundary-validator",
+            "project": "knowledge-engine",
+            "repository": "jweter/knowledge-engine-ai",
+            "status": "PILOT_READY",
+            "authority": "ADVISORY_ONLY",
+            "source_lesson_ids": [product_lesson()["lesson_id"]],
+            "history_refs": ["commit:7aae594b26b9834300702ad6798086c680329b99"],
+            "path_patterns": [
+                "knowledge_engine_ai/copilot/research_report.py",
+                "tests/copilot/test_research_report.py",
+            ],
+            "task_triggers": ["citation integrity", "research report"],
+            "problem": "prompt-side evidence rules need deterministic enforcement",
+            "prevention_rule": "mirror evidence-boundary prompts with fail-closed validators and regressions",
+            "verification_commands": ["poetry run pytest -q tests/copilot/test_research_report.py"],
+            "residual_risk": "semantic Product Reality remains separate",
+            "effectiveness_state": "UNMEASURED",
+            "product_reality_may_be_inferred": False,
+        }
+    )
+    return payload
 
 
 def test_verified_history_skill_validates() -> None:
@@ -133,6 +182,39 @@ def test_no_fuzzy_or_cross_repo_match() -> None:
         repository="jweter/Project-Everward",
         changed_paths=["src/simulation/risk_predictor.cpp"],
         task_summary="similarity work",
+    )
+    assert result["selection_state"] == "NO_EXPLICIT_SKILL_MATCH"
+    assert result["selected_skills"] == []
+
+
+def test_product_skill_selects_for_exact_knowledge_engine_ai_report_path() -> None:
+    result = select_skills(
+        product_catalog(),
+        product_memory(),
+        repository="jweter/knowledge-engine-ai",
+        changed_paths=["knowledge_engine_ai/copilot/research_report.py"],
+        task_summary="Strengthen Research Report citation integrity",
+    )
+    assert result["selection_state"] == "ADVISORY_SKILLS_SELECTED"
+    assert [skill["skill_key"] for skill in result["selected_skills"]] == [
+        "research-report-evidence-boundary-validator"
+    ]
+    assert result["selected_skills"][0]["matched_paths"] == [
+        "knowledge_engine_ai/copilot/research_report.py"
+    ]
+    assert result["selected_skills"][0]["matched_task_triggers"] == [
+        "citation integrity",
+        "research report",
+    ]
+
+
+def test_product_skill_does_not_cross_transfer_to_web() -> None:
+    result = select_skills(
+        product_catalog(),
+        product_memory(),
+        repository="jweter/knowledge-engine-web",
+        changed_paths=["knowledge_engine_ai/copilot/research_report.py"],
+        task_summary="Research Report citation integrity",
     )
     assert result["selection_state"] == "NO_EXPLICIT_SKILL_MATCH"
     assert result["selected_skills"] == []
