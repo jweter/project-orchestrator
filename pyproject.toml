@@ -17,6 +17,7 @@ project-orchestrator = "project_orchestrator.cli:main"
 project-orchestrator-throughput = "project_orchestrator.throughput_guard_cli:main"
 project-orchestrator-evolve = "project_orchestrator.evolution_cli:main"
 project-orchestrator-scientist = "project_orchestrator.scientist_cli:main"
+project-orchestrator-kpi = "project_orchestrator.kpi_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

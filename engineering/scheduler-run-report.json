@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "artifact": "scheduler-executive-run-report",
   "cli": "project-orchestrator scheduler-run-report",
   "canonical_inventory": {
@@ -56,6 +56,28 @@
       "blocked_waiting_seconds": "trend_down",
       "roadmap_slices_completed_count": "trend_up"
     },
+    "durable_flow_telemetry": {
+      "module": "project_orchestrator.kpi_telemetry",
+      "cli": "project-orchestrator-kpi",
+      "event_ledger": "engineering/kpi-events.jsonl",
+      "run_snapshot_ledger": "engineering/kpi-run-snapshots.jsonl",
+      "event_entities": ["pr", "ci", "branch", "issue"],
+      "rolling_windows": ["24h", "7d", "30d"],
+      "flow_metrics": [
+        "issue_advancement_rate",
+        "cycle_time_seconds",
+        "repair_latency_seconds",
+        "promotion_latency_seconds",
+        "first_pass_ci_rate",
+        "branch_net_delta",
+        "branch_hygiene_debt",
+        "human_intervention_rate"
+      ],
+      "recording_rule": "Record evidenced state transitions at the point they occur, then append exactly one snapshot for the run. Reports query the durable ledger and never reconstruct missing transitions after the fact.",
+      "authority_rule": "Existing KPI definitions and targets remain authoritative. Flow telemetry supplies durable measurements and must not silently redefine first_pass_preflight_rate or any other established target.",
+      "unknown_policy": "Missing transition pairs remain UNKNOWN; absence of an event is never interpreted as a successful transition.",
+      "scope_rule": "Control-plane events may be retained for auditability but are excluded from product-flow health metrics."
+    },
     "scope": [
       "portfolio",
       "each of the three independent product projects",
@@ -95,6 +117,8 @@
     "Jeremy-help opportunities are reported even when they are not blockers",
     "executive status must reflect missed repository inspection or throughput-floor violations",
     "portfolio KPI history is evidence-derived and missing evidence stays visible",
+    "record PR/CI/branch/issue transitions once in the durable KPI ledger and finalize one snapshot per run",
+    "24-hour, 7-day, and 30-day flow reports come from recorded events, never retroactive inference",
     "bottleneck ranking is advisory and never becomes merge or scheduling authority"
   ]
 }
