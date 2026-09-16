@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "configurations": [
+    {
+      "agent_id": "local-agent-a",
+      "agent_config_id": "baseline-config",
+      "argv": [
+        "agent-a",
+        "--prompt-file",
+        "{prompt_file}"
+      ],
+      "timeout_seconds": 1800
+    },
+    {
+      "agent_id": "local-agent-b",
+      "agent_config_id": "comparison-config",
+      "argv": [
+        "agent-b",
+        "--prompt-file",
+        "{prompt_file}"
+      ],
+      "timeout_seconds": 1800
+    }
+  ]
+}
