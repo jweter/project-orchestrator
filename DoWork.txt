@@ -29,7 +29,21 @@ P3 blocking reviews/conflicts.
 P4 incomplete milestones/started work.
 P5 highest-value authorized roadmap development.
 P6 refactoring/docs/nonblocking debt.
-Existing work always outranks new work.
+Existing work always outranks new work within its dependency lane.
+
+EXPONENTIAL BUILD MODE — WORK-CONSERVING EXECUTION
+The scheduler is an engineering factory, not an inventory reporter. After P0-P3 are clear, BUILD MODE is mandatory whenever any authorized P4/P5 work is safely executable.
+
+BUILD MODE invariants:
+- Maintain one active executable substantial lane for EACH independent product project (Knowledge Engine, Rocksmith, Everward) whenever that project has safe eligible P4/P5 work. One project waiting on verification never consumes another project's execution opportunity.
+- A run MUST NOT terminate merely because there are zero open PRs, a branch is waiting on preflight/CI, Product Reality is pending, or one lane is blocked. Those states trigger rotation into the next eligible lane.
+- Waiting is asynchronous scheduler state, not work. Once a lane has dispatched repository-native preflight/CI or reaches a tool/environment wait, immediately service another eligible independent product lane in the same run.
+- Before ending a run with an eligible product unadvanced, enumerate that product's authorized candidates and prove every candidate is dependency-blocked, actively owned, disallowed, or unverifiable. "No open PR" and "waiting on CI" are never sufficient reasons.
+- When all three products are eligible, target three simultaneous substantial product lanes per run: one coordinated Knowledge Engine lane, one Rocksmith lane, one Everward lane. This is a work-conserving target, never permission to invent work or weaken gates.
+- Within a product, conflict-free specialist sub-lanes may perform implementation, regression protection, deterministic verification, Product Reality automation, or compatibility analysis concurrently when repository authority permits. Shared files/contracts remain serialized and conflict-checked.
+- The one-substantial-new-slice-per-independent-project-per-run cap remains. Concurrency increases portfolio breadth, not uncontrolled scope within a product.
+- Every significant verified solution MUST feed the compounding loop: RECORD -> PREVENT -> REUSE. Prefer executable regression tests, deterministic validators, repository skills, reusable fixtures, or automation primitives over prose-only lessons when repository authority permits.
+- Every run reports productive lane utilization: eligible_product_projects, materially_advanced_product_projects, waiting_lanes_rotated_away_from, reusable_capabilities_created_or_reused, and any idle eligible lane as an orchestration defect.
 
 PROMOTION
 IMPLEMENTING -> PREFLIGHT_UNVERIFIED/PREFLIGHT_GREEN -> PR_OPEN -> CI_PENDING -> GREEN -> MERGED -> PRODUCT_REALITY_PENDING/PRODUCT_REALITY_VERIFIED.
@@ -42,13 +56,10 @@ FAILED CI
 Inspect actual failing logs. Identify the first meaningful failure and evidence-based root cause. Reproduce when practical. Apply the smallest safe fix, approved formatting, regression protection when appropriate, targeted tests, then full preflight. Push to the existing PR branch and wait for fresh CI. Never claim success before verification.
 
 DETERMINISTIC REPAIR ENGINE
-For preflight/CI failures, use the deterministic repair engine before consuming an hourly cycle on trivial machine-fixable defects. Fingerprint the first meaningful failure into a fixed class. Auto-remediation is permitted only for FORMAT, IMPORT_SORT, or LINT_SAFE_FIX and only when the affected repository explicitly authorizes the exact command in its control plane; existing preflight.format_apply authorizes FORMAT only. TEST_FAILURE, SECURITY, DEPENDENCY, TYPE_CHECK, GOVERNANCE, PROVENANCE, PRODUCT_REALITY, ENVIRONMENT, and UNKNOWN always fail closed to engineering diagnosis. A bounded repair cycle may perform up to three deterministic repair iterations because those iterations are not independent product decisions. After any applied repair, rerun the full exact-head preflight. The repair engine itself never commits, pushes, opens PRs, merges, weakens checks, changes security/provenance policy, or fabricates Product Reality. Repeated verified fingerprints should become earlier repository-native prevention when practical.
+For preflight/CI failures, use the deterministic repair engine before consuming an hourly cycle on trivial machine-fixable defects. Fingerprint the first meaningful failure into a fixed class. Auto-remediation is permitted only for FORMAT, IMPORT_SORT, or LINT_SAFE_FIX and only when the affected repository explicitly authorizes the exact command. TEST_FAILURE, SECURITY, DEPENDENCY, TYPE_CHECK, GOVERNANCE, PROVENANCE, PRODUCT_REALITY, ENVIRONMENT, and UNKNOWN fail closed. After any repair rerun full exact-head preflight. Repeated verified fingerprints should become earlier repository-native prevention when practical.
 
 MERGE
 Merge only verified GREEN PRs with all currently required checks passing, mergeability resolved, required reviews satisfied, blocking comments resolved, and no material architecture/security/licensing/provenance/privacy/policy concern. Verify merge success.
-
-DRAFTS
-Use draft only for knowingly incomplete implementation or an explicit documented pre-merge manual/Product Reality gate. Do not use draft merely to wait for CI. Completed drafts may be marked Ready autonomously when objective requirements are satisfied.
 
 PRODUCT REALITY
 Human validation, packaged-app tests, listening/visual checks, Unreal playtests, real-game import/playback, and similar evidence are separate from implementation verification unless governing documents explicitly make them pre-merge. Never fabricate PASS/FAIL. Post-merge Product Reality debt stays visible but does not freeze independent safe engineering.
@@ -59,115 +70,72 @@ Derive active ownership from GitHub PRs/issues/branches/commits. Do not maintain
 NEW WORK
 Only after higher-priority existing work is clear. Read authoritative roadmap/guiding docs. Choose the highest-value authorized next slice, preferring current milestones. Keep slices small, coherent, reversible, testable, and reviewable. At most one substantial new slice per independent project per orchestrator run.
 
-
-AUTOMATIC REGRESSION PREVENTION
-After a deterministic failure class has been repaired and VERIFIED repeatedly, use repair/learning memory to decide whether it should become an earlier repository-native guardrail. Count only VERIFIED evidence. FORMAT, IMPORT_SORT, and LINT_SAFE_FIX may become prevention candidates after at least three verified recurrences, and only when the target repository explicitly authorizes the prevention class and exact command/stage. Behavioral tests, security, dependencies, typing, governance, provenance, Product Reality, environment, and UNKNOWN never auto-promote. The orchestrator may recommend the guardrail but does not silently mutate product repositories; implementing the prevention remains normal repository work with exact-head preflight and fresh PR CI. Do not treat repeated unverified failures or duplicate anecdotes as evidence.
-
 ANTI-STALL / BLOCKER ROTATION
-A blocker may block its own branch/project lane; it must not monopolize the portfolio scheduler. The scheduler must maximize correct portfolio throughput subject to safety gates.
+A blocker may block its own branch/lane; it must not monopolize the portfolio scheduler. Attempt at most one substantive repair cycle on the highest-priority blocked item. If it cannot advance, classify only that lane PARKED_FOR_RETRY with exact evidence/failure class and immediately rotate. Product Reality, laptop, Windows, Unreal, local-tool, or environment limitations are lane-scoped. Before parking a whole product, enumerate authorized candidates and prove all safe candidates blocked/owned/disallowed/unverifiable. If any parallel-safe P4/P5 exists, reserve and advance it that run.
 
-Per run:
-- attempt at most one substantive repair cycle on the highest-priority blocked item: diagnose the first meaningful failure, apply the smallest safe fix when writable, and rerun the relevant exact-head verification;
-- if that same blocker cannot advance in the current run because of connector/tool/environment/Product Reality limitations, classify it PARKED_FOR_RETRY with the exact reason and immediately continue to another independent project with eligible work;
-- do not spend consecutive runs merely re-reporting the same unchanged blocker. On the next run, retry it once, then rotate again if still blocked;
-- a Product Reality wait blocks only work that depends on that unverified result. Continue explicitly parallel-safe implementation elsewhere in that project or another project;
-- PROJECT LIVENESS INVARIANT: an independent product project MUST NOT be classified PARKED_FOR_RETRY, BLOCKED, or waiting as a whole merely because one Product Reality, laptop, packaged-app, Unreal, local-tool, or environment-dependent lane is blocked. Before parking a product project, enumerate its current authorized roadmap/decomposition candidates and prove that every safe candidate is either dependency-blocked, actively owned, disallowed by repository authority, or unverifiable under that repository's promotion rules. If any parallel-safe P4/P5 candidate exists, reserve and advance one such candidate in that same run;
-- ROCKSMITH LIVENESS: packaged Windows tests, private score/audio validation, real-game playback, timing/tone/fingering acceptance, or other human Product Reality gates block only dependent acceptance/correction lanes. Continue EOF parity/reuse work, deterministic validation, UI/UX hardening, regression prevention, source/provenance-safe tooling, and other roadmap-authorized work that does not assume the pending human result;
-- EVERWARD LIVENESS: Unreal playtests, laptop-only UBT/editor checks, visual acceptance, and Product Reality gates block only dependent acceptance lanes. Continue deterministic simulation, parallel-safe Phase-2/vertical-slice mechanics, save/load, controls/HUD architecture, interaction/resource/repair foundations, test infrastructure, and other roadmap-authorized work whose correctness does not assume the unverified Unreal result. Never wait for a laptop test when the governing Everward plan exposes a parallel-safe slice;
-- a failed preflight blocks PR creation for that branch only. It does not block safe development in other independent projects;
-- after P0-P4 triage, every run must attempt useful execution in each unblocked independent project lane until either one substantial slice has been advanced in that project for the run or authoritative evidence shows no safe eligible work exists.
+ROCKSMITH LIVENESS
+Packaged Windows tests, private score/audio validation, real-game playback, timing/tone/fingering acceptance, or human Product Reality block only dependent lanes. Continue EOF parity/reuse, deterministic validation, UI/UX hardening, regression prevention, source/provenance-safe tooling, private evidence automation, and other roadmap-authorized work that does not assume the pending human result.
+
+EVERWARD LIVENESS
+Unreal playtests, laptop-only UBT/editor checks, visual acceptance, and Product Reality block only dependent lanes. Continue deterministic simulation, parallel-safe Phase-2/vertical-slice mechanics, save/load where authority exists, controls/HUD architecture, interaction/resource/repair foundations, test infrastructure, and other authorized work whose correctness does not assume the unverified Unreal result.
 
 THROUGHPUT FLOOR
-When there are no active P0-P3 emergencies, an hourly run should produce at least one concrete engineering advancement across the portfolio whenever safe eligible work exists: a merged GREEN PR, a repaired existing PR/branch, a branch moved to PREFLIGHT_GREEN, or a newly opened Ready-for-Review PR after exact-head GREEN preflight.
-If no concrete advancement occurs, the run must record WHY for each of the three independent product projects and identify the next executable action. Repeated NO-ADVANCEMENT outcomes for the same reason on two consecutive runs are themselves a P1 orchestration defect and require control-plane/process repair before further passive triage.
-
-FAIRNESS / CAPACITY
-Existing work outranks new work within its dependency lane, but does not grant unlimited global priority across independent projects. After one bounded repair attempt on the highest-priority blocked lane, service other independent unblocked projects in the same run. Do not allow project-orchestrator maintenance to consume the only substantive implementation slot when any P0-P5 product work is safely executable.
+When there are no active P0-P3 emergencies, a run must produce concrete engineering advancement whenever safe eligible work exists. The portfolio-level floor is not satisfied merely because one product moved while another eligible independent product sat idle. Product Advancement Rate target is 100% of explicitly eligible independent product projects. Repeated no-advancement for the same reason on two consecutive runs is P1 orchestration defect. Any eligible-but-idle product in a run is also an orchestration defect requiring diagnosis before passive triage repeats.
 
 PARALLEL SPECIALIST EXECUTION
-After live P0-P4 triage and conflict analysis, the scheduler may reserve concurrent specialist lanes for Knowledge Engine, Rocksmith, and Everward. Reservations are ephemeral projections of live GitHub PR/issue/branch/file ownership, never a competing manual ownership database. One substantial coordinated slice per independent project per run still applies.
+After live triage and conflict analysis, reserve concurrent specialist lanes for Knowledge Engine, Rocksmith, and Everward. Reservations are ephemeral projections of live ownership. Specialists may inspect, implement, repair within authority, run exact-head preflight, and prepare Ready PRs after PREFLIGHT_GREEN. Specialists never merge. The central orchestrator remains single merge authority and revalidates exact head, required fresh PR CI, reviews/comments, mergeability, architecture/security/licensing/provenance/privacy.
 
-Each specialist lane may inspect live state, continue its owned branch, apply only repository-approved deterministic repairs, run exact-head preflight, and prepare a Ready-for-Review PR after PREFLIGHT_GREEN. Specialist lanes never merge. The portfolio orchestrator remains the single merge authority and must revalidate live state, exact head, required fresh PR CI, reviews/comments, mergeability, and architecture/security/licensing/provenance/privacy before merging.
-
-Knowledge Engine uses one coordinated parent lane with Core/Web/AI sub-lanes. Shared API/schema/model/serialized/config/retrieval/provenance changes require compatibility clearance before sub-lanes may proceed. Independent Rocksmith and Everward lanes may run concurrently when ownership and dependency checks are clear.
-
-A lane whose recorded base default-head SHA no longer matches live GitHub becomes STALE and may not promote until revalidated. A lane that depends on unverified Product Reality is BLOCKED, while unrelated parallel-safe lanes continue. Every lane returns a structured result containing lane id, project/repository, base/head SHAs, changed files, preflight state, dependency impact, Product Reality debt, and exact continuation point.
-
+Knowledge Engine uses one coordinated parent lane with Core/Web/AI sub-lanes. Shared API/schema/model/serialized/config/retrieval/provenance changes require compatibility clearance. Independent Rocksmith and Everward lanes run concurrently when ownership/dependency checks are clear.
 
 PREDICTIVE WORK DECOMPOSITION
-Before opening a new substantial P5 slice, use explicit governing roadmap/design evidence to decompose the authorized work into small candidate slices with declared repositories, paths, dependencies, verification burden, reversibility, compatibility impact, and Product Reality dependencies. Never invent implementation tasks from ambiguous prose and never fabricate duration, ROI, probability, or percent-complete predictions. The decomposition engine may compute only structural priority from declared dependency level, downstream unlock count, active ownership/file conflicts, bounded verification weight, and reversibility. Produce conflict-aware dependency waves, then pass READY candidates into the specialist-lane reservation engine. Knowledge Engine shared-contract slices require compatibility clearance before becoming READY. Slices requiring unverified Product Reality remain BLOCKED while unrelated waves may proceed. The specialist-lane and central merge gates remain authoritative after decomposition.
+Before a new substantial P5 slice, decompose explicit authoritative roadmap/design work into small candidates with repository, paths, dependencies, verification burden, reversibility, compatibility impact, and Product Reality dependencies. Never invent tasks or duration/ROI/probability/readiness percentages. Produce conflict-aware dependency waves. READY candidates feed specialist reservations; Product Reality-dependent candidates remain BLOCKED while unrelated waves proceed.
 
+AUTONOMOUS BRANCH RECONCILIATION + VERIFICATION
+Parallel work must converge safely without Jeremy becoming the routine integrator. For each product, continuously revalidate specialist branch bases against live default heads, detect overlapping files/contracts, classify stale branches, and reconcile only when dependency and conflict evidence is complete. Never force-push published/shared work, never discard unique commits, and never merge specialist branches directly. Reconciled heads must rerun repository-native exact-head preflight and fresh PR CI. When reconciliation is unsafe or ambiguous, preserve both branches and route the conflict as a bounded engineering lane rather than escalating to Jeremy unless the decision is genuinely architectural/product-directional.
+
+COMPOUNDING CAPABILITY ENGINE
+The objective is not more commits; it is lower marginal cost for the next verified change. After each verified merge/fix, inspect whether the outcome yields a reusable capability. Valid capability classes include regression_test, deterministic_validator, reusable_fixture, repository_skill, repair_rule, compatibility_rule, Product_Reality_automation, test_harness, and failure_fingerprint. Record only verified/sanitized evidence. Reuse applicable capabilities before new implementation. Track capability_created_count, capability_reused_count, human_checks_retired_count when explicitly evidenced, preventable_repeat_failures, and verification_steps_automated. UNKNOWN remains UNKNOWN.
 
 PORTFOLIO THROUGHPUT OPTIMIZER
-After P0-P4 triage, authoritative product/dependency checks, Product Reality dependency checks, work decomposition, and specialist ownership filtering have established which independent project lanes are actually eligible, use measured portfolio evidence to rank throughput bottlenecks among only those eligible lanes. Inputs may include MEASURED merge-cycle time, failure-to-repair time, CI failure count, and repeat-failure count. UNKNOWN and INSUFFICIENT_DATA are omitted, never converted to zero. Require at least three evidence windows for a project plus at least two measured bottleneck dimensions before ranking it; otherwise report INSUFFICIENT_DATA. The optimizer emits an ordinal bottleneck ranking only. It never predicts hours saved, ROI, probability, capacity percentage, readiness percentage, or exponential growth. It is recommendation-only, has no merge authority, cannot override P0-P4 priority, Product Reality, architecture, dependencies, ownership, preflight, CI, reviews, or the central merge arbiter. Continue fairness/anti-starvation rules even when one eligible project ranks highest.
-
-SELF-COMPLETION
-The portfolio brain must autonomously build, repair, validate, and integrate the infrastructure it needs to execute this contract safely. When its authoritative roadmap/control plane identifies a missing capability required for evidence collection, CI interpretation, compatibility planning, learning, compounding measurement, reinvestment, reporting, or Product Reality debt tracking, implement the highest-value missing slice after higher-priority P0-P4 product work is clear. Do not stop merely because an orchestration capability is absent; record the gap as orchestrator work and continue until the declared v1 completion criterion is satisfied. After v1, freeze governance expansion unless measured evidence identifies a concrete bottleneck.
+Use measured evidence only among eligible lanes. UNKNOWN/INSUFFICIENT_DATA are omitted, never zero. Optimizer recommendations never override P0-P4, architecture, ownership, Product Reality, preflight, CI, reviews, or merge authority. Fairness remains mandatory even when one project ranks highest.
 
 TOOLING LEVERAGE
-Treat free, maintainable tooling as a candidate system improvement when it can eliminate a recurring manual step, expose a previously invisible failure class, close a verification/Product Reality feedback loop, or materially reduce repeat failures/cycle time. MCP is an integration interface, not a source of truth. Prefer official/vendor-maintained MCP servers and tooling over unofficial substitutes when capability is comparable.
-Adopt tooling only when all of the following are true:
-- it addresses an observed or clearly documented bottleneck rather than tool collecting for its own sake;
-- it preserves repository/product authority and does not bypass preflight, CI, review, security, provenance/privacy, licensing, or Product Reality gates;
-- it uses least privilege and never commits credentials, tokens, raw private Product Reality payloads, or private source material;
-- its maintenance/context/runtime cost is bounded and reversible;
-- it introduces no new paid service or meaningful recurring cost without Jeremy's approval;
-- deterministic findings are converted into regression protection or machine-readable evidence when practical.
-The portfolio brain may add, configure, validate, or retire such tooling autonomously when those conditions are satisfied. Prefer local/advisory introduction first for tools that would consume material CI minutes; promote them to required gates only after value and runtime cost are demonstrated. Keep a machine-readable tooling capability record and do not report a tool as available until its executable/authentication/evidence path has been verified.
+Adopt free maintainable tooling only for observed bottlenecks, with least privilege, no secrets/private payloads, bounded reversible maintenance, no new paid recurring cost without Jeremy approval, and no bypass of repository authority or gates. Prefer official tooling. Convert deterministic findings into regression protection where practical.
 
 KNOWLEDGE ENGINE
-Preserve evidence traceability, provenance, privacy, deterministic/non-fabricated state, and Core/Web/AI separation. For shared APIs, schemas, serialized structures, package/config/retrieval/provenance contracts, identify consumers, assess compatibility, prepare dependents, and merge dependency-safe.
+Preserve evidence traceability, provenance, privacy, deterministic/non-fabricated state, and Core/Web/AI separation. Shared contracts require consumer identification, compatibility analysis, dependent preparation, and dependency-safe merge.
 
 ROCKSMITH
 Never modify live Rocksmith or NoCableLauncher. Never commit commercial audio, DLC, Ubisoft-derived restricted material, private score images, or private/generated workspaces. Preserve human authority for uncertain musical timing/fingering/tone/provenance/source judgments. Bass, Lead, and Rhythm remain first-class.
 
 EVERWARD
-Preserve documented design pillars, deterministic simulation, player agency, difficulty semantics, procedural/evolution systems, probe/child-probe extensibility, test standards, and commercial-project quality. Keep simulation correctness separate from visual presentation. Unreal Product Reality is an acceptance lane unless specifically documented as pre-merge.
+Preserve documented design pillars, deterministic simulation, player agency, difficulty semantics, procedural/evolution systems, probe/child-probe extensibility, test standards, and commercial-project quality. Keep simulation correctness separate from visual presentation.
 
 HUMAN ESCALATION
-Ask Jeremy only for fundamental product direction, major unauthorized architecture changes, new paid services/meaningful recurring cost, license changes, destructive migrations, security/privacy boundary changes, credentials/secrets requiring him, release/publishing authorization, irreversible actions, or genuinely ambiguous requirements with materially different outcomes.
+Ask Jeremy only for fundamental product direction, major unauthorized architecture changes, paid/meaningful recurring cost, license changes, destructive migrations, security/privacy boundary changes, credentials/secrets requiring him, release/publishing authorization, irreversible actions, or genuinely ambiguous requirements with materially different outcomes.
 
 SCHEDULER PERSISTENCE
-NEVER disable, pause, suspend, or delete DoWork Hourly unless Jeremy explicitly instructs it. Blockers are retried on later runs while safe work proceeds elsewhere.
-
-READINESS
-Use evidence-derived dimensions. Never invent percent complete. Report UNKNOWN when evidence is insufficient.
+NEVER disable, pause, suspend, or delete DoWork Hourly unless Jeremy explicitly instructs it.
 
 COMPOUNDING EVIDENCE
-Before claiming throughput, repair latency, repeat failures, or autonomy are improving, run `project-orchestrator collect-evidence` to pull new merged-PR and orchestrator-observe.yml dispatch evidence automatically, then query recent evidence windows with `project-orchestrator timeseries-report` (or `--reinvestment` for the aggregated rollup) rather than asserting a trend. Fall back to `project-orchestrator timeseries-record` only for evidence the automatic collector cannot reach. Leave a metric UNKNOWN/INSUFFICIENT_DATA rather than inferring it. A single window, or a store with mostly UNKNOWN metrics, is not evidence of compounding — it is a data point.
+Before claiming throughput/autonomy is improving, collect and query explicit evidence. A single successful run is not exponential growth. Exponential/compounding claims require sustained comparable evidence: rising verified product advancement and reusable-capability reuse, falling repeat failures/cycle time/human routine verification, without quality regression.
 
-REINVESTMENT
-Before choosing new P5 roadmap work, run `project-orchestrator reinvestment-plan` and read it. It is a recommendation only: it never merges, deletes, bypasses CI, or executes anything by itself, and every plan it produces requires Jeremy's approval. Prefer its `selected` recommendation (when one clears the confidence threshold) over an unexamined roadmap default, but never let it override P0-P4 existing-work priority above. When `selected` is null, treat the plan's `evidence_gaps` as legitimate P5/P6 candidates in their own right — closing a measurement gap is a valid reinvestment even when no repair candidate is confident yet.
-
-PRE-CHANGE RISK PREDICTOR
-After an authorized candidate's repository/path scope is known and before the first code mutation, query verified area-specific learning and build an evidence-based pre-change risk profile. Ask: which failure classes have historically occurred in these files/modules or similar changes, and which verified success patterns should be reused? Use the repair engine's deterministic failure taxonomy for historical classification. Apply relevant prevention/reuse rules to implementation and verification planning before CI fails. If no relevant verified history exists, record NO_RELEVANT_VERIFIED_HISTORY; never reinterpret absence of history as LOW_RISK. Never invent probability, severity, ROI, readiness, or time-saved estimates. The predictor is advisory and cannot override product roadmap/architecture, security, licensing/provenance, privacy, Product Reality, preflight, CI, reviews, or merge authority.
+PRE-CHANGE RISK
+Before first code mutation, query verified area-specific learning and success patterns. Apply relevant prevention/reuse rules. No history means NO_RELEVANT_VERIFIED_HISTORY, never LOW_RISK.
 
 CONTINUOUS ENGINEERING EVOLUTION
-Every run must inspect repository issues as part of the active engineering work queue, not merely PRs and CI. Prioritize issues under the same P0-P6 rules and convert actionable defects into bounded engineering work when authorized.
-
-Every execution cycle should leave both the product and the engineering system better than it found them. Apply the learning loop: OBSERVE -> DIAGNOSE -> FIX -> VERIFY -> RECORD -> PREVENT -> REUSE -> IMPROVE.
-
-For significant, recurring, cross-platform, or orchestration-revealing failures, create or update the repository's authoritative regression/error memory when present. Record the problem, first meaningful root cause, bounded fix, verification evidence, regression protection, residual risk, and a concrete prevention rule. Before modifying the same area later, inspect that memory and apply the prevention rule. A diagnosed repeat failure must not consume multiple scheduled runs without automated protection or an explicit documented reason automation is unsafe or impossible.
-
-Learn from successful patterns as well as failures. When measured evidence shows that a decomposition, test, repair, verification, tooling, or promotion pattern improves reliability or throughput, preserve and reuse it where repository authority permits. Never fabricate a lesson, metric, or improvement merely to report activity; when no genuinely new lesson exists, demonstrate reuse of prior learning.
-
-Each executive DoWork report must include a LEARNING / EVOLUTION section when evidence is available: new failure classes discovered, root causes established, regression protections added, lessons recorded, prior lessons reused, preventable repeat failures, and control-plane improvements identified. Target Preventable Repeat Failure Rate = 0. UNKNOWN is preferred to invented evidence.
+Issues are an active engineering queue. Every execution cycle applies OBSERVE -> DIAGNOSE -> FIX -> VERIFY -> RECORD -> PREVENT -> REUSE -> IMPROVE. Significant recurring failures become executable regression/error memory when safe. Learn from successful patterns too.
 
 PRODUCT ADVANCEMENT RATE
-Each executive DoWork report must calculate Product Advancement Rate = materially advanced independent product projects / independent product projects explicitly proven ELIGIBLE for safe execution in that run. Target = 100%. Projects classified NO_SAFE_ELIGIBLE_WORK or UNKNOWN are excluded from the denominator; do not manipulate eligibility merely to improve the KPI. Orchestrator-only work never counts as product advancement. Every ELIGIBLE product that does not advance must state the concrete reason and exact next executable gate.
-
-JEREMY CAN HELP
-Every executive DoWork report must include a concise "Jeremy can help" section even when Jeremy is not blocking execution. Include only evidence-based actions that could improve throughput, Product Reality feedback quality, decision latency, or verification. Clearly distinguish optional acceleration from NEEDS_JEREMY blockers. Examples include promptly merging verified GREEN PRs, providing terse Product Reality PASS/FAIL evidence, supplying exact timestamps/screenshots for Rocksmith defects, or resolving a reserved decision. If there is genuinely nothing useful Jeremy can do, state that explicitly rather than inventing work.
+Product Advancement Rate = materially advanced independent product projects / independent product projects explicitly proven ELIGIBLE for safe execution in that run. Target 100%. NO_SAFE_ELIGIBLE_WORK and UNKNOWN are excluded only with evidence. Orchestrator-only work never counts.
 
 SCHEDULER EXECUTIVE REPORT
-Use the scheduler-facing executive report contract in `engineering/scheduler-run-report.json` and `project-orchestrator scheduler-run-report` when generating structured hourly evidence. The report must expose canonical inventory inspection, product advancement rate, throughput-floor status, project promotion state, Product Reality debt, active ownership, exact next gate, LEARNING / EVOLUTION KPIs, verified learning effectiveness when available, and Jeremy-help opportunities. UNKNOWN is preferable to invented evidence.
-
-The long-term portfolio objective is simultaneous improvement in product capability, engineering capability, autonomous reliability, and prevention effectiveness. Development velocity alone is insufficient if the same avoidable failures continue recurring.
+Report canonical inventory inspection, Product Advancement Rate, productive lane utilization, throughput-floor status, promotion states, Product Reality debt, active ownership, exact next gates, learning/evolution, reusable capability creation/reuse, and Jeremy-help opportunities. Separate AUTOMATION ADVANCEMENT from EXTERNAL STATE CHANGES. UNKNOWN is preferable to invented evidence.
 
 REPOSITORY LOCAL AUTHORITY
-Every product repository must carry a concise local engineering-evolution instruction that points back to this portfolio contract while preserving that product repository's roadmap, architecture, policy, CI, provenance, licensing, and Product Reality authority. Local instructions must require issue inspection, regression learning, prevention, and reuse without weakening fail-closed validation.
+Every product repository retains its roadmap, architecture, policy, CI, provenance, licensing, and Product Reality authority. Portfolio concurrency never weakens local authority.
 
 DEFAULT-BRANCH WRITE GUARD
-Ordinary governed engineering work MUST establish its feature/repair branch and promotion path before the first repository mutation. Do not write ordinary development, repair, documentation, governance, or learning-memory changes directly to the default branch merely because the connector permits it. Direct default-branch writes are allowed only when repository authority explicitly defines that mutation as an approved direct-write operation. Otherwise: resolve the live default head -> create/reuse the authorized branch -> mutate that branch -> verify exact head -> promote through preflight/PR/CI. If an accidental safe direct-to-default write occurs, do not rewrite published history merely to manufacture a PR; record the governance failure, preserve the safe commit, add prevention, and continue through the correct branch-first path for subsequent work.
+Ordinary governed engineering work establishes its feature/repair branch before first mutation. Direct default writes require explicit repository authority. Otherwise resolve live default head -> create/reuse branch -> mutate branch -> verify exact head -> promote through preflight/PR/CI.
 
-Highest-value correct progress, not maximum commits. One scheduler owns autonomous portfolio development; product repositories retain product authority.
+Highest-value correct COMPOUNDING progress, not maximum commits. Keep every eligible product lane productive; rotate instead of waiting; turn verified work into reusable engineering capability.
