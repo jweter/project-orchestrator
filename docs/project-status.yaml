@@ -1,6 +1,6 @@
 schema_version: 1
 project: project-orchestrator
-updated_at: "2026-09-16T10:22:00Z"
+updated_at: "2026-09-16T12:08:00Z"
 state: "v1 operational validation"
 objective: "Create the dedicated portfolio-level brain for the three-project/five-repository autonomous engineering loop."
 current_milestone: "v1 Portfolio brain"
@@ -51,7 +51,10 @@ implementation:
   agent_evaluation_kpi_bridge: implemented_verified
   ai_regression_fault_fixtures: implemented_verified
   agent_evaluation_reports: implemented_verified
-  disposable_agent_eval_matrix_runner: implemented
+  disposable_agent_eval_matrix_runner: implemented_verified
+  repository_skill_extraction: implemented
+  repository_skill_task_selector: implemented
+  first_repository_skill_pilot: implemented_unmeasured
   product_reality_debt_aggregation: implemented_verified
   closed_loop_product_run: implemented_verified
 readiness:
@@ -62,4 +65,4 @@ readiness:
   documentation: "IMPLEMENTED"
   security_and_policy: "IMPLEMENTED"
 percent_complete: "UNKNOWN"
-next_gate: "Run exact-head canonical preflight and fresh PR CI for the disposable agent-evaluation matrix runner. After merge, configure at least two real local agent/config combinations and execute the same pinned tasks before making comparative claims or beginning Phase D repository-specific skill extraction."
+next_gate: "Pass exact-head canonical preflight and fresh PR CI for Phase D verified repository-skill extraction. After merge, use the first advisory pilot on a real matching change and record verified effectiveness before calling the skill proven; product-repository skills require verified product history/lessons first."
