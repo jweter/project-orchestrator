@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "name": "Exponential Engine v1",
+  "mode": "persistent_work_conserving_compounding",
+  "objective": "Increase verified autonomous product throughput by converting authoritative work into dependency-safe parallel packets and verified outcomes into reusable capability without weakening product authority.",
+  "candidate_generation": {
+    "persistent": true,
+    "sources": ["live_github_issues", "open_pull_requests", "authorized_roadmaps", "work_decomposition", "verified_learning", "product_reality_debt"],
+    "refresh_on": ["default_head_change", "pr_state_change", "issue_state_change", "verification_completion", "worker_completion", "hourly_scheduler_run"],
+    "never_invent_work": true
+  },
+  "dispatch": {
+    "dependency_aware": true,
+    "independent_product_lanes": ["knowledge-engine", "rocksmith", "everward"],
+    "knowledge_engine_is_one_coordinated_family": true,
+    "conflict_detection_required": true,
+    "waiting_lane_triggers_rotation": true,
+    "specialist_merge_authority": false
+  },
+  "workers": {
+    "persistent_when_runtime_available": true,
+    "branch_isolation_required": true,
+    "exact_base_and_head_required": true,
+    "allowed_actions": ["inspect", "implement_authorized_slice", "run_authorized_fast_gate", "run_exact_head_preflight", "record_sanitized_result"],
+    "forbidden_actions": ["merge", "force_push_shared_work", "weaken_tests", "invent_product_reality", "cross_privacy_or_licensing_boundary"]
+  },
+  "reconciliation": {
+    "use_existing_branch_reconciliation_engine": true,
+    "revalidate_default_head_before_promotion": true,
+    "overlap_or_contract_uncertainty_fails_closed": true,
+    "reconciled_head_requires_fresh_preflight": true,
+    "fresh_pr_ci_required": true
+  },
+  "continuous_verification": {
+    "fast_gate_is_advisory": true,
+    "exact_head_preflight_required": true,
+    "fresh_pr_ci_required": true,
+    "verification_completion_requeues_scheduler": true
+  },
+  "learning": {
+    "extract_after_verified_fix_or_merge": true,
+    "reuse_before_new_mutation": true,
+    "preferred_capabilities": ["regression_test", "deterministic_validator", "reusable_fixture", "repository_skill", "repair_rule", "compatibility_rule", "product_reality_automation", "test_harness", "failure_fingerprint"],
+    "verified_and_sanitized_only": true
+  },
+  "capacity_controller": {
+    "initial_max_concurrent_product_lanes": 3,
+    "min_concurrent_product_lanes": 1,
+    "max_concurrent_product_lanes": 6,
+    "increase_by": 1,
+    "decrease_by": 1,
+    "minimum_evidence_windows_before_change": 3,
+    "increase_only_when": ["all_sampled_required_verification_green", "merge_race_count_zero_when_measured", "no_measured_post_merge_correctness_hotfix", "no_measured_repeat_failure_regression"],
+    "decrease_when": ["measured_post_merge_correctness_hotfix", "measured_repeat_failure_regression", "merge_race", "reconciliation_conflict_rate_increase"],
+    "unknown_evidence_action": "hold_capacity",
+    "quality_gates_override_capacity": true,
+    "never_use_product_reality_as_inferred_quality_signal": true
+  },
+  "metrics": ["eligible_work_packets", "dispatched_work_packets", "verified_work_packets", "productive_parallel_lanes", "capabilities_created", "capabilities_reused", "human_checks_retired", "repeat_failures", "merge_races", "post_merge_correctness_hotfixes", "verification_cost_when_measured"],
+  "human_boundary": "Jeremy is not a routine worker, tester, reconciler, or merger; escalate only under DoWork HUMAN ESCALATION authority."
+}
