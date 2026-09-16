@@ -24,6 +24,7 @@ checks = [
     ("control_plane", [sys.executable, "engineering/validate_control_plane.py"]),
     ("portfolio_inventory", [sys.executable, "engineering/validate_portfolio.py"]),
     ("autonomy_loop", [sys.executable, "-m", "project_orchestrator.loop_audit", "engineering/autonomy-loop-contract.json"]),
+    ("harness_context_audit", [sys.executable, "-m", "project_orchestrator.harness_audit", "--policy", "engineering/harness-audit.json"]),
     ("specialist_lanes", [sys.executable, "engineering/validate_specialist_lanes.py"]),
     ("work_decomposition", [sys.executable, "engineering/validate_work_decomposition.py"]),
     ("regression_prevention", [sys.executable, "-m", "project_orchestrator.cli", "regression-prevention", "--events", "engineering/regression-prevention-smoke-events.json", "--policies", "engineering/regression-prevention-smoke-policies.json"]),

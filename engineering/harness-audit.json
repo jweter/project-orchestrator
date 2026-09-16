@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "mode": "READ_ONLY",
+  "purpose": "Measure repository-resident agent harness surfaces and context overhead without creating a parallel authority or mutating product configuration.",
+  "context_budget": {
+    "always_on_max_bytes": 65536,
+    "task_triggered_max_bytes": 262144,
+    "single_surface_max_bytes": 32768,
+    "approx_chars_per_token": 4,
+    "budget_exceeded_severity": "WARNING"
+  },
+  "safety": {
+    "auto_delete": false,
+    "auto_rewrite": false,
+    "product_reality_may_be_inferred": false,
+    "missing_remote_repo_policy": "UNVERIFIED",
+    "context_metrics_are_merge_authority": false,
+    "repository_policy_remains_authoritative": true,
+    "secret_like_literal_severity": "ERROR"
+  },
+  "surface_patterns": [
+    {"glob": ".claude/agents/**/*.md", "kind": "AGENT", "activation": "TASK_TRIGGERED", "counts_toward_context": true},
+    {"glob": ".github/agents/**/*.md", "kind": "AGENT", "activation": "TASK_TRIGGERED", "counts_toward_context": true},
+    {"glob": ".claude/skills/**/*", "kind": "SKILL", "activation": "TASK_TRIGGERED", "counts_toward_context": true},
+    {"glob": ".codex/skills/**/*", "kind": "SKILL", "activation": "TASK_TRIGGERED", "counts_toward_context": true},
+    {"glob": "AGENTS.md", "kind": "INSTRUCTION", "activation": "ALWAYS_ON", "counts_toward_context": true},
+    {"glob": "CLAUDE.md", "kind": "INSTRUCTION", "activation": "ALWAYS_ON", "counts_toward_context": true},
+    {"glob": ".github/copilot-instructions.md", "kind": "INSTRUCTION", "activation": "ALWAYS_ON", "counts_toward_context": true},
+    {"glob": ".cursorrules", "kind": "INSTRUCTION", "activation": "ALWAYS_ON", "counts_toward_context": true},
+    {"glob": ".cursor/rules/**/*", "kind": "INSTRUCTION", "activation": "TASK_TRIGGERED", "counts_toward_context": true},
+    {"glob": ".claude/**/*.md", "kind": "INSTRUCTION", "activation": "TASK_TRIGGERED", "counts_toward_context": true},
+    {"glob": ".codex/**/*.md", "kind": "INSTRUCTION", "activation": "TASK_TRIGGERED", "counts_toward_context": true},
+    {"glob": ".mcp.json", "kind": "MCP_DESCRIPTOR", "activation": "TOOL_DESCRIPTOR", "counts_toward_context": true},
+    {"glob": "mcp.json", "kind": "MCP_DESCRIPTOR", "activation": "TOOL_DESCRIPTOR", "counts_toward_context": true},
+    {"glob": ".vscode/mcp.json", "kind": "MCP_DESCRIPTOR", "activation": "TOOL_DESCRIPTOR", "counts_toward_context": true},
+    {"glob": ".github/workflows/*.yml", "kind": "HOOK", "activation": "EVENT", "counts_toward_context": false},
+    {"glob": ".github/workflows/*.yaml", "kind": "HOOK", "activation": "EVENT", "counts_toward_context": false}
+  ],
+  "secret_key_markers": [
+    "token",
+    "password",
+    "secret",
+    "api_key",
+    "apikey",
+    "access_key",
+    "private_key"
+  ],
+  "safe_secret_value_markers": [
+    "${",
+    "$env",
+    "env:",
+    "redacted",
+    "example",
+    "changeme",
+    "change_me",
+    "your_",
+    "<",
+    ""
+  ],
+  "repositories": [
+    {
+      "name": "jweter/project-orchestrator",
+      "required_paths": [
+        "AGENTS.md",
+        "DoWork.txt",
+        "engineering/control-plane.json",
+        "engineering/portfolio.json",
+        "engineering/throughput-guard.json",
+        "engineering/autonomy-loop-contract.json"
+      ],
+      "authoritative_paths": ["DoWork.txt", "engineering/control-plane.json"],
+      "advisory_paths": ["AGENTS.md"]
+    },
+    {
+      "name": "jweter/knowledge-engine-core",
+      "required_paths": ["AGENTS.md"],
+      "authoritative_paths": ["AGENTS.md"],
+      "advisory_paths": ["CLAUDE.md"]
+    },
+    {
+      "name": "jweter/knowledge-engine-web",
+      "required_paths": ["AGENTS.md"],
+      "authoritative_paths": ["AGENTS.md"],
+      "advisory_paths": ["CLAUDE.md"]
+    },
+    {
+      "name": "jweter/knowledge-engine-ai",
+      "required_paths": ["AGENTS.md"],
+      "authoritative_paths": ["AGENTS.md"],
+      "advisory_paths": ["CLAUDE.md"]
+    },
+    {
+      "name": "jweter/rocksmith-cdlc-generator",
+      "required_paths": ["AGENTS.md"],
+      "authoritative_paths": ["AGENTS.md"],
+      "advisory_paths": ["CLAUDE.md"]
+    },
+    {
+      "name": "jweter/Project-Everward",
+      "required_paths": ["AGENTS.md"],
+      "authoritative_paths": ["AGENTS.md"],
+      "advisory_paths": ["CLAUDE.md"]
+    }
+  ]
+}
