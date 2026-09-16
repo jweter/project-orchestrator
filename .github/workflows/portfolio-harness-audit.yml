@@ -1,0 +1,166 @@
+name: Portfolio Harness Audit
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/portfolio-harness-audit.yml"
+      - "engineering/harness-audit.json"
+      - "engineering/harness-security.json"
+      - "src/project_orchestrator/harness_audit.py"
+      - "src/project_orchestrator/harness_security.py"
+      - "docs/project-status.yaml"
+      - "docs/ROADMAP.md"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/portfolio-harness-audit.yml"
+      - "engineering/harness-audit.json"
+      - "engineering/harness-security.json"
+      - "src/project_orchestrator/harness_audit.py"
+      - "src/project_orchestrator/harness_security.py"
+      - "docs/project-status.yaml"
+      - "docs/ROADMAP.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Six-repository harness and security audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out project orchestrator
+        uses: actions/checkout@v5
+        with:
+          path: project-orchestrator
+
+      - name: Check out Knowledge Engine Core
+        uses: actions/checkout@v5
+        with:
+          repository: jweter/knowledge-engine-core
+          ref: main
+          path: knowledge-engine-core
+
+      - name: Check out Knowledge Engine Web
+        uses: actions/checkout@v5
+        with:
+          repository: jweter/knowledge-engine-web
+          ref: main
+          path: knowledge-engine-web
+
+      - name: Check out Knowledge Engine AI
+        uses: actions/checkout@v5
+        with:
+          repository: jweter/knowledge-engine-ai
+          ref: main
+          path: knowledge-engine-ai
+
+      - name: Check out Rocksmith CDLC Generator
+        uses: actions/checkout@v5
+        with:
+          repository: jweter/rocksmith-cdlc-generator
+          ref: main
+          path: rocksmith-cdlc-generator
+
+      - name: Check out Project Everward
+        uses: actions/checkout@v5
+        with:
+          repository: jweter/Project-Everward
+          ref: main
+          path: Project-Everward
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install orchestrator
+        run: python -m pip install -e ./project-orchestrator
+
+      - name: Record exact audited revisions
+        shell: python
+        run: |
+          import json
+          import subprocess
+          from pathlib import Path
+
+          repositories = {
+              "jweter/project-orchestrator": "project-orchestrator",
+              "jweter/knowledge-engine-core": "knowledge-engine-core",
+              "jweter/knowledge-engine-web": "knowledge-engine-web",
+              "jweter/knowledge-engine-ai": "knowledge-engine-ai",
+              "jweter/rocksmith-cdlc-generator": "rocksmith-cdlc-generator",
+              "jweter/Project-Everward": "Project-Everward",
+          }
+          revisions = {}
+          for name, path in repositories.items():
+              revisions[name] = subprocess.check_output(
+                  ["git", "-C", path, "rev-parse", "HEAD"], text=True
+              ).strip()
+          Path("portfolio-revisions.json").write_text(
+              json.dumps(revisions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+
+      - name: Run six-repository harness/context audit
+        run: |
+          python -m project_orchestrator.harness_audit \
+            --policy project-orchestrator/engineering/harness-audit.json \
+            --repo jweter/project-orchestrator=project-orchestrator \
+            --repo jweter/knowledge-engine-core=knowledge-engine-core \
+            --repo jweter/knowledge-engine-web=knowledge-engine-web \
+            --repo jweter/knowledge-engine-ai=knowledge-engine-ai \
+            --repo jweter/rocksmith-cdlc-generator=rocksmith-cdlc-generator \
+            --repo jweter/Project-Everward=Project-Everward \
+            > harness-audit.json
+
+      - name: Prove all six repositories were audited
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("harness-audit.json").read_text(encoding="utf-8"))
+          summary = report["summary"]
+          assert summary["repositories_declared"] == 6, summary
+          assert summary["repositories_audited"] == 6, summary
+          assert summary["repositories_unverified"] == 0, summary
+          assert summary["repositories_unavailable"] == 0, summary
+
+      - name: Run six-repository harness security audit
+        run: |
+          python -m project_orchestrator.harness_security \
+            --policy project-orchestrator/engineering/harness-security.json \
+            --repo-root jweter/project-orchestrator=project-orchestrator \
+            --repo-root jweter/knowledge-engine-core=knowledge-engine-core \
+            --repo-root jweter/knowledge-engine-web=knowledge-engine-web \
+            --repo-root jweter/knowledge-engine-ai=knowledge-engine-ai \
+            --repo-root jweter/rocksmith-cdlc-generator=rocksmith-cdlc-generator \
+            --repo-root jweter/Project-Everward=Project-Everward \
+            > harness-security.json
+
+      - name: Prove all six security surfaces were audited
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("harness-security.json").read_text(encoding="utf-8"))
+          summary = report["summary"]
+          assert summary["repositories_declared"] == 6, summary
+          assert summary["repositories_audited"] == 6, summary
+          assert summary["repositories_unverified"] == 0, summary
+          assert summary["blocking_finding_count"] == 0, summary
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-harness-audit
+          path: |
+            portfolio-revisions.json
+            harness-audit.json
+            harness-security.json
