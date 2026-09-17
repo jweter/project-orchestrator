@@ -1,0 +1,19 @@
+{
+  "base_sha": "95ed4d3c65dacc3519411571f71e5fc637e75e5e",
+  "branch": "laptop/everward-preflight-95ed4d3c",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/everward-preflight-95ed4d3c",
+  "exact_head_sha": "95ed4d3c65dacc3519411571f71e5fc637e75e5e",
+  "job_id": "everward-preflight-95ed4d3c",
+  "merge_authority": false,
+  "packet_id": "everward-240-95ed4d3c",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/Project-Everward",
+  "status": "ENVIRONMENT_FAILURE",
+  "verification": [
+    {
+      "runner_error": "local runner environment failure"
+    }
+  ]
+}
