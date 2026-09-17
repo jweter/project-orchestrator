@@ -1,0 +1,20 @@
+{
+  "job_id": "ke-core-windows-process-group-9add5857",
+  "packet_id": "knowledge-engine-core-493-windows-process-group",
+  "project": "knowledge-engine",
+  "repository": "jweter/knowledge-engine-core",
+  "source_ref": "https://github.com/jweter/knowledge-engine-core/issues/493",
+  "base_sha": "9add5857678157eede82db0a9692fbfee0f7c128",
+  "branch": "orchestrator/fix-windows-worker-process-group",
+  "paths": [
+    "knowledge_engine/unattended_worker.py",
+    "tests/test_unattended_worker.py"
+  ],
+  "task": "Run the repository-owned Knowledge Engine exact-head preflight on the Windows laptop for the cross-platform process-group termination repair and return sanitized evidence.",
+  "execution_adapter": "knowledge_engine_core",
+  "requested_checks": [
+    "preflight"
+  ],
+  "merge_authority": false,
+  "product_reality_authority": false
+}
