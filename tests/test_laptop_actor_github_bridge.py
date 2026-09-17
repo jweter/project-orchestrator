@@ -42,23 +42,54 @@ def test_remote_job_cannot_grant_merge_or_product_reality_authority():
         bridge.validate_remote_job(job(product_reality_authority=True))
 
 
+def test_ke_native_adapter_is_bound_to_core_and_allowlisted_checks():
+    native = job(
+        verification=[],
+        execution_adapter="knowledge_engine_core",
+        requested_checks=["preflight", "ollama_health"],
+    )
+    assert bridge.validate_remote_job(native)["requested_checks"] == [
+        "preflight",
+        "ollama_health",
+    ]
+    with pytest.raises(ValueError):
+        bridge.validate_remote_job(
+            {**native, "repository": "jweter/knowledge-engine-web"}
+        )
+    with pytest.raises(ValueError):
+        bridge.validate_remote_job(
+            {**native, "requested_checks": ["preflight", "arbitrary_shell"]}
+        )
+
+
+def test_remote_job_must_have_generic_or_native_execution_plan():
+    with pytest.raises(ValueError):
+        bridge.validate_remote_job(job(verification=[]))
+
+
 def test_sanitized_result_never_exports_raw_runner_error_or_authority():
-    result = bridge.sanitize_result({
-        "job_id": "job-1",
-        "packet_id": "packet-1",
-        "repository": "jweter/knowledge-engine-core",
-        "branch": "orchestrator/laptop-proof",
-        "base_sha": SHA,
-        "exact_head_sha": SHA,
-        "status": "ENVIRONMENT_FAILURE",
-        "changed_paths": [],
-        "verification": [{"runner_error": r"C:\\Users\\private\\secret path"}],
-        "evidence_ref": "local://private/path",
-        "merged": True,
-        "product_reality_verified": True,
-        "raw_log": "secret",
-    })
-    assert result["verification"] == [{"runner_error": "local runner environment failure"}]
+    result = bridge.sanitize_result(
+        {
+            "job_id": "job-1",
+            "packet_id": "packet-1",
+            "repository": "jweter/knowledge-engine-core",
+            "branch": "orchestrator/laptop-proof",
+            "base_sha": SHA,
+            "exact_head_sha": SHA,
+            "status": "ENVIRONMENT_FAILURE",
+            "failure_class": "WORKSPACE_CLONE_FAILED",
+            "changed_paths": [],
+            "verification": [{"runner_error": r"C:\\Users\\private\\secret path"}],
+            "evidence_ref": "local://private/path",
+            "merged": True,
+            "product_reality_verified": True,
+            "raw_log": "secret",
+        }
+    )
+    assert result["verification"] == [
+        {"runner_error": "local runner environment failure"}
+    ]
+    assert result["failure_class"] == "WORKSPACE_CLONE_FAILED"
     assert "raw_log" not in result
     assert "merged" not in result
     assert result["private_payload_exported"] is False
@@ -66,20 +97,85 @@ def test_sanitized_result_never_exports_raw_runner_error_or_authority():
     assert result["product_reality_authority"] is False
 
 
+def test_sanitized_runner_error_code_is_diagnostic_but_path_free():
+    result = bridge.sanitize_result(
+        {
+            "job_id": "job-1",
+            "packet_id": "packet-1",
+            "repository": "jweter/knowledge-engine-core",
+            "branch": "orchestrator/laptop-proof",
+            "base_sha": SHA,
+            "exact_head_sha": SHA,
+            "status": "ENVIRONMENT_FAILURE",
+            "changed_paths": [],
+            "verification": [{"runner_error_code": "EXACT_BASE_UNAVAILABLE"}],
+            "evidence_ref": "local://laptop-actor/job-1",
+        }
+    )
+    assert result["verification"] == [
+        {"runner_error_code": "EXACT_BASE_UNAVAILABLE"}
+    ]
+
+
+def test_sanitized_native_adapter_result_keeps_only_bounded_metadata():
+    result = bridge.sanitize_result(
+        {
+            "job_id": "job-1",
+            "packet_id": "packet-1",
+            "repository": "jweter/knowledge-engine-core",
+            "branch": "orchestrator/laptop-proof",
+            "base_sha": SHA,
+            "exact_head_sha": SHA,
+            "status": "PASS",
+            "changed_paths": [],
+            "verification": [
+                {
+                    "adapter": "knowledge_engine_core",
+                    "checks": ["preflight", "ollama_health", "not-allowed"],
+                    "status": "PASS",
+                    "failure_class": None,
+                    "process_returncode": 0,
+                    "stdout": "private",
+                }
+            ],
+            "evidence_ref": "local://laptop-actor/job-1",
+        }
+    )
+    assert result["verification"] == [
+        {
+            "adapter": "knowledge_engine_core",
+            "checks": ["preflight", "ollama_health"],
+            "status": "PASS",
+            "failure_class": None,
+            "process_returncode": 0,
+        }
+    ]
+
+
 def test_sanitized_command_result_keeps_only_bounded_command_and_returncode():
-    result = bridge.sanitize_result({
-        "job_id": "job-1",
-        "packet_id": "packet-1",
-        "repository": "jweter/Project-Everward",
-        "branch": "orchestrator/laptop-proof",
-        "base_sha": SHA,
-        "exact_head_sha": SHA,
-        "status": "PASS",
-        "changed_paths": [],
-        "verification": [{"command": "python tools/quality_preflight.py --full", "returncode": 0, "stdout": "private"}],
-        "evidence_ref": "local://laptop-actor/job-1",
-    })
-    assert result["verification"] == [{"command": "python tools/quality_preflight.py --full", "returncode": 0}]
+    result = bridge.sanitize_result(
+        {
+            "job_id": "job-1",
+            "packet_id": "packet-1",
+            "repository": "jweter/Project-Everward",
+            "branch": "orchestrator/laptop-proof",
+            "base_sha": SHA,
+            "exact_head_sha": SHA,
+            "status": "PASS",
+            "changed_paths": [],
+            "verification": [
+                {
+                    "command": "python tools/quality_preflight.py --full",
+                    "returncode": 0,
+                    "stdout": "private",
+                }
+            ],
+            "evidence_ref": "local://laptop-actor/job-1",
+        }
+    )
+    assert result["verification"] == [
+        {"command": "python tools/quality_preflight.py --full", "returncode": 0}
+    ]
 
 
 def test_queue_is_dedicated_non_default_branch():
