@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "name": "VNext Compounding Engineering Learning Engine",
+  "mode": "evidence_driven_fail_closed",
+  "objective": "Reduce the marginal cost and elapsed time of future verified product advancement without weakening repository authority, verification, Product Reality, security, privacy, licensing, provenance, or merge gates.",
+  "loop": [
+    "OBSERVE",
+    "DIAGNOSE",
+    "FIX",
+    "VERIFY",
+    "RECORD",
+    "PREVENT",
+    "REUSE",
+    "MEASURE",
+    "IMPROVE_PROCESS",
+    "VERIFY_IMPROVEMENT"
+  ],
+  "inputs": [
+    "engineering/learning-memory.json",
+    "engineering/learning-effectiveness.json",
+    "engineering/compounding-timeseries.json",
+    "engineering/regression-prevention.json",
+    "engineering/throughput-optimizer.json",
+    "engineering/pre-change-risk.json",
+    "engineering/hourly-status/*.jsonl",
+    "sanitized deterministic worker results",
+    "GitHub PR/check/workflow/issue evidence"
+  ],
+  "learning_ledger": {
+    "required_fields": [
+      "failure_fingerprint_or_success_pattern",
+      "repository",
+      "affected_area",
+      "root_cause",
+      "repair_or_pattern",
+      "verification_evidence",
+      "regression_or_reuse_capability",
+      "recurrence_state",
+      "evidence_state"
+    ],
+    "persist_only": "VERIFIED_SANITIZED",
+    "deduplicate": true,
+    "forbidden": [
+      "secrets",
+      "credentials",
+      "raw private Product Reality payloads",
+      "commercial or restricted content",
+      "unverified conclusions"
+    ]
+  },
+  "repair_reuse": {
+    "lookup_before_new_reasoning": true,
+    "match_dimensions": [
+      "repository",
+      "affected_area",
+      "failure_class",
+      "failure_fingerprint",
+      "authorized_command"
+    ],
+    "automatic_application_requires": [
+      "verified prior pattern",
+      "repository explicit authority",
+      "deterministic bounded mutation",
+      "no security/privacy/licensing/provenance/Product Reality boundary change"
+    ],
+    "full_exact_head_preflight_after_repair": true
+  },
+  "process_improvement": {
+    "detect": [
+      "repeat deterministic failures",
+      "avoidable expensive-gate dispatches",
+      "stale branch recurrence",
+      "merge races",
+      "CI retry clusters",
+      "cross-platform incompatibility recurrence",
+      "eligible product starvation",
+      "slow verification stages",
+      "routine human checks that have deterministic substitutes"
+    ],
+    "preferred_output_order": [
+      "earlier deterministic prevention",
+      "reusable validator or fixture",
+      "repair rule",
+      "verification automation",
+      "scheduler policy improvement",
+      "issue when automatic bounded implementation is not authorized"
+    ],
+    "self_change_rule": "Changes to orchestrator behavior use an ordinary feature branch, tests, exact-head preflight, fresh PR CI, and normal merge authority. The learning engine cannot weaken its own gates."
+  },
+  "verification_cost_ladder": {
+    "principle": "Use the cheapest repository-authorized deterministic gate likely to expose a known class first, while preserving all required final gates.",
+    "default_order": [
+      "known_failure_fingerprint_check",
+      "format_and_static_checks_when_authorized",
+      "targeted_regression",
+      "FAST_GATE_when_authorized",
+      "canonical_exact_head_preflight",
+      "fresh_PR_CI",
+      "Product_Reality_when_required"
+    ],
+    "learning_rule": "Promote a cheaper earlier gate only from repeated verified evidence that it detects the defect class without weakening final verification."
+  },
+  "scheduler_feedback": {
+    "objective": "maximize verified product advancement per hour subject to authority and fairness",
+    "signals": [
+      "Product Advancement Rate",
+      "first_pass_preflight_rate",
+      "merge_race_count",
+      "post_merge_correctness_hotfix_rate",
+      "implementation_to_merge_seconds",
+      "failure_to_repair_seconds",
+      "repeat_failure_count",
+      "capability_reuse_count",
+      "eligible_lane_starvation"
+    ],
+    "rules": [
+      "A KPI deviation triggers diagnosis, not automatic blame or gate weakening.",
+      "Two consecutive eligible-idle runs for a product are a P1 orchestration defect.",
+      "Waiting lanes rotate immediately after asynchronous gate dispatch.",
+      "Measured optimizer evidence may reorder already-eligible P5 work but never overrides P0-P4 or repository authority."
+    ]
+  },
+  "counterfactual_evidence": {
+    "enabled": true,
+    "purpose": "Measure whether reused learning actually removes work from later engineering cycles.",
+    "record_only_when_observable": true,
+    "allowed_measures": [
+      "verification_steps_avoided",
+      "repeat_failure_prevented",
+      "human_routine_check_retired",
+      "expensive_gate_dispatch_avoided",
+      "measured_elapsed_seconds_avoided_when both compared durations are evidenced"
+    ],
+    "unknown_policy": "UNKNOWN remains UNKNOWN; never estimate hypothetical time savings from intuition."
+  },
+  "maturity_gates": {
+    "level_1_record": "verified lessons are durable",
+    "level_2_prevent": "lessons create executable regression protection",
+    "level_3_reuse": "prior capabilities are automatically selected when applicable",
+    "level_4_optimize": "measured recurring friction changes the development process",
+    "level_5_compound": "sustained comparable evidence shows higher verified advancement or lower rework/cycle time without quality regression"
+  },
+  "claims_policy": "Do not call the system self-improving or compounding from architecture alone. Require sustained comparable outcome evidence."
+}
