@@ -1,0 +1,16 @@
+{
+  "job_id": "ke-core-preflight-8c68a7e2",
+  "packet_id": "knowledge-engine-core-493-8c68a7e2",
+  "project": "knowledge-engine",
+  "repository": "jweter/knowledge-engine-core",
+  "source_ref": "https://github.com/jweter/knowledge-engine-core/issues/493",
+  "base_sha": "8c68a7e2013be5aad978d5a226d12bc1eb793e91",
+  "branch": "laptop/ke-core-preflight-8c68a7e2",
+  "paths": [],
+  "task": "Run the current canonical Core preflight on the real Windows laptop and return sanitized exact-head evidence.",
+  "verification": [
+    "poetry run python scripts/quality_preflight.py"
+  ],
+  "merge_authority": false,
+  "product_reality_authority": false
+}
