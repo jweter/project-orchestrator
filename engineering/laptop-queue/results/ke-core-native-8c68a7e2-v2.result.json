@@ -1,0 +1,27 @@
+{
+  "base_sha": "8c68a7e2013be5aad978d5a226d12bc1eb793e91",
+  "branch": "laptop/ke-core-native-8c68a7e2-v2",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/ke-core-native-8c68a7e2-v2",
+  "exact_head_sha": "8c68a7e2013be5aad978d5a226d12bc1eb793e91",
+  "failure_class": "TEST_FAILURE",
+  "job_id": "ke-core-native-8c68a7e2-v2",
+  "merge_authority": false,
+  "packet_id": "knowledge-engine-core-493-native-8c68a7e2",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/knowledge-engine-core",
+  "status": "FAIL",
+  "verification": [
+    {
+      "adapter": "knowledge_engine_core",
+      "checks": [
+        "preflight",
+        "ollama_health"
+      ],
+      "failure_class": "TEST_FAILURE",
+      "process_returncode": 1,
+      "status": "FAIL"
+    }
+  ]
+}
