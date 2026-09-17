@@ -1,0 +1,26 @@
+{
+  "base_sha": "9add5857678157eede82db0a9692fbfee0f7c128",
+  "branch": "orchestrator/fix-windows-worker-process-group",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/ke-core-windows-process-group-9add5857",
+  "exact_head_sha": "9add5857678157eede82db0a9692fbfee0f7c128",
+  "failure_class": "TEST_FAILURE",
+  "job_id": "ke-core-windows-process-group-9add5857",
+  "merge_authority": false,
+  "packet_id": "knowledge-engine-core-493-windows-process-group",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/knowledge-engine-core",
+  "status": "FAIL",
+  "verification": [
+    {
+      "adapter": "knowledge_engine_core",
+      "checks": [
+        "preflight"
+      ],
+      "failure_class": "TEST_FAILURE",
+      "process_returncode": 1,
+      "status": "FAIL"
+    }
+  ]
+}
