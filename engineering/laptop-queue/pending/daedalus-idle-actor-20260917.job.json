@@ -1,0 +1,13 @@
+{
+  "job_id": "daedalus-idle-actor-20260917",
+  "packet_id": "daedalus-idle-actor-20260917",
+  "repository": "jweter/project-orchestrator",
+  "branch": "repair/laptop-queue-daedalus-boundary",
+  "base_sha": "138521a0d57a2d8f8df1d879ca1d4411c4f52eb6",
+  "verification": [
+    "python -m pytest -q tests/test_laptop_actor_bootstrap.py tests/test_laptop_actor_github_bridge.py",
+    "python engineering/preflight.py"
+  ],
+  "merge_authority": false,
+  "product_reality_authority": false
+}
