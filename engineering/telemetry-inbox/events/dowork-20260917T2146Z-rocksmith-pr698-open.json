@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "kind": "event",
+  "event": {
+    "observed_at": "2026-09-17T21:41:39Z",
+    "run_id": "dowork-20260917T2146Z",
+    "project": "rocksmith",
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "entity_type": "pr",
+    "entity_id": "698",
+    "from_state": null,
+    "to_state": "OPEN",
+    "transition_class": "NEUTRAL",
+    "actor": "ORCHESTRATOR",
+    "evidence_refs": [
+      "https://github.com/jweter/rocksmith-cdlc-generator/pull/698"
+    ],
+    "metadata": {
+      "head_sha": "8a9636dce05d457879101d3fec85814a03c04793"
+    }
+  }
+}
