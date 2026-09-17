@@ -1,6 +1,6 @@
 param(
   [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
-  [string]$WorkspaceRoot = "$env:USERPROFILE\Projects",
+  [string]$WorkspaceRoot = "$env:LOCALAPPDATA\ExponentialEngine\workspaces",
   [string]$QueueRoot = "$env:LOCALAPPDATA\ExponentialEngine\queue",
   [string]$ActorRoot = "$env:LOCALAPPDATA\ExponentialEngine\actor-repo"
 )
@@ -13,6 +13,7 @@ if (-not $Origin) { throw "Could not resolve project-orchestrator origin." }
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ActorRoot) | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $QueueRoot "inbox") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $QueueRoot "outbox") | Out-Null
+New-Item -ItemType Directory -Force -Path $WorkspaceRoot | Out-Null
 
 if (-not (Test-Path (Join-Path $ActorRoot ".git"))) {
   & $Git clone --branch main --single-branch $Origin $ActorRoot
@@ -36,6 +37,7 @@ Start-ScheduledTask -TaskName "ExponentialEngine-LaptopActor"
 
 Write-Host "LAPTOP ACTOR INSTALLED, SELF-UPDATING, AND RUNNING" -ForegroundColor Green
 Write-Host "Dedicated actor checkout: $ActorRoot"
+Write-Host "Managed product workspaces: $WorkspaceRoot"
 Write-Host "Queue: $QueueRoot"
 Write-Host "Polling: every 5 minutes; product execution requires 10 minutes of Windows idle time"
 if (Get-Command gh -ErrorAction SilentlyContinue) {
