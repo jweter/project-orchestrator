@@ -1,0 +1,13 @@
+{
+  "job_id": "ke-core-windows-signal-typing-3f7b7e6a",
+  "packet_id": "ke-core-windows-signal-typing-20260917",
+  "repository": "jweter/knowledge-engine-core",
+  "branch": "repair/windows-unattended-worker-signals",
+  "base_sha": "3f7b7e6a8bcde6aa60b4ff163acdc1df8dabc328",
+  "verification": [
+    "poetry run pytest tests/test_unattended_worker.py -q",
+    "poetry run python scripts/quality_preflight.py"
+  ],
+  "merge_authority": false,
+  "product_reality_authority": false
+}
