@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import os
 import subprocess
 import sys
@@ -9,6 +10,22 @@ from pathlib import Path
 
 def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=False)
+
+
+def windows_idle_seconds() -> float | None:
+    """Return interactive Windows idle time, or None off Windows."""
+    if os.name != "nt":
+        return None
+
+    class LASTINPUTINFO(ctypes.Structure):
+        _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+    info = LASTINPUTINFO()
+    info.cbSize = ctypes.sizeof(info)
+    if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
+        raise RuntimeError("GetLastInputInfo failed")
+    tick = ctypes.windll.kernel32.GetTickCount64()
+    return max(0.0, (tick - info.dwTime) / 1000.0)
 
 
 def update_actor_checkout(actor_repo: Path) -> str:
@@ -26,7 +43,7 @@ def update_actor_checkout(actor_repo: Path) -> str:
     if remote.returncode != 0:
         raise RuntimeError("origin/main is unavailable")
     target = remote.stdout.strip()
-    if len(target) != 40:
+    if len(target) != 40 or any(c not in "0123456789abcdef" for c in target):
         raise RuntimeError("origin/main did not resolve to an exact SHA")
     reset = run(["git", "reset", "--hard", target], actor_repo)
     if reset.returncode != 0:
@@ -67,11 +84,15 @@ def main() -> int:
     parser.add_argument("--actor-repo", required=True)
     parser.add_argument("--queue", required=True)
     parser.add_argument("--workspace-root", required=True)
+    parser.add_argument("--min-idle-seconds", type=int, default=600)
     args = parser.parse_args()
     actor_repo = Path(args.actor_repo)
     queue = Path(args.queue)
     workspace_root = Path(args.workspace_root)
     try:
+        idle = windows_idle_seconds()
+        if idle is not None and idle < max(0, args.min_idle_seconds):
+            return 0
         update_actor_checkout(actor_repo)
         return execute_bridge_once(actor_repo, queue, workspace_root)
     except (OSError, RuntimeError):
