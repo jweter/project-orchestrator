@@ -1,0 +1,24 @@
+{
+  "observed_at_utc": "2026-09-17T18:30:43Z",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "automation_advancement": {
+    "knowledge_engine": "queued deterministic Windows strict-typing repair to laptop actor on repair/windows-unattended-worker-signals",
+    "rocksmith": "created orchestrator/issue-612-corpus-runner-integration and queued private corpus evidence runner integration",
+    "everward": "created orchestrator/issue-240-wire-headless-smoke and queued unattended worker integration of merged headless Unreal smoke"
+  },
+  "external_state_changes": {
+    "everward": "PR #286 merged at 2026-09-17T17:30:31Z, adding unattended headless Unreal map smoke probe",
+    "rocksmith": "main remains 3b830ab13d798d6e15278414c27c3a1a2960680e; prior corpus evidence PR #696 already merged",
+    "knowledge_engine_core": "main remains 8c68a7e2013be5aad978d5a226d12bc1eb793e91; POSIX-only os.killpg/signal.SIGKILL typing boundary still present"
+  },
+  "waiting_lanes_rotated_away_from": 3,
+  "reusable_capabilities_created_or_reused": ["durable laptop actor queue", "privacy-safe corpus evidence boundary", "headless Unreal smoke probe"],
+  "blockers": [],
+  "product_reality_debt": {
+    "knowledge_engine": "worker exact-head verification pending",
+    "rocksmith": "subjective gameplay/tone/fingering remain human authority",
+    "everward": "visual/gameplay feel remains separate from headless deterministic smoke"
+  }
+}
