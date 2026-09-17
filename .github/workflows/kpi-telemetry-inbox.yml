@@ -65,7 +65,7 @@ jobs:
 
           grep '/events/' /tmp/inbox-files.txt | sort > /tmp/event-files.txt || true
           grep '/runs/' /tmp/inbox-files.txt | sort > /tmp/run-files.txt || true
-          other_count=$(grep -Ev '/(events|runs)/' /tmp/inbox-files.txt | wc -l | tr -d ' ')
+          other_count=$(awk '!/\/(events|runs)\// { count += 1 } END { print count + 0 }' /tmp/inbox-files.txt)
           if [[ "$other_count" != "0" ]]; then
             echo "Inbox payload must be under events/ or runs/" >&2
             exit 2
