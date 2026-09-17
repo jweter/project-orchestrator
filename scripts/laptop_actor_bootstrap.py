@@ -5,6 +5,7 @@ import ctypes
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -79,22 +80,55 @@ def execute_bridge_once(actor_repo: Path, queue: Path, workspace_root: Path) -> 
     return proc.returncode
 
 
+def run_idle_session(
+    actor_repo: Path,
+    queue: Path,
+    workspace_root: Path,
+    min_idle_seconds: int,
+    poll_seconds: int,
+) -> int:
+    """Run bounded actor cycles while the Windows session remains idle.
+
+    The first cycle is allowed only after the configured idle threshold. After that,
+    the actor checks for newly queued work at a short cadence and yields as soon as
+    keyboard/mouse activity drops the idle time below the threshold.
+    """
+    threshold = max(0, min_idle_seconds)
+    cadence = max(30, poll_seconds)
+    idle = windows_idle_seconds()
+    if idle is not None and idle < threshold:
+        return 0
+
+    update_actor_checkout(actor_repo)
+    while True:
+        idle = windows_idle_seconds()
+        if idle is not None and idle < threshold:
+            return 0
+        rc = execute_bridge_once(actor_repo, queue, workspace_root)
+        if rc != 0:
+            return rc
+        time.sleep(cadence)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Self-updating Exponential Engine laptop actor bootstrap")
     parser.add_argument("--actor-repo", required=True)
     parser.add_argument("--queue", required=True)
     parser.add_argument("--workspace-root", required=True)
-    parser.add_argument("--min-idle-seconds", type=int, default=600)
+    parser.add_argument("--min-idle-seconds", type=int, default=300)
+    parser.add_argument("--poll-seconds", type=int, default=60)
     args = parser.parse_args()
     actor_repo = Path(args.actor_repo)
     queue = Path(args.queue)
     workspace_root = Path(args.workspace_root)
     try:
-        idle = windows_idle_seconds()
-        if idle is not None and idle < max(0, args.min_idle_seconds):
-            return 0
-        update_actor_checkout(actor_repo)
-        return execute_bridge_once(actor_repo, queue, workspace_root)
+        return run_idle_session(
+            actor_repo,
+            queue,
+            workspace_root,
+            args.min_idle_seconds,
+            args.poll_seconds,
+        )
     except (OSError, RuntimeError):
         # Fail closed. A bootstrap/update failure must never manufacture worker
         # evidence or mutate any product repository.
