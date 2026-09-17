@@ -1,0 +1,107 @@
+name: KPI Telemetry Inbox
+
+on:
+  push:
+    branches:
+      - telemetry/kpi-runtime
+    paths:
+      - "engineering/telemetry-inbox/**/*.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kpi-telemetry-runtime
+  cancel-in-progress: false
+
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out latest telemetry branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Identify immutable inbox payloads from triggering push
+        id: inbox
+        shell: bash
+        run: |
+          set -euo pipefail
+          before="${{ github.event.before }}"
+          trigger_sha="${{ github.sha }}"
+          if [[ "$before" =~ ^0+$ ]]; then
+            git diff-tree --no-commit-id --name-only -r "$trigger_sha" -- \
+              ':(glob)engineering/telemetry-inbox/**/*.json' > /tmp/inbox-files.txt
+          else
+            git diff --name-only --diff-filter=AM "$before" "$trigger_sha" -- \
+              ':(glob)engineering/telemetry-inbox/**/*.json' > /tmp/inbox-files.txt
+          fi
+          if [[ ! -s /tmp/inbox-files.txt ]]; then
+            echo "No telemetry inbox payloads found in triggering push" >&2
+            exit 2
+          fi
+          while IFS= read -r file; do
+            test -f "$file" || { echo "Missing inbox payload: $file" >&2; exit 2; }
+          done < /tmp/inbox-files.txt
+          cat /tmp/inbox-files.txt
+
+      - name: Persist event payloads before finalization payloads
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          event_ledger="engineering/kpi-events.jsonl"
+          snapshot_ledger="engineering/kpi-run-snapshots.jsonl"
+          touch "$event_ledger" "$snapshot_ledger"
+
+          grep '/events/' /tmp/inbox-files.txt | sort > /tmp/event-files.txt || true
+          grep '/runs/' /tmp/inbox-files.txt | sort > /tmp/run-files.txt || true
+          other_count=$(grep -Ev '/(events|runs)/' /tmp/inbox-files.txt | wc -l | tr -d ' ')
+          if [[ "$other_count" != "0" ]]; then
+            echo "Inbox payload must be under events/ or runs/" >&2
+            exit 2
+          fi
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            python -m project_orchestrator.kpi_cli \
+              --event-ledger "$event_ledger" \
+              --snapshot-ledger "$snapshot_ledger" \
+              process-inbox "$file"
+          done < /tmp/event-files.txt
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            python -m project_orchestrator.kpi_cli \
+              --event-ledger "$event_ledger" \
+              --snapshot-ledger "$snapshot_ledger" \
+              process-inbox "$file"
+          done < /tmp/run-files.txt
+
+          python -m project_orchestrator.kpi_cli \
+            --event-ledger "$event_ledger" \
+            --snapshot-ledger "$snapshot_ledger" \
+            validate
+
+      - name: Commit durable telemetry ledgers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add engineering/kpi-events.jsonl engineering/kpi-run-snapshots.jsonl
+          if git diff --cached --quiet; then
+            echo "Telemetry payload was already durably represented; no ledger commit required."
+            exit 0
+          fi
+          git commit -m "telemetry: persist KPI inbox evidence [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
