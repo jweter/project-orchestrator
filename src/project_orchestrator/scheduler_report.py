@@ -23,6 +23,8 @@ ADVANCEMENT_ACTORS = {
     "UNKNOWN",
 }
 
+KPI_PERSISTENCE_STATES = {"HEALTHY", "FAILED", "UNKNOWN"}
+
 DEFAULT_TIMESERIES_STORE = Path(__file__).resolve().parents[2] / "engineering" / "compounding-timeseries.json"
 
 
@@ -38,6 +40,7 @@ def build_scheduler_executive_report(
     jeremy_can_help: list[str] | None = None,
     previous_no_advancement_reasons: dict[str, str] | None = None,
     timeseries_store: dict[str, Any] | None = None,
+    kpi_persistence: dict[str, Any] | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
     """Build the scheduler-facing executive report from explicit run evidence.
@@ -56,6 +59,10 @@ def build_scheduler_executive_report(
     metrics come from the canonical compounding time-series store; rework KPIs
     are computed only from explicit fields supplied in current project evidence;
     measured bottlenecks delegate to the existing throughput optimizer.
+
+    KPI persistence health is explicit runtime evidence. A known persistence
+    failure makes the executive report RED so target-vs-actual reporting cannot
+    claim a healthy run when the durable ledger or run snapshot failed to land.
     """
     if isinstance(product_repositories_inspected, bool) or not isinstance(product_repositories_inspected, int):
         raise ValueError("product_repositories_inspected must be an integer")
@@ -69,6 +76,7 @@ def build_scheduler_executive_report(
     no_advancement: dict[str, str] = {}
     repeated_no_advancement: dict[str, str] = {}
     external_changes = _validate_external_state_changes(external_state_changes or {})
+    persistence = _validate_kpi_persistence(kpi_persistence)
 
     for project in PROJECT_KEYS:
         if project not in project_evidence:
@@ -178,10 +186,11 @@ def build_scheduler_executive_report(
     return {
         "schema_version": 2,
         "generated_at": canonical["generated_at"],
-        "executive_status": _executive_status(kpis),
+        "executive_status": _executive_status(kpis, persistence),
         "canonical_inventory": {"independent_product_projects": 3, "product_repositories": 5},
         "kpis": kpis,
         "portfolio_kpis": portfolio_kpis,
+        "kpi_persistence": persistence,
         "projects": canonical["projects"],
         "results": canonical["results"],
         "project_orchestrator": canonical["project_orchestrator"],
@@ -198,7 +207,7 @@ def build_scheduler_executive_report(
             "learning_effectiveness": learning_effectiveness or {"status": "UNKNOWN"},
         },
         "jeremy_can_help": _validate_help(jeremy_can_help or []),
-        "management_bottom_line": _bottom_line(kpis, no_advancement),
+        "management_bottom_line": _bottom_line(kpis, no_advancement, persistence),
         "rules": [
             "UNKNOWN is preferred to invented evidence",
             "Product Reality is never inferred",
@@ -211,6 +220,7 @@ def build_scheduler_executive_report(
             "every eligible non-advanced product must state why and identify its next gate",
             "a repeated eligible no-advancement reason fails closed as a P1 orchestration defect",
             "portfolio KPI history comes from canonical evidence rather than guessed completion percentages",
+            "known KPI persistence failure makes the executive report RED",
             "bottleneck ranking remains advisory and cannot override product or promotion gates",
         ],
     }
@@ -279,6 +289,42 @@ def _validate_external_state_changes(
     return normalized
 
 
+def _validate_kpi_persistence(value: dict[str, Any] | None) -> dict[str, Any]:
+    if value is None:
+        return {"status": "UNKNOWN", "reason": "runtime KPI persistence evidence was not supplied"}
+    if not isinstance(value, dict):
+        raise ValueError("kpi_persistence must be a mapping")
+    status = value.get("status")
+    if status not in KPI_PERSISTENCE_STATES:
+        raise ValueError("kpi_persistence.status is invalid")
+    allowed = {
+        "status",
+        "reason",
+        "run_id",
+        "run_event_count",
+        "snapshot_persisted",
+        "event_count",
+        "snapshot_count",
+        "event_ledger_ref",
+        "snapshot_ledger_ref",
+    }
+    extra = sorted(set(value) - allowed)
+    if extra:
+        raise ValueError(f"kpi_persistence has unknown fields: {extra}")
+    normalized = {key: value[key] for key in allowed if key in value}
+    if status == "HEALTHY":
+        if not isinstance(value.get("run_id"), str) or not value["run_id"].strip():
+            raise ValueError("healthy kpi_persistence requires run_id")
+        run_event_count = value.get("run_event_count")
+        if isinstance(run_event_count, bool) or not isinstance(run_event_count, int) or run_event_count < 0:
+            raise ValueError("healthy kpi_persistence requires non-negative run_event_count")
+        if value.get("snapshot_persisted") is not True:
+            raise ValueError("healthy kpi_persistence requires snapshot_persisted=true")
+    elif not isinstance(value.get("reason"), str) or not value["reason"].strip():
+        raise ValueError(f"{status.lower()} kpi_persistence requires a reason")
+    return normalized
+
+
 def _count_or_unknown(value: Any) -> int | str:
     if value is None:
         return "UNKNOWN"
@@ -293,7 +339,9 @@ def _validate_help(items: list[str]) -> list[str]:
     return [item.strip() for item in items]
 
 
-def _executive_status(kpis: dict[str, Any]) -> str:
+def _executive_status(kpis: dict[str, Any], persistence: dict[str, Any]) -> str:
+    if persistence["status"] == "FAILED":
+        return "RED"
     if not kpis["throughput_floor_met"] or kpis["product_repositories_inspected"]["status"] == "RED":
         return "RED"
     rate = kpis["product_advancement_rate"]
@@ -302,7 +350,13 @@ def _executive_status(kpis: dict[str, Any]) -> str:
     return "YELLOW"
 
 
-def _bottom_line(kpis: dict[str, Any], no_advancement: dict[str, str]) -> str:
+def _bottom_line(
+    kpis: dict[str, Any],
+    no_advancement: dict[str, str],
+    persistence: dict[str, Any],
+) -> str:
+    if persistence["status"] == "FAILED":
+        return "KPI persistence failed: this run cannot claim healthy target-vs-actual telemetry until durable event and snapshot evidence is repaired."
     if not kpis["throughput_floor_met"]:
         return "Throughput floor missed: safe eligible product work existed but this orchestrator run produced no concrete product advancement."
     rate = kpis["product_advancement_rate"]
