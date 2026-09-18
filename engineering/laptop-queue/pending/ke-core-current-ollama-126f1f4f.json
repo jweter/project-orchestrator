@@ -1,0 +1,11 @@
+{
+  "job_id": "ke-core-current-ollama-126f1f4f",
+  "packet_id": "ke-core-current-ollama-126f1f4f",
+  "repository": "jweter/knowledge-engine-core",
+  "branch": "main",
+  "base_sha": "126f1f4f62d29cc9e838ad176fc8468e69c17394",
+  "execution_adapter": "knowledge_engine_core",
+  "requested_checks": ["preflight", "ollama_health"],
+  "merge_authority": false,
+  "product_reality_authority": false
+}
