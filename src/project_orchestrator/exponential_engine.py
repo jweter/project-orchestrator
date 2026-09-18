@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .capability_compiler import inject_capabilities
+
 PROJECTS = ("knowledge-engine", "rocksmith", "everward")
 REQUEUE_EVENTS = {
     "worker_completion",
@@ -96,10 +98,11 @@ def build_execution_plan(snapshot: dict[str, Any], policy: dict[str, Any]) -> di
     }
 
 
-def build_worker_envelopes(plan: dict[str, Any]) -> list[dict[str, Any]]:
+def build_worker_envelopes(plan: dict[str, Any], capabilities: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Create bounded worker instructions; workers never receive merge authority."""
     envelopes: list[dict[str, Any]] = []
-    for packet in plan.get("selected_work_packets", []):
+    for original_packet in plan.get("selected_work_packets", []):
+        packet = inject_capabilities(original_packet, capabilities or []) if capabilities is not None else original_packet
         envelopes.append({
             "schema_version": 1,
             "packet_id": packet["id"],
