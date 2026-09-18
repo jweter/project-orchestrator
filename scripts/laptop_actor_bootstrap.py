@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -115,6 +116,36 @@ def release_single_instance(state_dir: Path, fd: int | None) -> None:
         pass
 
 
+def system_resource_snapshot() -> dict[str, float | None]:
+    disk = shutil.disk_usage(Path.home())
+    memory_percent: float | None = None
+    if os.name == "nt":
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+        status = MEMORYSTATUSEX()
+        status.dwLength = ctypes.sizeof(status)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+            memory_percent = float(status.dwMemoryLoad)
+    return {
+        "memory_percent": memory_percent,
+        "disk_free_gb": round(disk.free / (1024 ** 3), 2),
+    }
+
+
+def resources_allow_execution(snapshot: dict[str, float | None], *, max_memory_percent: float, min_disk_free_gb: float) -> bool:
+    memory = snapshot.get("memory_percent")
+    disk = snapshot.get("disk_free_gb")
+    if memory is not None and memory > max_memory_percent:
+        return False
+    return disk is not None and disk >= min_disk_free_gb
+
+
 def run_idle_session(
     actor_repo: Path,
     queue: Path,
@@ -123,6 +154,8 @@ def run_idle_session(
     poll_seconds: int,
     state_dir: Path | None = None,
     max_backoff_seconds: int = 900,
+    max_memory_percent: float = 85.0,
+    min_disk_free_gb: float = 10.0,
 ) -> int:
     """Run bounded actor cycles while the Windows session remains idle.
 
@@ -151,16 +184,22 @@ def run_idle_session(
             if idle is not None and idle < threshold:
                 emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
                 return 0
-            emit_state(state_dir, "EXECUTING", idle_seconds=idle)
+            resources = system_resource_snapshot()
+            if not resources_allow_execution(resources, max_memory_percent=max_memory_percent, min_disk_free_gb=min_disk_free_gb):
+                emit_state(state_dir, "COOLDOWN", reason="resource_budget", **resources)
+                time.sleep(cadence)
+                continue
+            started = time.monotonic()
+            emit_state(state_dir, "EXECUTING", idle_seconds=idle, **resources)
             rc = execute_bridge_once(actor_repo, queue, workspace_root)
             if rc == 0:
                 failures = 0
-                emit_state(state_dir, "IDLE_AVAILABLE", result="bridge_cycle_green")
+                emit_state(state_dir, "IDLE_AVAILABLE", result="bridge_cycle_green", duration_seconds=round(time.monotonic() - started, 3))
                 time.sleep(cadence)
                 continue
             failures += 1
             backoff = min(max_backoff_seconds, cadence * (2 ** min(failures - 1, 4)))
-            emit_state(state_dir, "COOLDOWN", returncode=rc, backoff_seconds=backoff)
+            emit_state(state_dir, "COOLDOWN", returncode=rc, backoff_seconds=backoff, retry_count=failures, duration_seconds=round(time.monotonic() - started, 3))
             time.sleep(backoff)
     finally:
         release_single_instance(state_dir, lock_fd)
@@ -175,6 +214,8 @@ def main() -> int:
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--state-dir")
     parser.add_argument("--max-backoff-seconds", type=int, default=900)
+    parser.add_argument("--max-memory-percent", type=float, default=85.0)
+    parser.add_argument("--min-disk-free-gb", type=float, default=10.0)
     args = parser.parse_args()
     actor_repo = Path(args.actor_repo)
     queue = Path(args.queue)
@@ -188,6 +229,8 @@ def main() -> int:
             args.poll_seconds,
             Path(args.state_dir) if args.state_dir else None,
             args.max_backoff_seconds,
+            args.max_memory_percent,
+            args.min_disk_free_gb,
         )
     except (OSError, RuntimeError):
         # Fail closed. A bootstrap/update failure must never manufacture worker
