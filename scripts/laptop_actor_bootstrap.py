@@ -135,7 +135,6 @@ def run_idle_session(
     state_dir = state_dir or (queue / "state")
     lock_fd = acquire_single_instance(state_dir)
     if lock_fd is None:
-        emit_state(state_dir, "COOLDOWN", reason="single_instance_already_running")
         return 0
     idle = windows_idle_seconds()
     if idle is not None and idle < threshold:

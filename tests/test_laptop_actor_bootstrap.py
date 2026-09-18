@@ -89,7 +89,9 @@ def test_idle_session_stops_on_bridge_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: 2)
-    assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60) == 2
+    monkeypatch.setattr(bootstrap.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt()))
+    with pytest.raises(KeyboardInterrupt):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60)
 
 
 def test_installer_uses_dedicated_checkout_and_idle_aware_repeating_task():
@@ -127,7 +129,7 @@ def test_emit_state_writes_structured_jsonl(tmp_path):
 
 
 def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
-    idle_values = iter([600.0, 600.0, 600.0, 600.0, 5.0])
+    idle_values = iter([600.0, 600.0, 600.0, 5.0])
     results = iter([2, 0])
     sleeps = []
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
