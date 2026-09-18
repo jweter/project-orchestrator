@@ -1,0 +1,10 @@
+{
+  "job_id": "rocksmith-current-preflight-3ec178ee",
+  "packet_id": "rocksmith-current-preflight-3ec178ee",
+  "repository": "jweter/rocksmith-cdlc-generator",
+  "branch": "main",
+  "base_sha": "3ec178eecfb1ddb28cd4a7a764c910397bad5a84",
+  "verification": ["python scripts/quality_preflight.py"],
+  "merge_authority": false,
+  "product_reality_authority": false
+}
