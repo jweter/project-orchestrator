@@ -1,0 +1,29 @@
+{
+  "observed_at": "2026-09-18T13:27:57-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "change": "merged knowledge-engine-web PR #177",
+    "merge_sha": "e15c4094dfe1cf1b4644443d9588c288bc7b218e",
+    "product_reality": "pending"
+  },
+  "rocksmith": {
+    "change": "started unattended missing-evidence repair primitive with regression tests",
+    "branch": "orchestrator/unattended-evidence-repair",
+    "head": "20fb8efbf92f1e7e3abfd7c467d62b43f3d30ede",
+    "promotion": "PREFLIGHT_UNVERIFIED",
+    "worker_feedback": "5 insufficient_strong_events; 1 missing_audio_bass_transcription"
+  },
+  "everward": {
+    "change": "merged PR #293",
+    "merge_sha": "ff49edaca8649f9d0198b3876b8ecc2254b785f1",
+    "product_reality": "pending"
+  },
+  "reusable_capabilities_created_or_reused": [
+    "Knowledge Engine exact-product runtime acceptance binding",
+    "Everward sanitized unattended failure fingerprinting and Release-pinned Windows verification",
+    "Rocksmith bounded missing Bass evidence repair primitive"
+  ],
+  "idle_eligible_lanes": 0
+}
