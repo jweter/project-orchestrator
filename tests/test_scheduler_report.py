@@ -272,3 +272,17 @@ def test_learning_effectiveness_and_jeremy_help_are_first_class():
 def test_unknown_learning_metrics_stay_unknown():
     report = build()
     assert report["learning_evolution"]["root_causes_established"] == "UNKNOWN"
+
+
+def test_cli_scheduler_report_passes_previous_no_advancement_reasons(tmp_path, monkeypatch, capsys):
+    import json
+    from project_orchestrator import cli
+    projects = {name: p(advancement="NONE", advancement_actor=None, no_advancement_reason="same stall") for name in ("knowledge-engine", "rocksmith", "everward")}
+    evidence = {"projects": projects, "results": RESULTS, "project_orchestrator": {"state": "GREEN", "next_gate": "product execution"}, "product_repositories_inspected": 5, "previous_no_advancement_reasons": {name: "same stall" for name in projects}}
+    path = tmp_path / "evidence.json"
+    path.write_text(json.dumps(evidence), encoding="utf-8")
+    monkeypatch.setattr(cli, "load_memory", lambda *_: {})
+    monkeypatch.setattr(cli, "load_learning_effectiveness_store", lambda *_: {})
+    monkeypatch.setattr(cli, "build_report", lambda *_: {"learning_effectiveness_rate": None})
+    with pytest.raises(ValueError, match="P1 orchestration defect"):
+        cli.scheduler_run_report(path)
