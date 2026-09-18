@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import json
 import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -80,12 +82,47 @@ def execute_bridge_once(actor_repo: Path, queue: Path, workspace_root: Path) -> 
     return proc.returncode
 
 
+def emit_state(state_dir: Path, state: str, **fields: object) -> None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "state": state,
+        **fields,
+    }
+    path = state_dir / "actor-telemetry.jsonl"
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def acquire_single_instance(state_dir: Path) -> int | None:
+    state_dir.mkdir(parents=True, exist_ok=True)
+    lock = state_dir / "actor.lock"
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        return None
+    os.write(fd, str(os.getpid()).encode("ascii"))
+    return fd
+
+
+def release_single_instance(state_dir: Path, fd: int | None) -> None:
+    if fd is None:
+        return
+    os.close(fd)
+    try:
+        (state_dir / "actor.lock").unlink()
+    except FileNotFoundError:
+        pass
+
+
 def run_idle_session(
     actor_repo: Path,
     queue: Path,
     workspace_root: Path,
     min_idle_seconds: int,
     poll_seconds: int,
+    state_dir: Path | None = None,
+    max_backoff_seconds: int = 900,
 ) -> int:
     """Run bounded actor cycles while the Windows session remains idle.
 
@@ -95,19 +132,39 @@ def run_idle_session(
     """
     threshold = max(0, min_idle_seconds)
     cadence = max(30, poll_seconds)
+    state_dir = state_dir or (queue / "state")
+    lock_fd = acquire_single_instance(state_dir)
+    if lock_fd is None:
+        emit_state(state_dir, "COOLDOWN", reason="single_instance_already_running")
+        return 0
     idle = windows_idle_seconds()
     if idle is not None and idle < threshold:
+        emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
+        release_single_instance(state_dir, lock_fd)
         return 0
 
-    update_actor_checkout(actor_repo)
-    while True:
-        idle = windows_idle_seconds()
-        if idle is not None and idle < threshold:
-            return 0
-        rc = execute_bridge_once(actor_repo, queue, workspace_root)
-        if rc != 0:
-            return rc
-        time.sleep(cadence)
+    failures = 0
+    try:
+        emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
+        update_actor_checkout(actor_repo)
+        while True:
+            idle = windows_idle_seconds()
+            if idle is not None and idle < threshold:
+                emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
+                return 0
+            emit_state(state_dir, "EXECUTING", idle_seconds=idle)
+            rc = execute_bridge_once(actor_repo, queue, workspace_root)
+            if rc == 0:
+                failures = 0
+                emit_state(state_dir, "IDLE_AVAILABLE", result="bridge_cycle_green")
+                time.sleep(cadence)
+                continue
+            failures += 1
+            backoff = min(max_backoff_seconds, cadence * (2 ** min(failures - 1, 4)))
+            emit_state(state_dir, "COOLDOWN", returncode=rc, backoff_seconds=backoff)
+            time.sleep(backoff)
+    finally:
+        release_single_instance(state_dir, lock_fd)
 
 
 def main() -> int:
@@ -117,6 +174,8 @@ def main() -> int:
     parser.add_argument("--workspace-root", required=True)
     parser.add_argument("--min-idle-seconds", type=int, default=300)
     parser.add_argument("--poll-seconds", type=int, default=60)
+    parser.add_argument("--state-dir")
+    parser.add_argument("--max-backoff-seconds", type=int, default=900)
     args = parser.parse_args()
     actor_repo = Path(args.actor_repo)
     queue = Path(args.queue)
@@ -128,6 +187,8 @@ def main() -> int:
             workspace_root,
             args.min_idle_seconds,
             args.poll_seconds,
+            Path(args.state_dir) if args.state_dir else None,
+            args.max_backoff_seconds,
         )
     except (OSError, RuntimeError):
         # Fail closed. A bootstrap/update failure must never manufacture worker
