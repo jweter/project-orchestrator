@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import shutil
+import subprocess
 from typing import Any
 
 
@@ -57,3 +58,29 @@ def provisioning_plan(repo_root: Path) -> dict[str, Any]:
         "status": "READY" if not blockers else "ENVIRONMENT_FAILURE",
         "authority": "dependency provisioning only; never changes repository manifests or lock files",
     }
+
+
+def provision_environment(repo_root: Path, *, timeout_seconds: int = 900) -> dict[str, Any]:
+    plan = provisioning_plan(repo_root)
+    if plan["status"] != "READY":
+        return {**plan, "executed": [], "status": "ENVIRONMENT_FAILURE"}
+    executed: list[dict[str, Any]] = []
+    for argv in plan["commands"]:
+        completed = subprocess.run(
+            argv,
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+        record = {
+            "argv": argv,
+            "returncode": completed.returncode,
+            "stdout_tail": completed.stdout[-2000:],
+            "stderr_tail": completed.stderr[-2000:],
+        }
+        executed.append(record)
+        if completed.returncode != 0:
+            return {**plan, "executed": executed, "status": "ENVIRONMENT_FAILURE"}
+    return {**plan, "executed": executed, "status": "PROVISIONED"}
