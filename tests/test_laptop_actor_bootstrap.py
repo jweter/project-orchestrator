@@ -138,3 +138,15 @@ def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap.time, "sleep", lambda value: sleeps.append(value))
     assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120) == 0
     assert sleeps == [60, 60]
+
+
+def test_resource_budget_blocks_high_memory():
+    assert not bootstrap.resources_allow_execution({"memory_percent": 91.0, "disk_free_gb": 100.0}, max_memory_percent=85.0, min_disk_free_gb=10.0)
+
+
+def test_resource_budget_blocks_low_disk():
+    assert not bootstrap.resources_allow_execution({"memory_percent": 40.0, "disk_free_gb": 4.0}, max_memory_percent=85.0, min_disk_free_gb=10.0)
+
+
+def test_resource_budget_allows_safe_capacity():
+    assert bootstrap.resources_allow_execution({"memory_percent": 40.0, "disk_free_gb": 100.0}, max_memory_percent=85.0, min_disk_free_gb=10.0)
