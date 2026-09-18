@@ -1,0 +1,38 @@
+{
+  "observed_at": "2026-09-18T12:37:00-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": 1.0,
+  "knowledge_engine": {
+    "branch": "orchestrator/monster-runtime-acceptance-manifest",
+    "head": "327da7781b9828b969e715753ba96cc18f1f2f0b",
+    "preflight": "GREEN",
+    "pr": 177,
+    "state": "CI_PENDING"
+  },
+  "rocksmith": {
+    "main": "206bb6d6216030ef9b418c5d096f9bc36f969e9a",
+    "worker": "REVIEW_REQUIRED",
+    "review_reason_counts": {
+      "insufficient_strong_events": 5,
+      "missing_audio_bass_transcription": 1
+    },
+    "human_required": false,
+    "state": "PRODUCT_REALITY_PENDING"
+  },
+  "everward": {
+    "branch": "orchestrator/unattended-failure-classification",
+    "head": "ce095ad1b0e761aeed5614369cacc02daf0e305b",
+    "preflight": "GREEN",
+    "pr": 293,
+    "state": "CI_PENDING",
+    "repair": "Windows multi-config CMake/CTest verification now pins Release"
+  },
+  "reusable_capabilities_created_or_reused": [
+    "Rocksmith sanitized qualification reason aggregation",
+    "Everward sanitized unattended failure fingerprinting",
+    "Everward cross-platform deterministic CMake verification configuration"
+  ],
+  "waiting_lanes_rotated_away_from": 2,
+  "needs_jeremy": []
+}
