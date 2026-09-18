@@ -1,0 +1,33 @@
+{
+  "observed_at_utc": "2026-09-18T02:45:00Z",
+  "mode": "EXECUTION_BURST",
+  "product_advancement_rate": "3/3 lanes materially advanced",
+  "knowledge_engine": {
+    "core_main": "126f1f4f62d29cc9e838ad176fc8468e69c17394",
+    "advancement": "physical Windows current-main preflight + unattended ollama_health verified",
+    "verification": "19 unattended-worker tests PASS; canonical preflight PASS; 2352 tests PASS; ollama_health PASS with 11 models",
+    "next_gate": "coordinated exact-current Monster #79 Web/Core/AI Product Reality"
+  },
+  "rocksmith": {
+    "main": "3ec178eecfb1ddb28cd4a7a764c910397bad5a84",
+    "worker_failure": "rocksmith-corpus-runner-8a9636dc TEST_FAILURE",
+    "classification": "ENVIRONMENT_FAILURE",
+    "repair": "isolated actor-owned Python 3.12 venv + current editable install",
+    "verification": "24 targeted tests PASS; canonical preflight PASS; pip check clean",
+    "next_gate": "encode isolated environment provisioning into Laptop Actor and rerun private corpus evidence"
+  },
+  "everward": {
+    "main": "03efff285a7ab5757b1057560c9fba253f61007f",
+    "repair_branch": "orchestrator/fix-windows-ctest-config",
+    "repair_head": "a96cdcf40fad42cbfe6a0369235ff23c4e6870ad",
+    "pr": 288,
+    "classification": "TEST_FAILURE/CODE_FAILURE",
+    "verification": "11 focused tests PASS; canonical Windows full preflight PASS; 31/31 C++ simulation tests PASS",
+    "next_gate": "fresh PR CI/review then merge"
+  },
+  "control_plane": {
+    "worker_results_consumed_first": true,
+    "product_reality_fabricated": false,
+    "telemetry_branch": "telemetry/hourly-repo-status"
+  }
+}
