@@ -26,7 +26,8 @@
     "engineering/scheduler-run-report.json",
     "engineering/product-reality-debt.json",
     "engineering/closed-loop-product-run.json",
-    "engineering/pre-change-risk.json"
+    "engineering/pre-change-risk.json",
+    "engineering/process-experiments.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -62,7 +63,8 @@
     "scheduler_reports_product_advancement_rate_and_learning_evolution_from_explicit_evidence",
     "product_reality_debt_is_visible_sanitized_and_lane_scoped",
     "every_live_product_run_closes_the_evidence_learning_loop_or_fails_closed",
-    "pre_change_risk_uses_verified_history_before_mutation_without_invented_probability"
+    "pre_change_risk_uses_verified_history_before_mutation_without_invented_probability",
+    "process_experiments_require_measured_baseline_post_change_evidence_and_preserved_safety_invariants"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -393,7 +395,7 @@
       "LEARN",
       "ADAPT"
     ],
-    "current_build_gate": "exercise_closed_loop_on_product_work_and_measure_outcomes",
+    "current_build_gate": "exercise_measured_process_experiments_and_compare_downstream_outcomes",
     "sequence": [
       "branch_reconciliation_and_modernization",
       "exact_head_executable_preflight_everywhere",
@@ -402,6 +404,7 @@
       "branch_lifecycle_manager",
       "measured_self_improvement_proposals",
       "success_pattern_memory_and_learning_effectiveness",
+      "measured_process_experiments",
       "exercise_closed_loop_on_product_work_and_measure_outcomes"
     ],
     "target_preventable_repeat_failure_rate": 0,
@@ -620,5 +623,25 @@
       "override_product_repo_authority"
     ],
     "implementation_state": "IMPLEMENTED_VERIFIED"
+  },
+  "process_experiments": {
+    "module": "project_orchestrator.process_experiments",
+    "store": "engineering/process-experiments.json",
+    "cli": [
+      "project-orchestrator process-experiment-create",
+      "project-orchestrator process-experiment-activate",
+      "project-orchestrator process-experiment-evaluate",
+      "project-orchestrator process-experiment-report"
+    ],
+    "states": [
+      "BASELINE_READY",
+      "ACTIVE",
+      "KEEP",
+      "REJECT",
+      "INSUFFICIENT_DATA"
+    ],
+    "authority": "governed engineering only; experiments never self-merge or weaken gates",
+    "keep_rule": "requires measured target improvement and preserved safety/quality invariants",
+    "unknown_rule": "missing, UNKNOWN, or incomplete evidence resolves to INSUFFICIENT_DATA"
   }
 }

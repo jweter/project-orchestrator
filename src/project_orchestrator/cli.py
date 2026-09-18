@@ -16,6 +16,7 @@ from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
 from .learning_effectiveness import add_application, build_report, load_store as load_learning_effectiveness_store, write_store as write_learning_effectiveness_store
 from .product_reality import aggregate_product_reality_debt
+from .process_experiments import activate as activate_process_experiment, add_experiment, build_experiment, evaluate as evaluate_process_experiment, load_store as load_process_experiment_store, replace_experiment, write_store as write_process_experiment_store
 from .reinvestment import plan_from_store
 from .regression_prevention import build_prevention_plan
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
@@ -40,6 +41,7 @@ DEFAULT_KE_COMPATIBILITY = ROOT / "engineering" / "knowledge-engine-compatibilit
 DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "learning-memory.json"
 DEFAULT_LEARNING_EFFECTIVENESS = ROOT / "engineering" / "learning-effectiveness.json"
 DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "compounding-timeseries.json"
+DEFAULT_PROCESS_EXPERIMENTS = ROOT / "engineering" / "process-experiments.json"
 
 
 def validate() -> int:
@@ -267,6 +269,61 @@ def self_improvement_plan(events_path: Path, minimum_recurrence: int) -> int:
     return 0
 
 
+def process_experiment_create(proposal_path: Path, target_metrics: list[str], baseline_refs: list[str]) -> int:
+    proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
+    store = load_process_experiment_store(DEFAULT_PROCESS_EXPERIMENTS)
+    experiment = build_experiment(proposal, target_metrics=target_metrics, baseline_refs=baseline_refs)
+    updated = add_experiment(store, experiment)
+    write_process_experiment_store(DEFAULT_PROCESS_EXPERIMENTS, updated)
+    print(json.dumps(experiment, indent=2, sort_keys=True))
+    return 0
+
+
+def process_experiment_activate(experiment_id: str, change_ref: str, verification_refs: list[str]) -> int:
+    store = load_process_experiment_store(DEFAULT_PROCESS_EXPERIMENTS)
+    experiment = next((x for x in store["experiments"] if x.get("experiment_id") == experiment_id), None)
+    if experiment is None:
+        raise ValueError(f"unknown experiment_id: {experiment_id}")
+    updated_experiment = activate_process_experiment(
+        experiment, change_ref=change_ref, verification_refs=verification_refs
+    )
+    write_process_experiment_store(
+        DEFAULT_PROCESS_EXPERIMENTS, replace_experiment(store, updated_experiment)
+    )
+    print(json.dumps(updated_experiment, indent=2, sort_keys=True))
+    return 0
+
+
+def process_experiment_evaluate(
+    experiment_id: str,
+    metrics_path: Path,
+    post_change_refs: list[str],
+    safety: str,
+) -> int:
+    store = load_process_experiment_store(DEFAULT_PROCESS_EXPERIMENTS)
+    experiment = next((x for x in store["experiments"] if x.get("experiment_id") == experiment_id), None)
+    if experiment is None:
+        raise ValueError(f"unknown experiment_id: {experiment_id}")
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
+    safety_map = {"passed": True, "failed": False, "unknown": None}
+    updated_experiment = evaluate_process_experiment(
+        experiment,
+        metric_results=metrics,
+        post_change_refs=post_change_refs,
+        safety_invariants_passed=safety_map[safety],
+    )
+    write_process_experiment_store(
+        DEFAULT_PROCESS_EXPERIMENTS, replace_experiment(store, updated_experiment)
+    )
+    print(json.dumps(updated_experiment, indent=2, sort_keys=True))
+    return 0
+
+
+def process_experiment_report() -> int:
+    print(json.dumps(load_process_experiment_store(DEFAULT_PROCESS_EXPERIMENTS), indent=2, sort_keys=True))
+    return 0
+
+
 def branch_lifecycle(evidence_path: Path) -> int:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     print(json.dumps(classify_portfolio_branches(evidence), indent=2, sort_keys=True))
@@ -394,6 +451,20 @@ def main() -> int:
     self_parser = sub.add_parser("self-improvement-plan")
     self_parser.add_argument("events", type=Path)
     self_parser.add_argument("--minimum-recurrence", type=int, default=2)
+    process_create_parser = sub.add_parser("process-experiment-create")
+    process_create_parser.add_argument("proposal", type=Path)
+    process_create_parser.add_argument("--target-metric", action="append", dest="target_metrics", required=True)
+    process_create_parser.add_argument("--baseline-ref", action="append", dest="baseline_refs", required=True)
+    process_activate_parser = sub.add_parser("process-experiment-activate")
+    process_activate_parser.add_argument("experiment_id")
+    process_activate_parser.add_argument("--change-ref", required=True)
+    process_activate_parser.add_argument("--verification-ref", action="append", dest="verification_refs", required=True)
+    process_evaluate_parser = sub.add_parser("process-experiment-evaluate")
+    process_evaluate_parser.add_argument("experiment_id")
+    process_evaluate_parser.add_argument("--metrics", type=Path, required=True)
+    process_evaluate_parser.add_argument("--post-change-ref", action="append", dest="post_change_refs", required=True)
+    process_evaluate_parser.add_argument("--safety", choices=("passed", "failed", "unknown"), required=True)
+    sub.add_parser("process-experiment-report")
     lifecycle_parser = sub.add_parser("branch-lifecycle")
     lifecycle_parser.add_argument("evidence", type=Path)
     risk_parser = sub.add_parser("pre-change-risk")
@@ -466,6 +537,14 @@ def main() -> int:
         return scheduler_run_report(args.evidence)
     if args.command == "self-improvement-plan":
         return self_improvement_plan(args.events, args.minimum_recurrence)
+    if args.command == "process-experiment-create":
+        return process_experiment_create(args.proposal, args.target_metrics, args.baseline_refs)
+    if args.command == "process-experiment-activate":
+        return process_experiment_activate(args.experiment_id, args.change_ref, args.verification_refs)
+    if args.command == "process-experiment-evaluate":
+        return process_experiment_evaluate(args.experiment_id, args.metrics, args.post_change_refs, args.safety)
+    if args.command == "process-experiment-report":
+        return process_experiment_report()
     if args.command == "branch-lifecycle":
         return branch_lifecycle(args.evidence)
     if args.command == "pre-change-risk":

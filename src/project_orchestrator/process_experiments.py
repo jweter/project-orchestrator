@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 _ALLOWED_STATES = {"PROPOSED", "BASELINE_READY", "ACTIVE", "MEASURING", "KEEP", "REJECT", "INSUFFICIENT_DATA"}
@@ -10,6 +11,39 @@ _TERMINAL = {"KEEP", "REJECT", "INSUFFICIENT_DATA"}
 
 def empty_store() -> dict[str, Any]:
     return {"schema_version": 1, "experiments": []}
+
+
+def load_store(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return empty_store()
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("schema_version") != 1 or not isinstance(data.get("experiments"), list):
+        raise ValueError("invalid process experiment store")
+    return data
+
+
+def write_store(path: Path, store: dict[str, Any]) -> None:
+    if store.get("schema_version") != 1 or not isinstance(store.get("experiments"), list):
+        raise ValueError("invalid process experiment store")
+    path.write_text(json.dumps(store, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+
+def replace_experiment(store: dict[str, Any], experiment: dict[str, Any]) -> dict[str, Any]:
+    experiment_id = experiment.get("experiment_id")
+    if not experiment_id:
+        raise ValueError("experiment_id is required")
+    found = False
+    updated = []
+    for item in store.get("experiments", []):
+        if item.get("experiment_id") == experiment_id:
+            updated.append(experiment)
+            found = True
+        else:
+            updated.append(item)
+    if not found:
+        raise ValueError(f"unknown experiment_id: {experiment_id}")
+    return {"schema_version": 1, "experiments": updated}
 
 
 def build_experiment(proposal: dict[str, Any], *, target_metrics: list[str], baseline_refs: list[str]) -> dict[str, Any]:
