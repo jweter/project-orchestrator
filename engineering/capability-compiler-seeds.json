@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "authority": "sanitized verified historical seeds; live repository evidence remains authoritative",
+  "episodes": [
+    {
+      "repository": "jweter/knowledge-engine-core",
+      "source_ref": "unattended-windows-verification",
+      "kind": "repair",
+      "failure_class": "TYPE_CHECK",
+      "signature": "Windows strict typing rejects POSIX-only os.killpg / signal.SIGKILL",
+      "diagnosis": "POSIX-only process termination crossed the Windows unattended-worker boundary",
+      "action": "use platform-aware process termination and regression coverage",
+      "verification_ref": "live exact-head verification required before compilation",
+      "capability": {"type": "compatibility_rule", "mechanism": "platform-aware process termination"},
+      "evidence_state": "HISTORICAL_SEED_PENDING_LIVE_REVALIDATION"
+    },
+    {
+      "repository": "jweter/Project-Everward",
+      "source_ref": "unattended-windows-cmake-repair",
+      "kind": "repair",
+      "failure_class": "ENVIRONMENT",
+      "signature": "Windows unattended verification cannot discover required CMake environment",
+      "diagnosis": "worker environment did not provision the repository-required CMake toolchain",
+      "action": "discover/provision CMake before repository-native verification",
+      "verification_ref": "merged worker repair; revalidate against live evidence before compilation",
+      "capability": {"type": "repair_rule", "mechanism": "provision CMake environment before verification"},
+      "evidence_state": "HISTORICAL_SEED_PENDING_LIVE_REVALIDATION"
+    },
+    {
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "source_ref": "unattended-private-evidence-repair",
+      "kind": "repair",
+      "failure_class": "TEST_FAILURE",
+      "signature": "missing_audio_bass_transcription",
+      "diagnosis": "qualification lacked generated private Bass transcription evidence",
+      "action": "generate missing private Bass evidence without overwrite then rerun qualification",
+      "verification_ref": "exact-head preflight/CI evidence required before compilation",
+      "capability": {"type": "repair_rule", "mechanism": "repair missing private Bass evidence then requalify"},
+      "evidence_state": "HISTORICAL_SEED_PENDING_LIVE_REVALIDATION"
+    },
+    {
+      "repository": "jweter/knowledge-engine-ai",
+      "source_ref": "knowledge-engine-ai#162",
+      "kind": "experiment",
+      "failure_class": "QUALITY_FAILURE",
+      "signature": "non-direct Research Report evidence omits missing_direct_evidence disclosure",
+      "diagnosis": "directness classification was not coupled to explicit missing-evidence disclosure",
+      "action": "fail closed in parser when non-direct evidence omits missing_direct_evidence",
+      "verification_ref": "knowledge-engine-ai#162 exact-head preflight and fresh CI",
+      "capability": {"type": "deterministic_validator", "mechanism": "require missing_direct_evidence for non-direct classifications"},
+      "evidence_state": "HISTORICAL_SEED_PENDING_LIVE_REVALIDATION"
+    },
+    {
+      "repository": "jweter/knowledge-engine-web",
+      "source_ref": "knowledge-engine-web#178",
+      "kind": "experiment",
+      "failure_class": "GOVERNANCE",
+      "signature": "authoritative CI/Product Reality documentation drifts from live merged state",
+      "diagnosis": "scheduler-facing documentation became stale relative to authoritative repository evidence",
+      "action": "reconcile documentation against live repository state without treating prose as authority",
+      "verification_ref": "knowledge-engine-web#178 fresh CI/merge evidence",
+      "capability": {"type": "compatibility_rule", "mechanism": "reconcile scheduler documentation against live state"},
+      "evidence_state": "HISTORICAL_SEED_PENDING_LIVE_REVALIDATION"
+    }
+  ]
+}
