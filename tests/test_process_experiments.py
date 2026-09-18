@@ -1,6 +1,6 @@
 import pytest
 
-from project_orchestrator.process_experiments import activate, add_experiment, build_experiment, empty_store, evaluate
+from project_orchestrator.process_experiments import activate, add_experiment, build_experiment, empty_store, evaluate, load_store, replace_experiment, write_store
 
 
 def proposal():
@@ -58,3 +58,22 @@ def test_store_rejects_duplicate_experiment():
     store = add_experiment(empty_store(), exp)
     with pytest.raises(ValueError, match="duplicate"):
         add_experiment(store, exp)
+
+
+
+def test_store_round_trip_and_replace(tmp_path):
+    path = tmp_path / "experiments.json"
+    assert load_store(path) == empty_store()
+    exp = build_experiment(proposal(), target_metrics=["x"], baseline_refs=["baseline"])
+    store = add_experiment(empty_store(), exp)
+    write_store(path, store)
+    loaded = load_store(path)
+    active = activate(exp, change_ref="pr-1", verification_refs=["ci-green"])
+    replaced = replace_experiment(loaded, active)
+    assert replaced["experiments"][0]["state"] == "ACTIVE"
+
+
+def test_replace_rejects_unknown_experiment():
+    exp = build_experiment(proposal(), target_metrics=["x"], baseline_refs=["baseline"])
+    with pytest.raises(ValueError, match="unknown experiment_id"):
+        replace_experiment(empty_store(), exp)
