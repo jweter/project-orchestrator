@@ -1,0 +1,20 @@
+{
+  "base_sha": "ee9a7ba75acac5cdecd7f9257e76064424d28606",
+  "branch": "orchestrator/vnext-learning-engine",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/daedalus-architecture-learning-20260917",
+  "exact_head_sha": "ee9a7ba75acac5cdecd7f9257e76064424d28606",
+  "failure_class": "REPOSITORY_NOT_ALLOWED",
+  "job_id": "daedalus-architecture-learning-20260917",
+  "merge_authority": false,
+  "packet_id": "daedalus-architecture-learning-20260917",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/project-orchestrator",
+  "status": "ENVIRONMENT_FAILURE",
+  "verification": [
+    {
+      "runner_error_code": "REPOSITORY_NOT_ALLOWED"
+    }
+  ]
+}
