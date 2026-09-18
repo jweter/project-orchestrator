@@ -252,6 +252,7 @@ def scheduler_run_report(evidence_path: Path) -> int:
         learning_effectiveness=effectiveness.get("learning_effectiveness_rate"),
         jeremy_can_help=evidence.get("jeremy_can_help"),
         generated_at=evidence.get("generated_at"),
+        previous_no_advancement_reasons=evidence.get("previous_no_advancement_reasons"),
     ), indent=2, sort_keys=True))
     return 0
 
