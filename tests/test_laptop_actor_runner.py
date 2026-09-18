@@ -226,3 +226,27 @@ def test_ke_native_adapter_rejects_result_identity_mismatch(tmp_path, monkeypatc
         runner.ActorEnvironmentError, match="NATIVE_WORKER_IDENTITY_MISMATCH"
     ):
         runner._run_ke_native_worker(job, workspace, outbox)
+
+
+def test_claim_job_is_atomic(tmp_path):
+    job = tmp_path / "a.job.json"
+    job.write_text("{}", encoding="utf-8")
+    claimed = runner._claim_job(job)
+    assert not job.exists()
+    assert claimed.name == "a.job.json.running"
+    assert claimed.exists()
+
+
+def test_recover_interrupted_job(tmp_path):
+    interrupted = tmp_path / "a.job.json.running"
+    interrupted.write_text("{}", encoding="utf-8")
+    assert runner.recover_interrupted_jobs(tmp_path) == 1
+    assert (tmp_path / "a.job.json").exists()
+    assert not interrupted.exists()
+
+
+def test_recovery_fails_closed_on_collision(tmp_path):
+    (tmp_path / "a.job.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "a.job.json.running").write_text("{}", encoding="utf-8")
+    with pytest.raises(runner.ActorEnvironmentError, match="INTERRUPTED_JOB_COLLISION"):
+        runner.recover_interrupted_jobs(tmp_path)

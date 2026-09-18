@@ -267,8 +267,29 @@ def _run_ke_native_worker(
     return str(status), verification, safe_failure_class
 
 
+def _claim_job(job_path: Path) -> Path:
+    claimed = job_path.with_suffix(job_path.suffix + ".running")
+    try:
+        job_path.replace(claimed)
+    except FileNotFoundError as exc:
+        raise ActorEnvironmentError("JOB_CLAIM_RACE") from exc
+    return claimed
+
+
+def recover_interrupted_jobs(inbox: Path) -> int:
+    recovered = 0
+    for claimed in sorted(inbox.glob("*.job.json.running")):
+        original = Path(str(claimed).removesuffix(".running"))
+        if original.exists():
+            raise ActorEnvironmentError("INTERRUPTED_JOB_COLLISION")
+        claimed.replace(original)
+        recovered += 1
+    return recovered
+
+
 def execute(job_path: Path, workspace_root: Path, outbox: Path) -> None:
-    job = json.loads(job_path.read_text(encoding="utf-8"))
+    claimed_path = _claim_job(job_path)
+    job = json.loads(claimed_path.read_text(encoding="utf-8"))
     result: dict[str, Any] = {
         "job_id": job["job_id"],
         "packet_id": job["packet_id"],
@@ -316,7 +337,8 @@ def execute(job_path: Path, workspace_root: Path, outbox: Path) -> None:
         result["verification"] = [{"runner_error_code": "UNEXPECTED_RUNNER_FAILURE"}]
     finally:
         atomic_json(outbox / f"{job['job_id']}.result.json", result)
-        job_path.rename(job_path.with_suffix(job_path.suffix + ".done"))
+        done = Path(str(claimed_path).removesuffix(".running") + ".done")
+        claimed_path.replace(done)
 
 
 def main() -> int:
@@ -330,6 +352,7 @@ def main() -> int:
     inbox, outbox = queue / "inbox", queue / "outbox"
     inbox.mkdir(parents=True, exist_ok=True)
     outbox.mkdir(parents=True, exist_ok=True)
+    recover_interrupted_jobs(inbox)
     while True:
         jobs = sorted(inbox.glob("*.job.json"))
         if jobs:
