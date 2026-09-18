@@ -15,9 +15,12 @@ from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
 from .learning_effectiveness import add_application, build_report, load_store as load_learning_effectiveness_store, write_store as write_learning_effectiveness_store
+from .operator_console import build_from_files as build_operator_console, render_html as render_operator_console_html
 from .product_reality import aggregate_product_reality_debt
 from .process_experiments import activate as activate_process_experiment, add_experiment, build_experiment, evaluate as evaluate_process_experiment, load_store as load_process_experiment_store, replace_experiment, write_store as write_process_experiment_store
 from .reinvestment import plan_from_store
+from .retained_learning import add_rule as add_retained_rule, load_store as load_retained_store, retain_from_experiment, write_store as write_retained_store
+from .scheduler_policy import scheduler_context
 from .regression_prevention import build_prevention_plan
 from .repair import build_repair_plan, execute_repair_plan, load_control_plane
 from .risk_predictor import build_pre_change_risk_profile
@@ -42,6 +45,7 @@ DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "learning-memory.json"
 DEFAULT_LEARNING_EFFECTIVENESS = ROOT / "engineering" / "learning-effectiveness.json"
 DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "compounding-timeseries.json"
 DEFAULT_PROCESS_EXPERIMENTS = ROOT / "engineering" / "process-experiments.json"
+DEFAULT_RETAINED_LEARNING = ROOT / "engineering" / "retained-learning.json"
 
 
 def validate() -> int:
@@ -324,6 +328,47 @@ def process_experiment_report() -> int:
     print(json.dumps(load_process_experiment_store(DEFAULT_PROCESS_EXPERIMENTS), indent=2, sort_keys=True))
     return 0
 
+def process_experiment_retain(experiment_id: str, mechanism: str, applicability_path: Path, scope: str) -> int:
+    experiments = load_process_experiment_store(DEFAULT_PROCESS_EXPERIMENTS)
+    experiment = next((item for item in experiments["experiments"] if item.get("experiment_id") == experiment_id), None)
+    if experiment is None:
+        raise ValueError(f"unknown experiment_id: {experiment_id}")
+    applicability = json.loads(applicability_path.read_text(encoding="utf-8"))
+    rule = retain_from_experiment(experiment, mechanism=mechanism, applicability=applicability, scope=scope)
+    retained = add_retained_rule(load_retained_store(DEFAULT_RETAINED_LEARNING), rule)
+    write_retained_store(DEFAULT_RETAINED_LEARNING, retained)
+    print(json.dumps(rule, indent=2, sort_keys=True))
+    return 0
+
+
+def retained_policy_context(work_items_path: Path) -> int:
+    work_items = json.loads(work_items_path.read_text(encoding="utf-8"))
+    if not isinstance(work_items, list):
+        raise ValueError("work items must be a JSON list")
+    result = scheduler_context(load_retained_store(DEFAULT_RETAINED_LEARNING), work_items)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+
+
+def operator_console(
+    scheduler_report_path: Path,
+    actor_telemetry_path: Path,
+    output_path: Path,
+    product_reality_path: Path | None = None,
+) -> int:
+    snapshot = build_operator_console(
+        scheduler_report_path=scheduler_report_path,
+        actor_telemetry_path=actor_telemetry_path,
+        retained_learning_path=DEFAULT_RETAINED_LEARNING,
+        process_experiments_path=DEFAULT_PROCESS_EXPERIMENTS,
+        product_reality_path=product_reality_path,
+    )
+    output_path.write_text(render_operator_console_html(snapshot), encoding="utf-8")
+    print(json.dumps(snapshot, indent=2, sort_keys=True))
+    return 0
+
 
 def branch_lifecycle(evidence_path: Path) -> int:
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
@@ -466,6 +511,18 @@ def main() -> int:
     process_evaluate_parser.add_argument("--post-change-ref", action="append", dest="post_change_refs", required=True)
     process_evaluate_parser.add_argument("--safety", choices=("passed", "failed", "unknown"), required=True)
     sub.add_parser("process-experiment-report")
+    retain_parser = sub.add_parser("process-experiment-retain")
+    retain_parser.add_argument("experiment_id")
+    retain_parser.add_argument("--mechanism", required=True)
+    retain_parser.add_argument("--applicability", type=Path, required=True)
+    retain_parser.add_argument("--scope", choices=("repository", "portfolio"), default="repository")
+    retained_context_parser = sub.add_parser("retained-policy-context")
+    retained_context_parser.add_argument("work_items", type=Path)
+    console_parser = sub.add_parser("operator-console")
+    console_parser.add_argument("--scheduler-report", type=Path, required=True)
+    console_parser.add_argument("--actor-telemetry", type=Path, required=True)
+    console_parser.add_argument("--output", type=Path, required=True)
+    console_parser.add_argument("--product-reality", type=Path, default=None)
     lifecycle_parser = sub.add_parser("branch-lifecycle")
     lifecycle_parser.add_argument("evidence", type=Path)
     risk_parser = sub.add_parser("pre-change-risk")
@@ -546,6 +603,17 @@ def main() -> int:
         return process_experiment_evaluate(args.experiment_id, args.metrics, args.post_change_refs, args.safety)
     if args.command == "process-experiment-report":
         return process_experiment_report()
+    if args.command == "process-experiment-retain":
+        return process_experiment_retain(args.experiment_id, args.mechanism, args.applicability, args.scope)
+    if args.command == "retained-policy-context":
+        return retained_policy_context(args.work_items)
+    if args.command == "operator-console":
+        return operator_console(
+            args.scheduler_report,
+            args.actor_telemetry,
+            args.output,
+            args.product_reality,
+        )
     if args.command == "branch-lifecycle":
         return branch_lifecycle(args.evidence)
     if args.command == "pre-change-risk":

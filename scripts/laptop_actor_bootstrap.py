@@ -11,6 +11,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from datadog_actor_metrics import emit as emit_datadog_metrics
+
 
 def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=False)
@@ -93,6 +95,7 @@ def emit_state(state_dir: Path, state: str, **fields: object) -> None:
     path = state_dir / "actor-telemetry.jsonl"
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    emit_datadog_metrics(payload)
 
 
 def acquire_single_instance(state_dir: Path) -> int | None:
