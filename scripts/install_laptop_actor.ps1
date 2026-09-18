@@ -28,18 +28,18 @@ if (-not (Test-Path (Join-Path $ActorRoot ".git"))) {
 $Bootstrap = Join-Path $ActorRoot "scripts\laptop_actor_bootstrap.py"
 if (-not (Test-Path $Bootstrap)) { throw "Dedicated actor checkout does not contain laptop_actor_bootstrap.py." }
 
-$Arguments = "`"$Bootstrap`" --actor-repo `"$ActorRoot`" --queue `"$QueueRoot`" --workspace-root `"$WorkspaceRoot`" --min-idle-seconds 600"
+$Arguments = "`"$Bootstrap`" --actor-repo `"$ActorRoot`" --queue `"$QueueRoot`" --workspace-root `"$WorkspaceRoot`" --min-idle-seconds 300 --poll-seconds 60"
 $Action = New-ScheduledTaskAction -Execute $Python -Argument $Arguments -WorkingDirectory $ActorRoot
 $Trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5)
 $Settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable
-Register-ScheduledTask -TaskName "ExponentialEngine-LaptopActor" -Action $Action -Trigger $Trigger -Settings $Settings -Description "Self-updating bounded idle laptop actor for Exponential Engine product packets" -Force | Out-Null
+Register-ScheduledTask -TaskName "ExponentialEngine-LaptopActor" -Action $Action -Trigger $Trigger -Settings $Settings -Description "Self-updating idle-aware laptop actor for Exponential Engine product packets" -Force | Out-Null
 Start-ScheduledTask -TaskName "ExponentialEngine-LaptopActor"
 
 Write-Host "LAPTOP ACTOR INSTALLED, SELF-UPDATING, AND RUNNING" -ForegroundColor Green
 Write-Host "Dedicated actor checkout: $ActorRoot"
 Write-Host "Managed product workspaces: $WorkspaceRoot"
 Write-Host "Queue: $QueueRoot"
-Write-Host "Polling: every 5 minutes; product execution requires 10 minutes of Windows idle time"
+Write-Host "Behavior: starts after 5 minutes idle, checks for work every 60 seconds while idle, and yields when activity resumes"
 if (Get-Command gh -ErrorAction SilentlyContinue) {
   Write-Host "GitHub bridge: enabled when existing gh authentication is valid"
 } else {
