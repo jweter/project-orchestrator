@@ -19,8 +19,9 @@
                      "repair_branch":  "repair/headless-smoke-timeout-evidence",
                      "repair_head":  "2ae7e27f41048812d90063632ebe8a3d94be3c6b",
                      "pr":  289,
-                     "advancement":  "current-main full Windows preflight PASS; headless Unreal smoke reproduced timeout with missing advertised log; timeout observability repair built and exact-head preflight GREEN",
-                     "next_gate":  "fresh PR CI then rerun smoke for actionable stdout/stderr evidence"
+                     "advancement":  "current-main full Windows preflight PASS; headless Unreal smoke reproduced timeout with missing advertised log; timeout observability repair PR #289 exact-head preflight+CI GREEN and merged",
+                     "next_gate":  "rerun headless smoke on merged main to capture actionable stdout/stderr and repair first meaningful Unreal error",
+                     "merge_commit":  "f44e42fc956b9fcb80ca0f32580dda54a19ffc52"
                  },
     "control_plane":  {
                           "worker_results_consumed_first":  true,
