@@ -1,0 +1,25 @@
+{
+  "base_sha": "3b830ab13d798d6e15278414c27c3a1a2960680e",
+  "branch": "orchestrator/issue-612-corpus-runner-integration",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/rocksmith-corpus-runner-20260917",
+  "exact_head_sha": "3b830ab13d798d6e15278414c27c3a1a2960680e",
+  "failure_class": "TEST_FAILURE",
+  "job_id": "rocksmith-corpus-runner-20260917",
+  "merge_authority": false,
+  "packet_id": "rocksmith-corpus-runner-20260917",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/rocksmith-cdlc-generator",
+  "status": "FAIL",
+  "verification": [
+    {
+      "command": "python -m pytest tests/test_private_library_corpus.py tests/test_private_product_reality.py -q",
+      "returncode": 2
+    },
+    {
+      "command": "python scripts/quality_preflight.py",
+      "returncode": 2
+    }
+  ]
+}
