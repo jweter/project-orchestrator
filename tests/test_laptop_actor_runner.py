@@ -68,6 +68,21 @@ def test_runner_executes_exact_base_and_writes_result(tmp_path, monkeypatch):
     assert (inbox / "abc.job.json.done").exists()
 
 
+def test_generic_verification_uses_direct_argv_without_shell(tmp_path, monkeypatch):
+    calls = []
+    def fake_run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    status, verification, failure = runner._run_generic_verification(
+        {"verification": ["python -m pytest -q"]}, tmp_path
+    )
+    assert status == "PASS"
+    assert failure is None
+    assert calls[0][0] == ["python", "-m", "pytest", "-q"]
+    assert calls[0][1]["shell"] is False
+
+
 def test_runner_fails_closed_on_dirty_tracked_worktree(tmp_path, monkeypatch):
     workspace_root = tmp_path / "work"
     repo = workspace_root / "Project-Everward"

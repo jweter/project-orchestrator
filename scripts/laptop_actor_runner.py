@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -136,10 +138,16 @@ def _run_generic_verification(
     for command in commands:
         if not isinstance(command, str) or not command.strip():
             raise ActorEnvironmentError("VERIFICATION_PLAN_INVALID")
+        try:
+            argv = shlex.split(command, posix=os.name != "nt")
+        except ValueError as exc:
+            raise ActorEnvironmentError("VERIFICATION_PLAN_INVALID") from exc
+        if not argv:
+            raise ActorEnvironmentError("VERIFICATION_PLAN_INVALID")
         proc = subprocess.run(
-            command,
+            argv,
             cwd=workspace,
-            shell=True,
+            shell=False,
             text=True,
             capture_output=True,
             check=False,
