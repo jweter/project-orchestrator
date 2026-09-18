@@ -1,0 +1,20 @@
+{
+  "base_sha": "138521a0d57a2d8f8df1d879ca1d4411c4f52eb6",
+  "branch": "repair/laptop-queue-daedalus-boundary",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/daedalus-idle-actor-20260917",
+  "exact_head_sha": "138521a0d57a2d8f8df1d879ca1d4411c4f52eb6",
+  "failure_class": "REPOSITORY_NOT_ALLOWED",
+  "job_id": "daedalus-idle-actor-20260917",
+  "merge_authority": false,
+  "packet_id": "daedalus-idle-actor-20260917",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/project-orchestrator",
+  "status": "ENVIRONMENT_FAILURE",
+  "verification": [
+    {
+      "runner_error_code": "REPOSITORY_NOT_ALLOWED"
+    }
+  ]
+}
