@@ -179,3 +179,64 @@ def test_advancement_requires_explicit_verification_reference():
     projects["knowledge-engine"] = project(verification_evidence_ref=None)
     with pytest.raises(ValueError, match="verification_evidence_ref"):
         validate_closed_loop_run(payload(projects=projects), now=NOW)
+
+
+def test_closed_loop_applies_retained_learning_to_real_scheduler_context():
+    projects = payload()["projects"]
+    projects["knowledge-engine"] = project(
+        policy_input={
+            "repository": "jweter/knowledge-engine-core",
+            "changed_paths": ["scripts/worker.py"],
+            "failure_class": "ENVIRONMENT_FAILURE",
+        }
+    )
+    projects["rocksmith"] = project(
+        policy_input={
+            "repository": "jweter/rocksmith-cdlc-generator",
+            "changed_paths": ["src/cli.py"],
+        }
+    )
+    projects["everward"] = project(
+        policy_input={
+            "repository": "jweter/Project-Everward",
+            "changed_paths": ["tools/worker.py"],
+        }
+    )
+    store = {
+        "schema_version": 1,
+        "rules": [
+            {
+                "rule_id": "rule-provision-first",
+                "source_experiment_id": "exp-1",
+                "repository": "jweter/knowledge-engine-core",
+                "scope": "repository",
+                "mechanism": "provision before verify",
+                "applicability": {
+                    "path_prefixes": ["scripts/"],
+                    "failure_classes": ["ENVIRONMENT_FAILURE"],
+                },
+                "evidence_refs": ["experiment:exp-1"],
+                "status": "VERIFIED_RETAINED",
+                "authority": "ADVISORY_TO_SCHEDULER_NORMAL_GATES_REQUIRED",
+                "safety_invariants": [],
+            }
+        ],
+    }
+    result = validate_closed_loop_run(
+        payload(projects=projects),
+        now=NOW,
+        retained_learning_store=store,
+    )
+    policy = result["projects"]["knowledge-engine"]["retained_policy"]
+    assert policy["applied_rule_ids"] == ["rule-provision-first"]
+    assert policy["mechanisms"] == ["provision before verify"]
+    assert result["projects"]["rocksmith"]["retained_policy"]["applied_rule_ids"] == []
+
+
+def test_retained_learning_enabled_fails_closed_without_policy_input():
+    with pytest.raises(ValueError, match="policy_input"):
+        validate_closed_loop_run(
+            payload(),
+            now=NOW,
+            retained_learning_store={"schema_version": 1, "rules": []},
+        )
