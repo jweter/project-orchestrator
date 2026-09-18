@@ -1,0 +1,21 @@
+{
+  "base_sha": "3ec178eecfb1ddb28cd4a7a764c910397bad5a84",
+  "branch": "main",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/rocksmith-current-preflight-3ec178ee",
+  "exact_head_sha": "3ec178eecfb1ddb28cd4a7a764c910397bad5a84",
+  "failure_class": "TEST_FAILURE",
+  "job_id": "rocksmith-current-preflight-3ec178ee",
+  "merge_authority": false,
+  "packet_id": "rocksmith-current-preflight-3ec178ee",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/rocksmith-cdlc-generator",
+  "status": "FAIL",
+  "verification": [
+    {
+      "command": "python scripts/quality_preflight.py",
+      "returncode": 1
+    }
+  ]
+}
