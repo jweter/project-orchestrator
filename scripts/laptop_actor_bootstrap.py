@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import importlib.util
 import json
 import os
 import subprocess
@@ -10,6 +11,15 @@ import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+_DATADOG_SPEC = importlib.util.spec_from_file_location(
+    "datadog_actor_metrics", Path(__file__).with_name("datadog_actor_metrics.py")
+)
+if _DATADOG_SPEC is None or _DATADOG_SPEC.loader is None:
+    raise RuntimeError("unable to load Datadog actor metrics adapter")
+_DATADOG_MODULE = importlib.util.module_from_spec(_DATADOG_SPEC)
+_DATADOG_SPEC.loader.exec_module(_DATADOG_MODULE)
+emit_datadog_metrics = _DATADOG_MODULE.emit
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -93,6 +103,7 @@ def emit_state(state_dir: Path, state: str, **fields: object) -> None:
     path = state_dir / "actor-telemetry.jsonl"
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    emit_datadog_metrics(payload)
 
 
 def acquire_single_instance(state_dir: Path) -> int | None:
