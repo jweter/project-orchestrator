@@ -7,7 +7,6 @@ from project_orchestrator.product_reality_queue import queue_product_reality_job
 
 def debt(kind="packaged_app", state="PENDING"):
     return {
-        "debt_id": "debt-1",
         "project": "knowledge-engine",
         "repository": "jweter/knowledge-engine-core",
         "kind": kind,
