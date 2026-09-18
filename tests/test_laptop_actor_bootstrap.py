@@ -103,3 +103,36 @@ def test_installer_uses_dedicated_checkout_and_idle_aware_repeating_task():
     assert "--poll-seconds 60" in installer
     assert "checks for work every 60 seconds while idle" in installer
     assert "SELF-UPDATING" in installer
+
+
+def test_single_instance_lock_is_exclusive(tmp_path):
+    state = tmp_path / "state"
+    first = bootstrap.acquire_single_instance(state)
+    assert first is not None
+    try:
+        assert bootstrap.acquire_single_instance(state) is None
+    finally:
+        bootstrap.release_single_instance(state, first)
+    assert not (state / "actor.lock").exists()
+
+
+def test_emit_state_writes_structured_jsonl(tmp_path):
+    state = tmp_path / "state"
+    bootstrap.emit_state(state, "EXECUTING", queue_latency_seconds=12)
+    import json
+    payload = json.loads((state / "actor-telemetry.jsonl").read_text().strip())
+    assert payload["state"] == "EXECUTING"
+    assert payload["queue_latency_seconds"] == 12
+    assert payload["timestamp_utc"]
+
+
+def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
+    idle_values = iter([600.0, 600.0, 600.0, 600.0, 5.0])
+    results = iter([2, 0])
+    sleeps = []
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: next(results))
+    monkeypatch.setattr(bootstrap.time, "sleep", lambda value: sleeps.append(value))
+    assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120) == 0
+    assert sleeps == [60, 60]
