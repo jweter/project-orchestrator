@@ -1,0 +1,25 @@
+{
+  "base_sha": "3f7b7e6a8bcde6aa60b4ff163acdc1df8dabc328",
+  "branch": "repair/windows-unattended-worker-signals",
+  "changed_paths": [],
+  "evidence_ref": "local://laptop-actor/ke-core-windows-signal-typing-3f7b7e6a",
+  "exact_head_sha": "3f7b7e6a8bcde6aa60b4ff163acdc1df8dabc328",
+  "failure_class": "TEST_FAILURE",
+  "job_id": "ke-core-windows-signal-typing-3f7b7e6a",
+  "merge_authority": false,
+  "packet_id": "ke-core-windows-signal-typing-20260917",
+  "private_payload_exported": false,
+  "product_reality_authority": false,
+  "repository": "jweter/knowledge-engine-core",
+  "status": "FAIL",
+  "verification": [
+    {
+      "command": "poetry run pytest tests/test_unattended_worker.py -q",
+      "returncode": 0
+    },
+    {
+      "command": "poetry run python scripts/quality_preflight.py",
+      "returncode": 1
+    }
+  ]
+}
