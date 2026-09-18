@@ -1,0 +1,29 @@
+{
+  "timestamp_utc": "2026-09-18T08:35:00Z",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 2,
+  "product_advancement_rate": "2/3",
+  "knowledge_engine": {
+    "state": "PRODUCT_REALITY_REPAIR_REQUIRED",
+    "main_ai": "84ae088a995095309091ac359b1deb7d45dc4d7c",
+    "next_gate": "runtime relevance-aware discovery policy for Monster #79"
+  },
+  "rocksmith": {
+    "state": "PRODUCT_REALITY_REVIEW_REQUIRED",
+    "main": "d24212f312943309bb2d200323be6f7c2e76ea63",
+    "worker_result": "REVIEW_REQUIRED",
+    "reason": "insufficient independent audio-derived timing evidence"
+  },
+  "everward": {
+    "state": "PRODUCT_REALITY_RETRY",
+    "main": "bea9bfb597b7790e58e7be8fc7b646d29434b894",
+    "merged_pr": 290,
+    "headless_smoke": "rerun in progress after process-tree cleanup merge"
+  },
+  "waiting_lanes_rotated_away_from": 2,
+  "reusable_capabilities_created_or_reused": [
+    "Everward headless Unreal process-tree timeout cleanup",
+    "Rocksmith unattended private timing-health runner"
+  ],
+  "idle_eligible_lane": "Knowledge Engine runtime relevance policy inspected but not mutated because no existing relevance signal was found in the fixed workflow contract; unsafe to invent one without a bounded compatible design"
+}
