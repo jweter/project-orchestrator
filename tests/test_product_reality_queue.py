@@ -12,6 +12,7 @@ def debt(kind="packaged_app", state="PENDING"):
         "repository": "jweter/knowledge-engine-core",
         "kind": kind,
         "state": state,
+        "summary": "bounded local product evidence",
         "dependency_scope": "local-runtime",
         "source_ref": "issue:1",
     }
