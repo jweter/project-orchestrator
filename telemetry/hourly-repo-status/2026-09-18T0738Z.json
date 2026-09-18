@@ -4,9 +4,12 @@
     "product_advancement_rate":  "3/3 lanes materially advanced",
     "knowledge_engine":  {
                              "core_main":  "126f1f4f62d29cc9e838ad176fc8468e69c17394",
-                             "advancement":  "fresh exact-current Core worker PASS; local Web/Core/Ollama Research capability enabled; Monster #79 submitted through normal async /ask and completed session a146204a-4b7d-4a88-86b2-84dad297b986",
-                             "next_gate":  "P1: repair discovery trigger so sufficient-count but query-irrelevant evidence cannot suppress federated discovery; add Monster regression protection",
-                             "acceptance_failure":  "discovery_triggered=false with 10 irrelevant GLP1 corpus EvidenceRecords; report completed but does not satisfy Monster #79 evidence relevance/directness requirements"
+                             "advancement":  "fresh Core worker PASS; real local Web/Core/Ollama Monster #79 session completed and exposed query-irrelevant evidence suppressing discovery; fail-closed benchmark regression repair built, exact-head preflight GREEN, PR #166 opened",
+                             "next_gate":  "fresh PR #166 CI then merge if all required gates green; runtime discovery-policy repair remains separate demonstrated acceptance work",
+                             "acceptance_failure":  "discovery_triggered=false with 10 irrelevant GLP1 corpus EvidenceRecords; report completed but does not satisfy Monster #79 evidence relevance/directness requirements",
+                             "repair_branch":  "repair/monster-discovery-acceptance-guard",
+                             "repair_head":  "0825e06ddb9e24fe1bd4ad3fb221af549de334b3",
+                             "pr":  166
                          },
     "rocksmith":  {
                       "main":  "d24212f312943309bb2d200323be6f7c2e76ea63",
