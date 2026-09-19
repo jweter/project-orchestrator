@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "purpose": "External capability acquisition wave 1",
+  "existing_capabilities": ["specs","repair_verification","learning_memory","capability_reuse","unattended_execution","product_reality"],
+  "candidates": [
+    {"name":"OpenSpec","repository":"Fission-AI/OpenSpec","license":"MIT","capabilities":["specs","cross_repo_planning","artifact_workflow"],"target_products":["orchestrator","knowledge-engine"],"priority":5,"dependency_risk":1},
+    {"name":"spec-kit","repository":"github/spec-kit","license":"MIT","capabilities":["specs","repair_verification","idea_assessment"],"target_products":["orchestrator"],"priority":5,"dependency_risk":1},
+    {"name":"hermes-agent","repository":"NousResearch/hermes-agent","license":"MIT","capabilities":["learning_memory","skill_evolution","capability_reuse"],"target_products":["orchestrator"],"priority":5,"dependency_risk":3},
+    {"name":"headroom","repository":"headroomlabs-ai/headroom","license":"Apache-2.0","capabilities":["context_compression","tool_output_compression"],"target_products":["orchestrator","knowledge-engine"],"priority":5,"dependency_risk":2},
+    {"name":"Docling","repository":"docling-project/docling","license":"MIT","capabilities":["document_ingestion","pdf_understanding"],"target_products":["knowledge-engine"],"priority":5,"dependency_risk":2},
+    {"name":"PageIndex","repository":"VectifyAI/PageIndex","license":"MIT","capabilities":["hierarchical_retrieval","page_indexing"],"target_products":["knowledge-engine"],"priority":5,"dependency_risk":2},
+    {"name":"Scrapling","repository":"D4Vinci/Scrapling","license":"BSD-3-Clause","capabilities":["web_acquisition","adaptive_parsing"],"target_products":["knowledge-engine"],"priority":4,"dependency_risk":2},
+    {"name":"mem0","repository":"mem0ai/mem0","license":"Apache-2.0","capabilities":["memory_consolidation","semantic_memory","conflict_resolution"],"target_products":["orchestrator","knowledge-engine"],"priority":4,"dependency_risk":3},
+    {"name":"Fabric","repository":"danielmiessler/Fabric","license":"MIT","capabilities":["pattern_library","capability_chaining"],"target_products":["orchestrator"],"priority":3,"dependency_risk":2},
+    {"name":"AI Engineering Hub","repository":"patchy631/ai-engineering-hub","license":"MIT","capabilities":["reference_architectures","rag_patterns"],"target_products":["knowledge-engine"],"priority":3,"dependency_risk":1}
+  ]
+}
