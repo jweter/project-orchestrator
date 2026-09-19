@@ -21,3 +21,17 @@ def test_builder_health_accepts_user_active_idle(tmp_path):
     from scripts.continuous_flow_supervisor import builder_health
     (tmp_path/"builder.json").write_text(json.dumps({"status":"USER_ACTIVE"}),encoding="utf-8")
     assert builder_health(tmp_path,0)==(True,"USER_ACTIVE")
+
+def test_merge_watcher_advancement_detects_merge(tmp_path):
+    import json
+    from scripts.continuous_flow_supervisor import merge_watcher_advanced
+    (tmp_path/"green-pr-watcher.json").write_text(
+        json.dumps({"results":[{"repository":"r","pr":1,"merged":True}]}),encoding="utf-8")
+    assert merge_watcher_advanced(tmp_path) is True
+
+def test_merge_watcher_does_not_advance_on_promotion_only(tmp_path):
+    import json
+    from scripts.continuous_flow_supervisor import merge_watcher_advanced
+    (tmp_path/"green-pr-watcher.json").write_text(
+        json.dumps({"results":[{"repository":"r","pr":1,"promoted":True}]}),encoding="utf-8")
+    assert merge_watcher_advanced(tmp_path) is False
