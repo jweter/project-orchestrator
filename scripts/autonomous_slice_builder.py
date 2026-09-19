@@ -105,7 +105,7 @@ def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_
         atomic_json(lifecycle,payload)
 
 def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None,
-                         activation_path:Path|None=None,lifecycle_path:Path|None=None)->set[str]:
+                         activation_path:Path|None=None,lifecycle_path:Path|None=None)->dict[str,str]:
     """Return repositories only when grant contract and all certified HEADs are still current."""
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
@@ -116,20 +116,20 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         activation=activation_path or path.with_name("hands-off-activation.json")
         activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     except (OSError,json.JSONDecodeError):
-        return set()
+        return {}
     grant_id=payload.get("grant_id")
     lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
     try:
         lifecycle_state=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
         grants=lifecycle_state.get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
-        return set()
+        return {}
     if (payload.get("schema_version") != 4 or not isinstance(grant_id,str) or not grant_id
             or grant_id in grants
             or payload.get("contract_sha256") != contract_digest
             or payload.get("activation_sha256") != activation_digest):
-        return set()
-    allowed=set()
+        return {}
+    allowed={}
     for product,value in payload.get("products",{}).items():
         repositories=value.get("repositories",{}) if isinstance(value,dict) else {}
         if (not repositories or product not in declared_products
@@ -144,12 +144,25 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
                 break
         if current:
             allowed.update(repositories)
-    if allowed:
-        claimed=datetime.now(UTC).isoformat()
-        grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
-                          "authorized_repositories":sorted(allowed)}
-        atomic_json(lifecycle,{"schema_version":1,"grants":grants})
     return allowed
+
+def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Path|None=None)->bool:
+    """Atomically consume an exact-head capability immediately before mutation."""
+    lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
+    try:
+        grant=json.loads(path.read_text(encoding="utf-8"))
+        grant_id=grant["grant_id"]
+        state=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+        grants=state["grants"]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return False
+    if grant_id in grants:
+        return False
+    claimed=datetime.now(UTC).isoformat()
+    grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
+                      "authorized_repositories":[repo],"expected_sha":expected_sha}
+    atomic_json(lifecycle,{"schema_version":1,"grants":grants})
+    return True
 
 def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->str|None:
     prior=-1
@@ -288,7 +301,8 @@ def atomic_json(path:Path,payload:dict[str,Any])->None:
     tmp=path.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     tmp.replace(path)
-def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->dict[str,Any]:
+def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
+               execution_grant:Path|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
     if idle is not None and idle<MIN_IDLE_SECONDS:
         return {"status":"USER_ACTIVE","idle_seconds":idle}
@@ -305,6 +319,14 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     reset=run(["git","checkout","-B","actor-staging",f"origin/{main}"],ws)
     if reset.returncode: raise RuntimeError("base checkout failed")
     base=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    if execution_grant is not None:
+        if not isinstance(eligible_repos,dict):
+            return {"status":"EXECUTION_GRANT_INVALID","repository":repo}
+        expected=eligible_repos.get(repo)
+        if not expected or base!=expected:
+            return {"status":"EXECUTION_GRANT_HEAD_MISMATCH","repository":repo,"expected_sha":expected,"actual_sha":base}
+        if not claim_execution_grant(execution_grant,repo,expected):
+            return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
     stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
     if run(["git","checkout","-B",branch,base],ws).returncode:
@@ -422,7 +444,7 @@ def main()->int:
             heartbeat=threading.Thread(target=heartbeat_grant,args=(args.execution_grant,stop_heartbeat),daemon=True)
             heartbeat.start()
         try:
-            result=build_once(workspace,state,args.dry_run,eligible,eligible_repos)
+            result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant)
         finally:
             stop_heartbeat.set()
             if heartbeat:
