@@ -64,3 +64,51 @@ Selective ECC adoption is governed by `docs/ECC_GAP_ANALYSIS.md`. The first adop
 ## After v1
 
 Freeze governance-layer expansion unless measured evidence identifies a bottleneck. Direct most engineering capacity into product roadmap work and use the orchestrator to measure, learn, and improve the loop.
+
+## Daedalus Engineering Gym — deliberate-practice path
+
+The Gym is an explicit post-v1 capability path. It uses otherwise-idle Laptop Actor capacity and disposable exact-baseline worktrees; it never displaces higher-priority eligible product work.
+
+### Phase 0 — prerequisite trust
+- [ ] Bind canonical verification to the requested exact repository/worktree/head and fail closed on stale-source execution.
+- [ ] Complete Evolution capability compilation from measured EVOLUTION_VERIFIED outcomes into scheduler-consumable retained capabilities.
+- [ ] Prove degrading capabilities can be demoted or quarantined.
+
+### Phase 1 — real-history replay
+- [ ] Mine verified failures, repairs, CI failures, review findings, and regression fixes from all five product repositories.
+- [ ] Build sanitized challenge episodes with pre-fix state, acceptance contract, authoritative verification, and hidden verified outcome.
+- [ ] Replay challenges in disposable worktrees without exposing the historical fix.
+- [ ] Measure first-pass success, repair iterations, elapsed cycle time, unnecessary churn, regression escapes, and Jeremy intervention.
+
+### Phase 2 — mutation gym
+- [ ] Generate bounded reversible defects only from repository-authorized failure classes.
+- [ ] Prove each mutation RED before Actor execution and canonical verification GREEN afterward.
+- [ ] Exercise environment, dependency, typing, boundary, state, provenance, deterministic-validation, worker-recovery, and regression classes where policy permits.
+- [ ] Never use restricted/private Rocksmith content or fabricate Product Reality.
+
+### Phase 3 — adversarial engineering tournament
+- [ ] Run multiple isolated strategies against the same exact-baseline challenge.
+- [ ] Add adversarial review for counterexamples, hidden regressions, security/privacy/provenance violations, architecture drift, and unnecessary complexity.
+- [ ] Compare strategies only with deterministic measured evidence; code volume is never a success metric.
+- [ ] Retain candidates only when they outperform baseline without weakening gates.
+
+### Phase 4 — skill/capability compilation
+- [ ] Extract reusable procedures from repeatedly verified winning episodes.
+- [ ] Keep repository-specific product knowledge separate from portfolio-safe engineering-process capabilities.
+- [ ] Compile only measured gate-cleared capabilities into retained scheduler advice and inject applicable capabilities before planning.
+- [ ] Automatically demote or quarantine capabilities that worsen cycle time, repeat failures, regressions, or human intervention.
+
+### Phase 5 — idle deliberate practice
+- [ ] Let the persistent Laptop Actor consume Gym work only when no higher-priority eligible production lane is waiting.
+- [ ] Enforce CPU/memory/disk budgets and avoid overlapping memory-heavy workloads.
+- [ ] Feed sanitized verified novel production failures back into future curriculum.
+- [ ] Report which trained capabilities successfully transferred to real product work.
+
+### Phase 6 — self-improving engineering loop
+- [ ] Measure real effects on Product Advancement Rate, failure-to-repair time, merge cycle time, repeat-failure rate, and Jeremy-required intervention.
+- [ ] Select future curriculum from measured production bottlenecks rather than generic coding puzzles.
+- [ ] Graduate portfolio capabilities only after cross-context evidence proves transfer safe and beneficial.
+
+### Gym north star
+
+Each verified production or practice episode gets a governed path to make future engineering cheaper: recognize -> retrieve -> prevent/repair -> verify -> measure -> retain/demote. Idle compute becomes deliberate practice; deliberate practice creates candidate skills; production evidence decides whether those skills survive.
