@@ -36,20 +36,24 @@ def builder_health(state_root:Path,returncode:int)->tuple[bool,str]:
     degraded={"P1_BUILDER_FAILURE","BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
     return status not in degraded,status
 
-def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str]:
+def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str,list[str]]:
     activation=state_root/"hands-off-activation.json"
     expected=state_root/"hands-off-expected-heads.json"
     if not activation.exists() or not expected.exists():
-        return False,"ACTIVATION_EVIDENCE_MISSING"
+        return False,"ACTIVATION_EVIDENCE_MISSING",[]
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"evolution_activation_gate.py"),
         "--activation-state",str(activation),"--expected-heads",str(expected)],
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"activation-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     try:
-        reason=json.loads(p.stdout).get("reason","ACTIVATION_UNKNOWN")
+        payload=json.loads(p.stdout)
+        reason=payload.get("reason","ACTIVATION_UNKNOWN")
+        products=sorted(name for name,result in payload.get("products",{}).items()
+                        if isinstance(result,dict) and result.get("allowed") is True)
     except (json.JSONDecodeError,TypeError):
         reason="ACTIVATION_UNREADABLE"
-    return p.returncode==0,reason
+        products=[]
+    return p.returncode==0 and bool(products),reason,products
 
 def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str]:
     """Regenerate exact-head activation evidence without conversational intervention."""
@@ -105,15 +109,6 @@ def merge_watcher_advanced(state_root:Path)->bool:
     atomic(cursor,event)
     return True
 
-def authorized_products(state_root:Path)->list[str]:
-    """Return only explicitly enabled products from the current activation certificate."""
-    try:
-        payload=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
-    except (OSError,json.JSONDecodeError):
-        return []
-    return sorted(name for name,value in payload.get("products",{}).items()
-                  if isinstance(value,dict) and value.get("enabled") is True)
-
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")]
@@ -136,14 +131,14 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
-        authorized,activation_reason=evolution_authorized(repo,state)
+        authorized,activation_reason,products=evolution_authorized(repo,state)
         if not authorized and activation_reason in {"ACTIVATION_EVIDENCE_MISSING","ACTIVATION_HEADS_STALE"}:
             refreshed,refresh_reason=refresh_readiness(repo,workspace,state)
             if refreshed:
-                authorized,activation_reason=evolution_authorized(repo,state)
+                authorized,activation_reason,products=evolution_authorized(repo,state)
             else:
                 activation_reason=refresh_reason
-        products=authorized_products(state) if authorized else []
+        products=products if authorized else []
         rc=run_builder(repo,workspace,state,products) if products else 3
         builder_ok,builder_status=builder_health(state,rc)
         lifecycle_advanced=merge_watcher_advanced(state)
