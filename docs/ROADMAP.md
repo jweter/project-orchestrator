@@ -61,6 +61,21 @@ Durable flow telemetry is defined in `docs/KPI_TELEMETRY.md`. PR, CI, branch, an
 
 Selective ECC adoption is governed by `docs/ECC_GAP_ANALYSIS.md`. The first adopted technique is a deterministic structural audit of the DoWork autonomous regulator: machine-decidable acceptance, independent verification, bounded repair, anti-Goodhart invariants, fresh fail-closed evidence, explicit automated-vs-human authority, and safe no-op semantics are now versioned and preflight-gated. Phase B adds `engineering/harness-audit.json` plus `project_orchestrator.harness_audit`: a read-only inventory/scanner that measures repository-resident instruction/skill/agent/MCP/hook surfaces, reports context bytes and approximate tokens, detects duplicate context and unsafe MCP literals, and leaves unmounted repositories explicitly UNVERIFIED. Phase C adds `engineering/agent-eval-suite.json` plus `project_orchestrator.agent_eval`: pinned fault-injection tasks, deterministic acceptance, first-pass/repair/intervention/elapsed-time reporting, and like-for-like agent configuration comparisons. Evaluation outcomes are written into the existing KPI ledger rather than a competing store, and Product Reality cannot be scored by this harness. The operational runner in `project_orchestrator.agent_eval_runner` now creates detached exact-baseline worktrees, proves the injected fault makes the deterministic contract RED before agent execution, runs direct argv-based local agent configurations, re-runs repository-native verification, records Phase C attempts, and removes the worktree. Comparative claims remain blocked until real matrix runs supply evidence. Phase D adds `engineering/repository-skills.json` plus `project_orchestrator.skill_extraction`: only VERIFIED learning-memory lessons and exact git-history commit refs may back a repository skill; selection requires an explicit path-pattern or literal task-trigger match; every skill remains advisory and starts with effectiveness `UNMEASURED`. The first bounded pilot preserves the verified risk-similarity false-positive prevention rule in project-orchestrator. Product-repository skills remain blocked until verified product history/lessons support them.
 
+## Autonomous completion mandate
+
+- [x] Five-repository production Laptop Actor routing and exact-head execution proof
+- [x] Portfolio readiness gate: missing/failed/stale repo evidence fails closed
+- [x] Scheduler -> local pending -> production runner acquisition path
+- [x] Persistent self-driving control-loop primitive with durable P1 failure state
+- [ ] Supervise the self-driving loop as a durable Azathoth process with startup/restart and crash recovery
+- [ ] Replace global stall accounting with per-product two-cycle liveness enforcement
+- [ ] Add bounded persistent history/state compaction
+- [ ] Wire live production lane and result providers into the persistent loop
+- [ ] Prove unattended product advancement -> verification -> feedback -> next advancement on all three products
+- [ ] Drive Knowledge Engine, Rocksmith, and Everward roadmaps continuously until their authoritative completion criteria are met
+
+The full durable execution contract is docs/AUTONOMOUS_COMPLETION_PATH.md. Zero open PRs is explicitly a build trigger. Product work outranks governance expansion except when a P0/P1 control-plane defect prevents safe product execution. The existing execution schedule/processes continue this plan; do not create duplicate schedules.
+
 ## After v1
 
 Freeze governance-layer expansion unless measured evidence identifies a bottleneck. Direct most engineering capacity into product roadmap work and use the orchestrator to measure, learn, and improve the loop.
