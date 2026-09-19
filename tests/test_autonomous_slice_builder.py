@@ -60,3 +60,20 @@ def test_installer_uses_current_user_startup_supervisor():
     assert "continuous_flow_supervisor.py" in installer
     assert "Green PR merger: 60-second poll" in installer
     assert "Autonomous builder: 5-minute loop" in installer
+
+def test_semantic_gate_rejects_placeholder_file(tmp_path):
+    target=tmp_path/"path"/"to"/"filename.js"
+    target.parent.mkdir(parents=True)
+    target.write_text("// entire file content ...",encoding="utf-8")
+    reason=b.semantic_quality_failure(tmp_path,["path/to/filename.js"])
+    assert reason.startswith("generic_or_placeholder_path:")
+
+def test_semantic_gate_rejects_orphan_source_change(tmp_path):
+    (tmp_path/"feature.py").write_text("def useful(): return True\n",encoding="utf-8")
+    assert b.semantic_quality_failure(tmp_path,["feature.py"])=="source_change_without_regression_test"
+
+def test_semantic_gate_accepts_source_with_regression_test(tmp_path):
+    (tmp_path/"src").mkdir(); (tmp_path/"tests").mkdir()
+    (tmp_path/"src"/"feature.py").write_text("def useful(): return True\n",encoding="utf-8")
+    (tmp_path/"tests"/"test_feature.py").write_text("def test_useful(): assert True\n",encoding="utf-8")
+    assert b.semantic_quality_failure(tmp_path,["src/feature.py","tests/test_feature.py"]) is None

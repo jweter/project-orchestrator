@@ -17,6 +17,8 @@ PORTFOLIO_REPOS=(
 MODEL=os.environ.get("EXPONENTIAL_BUILDER_MODEL","ollama/qwen2.5-coder:7b")
 PROTECTED_PARTS=("dowork.txt","agents.md","license","security",".github/workflows",
                  "engineering/control-plane.json","roadmap","architecture","vision","policy")
+PLACEHOLDER_MARKERS=("entire file content", "todo: implement", "your code here", "placeholder")
+GENERIC_ROOT_FILES={"utils.py","util.py","helpers.py","helper.py","path/to/filename.js"}
 MIN_IDLE_SECONDS=300
 MAX_AIDER_SECONDS=2700
 MAX_PREFLIGHT_SECONDS=7200
@@ -121,6 +123,23 @@ def protected_change(paths:list[str])->str|None:
             return path
     return None
 
+def semantic_quality_failure(ws:Path,paths:list[str])->str|None:
+    normalized={p.replace("\\","/").lower() for p in paths}
+    for path in normalized:
+        if path in GENERIC_ROOT_FILES:
+            return f"generic_or_placeholder_path:{path}"
+        candidate=ws/path
+        if candidate.is_file() and candidate.stat().st_size <= 200_000:
+            try: text=candidate.read_text(encoding="utf-8",errors="ignore").lower()
+            except OSError: continue
+            marker=next((m for m in PLACEHOLDER_MARKERS if m in text),None)
+            if marker: return f"placeholder_content:{path}:{marker}"
+    source_like=[p for p in normalized if p.endswith((".py",".js",".ts",".tsx",".cpp",".h",".hpp",".cs")) and not p.startswith(("test","tests/"))]
+    test_like=[p for p in normalized if p.startswith(("test","tests/")) or "/test" in p]
+    if source_like and not test_like:
+        return "source_change_without_regression_test"
+    return None
+
 def run_preflight(ws:Path)->subprocess.CompletedProcess[str]:
     script=ws/"engineering"/"preflight.py"
     if not script.is_file():
@@ -173,6 +192,11 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False)->dict[str
     if blocked:
         reset_workspace(ws,base)
         result={"status":"PROTECTED_PATH_BLOCKED","repository":repo,"path":blocked,"last_repo_index":idx}
+        atomic_json(state_path,result); return result
+    quality=semantic_quality_failure(ws,paths)
+    if quality:
+        reset_workspace(ws,base)
+        result={"status":"SEMANTIC_QUALITY_BLOCKED","repository":repo,"reason":quality,"last_repo_index":idx}
         atomic_json(state_path,result); return result
     preflight=run_preflight(ws)
     if preflight.returncode!=0:
