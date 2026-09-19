@@ -184,11 +184,14 @@ def merge_watcher_advanced(state_root:Path)->bool:
     return True
 
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
-    activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
+    activation_path=state_root/"hands-off-activation.json"
+    activation_bytes=activation_path.read_bytes()
+    activation=json.loads(activation_bytes)
     contract_path=repo_root/"engineering"/"hands-off-evolution.json"
     contract_bytes=contract_path.read_bytes()
-    grant={"schema_version":2,
+    grant={"schema_version":3,
            "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
+           "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
            "products":{
         name:{"repositories":activation["products"][name]["repositories"]}
         for name in products}}
