@@ -2,7 +2,7 @@ from scripts.evolution_activation_gate import validate_activation
 
 
 def test_current_green_activation_is_allowed() -> None:
-    state = {"enabled": True, "reason": "READINESS_PASS", "heads": {"repo": "abc"}}
+    state = {"schema_version": 2, "enabled": True, "reason": "READINESS_PASS", "products": {"test": {"enabled": True, "repositories": {"repo": "abc"}}}}
     assert validate_activation(state, {"repo": "abc"}) == (True, "ACTIVATION_CURRENT")
 
 
