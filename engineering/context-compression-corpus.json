@@ -1,0 +1,19 @@
+{
+  "cases": [
+    {
+      "name": "github-ci-failure",
+      "payload": "job=test-suite status=running\\nstep=setup status=success\\nstep=install status=success\\nstep=tests status=failure\\nERROR first meaningful failure: tests/test_retrieval.py::test_grounded_answer\\nexpected citation_count >= 1 got 0\\ncommit_sha=0123456789abcdef0123456789abcdef01234567\\nstep=cleanup status=success\\n",
+      "essential_markers": ["ERROR first meaningful failure: tests/test_retrieval.py::test_grounded_answer", "expected citation_count >= 1 got 0", "commit_sha=0123456789abcdef0123456789abcdef01234567"]
+    },
+    {
+      "name": "worker-product-reality",
+      "payload": "worker=everward state=STARTING\\nworker=everward state=RUNNING\\nworker=everward state=RUNNING\\nPRODUCT_REALITY=FAIL reason=probe_survival_loop frame_time_regression\\nexact_head=89abcdef0123456789abcdef0123456789abcdef\\nworker=everward state=COMPLETE\\n",
+      "essential_markers": ["PRODUCT_REALITY=FAIL reason=probe_survival_loop frame_time_regression", "exact_head=89abcdef0123456789abcdef0123456789abcdef"]
+    },
+    {
+      "name": "structured-pr-evidence",
+      "payload": "{\"pr\":711,\"state\":\"open\",\"checks\":[{\"name\":\"CI\",\"status\":\"success\"},{\"name\":\"Golden Verification\",\"status\":\"success\"},{\"name\":\"Windows Desktop\",\"status\":\"success\"}],\"head\":\"f51fb7f65e47308c9f354ff83772ecb2218f263a\",\"mergeable\":true}",
+      "essential_markers": ["\"pr\":711", "\"head\":\"f51fb7f65e47308c9f354ff83772ecb2218f263a\"", "\"mergeable\":true"]
+    }
+  ]
+}

@@ -12,7 +12,7 @@ This is the durable execution ledger. Update it whenever a slice changes state; 
 
 ## STILL TO DO
 - Hermes Agent learning-loop adaptation — procedural-vs-factual separation retained; evidence-gated skill effectiveness/refinement implemented on branch orchestrator/hermes-learning-adaptation-v4; next gate: focused tests + canonical preflight.
-- Headroom benchmark: raw vs compressed CI/worker/tool evidence; token reduction, diagnostic retention, latency, decision accuracy.
+- Headroom benchmark — synthetic-but-format-realistic corpus completed: 21,795 -> 3,429 estimated tokens-equivalent, 100% essential-marker retention; native Headroom counts also recorded; disposition PILOT_READY. Next gate: live Daedalus evidence A/B pilot.
 - Docling benchmark against Knowledge Engine document/PDF ingestion.
 - PageIndex benchmark against KE retrieval on the same golden corpus; current vs tree vs hybrid.
 - Scrapling standards-compliant web acquisition experiment.

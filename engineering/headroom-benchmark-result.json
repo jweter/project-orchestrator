@@ -1,0 +1,74 @@
+{
+  "cases": [
+    {
+      "compressed_tokens": 99,
+      "compression_ratio": 0.0169,
+      "latency_ms": 521.481,
+      "markers_retained": 3,
+      "markers_total": 3,
+      "name": "github-ci-failure",
+      "raw_tokens": 5863,
+      "signal_retention": 1.0
+    },
+    {
+      "compressed_tokens": 58,
+      "compression_ratio": 0.0107,
+      "latency_ms": 8.996,
+      "markers_retained": 2,
+      "markers_total": 2,
+      "name": "worker-product-reality",
+      "raw_tokens": 5441,
+      "signal_retention": 1.0
+    },
+    {
+      "compressed_tokens": 3272,
+      "compression_ratio": 0.3119,
+      "latency_ms": 286.201,
+      "markers_retained": 3,
+      "markers_total": 3,
+      "name": "structured-pr-evidence",
+      "raw_tokens": 10491,
+      "signal_retention": 1.0
+    }
+  ],
+  "compressed_tokens": 3429,
+  "compression_ratio": 0.1573,
+  "decision": "PILOT_READY",
+  "headroom_native": [
+    {
+      "headroom_reported_savings_ratio": 0.9799547365017782,
+      "latency_ms": 521.473,
+      "tokens_after": 124,
+      "tokens_before": 6186,
+      "tokens_saved": 6062,
+      "transforms_applied": [
+        "router:text:0.02"
+      ]
+    },
+    {
+      "headroom_reported_savings_ratio": 0.9869415807560138,
+      "latency_ms": 8.991,
+      "tokens_after": 95,
+      "tokens_before": 7275,
+      "tokens_saved": 7180,
+      "transforms_applied": [
+        "router:text:0.01"
+      ]
+    },
+    {
+      "headroom_reported_savings_ratio": 0.4067180456594445,
+      "latency_ms": 286.195,
+      "tokens_after": 4080,
+      "tokens_before": 6877,
+      "tokens_saved": 2797,
+      "transforms_applied": [
+        "router:smart_crusher:0.43"
+      ]
+    }
+  ],
+  "latency_ms": 816.678,
+  "raw_tokens": 21795,
+  "signal_retention": 1.0,
+  "status": "PASS",
+  "token_metric": "DETERMINISTIC_ESTIMATE_NOT_PROVIDER_TOKENIZER"
+}
