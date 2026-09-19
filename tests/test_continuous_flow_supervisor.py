@@ -320,3 +320,44 @@ def test_classify_orphan_branch_detects_pushed_branch_without_pr(tmp_path, monke
         raise AssertionError(cmd)
     monkeypatch.setattr(supervisor.subprocess,"run",run)
     assert supervisor.classify_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x")[0]=="ORPHAN_PUSHED_NO_PR"
+
+def test_resume_unpushed_orphan_verifies_preflight_push_remote_and_opens_pr(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    calls=[]
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout=""): self.stdout=stdout
+    def run(cmd,**kwargs):
+        calls.append(cmd)
+        if cmd[:2]==["git","rev-parse"]: return Result("head\n")
+        if cmd[:2]==["git","ls-remote"]: return Result("head\trefs/heads/actor/autonomous-x\n")
+        return Result("https://github/pr/1\n" if cmd[:3]==["gh","pr","create"] else "")
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    status=supervisor.resume_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x",
+        "ORPHAN_LOCAL_COMMIT_UNPUSHED",{"head_sha":"head","remote_head_sha":""})
+    assert status=="RECOVERY_PR_OPENED"
+    assert any(cmd[:2]==["git","push"] for cmd in calls)
+    assert any(cmd[:3]==["gh","pr","create"] for cmd in calls)
+
+def test_resume_orphan_fails_closed_when_local_head_changed(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    class Result:
+        returncode=0; stderr=""; stdout="different\n"
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:Result())
+    assert supervisor.resume_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x",
+        "ORPHAN_LOCAL_COMMIT_UNPUSHED",{"head_sha":"expected"})=="RECOVERY_HEAD_CHANGED"
+
+def test_resume_pushed_orphan_requires_exact_remote_head(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout): self.stdout=stdout
+    calls=[]
+    def run(cmd,**kwargs):
+        calls.append(cmd)
+        if cmd[:2]==["git","rev-parse"]: return Result("head\n")
+        if cmd[:2]==["git","ls-remote"]: return Result("other\trefs/heads/actor/autonomous-x\n")
+        raise AssertionError("PR creation must not occur")
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.resume_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x",
+        "ORPHAN_PUSHED_NO_PR",{"head_sha":"head","remote_head_sha":"head"})=="RECOVERY_REMOTE_HEAD_MISMATCH"
