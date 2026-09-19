@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .scheduler_policy import apply_retained_policy
+from .claude_dispatch import select_actor
 
 PROJECTS = ("knowledge-engine", "rocksmith", "everward")
 LOOP_STAGES = ("SENSE", "REMEMBER", "DECIDE", "ACT", "VERIFY", "LEARN", "ADAPT")
@@ -23,6 +24,7 @@ def validate_closed_loop_run(
     *,
     now: datetime | None = None,
     retained_learning_store: dict[str, Any] | None = None,
+    actor_scorecard: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Validate one portfolio run as a complete evidence-backed learning loop.
 
@@ -93,6 +95,16 @@ def validate_closed_loop_run(
         action_guard_state = item.get("agent_action_guard_state")
         action_guard_ref = item.get("agent_action_guard_evidence_ref")
         retained_policy = None
+        actor_selection = None
+        if eligibility == "ELIGIBLE":
+            actor_task = item.get("actor_task")
+            if actor_task is not None:
+                if not isinstance(actor_task, dict):
+                    raise ValueError(f"{project}.actor_task must be an object")
+                actor_selection = select_actor(actor_task, actor_scorecard)
+                if actor_selection["actor"] == "CLAUDE_CLOUD":
+                    if not actor_task.get("repository") or not actor_task.get("task_key"):
+                        raise ValueError(f"{project} Claude selection requires repository and task_key")
         if retained_learning_store is not None and eligibility == "ELIGIBLE":
             policy_input = item.get("policy_input")
             if not isinstance(policy_input, dict):
@@ -184,6 +196,7 @@ def validate_closed_loop_run(
             "execution_evidence_ref": execution_ref,
             "verification_evidence_ref": verification_ref,
             "retained_policy": retained_policy,
+            "actor_selection": actor_selection,
         }
 
     advancement_rate = (
