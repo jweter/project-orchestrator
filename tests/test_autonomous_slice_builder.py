@@ -274,3 +274,19 @@ def test_finish_grant_lifecycle_records_failure(tmp_path):
     record=json.loads(lifecycle.read_text())["grants"]["cycle-3"]
     assert record["state"]=="FAILED"
     assert record["result_status"]=="PREFLIGHT_FAILED"
+
+def test_heartbeat_grant_renews_claim(tmp_path):
+    import json, threading
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"hands-off-execution-grant.json"
+    grant.write_text(json.dumps({"grant_id":"g1"}),encoding="utf-8")
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
+        "state":"CLAIMED","claimed_at":"2026-01-01T00:00:00+00:00",
+        "last_heartbeat_at":"2026-01-01T00:00:00+00:00"}}}),encoding="utf-8")
+    stop=threading.Event()
+    thread=threading.Thread(target=builder.heartbeat_grant,args=(grant,stop,0.01))
+    thread.start()
+    import time; time.sleep(0.04); stop.set(); thread.join()
+    record=json.loads(lifecycle.read_text())["grants"]["g1"]
+    assert record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00"
