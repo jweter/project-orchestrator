@@ -167,3 +167,42 @@ def test_observe_live_heads_ignores_origin_mismatch(tmp_path, monkeypatch):
     monkeypatch.setattr(supervisor.subprocess,"run",run)
     assert supervisor.observe_live_heads(repo_root,workspace,state)==(False,"LIVE_HEADS_UNAVAILABLE")
     assert json.loads((state/"hands-off-live-heads.json").read_text())=={}
+
+def test_recover_stale_grant_claims_marks_expired_claim_abandoned(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path
+    now=datetime(2026,9,19,23,0,tzinfo=UTC)
+    old=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS+1)).isoformat()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({
+        "schema_version":1,"grants":{"g1":{"state":"CLAIMED","claimed_at":old}}}),encoding="utf-8")
+    assert supervisor.recover_stale_grant_claims(state,now)==["g1"]
+    record=json.loads((state/"hands-off-grant-lifecycle.json").read_text())["grants"]["g1"]
+    assert record["state"]=="ABANDONED"
+    assert record["result_status"]=="CLAIM_LEASE_EXPIRED"
+    assert record["finished_at"]==now.isoformat()
+
+def test_recover_stale_grant_claims_preserves_live_claim(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,9,19,23,0,tzinfo=UTC)
+    recent=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS-1)).isoformat()
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{
+        "g1":{"state":"CLAIMED","claimed_at":recent}}}),encoding="utf-8")
+    assert supervisor.recover_stale_grant_claims(tmp_path,now)==[]
+    assert json.loads(path.read_text())["grants"]["g1"]["state"]=="CLAIMED"
+
+def test_recover_stale_grant_claims_never_reopens_terminal_claim(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,9,19,23,0,tzinfo=UTC)
+    old=(now-timedelta(hours=2)).isoformat()
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{
+        "done":{"state":"COMPLETED","claimed_at":old},
+        "failed":{"state":"FAILED","claimed_at":old}}}),encoding="utf-8")
+    assert supervisor.recover_stale_grant_claims(tmp_path,now)==[]
