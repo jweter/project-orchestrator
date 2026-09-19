@@ -100,3 +100,27 @@ def test_select_repo_returns_none_when_no_product_authorized(monkeypatch, tmp_pa
     import scripts.autonomous_slice_builder as builder
     monkeypatch.setattr(builder,"lane_capacity",lambda repo:1)
     assert builder.select_repo(tmp_path/"state.json",set()) is None
+
+def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"schema_version":1,"products":{"rocksmith":{"repositories":{
+        "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
+    class Result:
+        returncode=0; stdout="moved\n"
+    monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
+    assert builder.granted_products(grant,tmp_path)==set()
+
+def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"schema_version":1,"products":{"rocksmith":{"repositories":{
+        "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
+    class Result:
+        returncode=0; stdout="certified\n"
+    monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
+    assert builder.granted_products(grant,tmp_path)=={"rocksmith"}
