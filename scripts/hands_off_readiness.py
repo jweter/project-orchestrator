@@ -131,6 +131,8 @@ def main() -> int:
         default=Path(__file__).resolve().parents[1] / "engineering" / "hands-off-evolution.json",
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--product", action="append", dest="selected_products",
+                        help="Audit only this declared product; may be repeated.")
     parser.add_argument(
         "--activation-state",
         type=Path,
@@ -144,14 +146,24 @@ def main() -> int:
         print(json.dumps({"status": "UNKNOWN", "error": f"contract unavailable: {exc}"}))
         return 2
 
+    declared_products = contract.get("products", {})
+    selected = set(args.selected_products or declared_products)
+    unknown = selected - set(declared_products)
+    if unknown:
+        print(json.dumps({"status":"UNKNOWN","error":f"unknown product(s): {sorted(unknown)}"}))
+        return 2
+    selected_repo_ids = {repo_id for name in selected for repo_id in declared_products[name]}
+    audited = [audit(repo, contract) for repo in args.repositories]
     report = {
         "schema_version": 2,
         "contract": str(args.contract),
-        "repositories": [audit(repo, contract) for repo in args.repositories],
+        "repositories": [r for r in audited if r.get("repository") in selected_repo_ids],
     }
     by_repo = {r.get("repository"): r for r in report["repositories"] if r.get("repository")}
     products = {}
-    for product, repository_ids in contract.get("products", {}).items():
+    for product, repository_ids in declared_products.items():
+        if product not in selected:
+            continue
         members = [by_repo.get(repo_id) for repo_id in repository_ids]
         if any(member is None for member in members):
             status = "UNKNOWN"

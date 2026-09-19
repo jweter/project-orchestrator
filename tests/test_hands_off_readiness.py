@@ -138,3 +138,29 @@ def test_partial_product_pass_returns_success(tmp_path, monkeypatch):
         "checks":[],"status":"PASS" if repo.name=="good" else "FAIL"})
     monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(good),str(bad),"--contract",str(contract)])
     assert readiness.main()==0
+
+def test_product_filter_excludes_unselected_product(tmp_path, monkeypatch, capsys):
+    import json, sys
+    import scripts.hands_off_readiness as readiness
+    contract=tmp_path/"contract.json"
+    contract.write_text(json.dumps({"required_authority":[],"products":{
+        "rocksmith":["jweter/rock"],"everward":["jweter/ever"]}}),encoding="utf-8")
+    rock=tmp_path/"rock"; ever=tmp_path/"ever"; rock.mkdir(); ever.mkdir()
+    monkeypatch.setattr(readiness,"audit",lambda repo,contract:{
+        "repository":"jweter/rock" if repo.name=="rock" else "jweter/ever",
+        "local_path":str(repo),"head":"abc","checks":[],"status":"PASS"})
+    monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(rock),str(ever),
+        "--contract",str(contract),"--product","rocksmith"])
+    assert readiness.main()==0
+    payload=json.loads(capsys.readouterr().out)
+    assert set(payload["products"])=={"rocksmith"}
+    assert [r["repository"] for r in payload["repositories"]]==["jweter/rock"]
+
+def test_unknown_product_filter_fails_closed(tmp_path, monkeypatch):
+    import json, sys
+    import scripts.hands_off_readiness as readiness
+    contract=tmp_path/"contract.json"
+    contract.write_text(json.dumps({"required_authority":[],"products":{"rocksmith":["jweter/rock"]}}),encoding="utf-8")
+    repo=tmp_path/"rock"; repo.mkdir()
+    monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(repo),"--contract",str(contract),"--product","ghost"])
+    assert readiness.main()==2
