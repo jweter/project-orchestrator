@@ -64,6 +64,24 @@ def retain_failure_lesson(state_path:Path,stage:str,detail:str,outcome:str)->dic
     atomic_json(path,payload)
     return lesson
 
+def record_verified_repair(state_path:Path,fingerprint:str,strategy:str,verification:str)->dict[str,Any]:
+    """Attribute a verified repair to a known failure without auto-promoting it."""
+    path=state_path.with_name("autonomous-failure-lessons.json")
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        lesson=payload["lessons"][fingerprint]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return {}
+    repairs=lesson.setdefault("verified_repairs",{})
+    repair=repairs.get(strategy,{"strategy":strategy,"verified_successes":0,"first_verified":datetime.now(UTC).isoformat()})
+    repair["verified_successes"]=int(repair.get("verified_successes",0))+1
+    repair["last_verified"]=datetime.now(UTC).isoformat()
+    repair["verification"]=verification
+    repair["promotion_candidate"]=repair["verified_successes"]>=2
+    repairs[strategy]=repair
+    atomic_json(path,payload)
+    return repair
+
 def windows_idle_seconds()->float|None:
     if os.name!="nt": return None
     class LASTINPUTINFO(ctypes.Structure):
@@ -220,7 +238,12 @@ def prior_failure_experience(state_path:Path,limit:int=5)->str:
     lines=[]
     for item in ranked[:limit]:
         detail=" ".join(str(item.get("detail","")).split())[:600]
-        lines.append(f"- [{item.get('fingerprint','unknown')}] stage={item.get('stage','unknown')} occurrences={item.get('occurrences',0)} outcome={item.get('last_outcome','unknown')}: {detail}")
+        repairs=item.get("verified_repairs",{})
+        repair_text=""
+        if repairs:
+            best=max(repairs.values(),key=lambda r:int(r.get("verified_successes",0)))
+            repair_text=f" verified_repair={best.get('strategy','unknown')} successes={best.get('verified_successes',0)}"
+        lines.append(f"- [{item.get('fingerprint','unknown')}] stage={item.get('stage','unknown')} occurrences={item.get('occurrences',0)} outcome={item.get('last_outcome','unknown')}{repair_text}: {detail}")
     return "\n".join(lines) if lines else "none recorded"
 
 def problem_solving_guidance()->str:
