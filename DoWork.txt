@@ -141,4 +141,7 @@ Every product repository retains its roadmap, architecture, policy, CI, provenan
 DEFAULT-BRANCH WRITE GUARD
 Ordinary governed engineering work establishes its feature/repair branch before first mutation. Direct default writes require explicit repository authority. Otherwise resolve live default head -> create/reuse branch -> mutate branch -> verify exact head -> promote through preflight/PR/CI.
 
+PROJECT HANDS-OFF EVOLUTION
+The portfolio north star is docs/HANDS_OFF_EVOLUTION.md: Jeremy establishes/realigns authoritative product intent, roadmaps, acceptance criteria, and guardrails; the Evolution Engine owns routine execution. Manual "continue" prompts, routine testing/log collection, next-slice selection, branch repair, and deterministic verification are capability gaps to retire, not normal operating dependencies. Progress this project whenever autonomy/liveness work is the highest-priority authorized control-plane work. Never weaken repository-local gates or reserved human/Product Reality boundaries to reduce intervention.
+
 Highest-value correct COMPOUNDING progress, not maximum commits. Keep every eligible product lane productive; rotate instead of waiting; turn verified work into reusable engineering capability.
