@@ -59,3 +59,18 @@ def test_refresh_readiness_fails_closed_for_incomplete_workspace(tmp_path):
     ok,reason=refresh_readiness(tmp_path,tmp_path/"workspace",tmp_path/"state")
     assert ok is False
     assert reason=="READINESS_WORKSPACE_INCOMPLETE"
+
+def test_evolution_authorized_returns_only_gate_current_products(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-activation.json").write_text("{}",encoding="utf-8")
+    (state/"hands-off-expected-heads.json").write_text("{}",encoding="utf-8")
+    class Result:
+        returncode=0
+        stdout=json.dumps({"allowed":True,"reason":"ACTIVATION_CURRENT","products":{
+            "knowledge-engine":{"allowed":False,"reason":"PRODUCT_HEADS_STALE"},
+            "rocksmith":{"allowed":True,"reason":"PRODUCT_CURRENT"}}})
+        stderr=""
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:Result())
+    assert supervisor.evolution_authorized(tmp_path,state)==(True,"ACTIVATION_CURRENT",["rocksmith"])
