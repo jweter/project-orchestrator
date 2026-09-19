@@ -197,15 +197,33 @@ def run_local_once(runner: Path, queue: Path, workspace_root: Path) -> int:
     return proc.returncode
 
 
+def promote_local_pending(queue: Path, inbox: Path) -> int:
+    pending_dir = queue / "pending"
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    promoted = 0
+    for path in sorted(pending_dir.glob("*.json")):
+        job = validate_remote_job(json.loads(path.read_text(encoding="utf-8")))
+        local = inbox / f"{job['job_id']}.job.json"
+        done = local.with_suffix(local.suffix + ".done")
+        if not local.exists() and not done.exists():
+            tmp = local.with_suffix(".tmp")
+            tmp.write_text(json.dumps(job, indent=2, sort_keys=True) + chr(10), encoding="utf-8")
+            tmp.replace(local)
+        path.unlink()
+        promoted += 1
+    return promoted
+
+
 def cycle(queue: Path, workspace_root: Path, runner: Path) -> dict[str, Any]:
     inbox, outbox = queue / "inbox", queue / "outbox"
     inbox.mkdir(parents=True, exist_ok=True)
     outbox.mkdir(parents=True, exist_ok=True)
+    promoted = promote_local_pending(queue, inbox)
     remote = github_available()
     pending = pull_remote_jobs(inbox) if remote else {}
     local_returncode = run_local_once(runner, queue, workspace_root)
     published = push_results(outbox, pending) if remote else 0
-    return {"github_bridge": remote, "pending_remote_jobs": len(pending), "published_results": published, "local_returncode": local_returncode}
+    return {"github_bridge": remote, "local_pending_promoted": promoted, "pending_remote_jobs": len(pending), "published_results": published, "local_returncode": local_returncode}
 
 
 def main() -> int:
