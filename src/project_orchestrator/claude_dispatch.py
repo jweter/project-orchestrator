@@ -5,6 +5,7 @@ import json
 import os
 import time
 import urllib.request
+from datetime import datetime, timezone
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
@@ -79,3 +80,72 @@ def summarize_measurements(state_dir: Path) -> dict:
     interventions = sum(bool(r.get("human_intervention")) for r in completed)
     return {"dispatches": len(rows), "completed": len(completed), "advanced": advanced, "human_interventions": interventions,
             "advancement_rate": (advanced / len(completed)) if completed else None}
+
+
+ROLE_ALLOWED_OUTCOMES = {
+    "portfolio_builder": {"PRODUCT_PR", "NO_OP", "BLOCKED"},
+    "repair_rescue": {"REPAIR_PR", "NO_OP", "BLOCKED"},
+    "adversarial_reviewer": {"REVIEW_FINDING", "REPAIR_PR", "NO_OP", "BLOCKED"},
+    "deep_product": {"PRODUCT_PR", "NO_OP", "BLOCKED"},
+}
+
+def ingest_session_result(state_dir: Path, dispatch_id: str, *, outcome_kind: str,
+                          repository: str | None = None, pr_url: str | None = None,
+                          verification: str | None = None, product_advancement: bool = False,
+                          human_intervention: bool = False, notes: str = "") -> dict:
+    """Normalize a completed Claude session into measured evidence and flag role drift."""
+    path = state_dir / f"{dispatch_id}.json"
+    if not path.exists():
+        raise FileNotFoundError(dispatch_id)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    routine = data["routine"]
+    if outcome_kind not in {"PRODUCT_PR","REPAIR_PR","REVIEW_FINDING","NO_OP","BLOCKED","FAIL"}:
+        raise ValueError(f"unknown Claude outcome: {outcome_kind}")
+    role_ok = outcome_kind in ROLE_ALLOWED_OUTCOMES[routine] or outcome_kind == "FAIL"
+    completed_at = time.time()
+    data.update({
+        "status": "NO_OP" if role_ok and outcome_kind == "NO_OP" else ("PASS" if role_ok and outcome_kind not in {"FAIL","BLOCKED"} else "FAIL"),
+        "completed_at": completed_at,
+        "cycle_time_seconds": max(0.0, completed_at - float(data["started_at"])),
+        "outcome_kind": outcome_kind,
+        "role_adherence": role_ok,
+        "repository": repository or data.get("repository"),
+        "pr_url": pr_url,
+        "verification": verification,
+        "product_advancement": bool(product_advancement),
+        "human_intervention": bool(human_intervention),
+        "notes": notes,
+    })
+    path.write_text(json.dumps(data, sort_keys=True, indent=2), encoding="utf-8")
+    return data
+
+def specialist_scorecard(state_dir: Path) -> dict:
+    rows = [json.loads(p.read_text(encoding="utf-8")) for p in state_dir.glob("*.json")]
+    score = {}
+    for routine in ROUTINES:
+        rr = [r for r in rows if r.get("routine") == routine and "completed_at" in r]
+        if not rr:
+            score[routine] = {"completed": 0}
+            continue
+        score[routine] = {
+            "completed": len(rr),
+            "role_adherence_rate": sum(r.get("role_adherence") is True for r in rr) / len(rr),
+            "advancement_rate": sum(bool(r.get("product_advancement")) for r in rr) / len(rr),
+            "human_intervention_rate": sum(bool(r.get("human_intervention")) for r in rr) / len(rr),
+            "median_cycle_time_seconds": sorted(float(r.get("cycle_time_seconds", 0)) for r in rr)[len(rr)//2],
+        }
+    return score
+
+def seed_external_dispatch(state_dir: Path, *, routine: str, repository: str, task_key: str,
+                           session_id: str, session_url: str, started_at: float) -> DispatchRecord:
+    """Import an already-fired routine so its result can enter the same measurement ledger."""
+    if routine not in ROUTINES:
+        raise ValueError(f"unknown Claude routine: {routine}")
+    did = _dispatch_id(routine, repository, task_key)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path = state_dir / f"{did}.json"
+    if path.exists():
+        return DispatchRecord(**{k: json.loads(path.read_text())[k] for k in DispatchRecord.__dataclass_fields__})
+    record = DispatchRecord(did, routine, repository, task_key, session_id, session_url, started_at)
+    path.write_text(json.dumps(asdict(record), sort_keys=True, indent=2), encoding="utf-8")
+    return record
