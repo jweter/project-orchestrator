@@ -20,8 +20,8 @@ class MergeDecision:
     eligible: bool
     reason: str
 
-def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=9999)->MergeDecision:
-    if pr.get("isDraft"): return MergeDecision(False,"DRAFT")
+def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=9999, allow_draft:bool=False)->MergeDecision:
+    if pr.get("isDraft") and not allow_draft: return MergeDecision(False,"DRAFT")
     if pr.get("author",{}).get("login") not in ALLOWED_AUTHORS: return MergeDecision(False,"AUTHOR_NOT_ALLOWED")
     if age_seconds < MIN_PR_AGE_SECONDS: return MergeDecision(False,"REVIEW_SETTLE_WINDOW")
     if pr.get("mergeStateStatus")!="CLEAN": return MergeDecision(False,f"MERGE_STATE_{pr.get('mergeStateStatus','UNKNOWN')}")
@@ -59,6 +59,21 @@ def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
         if BLOCKING_RE.search(body):
             return True
     return False
+def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
+    head=str(pr.get("headRefOid") or "")
+    findings=blocking_review_findings(repo,int(pr["number"]),head)
+    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),allow_draft=True)
+    result={"repository":repo,"pr":pr["number"],"head":head,"decision":decision.reason,"promoted":False}
+    if not pr.get("isDraft"):
+        result["decision"]="ALREADY_READY"
+        return result
+    if not decision.eligible or dry_run:return result
+    proc=subprocess.run(["gh","pr","ready",str(pr["number"]),"--repo",repo],text=True,capture_output=True,check=False)
+    result["promoted"]=proc.returncode==0
+    result["promotion_result"]="SUCCESS" if proc.returncode==0 else "FAILED"
+    if proc.returncode: result["error_class"]="GH_PROMOTION_FAILED"
+    return result
+
 def merge(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     head=str(pr.get("headRefOid") or "")
     findings=blocking_review_findings(repo,int(pr["number"]),head)
@@ -77,7 +92,10 @@ def cycle(dry_run:bool=False)->list[dict[str,Any]]:
     results=[]
     for repo in PORTFOLIO_REPOS:
         for pr in open_prs(repo):
-            results.append(merge(repo,pr,dry_run))
+            if pr.get("isDraft"):
+                results.append(promote(repo,pr,dry_run))
+            else:
+                results.append(merge(repo,pr,dry_run))
     return results
 
 if __name__=="__main__":
