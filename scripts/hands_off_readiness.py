@@ -145,10 +145,30 @@ def main() -> int:
         return 2
 
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "contract": str(args.contract),
         "repositories": [audit(repo, contract) for repo in args.repositories],
     }
+    by_repo = {r.get("repository"): r for r in report["repositories"] if r.get("repository")}
+    products = {}
+    for product, repository_ids in contract.get("products", {}).items():
+        members = [by_repo.get(repo_id) for repo_id in repository_ids]
+        if any(member is None for member in members):
+            status = "UNKNOWN"
+        elif all(member.get("status") == "PASS" for member in members):
+            status = "PASS"
+        elif any(member.get("status") == "UNKNOWN" for member in members):
+            status = "UNKNOWN"
+        else:
+            status = "FAIL"
+        products[product] = {
+            "status": status,
+            "repositories": {
+                repo_id: (by_repo.get(repo_id) or {}).get("head")
+                for repo_id in repository_ids
+            },
+        }
+    report["products"] = products
     report["status"] = (
         "PASS" if report["repositories"] and all(r["status"] == "PASS" for r in report["repositories"])
         else "UNKNOWN" if not report["repositories"] or any(r["status"] == "UNKNOWN" for r in report["repositories"])
@@ -160,13 +180,21 @@ def main() -> int:
         args.output.write_text(rendered, encoding="utf-8")
     if args.activation_state:
         activation = {
-            "schema_version": 1,
-            "enabled": activation_allowed(report),
-            "reason": "READINESS_PASS" if activation_allowed(report) else "READINESS_NOT_PASS",
+            "schema_version": 2,
+            "enabled": any(p["status"] == "PASS" for p in report.get("products", {}).values()),
+            "reason": "READINESS_PASS" if any(p["status"] == "PASS" for p in report.get("products", {}).values()) else "READINESS_NOT_PASS",
             "heads": {
                 r["repository"]: r["head"]
                 for r in report["repositories"]
-                if r.get("head")
+                if r.get("repository") and r.get("head")
+            },
+            "products": {
+                name: {
+                    "enabled": product["status"] == "PASS",
+                    "status": product["status"],
+                    "repositories": product["repositories"],
+                }
+                for name, product in report.get("products", {}).items()
             },
         }
         args.activation_state.parent.mkdir(parents=True, exist_ok=True)
