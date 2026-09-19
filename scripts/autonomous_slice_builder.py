@@ -85,8 +85,8 @@ def ensure_workspace(repo:str,root:Path)->Path:
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
 
-def granted_products(path:Path,workspace_root:Path)->set[str]:
-    """Fail closed unless every repository in a product grant is still at its certified HEAD."""
+def granted_repositories(path:Path,workspace_root:Path)->set[str]:
+    """Return only repositories belonging to products whose complete grant is still current."""
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError):
@@ -106,17 +106,18 @@ def granted_products(path:Path,workspace_root:Path)->set[str]:
                 current=False
                 break
         if current:
-            allowed.add(product)
+            allowed.update(repositories)
     return allowed
 
-def select_repo(state_path:Path,eligible_products:set[str]|None=None)->str|None:
+def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->str|None:
     prior=-1
     if state_path.exists():
         try: prior=int(json.loads(state_path.read_text(encoding="utf-8")).get("last_repo_index",-1))
         except Exception: prior=-1
-    eligible_repos=set(PORTFOLIO_REPOS) if eligible_products is None else {
-        repo for product in eligible_products for repo in PRODUCT_REPOS.get(product,())
-    }
+    if eligible_repos is None:
+        eligible_repos=set(PORTFOLIO_REPOS) if eligible_products is None else {
+            repo for product in eligible_products for repo in PRODUCT_REPOS.get(product,())
+        }
     for offset in range(1,len(PORTFOLIO_REPOS)+1):
         idx=(prior+offset)%len(PORTFOLIO_REPOS)
         repo=PORTFOLIO_REPOS[idx]
@@ -244,7 +245,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     idle=windows_idle_seconds()
     if idle is not None and idle<MIN_IDLE_SECONDS:
         return {"status":"USER_ACTIVE","idle_seconds":idle}
-    repo=select_repo(state_path,eligible_products)
+    repo=select_repo(state_path,eligible_products,eligible_repos)
     if repo is None:
         return {"status":"NO_ELIGIBLE_REPOSITORY"}
     idx=PORTFOLIO_REPOS.index(repo)
@@ -338,9 +339,13 @@ def main()->int:
     state=Path(args.state)
     try:
         workspace=Path(args.workspace_root)
-        eligible=granted_products(args.execution_grant,workspace) if args.execution_grant else (
-            None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p})
-        result=build_once(workspace,state,args.dry_run,eligible)
+        if args.execution_grant:
+            eligible_repos=granted_repositories(args.execution_grant,workspace)
+            eligible=None
+        else:
+            eligible_repos=None
+            eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
+        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
         result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500]}
         atomic_json(state,result)
