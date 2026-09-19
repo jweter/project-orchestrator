@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-def validate_products(state: dict[str, Any], expected_heads: dict[str, str]) -> dict[str, dict[str, Any]]:
+def validate_products(state: dict[str, Any], observed_heads: dict[str, str]) -> dict[str, dict[str, Any]]:
     """Validate exact-head authority independently for each declared product."""
     results: dict[str, dict[str, Any]] = {}
     products = state.get("products")
@@ -24,17 +24,17 @@ def validate_products(state: dict[str, Any], expected_heads: dict[str, str]) -> 
         if not isinstance(heads, dict) or not heads:
             results[name] = {"allowed": False, "reason": "PRODUCT_HEADS_MISSING"}
             continue
-        current = {repo: expected_heads.get(repo) for repo in heads}
+        current = {repo: observed_heads.get(repo) for repo in heads}
         if any(value is None for value in current.values()) or current != heads:
             results[name] = {"allowed": False, "reason": "PRODUCT_HEADS_STALE"}
             continue
         results[name] = {"allowed": True, "reason": "PRODUCT_CURRENT"}
     return results
 
-def validate_activation(state: dict[str, Any], expected_heads: dict[str, str]) -> tuple[bool, str]:
+def validate_activation(state: dict[str, Any], observed_heads: dict[str, str]) -> tuple[bool, str]:
     if state.get("reason") != "READINESS_PASS":
         return False, "ACTIVATION_REASON_NOT_GREEN"
-    products = validate_products(state, expected_heads)
+    products = validate_products(state, observed_heads)
     if any(result["allowed"] for result in products.values()):
         return True, "ACTIVATION_CURRENT"
     return False, "NO_CURRENT_PRODUCTS"
@@ -43,16 +43,21 @@ def validate_activation(state: dict[str, Any], expected_heads: dict[str, str]) -
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--activation-state", required=True, type=Path)
-    parser.add_argument("--expected-heads", required=True, type=Path)
+    parser.add_argument("--observed-heads", type=Path)
+    parser.add_argument("--expected-heads", type=Path,
+                        help="Legacy compatibility alias; autonomous runtime uses --observed-heads")
     args = parser.parse_args()
     try:
         state = json.loads(args.activation_state.read_text(encoding="utf-8"))
-        expected = json.loads(args.expected_heads.read_text(encoding="utf-8"))
+        heads_path=args.observed_heads or args.expected_heads
+        if heads_path is None:
+            raise OSError("observed heads path required")
+        observed=json.loads(heads_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(json.dumps({"allowed": False, "reason": f"ACTIVATION_EVIDENCE_UNAVAILABLE: {exc}"}))
         return 2
-    allowed, reason = validate_activation(state, expected)
-    products = validate_products(state, expected)
+    allowed, reason = validate_activation(state, observed)
+    products = validate_products(state, observed)
     print(json.dumps({"allowed": allowed, "reason": reason, "products": products}, sort_keys=True))
     return 0 if allowed else 1
 

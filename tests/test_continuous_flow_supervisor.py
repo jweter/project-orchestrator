@@ -65,7 +65,8 @@ def test_evolution_authorized_returns_only_gate_current_products(tmp_path, monke
     import scripts.continuous_flow_supervisor as supervisor
     state=tmp_path/"state"; state.mkdir()
     (state/"hands-off-activation.json").write_text("{}",encoding="utf-8")
-    (state/"hands-off-expected-heads.json").write_text("{}",encoding="utf-8")
+    (state/"hands-off-live-heads.json").write_text("{}",encoding="utf-8")
+    monkeypatch.setattr(supervisor,"observe_live_heads",lambda *a:(True,"LIVE_HEADS_OBSERVED"))
     class Result:
         returncode=0
         stdout=json.dumps({"allowed":True,"reason":"ACTIVATION_CURRENT","products":{
@@ -73,7 +74,7 @@ def test_evolution_authorized_returns_only_gate_current_products(tmp_path, monke
             "rocksmith":{"allowed":True,"reason":"PRODUCT_CURRENT"}}})
         stderr=""
     monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:Result())
-    assert supervisor.evolution_authorized(tmp_path,state)==(True,"ACTIVATION_CURRENT",["rocksmith"],["knowledge-engine"])
+    assert supervisor.evolution_authorized(tmp_path,tmp_path,state)==(True,"ACTIVATION_CURRENT",["rocksmith"],["knowledge-engine"])
 
 def test_product_recertification_preserves_unrelated_authority(tmp_path):
     import json
@@ -125,3 +126,44 @@ def test_recertify_product_runs_targeted_audit_and_merges(tmp_path, monkeypatch)
     merged=json.loads((state/"hands-off-activation.json").read_text())
     assert merged["products"]["rocksmith"]["repositories"]["jweter/rocksmith-cdlc-generator"]=="new"
     assert merged["products"]["everward"]["repositories"]["jweter/Project-Everward"]=="stable"
+
+def test_observe_live_heads_reads_git_not_activation(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    repo_root=tmp_path/"orchestrator"; repo_root.mkdir()
+    engineering=repo_root/"engineering"; engineering.mkdir()
+    engineering.joinpath("hands-off-evolution.json").write_text(json.dumps({
+        "products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}),encoding="utf-8")
+    workspace=tmp_path/"workspace"; ws=workspace/"rocksmith-cdlc-generator"; ws.mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir()
+    class Result:
+        def __init__(self,stdout):
+            self.returncode=0; self.stdout=stdout; self.stderr=""
+    def run(cmd,**kwargs):
+        if cmd[:3]==["git","remote","get-url"]:
+            return Result("https://github.com/jweter/rocksmith-cdlc-generator.git\n")
+        if cmd[:3]==["git","rev-parse","HEAD"]:
+            return Result("live-sha\n")
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.observe_live_heads(repo_root,workspace,state)==(True,"LIVE_HEADS_OBSERVED")
+    assert json.loads((state/"hands-off-live-heads.json").read_text())=={
+        "jweter/rocksmith-cdlc-generator":"live-sha"}
+
+def test_observe_live_heads_ignores_origin_mismatch(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    repo_root=tmp_path/"orchestrator"; repo_root.mkdir()
+    engineering=repo_root/"engineering"; engineering.mkdir()
+    engineering.joinpath("hands-off-evolution.json").write_text(json.dumps({
+        "products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}),encoding="utf-8")
+    workspace=tmp_path/"workspace"; (workspace/"rocksmith-cdlc-generator").mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir()
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout): self.stdout=stdout
+    def run(cmd,**kwargs):
+        return Result("https://github.com/attacker/wrong.git\n") if "remote" in cmd else Result("sha\n")
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.observe_live_heads(repo_root,workspace,state)==(False,"LIVE_HEADS_UNAVAILABLE")
+    assert json.loads((state/"hands-off-live-heads.json").read_text())=={}
