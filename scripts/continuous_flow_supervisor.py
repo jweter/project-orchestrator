@@ -243,6 +243,45 @@ def recover_stale_grant_claims(state_root:Path,now:datetime|None=None)->list[str
         atomic(path,payload)
     return abandoned
 
+def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str])->dict[str,str]:
+    """Inspect abandoned workspaces without deleting evidence; only clean main is auto-recoverable."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not grant_ids or not path.exists():
+        return {}
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        grants=payload["grants"]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return {grant_id:"LIFECYCLE_UNREADABLE" for grant_id in grant_ids}
+    outcomes={}
+    for grant_id in grant_ids:
+        record=grants.get(grant_id,{})
+        repos=record.get("authorized_repositories",[])
+        repo=record.get("repository")
+        candidates=[repo] if repo else repos
+        if len(candidates)!=1:
+            outcomes[grant_id]="RECOVERY_IDENTITY_AMBIGUOUS"; continue
+        repo=candidates[0]; ws=workspace_root/repo.split("/",1)[-1]
+        if not ws.is_dir():
+            outcomes[grant_id]="WORKSPACE_MISSING"; continue
+        status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
+        branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+        if status.returncode or branch.returncode:
+            outcomes[grant_id]="WORKSPACE_UNREADABLE"; continue
+        dirty=bool(status.stdout.strip())
+        current_branch=branch.stdout.strip()
+        if dirty:
+            outcomes[grant_id]="DIRTY_WORKSPACE_QUARANTINED"
+        elif current_branch.startswith("actor/autonomous-"):
+            outcomes[grant_id]="ORPHAN_BRANCH_QUARANTINED"
+        else:
+            outcomes[grant_id]="CLEAN_WORKSPACE_RECOVERED"
+            record["recovery_state"]="RECOVERED"
+            record["recovered_at"]=datetime.now(UTC).isoformat()
+        record["recovery_result"]=outcomes[grant_id]
+    atomic(path,payload)
+    return outcomes
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -256,6 +295,7 @@ def main()->int:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
         abandoned_grants=recover_stale_grant_claims(state)
+        recovery_results=reconcile_abandoned_claims(workspace,state,abandoned_grants)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
@@ -281,6 +321,7 @@ def main()->int:
             "evolution_authorized":authorized,"activation_reason":activation_reason,
             "authorized_products":products,
             "abandoned_grants":abandoned_grants,
+            "abandoned_recovery":recovery_results,
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
         if a.once:
