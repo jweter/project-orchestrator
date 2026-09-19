@@ -339,3 +339,42 @@ def test_record_verified_lesson_cli_returns_updated_memory(tmp_path: Path, capsy
     output = json.loads(capsys.readouterr().out)
     assert len(output["entries"]) == 1
     assert output["entries"][0]["project"] == "rocksmith"
+
+
+def test_evolution_verified_compiles_scheduler_capability() -> None:
+    from project_orchestrator.evolution_bridge import compile_verified_capability
+
+    prior_failure = {
+        "project": "knowledge-engine", "repository": "jweter/knowledge-engine-core",
+        "pattern_id": "preflight-format-regression", "evidence_ref": "worker:old",
+        "evidence_state": "VERIFIED", "event_type": "FAILURE",
+        "root_cause_verified": True, "repair_verified": True, "mechanism_brittle": False,
+        "prevention_verified": False, "redesign_verified": False,
+        "reserved_human_decision": False, "safety_regression": False,
+    }
+    worker = _worker(status="PASS", prevention_verified=True, learning_effect="PREVENTED")
+    handoff = build_worker_handoff(
+        worker_result=worker, control_plane={}, memory=_memory(), prior_events=[prior_failure],
+        measurements=[{"repository":"jweter/knowledge-engine-core","pattern_id":"preflight-format-regression",
+        "evidence_ref":"metric:rate","evidence_state":"VERIFIED","metric":"repeat_failure_rate",
+        "direction":"lower_is_better","before":0.5,"after":0.0,"sample_count_before":4,"sample_count_after":4}],
+    )
+    capability = compile_verified_capability(
+        worker_result=worker, evolution_plan=handoff["evolution_plan"],
+        mechanism="run formatter before exact-head preflight",
+        applicability={"failure_classes":["FORMAT"],"path_prefixes":["src/"]},
+    )
+    assert capability["status"] == "VERIFIED_RETAINED"
+    assert capability["authority"] == "ADVISORY_TO_SCHEDULER_NORMAL_GATES_REQUIRED"
+    assert capability["measurement_summary"][0]["outcome"] == "IMPROVED"
+
+
+def test_capability_compiler_fails_closed_before_evolution_verified() -> None:
+    from project_orchestrator.evolution_bridge import compile_verified_capability
+
+    handoff = build_worker_handoff(worker_result=_worker(), control_plane={}, memory=_memory())
+    with pytest.raises(EvolutionBridgeError, match="evolution_eligible"):
+        compile_verified_capability(
+            worker_result=_worker(), evolution_plan=handoff["evolution_plan"],
+            mechanism="do something", applicability={"failure_classes":["FORMAT"]},
+        )
