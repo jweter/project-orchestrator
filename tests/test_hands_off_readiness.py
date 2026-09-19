@@ -72,6 +72,7 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     repo=tmp_path/"repo"; repo.mkdir()
     import subprocess
     subprocess.run(["git","init",str(repo)],check=True,capture_output=True)
+    subprocess.run(["git","-C",str(repo),"remote","add","origin","https://github.com/jweter/test-repo.git"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.email","test@example.com"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.name","Test"],check=True)
     (repo/"ROADMAP.md").write_text("roadmap",encoding="utf-8")
@@ -83,7 +84,7 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     payload=json.loads(activation.read_text(encoding="utf-8"))
     assert payload["enabled"] is True
     assert payload["reason"]=="READINESS_PASS"
-    assert payload["heads"][str(repo.resolve())]
+    assert payload["heads"]["jweter/test-repo"]
 
 def test_repository_id_normalizes_https_and_ssh(monkeypatch, tmp_path):
     import scripts.hands_off_readiness as readiness
