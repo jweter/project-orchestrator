@@ -149,3 +149,46 @@ def seed_external_dispatch(state_dir: Path, *, routine: str, repository: str, ta
     record = DispatchRecord(did, routine, repository, task_key, session_id, session_url, started_at)
     path.write_text(json.dumps(asdict(record), sort_keys=True, indent=2), encoding="utf-8")
     return record
+
+
+TASK_ROUTING = {
+    "DETERMINISTIC_FAILURE": "repair_rescue",
+    "CI_FAILURE": "repair_rescue",
+    "QUALITY_FAILURE": "repair_rescue",
+    "RECENT_CHANGE_REVIEW": "adversarial_reviewer",
+    "DEEP_ARCHITECTURE": "deep_product",
+    "ALGORITHMIC_COMPLEXITY": "deep_product",
+    "CROSS_MODULE_CORRECTNESS": "deep_product",
+    "PRODUCT_SLICE": "portfolio_builder",
+}
+
+def select_actor(task: dict, scorecard: dict | None = None) -> dict:
+    """Choose the cheapest trustworthy actor; Claude is earned, never the default."""
+    kind = str(task.get("kind", "")).upper()
+    if task.get("requires_human") or task.get("reserved_human_boundary"):
+        return {"actor": "HUMAN", "reason": "reserved human boundary", "routine": None}
+    if task.get("local_capability_verified") and kind in {"DETERMINISTIC_FAILURE","CI_FAILURE","QUALITY_FAILURE","PRODUCT_SLICE"}:
+        return {"actor": "LAPTOP_ACTOR", "reason": "verified local capability available", "routine": None}
+    routine = TASK_ROUTING.get(kind)
+    if routine is None:
+        return {"actor": "LAPTOP_ACTOR", "reason": "no evidence Claude is required", "routine": None}
+    stats = (scorecard or {}).get(routine, {})
+    completed = int(stats.get("completed", 0) or 0)
+    if completed >= 3:
+        if float(stats.get("role_adherence_rate", 0)) < 0.8:
+            return {"actor": "LAPTOP_ACTOR", "reason": "Claude specialist demoted for role drift", "routine": None}
+        if float(stats.get("human_intervention_rate", 1)) > 0.5:
+            return {"actor": "LAPTOP_ACTOR", "reason": "Claude specialist demoted for intervention cost", "routine": None}
+    return {"actor": "CLAUDE_CLOUD", "reason": f"specialist match for {kind}", "routine": routine}
+
+def dispatch_if_warranted(task: dict, state_dir: Path, *, scorecard: dict | None = None,
+                          opener: Callable = urllib.request.urlopen) -> dict:
+    decision = select_actor(task, scorecard)
+    if decision["actor"] != "CLAUDE_CLOUD":
+        return {"dispatched": False, **decision}
+    required = ("repository", "task_key", "prompt")
+    missing = [key for key in required if not task.get(key)]
+    if missing:
+        raise ValueError(f"Claude dispatch task missing: {missing}")
+    rec = dispatch(decision["routine"], task["repository"], task["task_key"], task["prompt"], state_dir, opener=opener)
+    return {"dispatched": True, **decision, "dispatch_id": rec.dispatch_id, "session_id": rec.session_id}
