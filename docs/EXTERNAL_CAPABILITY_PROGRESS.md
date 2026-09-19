@@ -11,7 +11,7 @@ This is the durable execution ledger. Update it whenever a slice changes state; 
 - OpenSpec + Spec Kit architecture extraction — native artifact graph implemented on branch orchestrator/spec-primitives-v3; next gate: focused tests + canonical preflight.
 
 ## STILL TO DO
-- Hermes Agent learning-loop comparison against Capability Compiler.
+- Hermes Agent learning-loop adaptation — procedural-vs-factual separation retained; evidence-gated skill effectiveness/refinement implemented on branch orchestrator/hermes-learning-adaptation-v4; next gate: focused tests + canonical preflight.
 - Headroom benchmark: raw vs compressed CI/worker/tool evidence; token reduction, diagnostic retention, latency, decision accuracy.
 - Docling benchmark against Knowledge Engine document/PDF ingestion.
 - PageIndex benchmark against KE retrieval on the same golden corpus; current vs tree vs hybrid.
