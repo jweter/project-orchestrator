@@ -4,8 +4,12 @@ The worker emits desired mutations. A connector-capable caller applies them; no
 Linear credentials are stored on the laptop.
 """
 from __future__ import annotations
-import argparse, json, subprocess
+import argparse, json, subprocess, sys
 from pathlib import Path
+
+REPO_ROOT=Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0,str(REPO_ROOT))
 from src.project_orchestrator.linear_reconciliation import GithubWorkState, reconcile
 
 REPOS=(
@@ -15,14 +19,15 @@ REPOS=(
 )
 
 def gh_json(args:list[str])->object:
-    p=subprocess.run(["gh",*args],text=True,capture_output=True,check=False)
+    p=subprocess.run(["gh",*args],text=True,capture_output=True,check=False,
+        encoding="utf-8",errors="replace")
     if p.returncode: raise RuntimeError(p.stderr.strip() or "gh failed")
     return json.loads(p.stdout or "null")
 
 def github_state(repo:str,number:int)->GithubWorkState:
     issue=gh_json(["issue","view",str(number),"--repo",repo,"--json","state"])
-    prs=gh_json(["pr","list","--repo",repo,"--state","all","--limit","100",
-        "--json","number,title,body,state,mergedAt"])
+    prs=gh_json(["pr","list","--repo",repo,"--state","all","--limit","30",
+        "--search",f"#{number}","--json","number,title,body,state,mergedAt"]) or []
     needle=f"#{number}"
     linked=[p for p in prs if needle in ((p.get("title") or "")+"\n"+(p.get("body") or ""))]
     return GithubWorkState(issue_open=issue.get("state")=="OPEN",
