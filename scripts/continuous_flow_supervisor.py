@@ -243,6 +243,41 @@ def recover_stale_grant_claims(state_root:Path,now:datetime|None=None)->list[str
         atomic(path,payload)
     return abandoned
 
+def classify_orphan_branch(repo:str,ws:Path,branch:str)->tuple[str,dict]:
+    """Classify clean autonomous branch state without mutating it."""
+    base=subprocess.run(["git","merge-base","HEAD","origin/main"],cwd=ws,text=True,capture_output=True,check=False)
+    head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+    if base.returncode or head.returncode:
+        return "ORPHAN_HISTORY_UNREADABLE",{}
+    base_sha=base.stdout.strip(); head_sha=head.stdout.strip()
+    if not base_sha or not head_sha:
+        return "ORPHAN_HISTORY_UNREADABLE",{}
+    if head_sha==base_sha:
+        return "ORPHAN_NO_DIFF",{"base_sha":base_sha,"head_sha":head_sha}
+    remote=subprocess.run(["git","ls-remote","--heads","origin",branch],cwd=ws,text=True,capture_output=True,check=False)
+    if remote.returncode:
+        return "ORPHAN_REMOTE_UNREADABLE",{"base_sha":base_sha,"head_sha":head_sha}
+    remote_head=remote.stdout.split()[0] if remote.stdout.strip() else ""
+    pr=subprocess.run(["gh","pr","list","--repo",repo,"--head",branch,"--state","open","--json","number,url,headRefOid"],
+                      cwd=ws,text=True,capture_output=True,check=False)
+    if pr.returncode:
+        return "ORPHAN_PR_STATE_UNREADABLE",{"base_sha":base_sha,"head_sha":head_sha}
+    try:
+        prs=json.loads(pr.stdout)
+    except json.JSONDecodeError:
+        return "ORPHAN_PR_STATE_UNREADABLE",{"base_sha":base_sha,"head_sha":head_sha}
+    evidence={"base_sha":base_sha,"head_sha":head_sha,"remote_head_sha":remote_head}
+    if prs:
+        evidence["pr_number"]=prs[0].get("number"); evidence["pr_url"]=prs[0].get("url")
+        if prs[0].get("headRefOid")==head_sha:
+            return "ORPHAN_PR_RECOVERABLE",evidence
+        return "ORPHAN_PR_HEAD_MISMATCH",evidence
+    if remote_head==head_sha:
+        return "ORPHAN_PUSHED_NO_PR",evidence
+    if not remote_head:
+        return "ORPHAN_LOCAL_COMMIT_UNPUSHED",evidence
+    return "ORPHAN_REMOTE_HEAD_MISMATCH",evidence
+
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str])->dict[str,str]:
     """Inspect abandoned workspaces without deleting evidence; only clean main is auto-recoverable."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -273,7 +308,12 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         if dirty:
             outcomes[grant_id]="DIRTY_WORKSPACE_QUARANTINED"
         elif current_branch.startswith("actor/autonomous-"):
-            outcomes[grant_id]="ORPHAN_BRANCH_QUARANTINED"
+            classification,evidence=classify_orphan_branch(repo,ws,current_branch)
+            outcomes[grant_id]=classification
+            record["recovery_evidence"]=evidence
+            if classification in {"ORPHAN_NO_DIFF","ORPHAN_PR_RECOVERABLE"}:
+                record["recovery_state"]="RECOVERABLE"
+                record["recovered_at"]=datetime.now(UTC).isoformat()
         else:
             outcomes[grant_id]="CLEAN_WORKSPACE_RECOVERED"
             record["recovery_state"]="RECOVERED"
