@@ -40,6 +40,30 @@ def gh_json(args:list[str])->Any:
     if p.returncode: raise RuntimeError(p.stderr.strip() or "gh failed")
     return json.loads(p.stdout)
 
+def failure_fingerprint(stage:str,detail:str)->str:
+    """Stable identity for recurring autonomous failures; exclude volatile run metadata."""
+    normalized=" ".join(detail.lower().split())[:2000]
+    return hashlib.sha256(f"{stage}|{normalized}".encode()).hexdigest()[:20]
+
+def retain_failure_lesson(state_path:Path,stage:str,detail:str,outcome:str)->dict[str,Any]:
+    """Persist evidence so repeated failures become reusable engineering knowledge."""
+    path=state_path.with_name("autonomous-failure-lessons.json")
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"schema_version":1,"lessons":{}}
+    except (OSError,json.JSONDecodeError,TypeError):
+        payload={"schema_version":1,"lessons":{}}
+    fp=failure_fingerprint(stage,detail)
+    lessons=payload.setdefault("lessons",{})
+    lesson=lessons.get(fp,{"stage":stage,"fingerprint":fp,"occurrences":0,"first_seen":datetime.now(UTC).isoformat()})
+    lesson["occurrences"]=int(lesson.get("occurrences",0))+1
+    lesson["last_seen"]=datetime.now(UTC).isoformat()
+    lesson["last_outcome"]=outcome
+    lesson["detail"]=detail[:4000]
+    lesson["promotion_candidate"]=lesson["occurrences"]>=2
+    lessons[fp]=lesson
+    atomic_json(path,payload)
+    return lesson
+
 def windows_idle_seconds()->float|None:
     if os.name!="nt": return None
     class LASTINPUTINFO(ctypes.Structure):
@@ -337,7 +361,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     paths=changed_paths(ws,base)
     if aider.returncode!=0:
         reset_workspace(ws,base)
-        result={"status":"BUILDER_FAILED","repository":repo,"returncode":aider.returncode,"last_repo_index":idx}
+        lesson=retain_failure_lesson(state_path,"aider_execution",aider.stderr or aider.stdout or f"returncode={aider.returncode}","BUILDER_FAILED")
+        result={"status":"BUILDER_FAILED","repository":repo,"returncode":aider.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx}
         atomic_json(state_path,result); return result
     if not paths:
         result={"status":"NO_OP","repository":repo,"last_repo_index":idx}
@@ -367,7 +392,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     preflight=run_preflight(ws)
     if preflight.returncode!=0:
         reset_workspace(ws,base)
-        result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,"last_repo_index":idx}
+        lesson=retain_failure_lesson(state_path,"preflight",preflight.stderr or preflight.stdout or f"returncode={preflight.returncode}","PREFLIGHT_FAILED")
+        result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx}
         atomic_json(state_path,result); return result
     run(["git","add","-A"],ws)
     commit=run(["git","commit","-m",f"actor autonomous bounded slice {stamp}"],ws)
