@@ -210,6 +210,39 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     return p.returncode
 
+CLAIM_LEASE_SECONDS=1800
+
+def recover_stale_grant_claims(state_root:Path,now:datetime|None=None)->list[str]:
+    """Mark crash-stranded capability claims abandoned after their lease expires."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists():
+        return []
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        grants=payload.get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return []
+    current=now or datetime.now(UTC)
+    abandoned=[]
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("state")!="CLAIMED":
+            continue
+        try:
+            claimed=datetime.fromisoformat(record["claimed_at"])
+            if claimed.tzinfo is None:
+                claimed=claimed.replace(tzinfo=UTC)
+        except (KeyError,TypeError,ValueError):
+            continue
+        age=(current-claimed).total_seconds()
+        if age > CLAIM_LEASE_SECONDS:
+            record["state"]="ABANDONED"
+            record["finished_at"]=current.isoformat()
+            record["result_status"]="CLAIM_LEASE_EXPIRED"
+            abandoned.append(grant_id)
+    if abandoned:
+        atomic(path,payload)
+    return abandoned
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -222,6 +255,7 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
+        abandoned_grants=recover_stale_grant_claims(state)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
@@ -246,6 +280,7 @@ def main()->int:
             "linear_reconciliation_returncode":linear_rc,
             "evolution_authorized":authorized,"activation_reason":activation_reason,
             "authorized_products":products,
+            "abandoned_grants":abandoned_grants,
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
         if a.once:
