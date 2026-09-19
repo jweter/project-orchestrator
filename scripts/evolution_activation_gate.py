@@ -49,12 +49,15 @@ def main() -> int:
     args = parser.parse_args()
     try:
         state = json.loads(args.activation_state.read_text(encoding="utf-8"))
-        expected = json.loads(args.observed_heads.read_text(encoding="utf-8"))
+        heads_path=args.observed_heads or args.expected_heads
+        if heads_path is None:
+            raise OSError("observed heads path required")
+        observed=json.loads(heads_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         print(json.dumps({"allowed": False, "reason": f"ACTIVATION_EVIDENCE_UNAVAILABLE: {exc}"}))
         return 2
-    allowed, reason = validate_activation(state, expected)
-    products = validate_products(state, expected)
+    allowed, reason = validate_activation(state, observed)
+    products = validate_products(state, observed)
     print(json.dumps({"allowed": allowed, "reason": reason, "products": products}, sort_keys=True))
     return 0 if allowed else 1
 
