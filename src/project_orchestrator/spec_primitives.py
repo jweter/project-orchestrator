@@ -21,6 +21,8 @@ def validate_graph(artifacts: Iterable[SpecArtifact]) -> tuple[SpecArtifact, ...
     graph=tuple(artifacts)
     ids=[x.artifact_id for x in graph]
     if len(ids)!=len(set(ids)): raise ValueError("duplicate artifact id")
+    products={x.product for x in graph}
+    if len(products)>1: raise ValueError("artifact graph must belong to one product")
     known=set(ids)
     for item in graph:
         missing=set(item.depends_on)-known
@@ -29,6 +31,15 @@ def validate_graph(artifacts: Iterable[SpecArtifact]) -> tuple[SpecArtifact, ...
             raise ValueError("RESULT requires evidence")
         if item.kind is ArtifactKind.TASK and not item.acceptance:
             raise ValueError("TASK requires acceptance criteria")
+    by_id={x.artifact_id:x for x in graph}
+    visiting:set[str]=set(); visited:set[str]=set()
+    def visit(node_id:str)->None:
+        if node_id in visiting: raise ValueError("cyclic artifact dependency")
+        if node_id in visited: return
+        visiting.add(node_id)
+        for dep in by_id[node_id].depends_on: visit(dep)
+        visiting.remove(node_id); visited.add(node_id)
+    for node_id in ids: visit(node_id)
     return graph
 
 def ready_tasks(artifacts: Iterable[SpecArtifact], completed: Iterable[str]) -> list[SpecArtifact]:
@@ -39,11 +50,11 @@ def impacted_repositories(artifacts: Iterable[SpecArtifact], artifact_id: str) -
     graph=validate_graph(artifacts)
     by_id={x.artifact_id:x for x in graph}
     if artifact_id not in by_id: raise KeyError(artifact_id)
-    impacted=set(by_id[artifact_id].repositories)
+    reachable={artifact_id}
     changed=True
     while changed:
         changed=False
         for item in graph:
-            if set(item.depends_on) & {x.artifact_id for x in graph if set(x.repositories) & impacted}:
-                before=len(impacted); impacted.update(item.repositories); changed |= len(impacted)>before
-    return tuple(sorted(impacted))
+            if item.artifact_id not in reachable and set(item.depends_on) & reachable:
+                reachable.add(item.artifact_id); changed=True
+    return tuple(sorted({repo for node_id in reachable for repo in by_id[node_id].repositories}))
