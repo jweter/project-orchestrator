@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from .scheduler_policy import apply_retained_policy
+
 PROJECTS = ("knowledge-engine", "rocksmith", "everward")
 LOOP_STAGES = ("SENSE", "REMEMBER", "DECIDE", "ACT", "VERIFY", "LEARN", "ADAPT")
 ACTION_GUARD_STATES = {"READY", "GATHER_CONTEXT", "APPROVAL_REQUIRED", "FORBIDDEN"}
@@ -16,7 +18,12 @@ ADVANCEMENTS = {
 }
 
 
-def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
+def validate_closed_loop_run(
+    payload: dict[str, Any],
+    *,
+    now: datetime | None = None,
+    retained_learning_store: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Validate one portfolio run as a complete evidence-backed learning loop.
 
     This validator never performs GitHub mutations. It proves whether the
@@ -85,6 +92,16 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
 
         action_guard_state = item.get("agent_action_guard_state")
         action_guard_ref = item.get("agent_action_guard_evidence_ref")
+        retained_policy = None
+        if retained_learning_store is not None and eligibility == "ELIGIBLE":
+            policy_input = item.get("policy_input")
+            if not isinstance(policy_input, dict):
+                raise ValueError(
+                    f"{project} ELIGIBLE requires policy_input when retained learning is enabled"
+                )
+            retained_policy = apply_retained_policy(retained_learning_store, policy_input)[
+                "retained_policy"
+            ]
 
         if eligibility == "ELIGIBLE":
             eligible += 1
@@ -166,6 +183,7 @@ def validate_closed_loop_run(payload: dict[str, Any], *, now: datetime | None = 
             "agent_action_guard_evidence_ref": action_guard_ref,
             "execution_evidence_ref": execution_ref,
             "verification_evidence_ref": verification_ref,
+            "retained_policy": retained_policy,
         }
 
     advancement_rate = (
