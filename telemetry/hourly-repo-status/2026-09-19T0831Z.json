@@ -1,0 +1,20 @@
+{
+  "observed_at": "2026-09-19T08:31:10Z",
+  "mode": "EXECUTION_BURST",
+  "open_product_prs": 0,
+  "eligible_product_projects": ["knowledge-engine", "rocksmith", "everward"],
+  "materially_advanced_product_projects": [],
+  "worker_evidence": {
+    "knowledge_engine": "latest sanitized ledger updated 2026-09-19T02:22:42Z; worker transport currently unavailable for fresh local execution",
+    "rocksmith": "private unattended Product Reality remains authorized by issue 612; laptop transport currently offline",
+    "everward": "issue 243 remains stale at e380fed23101; current main includes headless-smoke repair; laptop transport currently offline"
+  },
+  "transport": {
+    "device": "Azathoth",
+    "status": "offline",
+    "last_seen": "2026-09-19T04:50:12.24Z"
+  },
+  "throughput_floor_met": false,
+  "liveness_defect": "All three eligible product lanes could not receive required machine-local execution while the authorized laptop worker transport was offline; source mutation without fresh failure evidence was rejected fail-closed.",
+  "needs_jeremy": false
+}
