@@ -24,6 +24,19 @@ def _git(repo: Path, *args: str) -> str:
     return proc.stdout.strip()
 
 
+def _repository_id(repo: Path) -> str:
+    """Return stable owner/name identity from origin instead of a machine-local path."""
+    remote = _git(repo, "remote", "get-url", "origin").strip()
+    value = remote.removesuffix(".git")
+    if value.startswith("git@github.com:"):
+        value = value.split(":", 1)[1]
+    elif "github.com/" in value:
+        value = value.split("github.com/", 1)[1]
+    value = value.strip("/")
+    if value.count("/") != 1:
+        raise RuntimeError("origin is not a canonical GitHub owner/name repository")
+    return value
+
 def _tracked_files(repo: Path) -> set[str]:
     return {line.replace("\\", "/") for line in _git(repo, "ls-files").splitlines() if line}
 
@@ -57,12 +70,14 @@ def activation_allowed(report: dict[str, Any]) -> bool:
 def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
     repo = repo.resolve()
     result: dict[str, Any] = {
-        "repository": str(repo),
+        "repository": None,
+        "local_path": str(repo),
         "head": None,
         "status": "UNKNOWN",
         "checks": [],
     }
     try:
+        result["repository"] = _repository_id(repo)
         result["head"] = _git(repo, "rev-parse", "HEAD")
         tracked = _tracked_files(repo)
         corpus = _text_corpus(repo, tracked)

@@ -9,6 +9,11 @@ def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin",
+         "https://github.com/jweter/test-repo.git"],
+        check=True,
+    )
     for name, content in files.items():
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -72,6 +77,7 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     repo=tmp_path/"repo"; repo.mkdir()
     import subprocess
     subprocess.run(["git","init",str(repo)],check=True,capture_output=True)
+    subprocess.run(["git","-C",str(repo),"remote","add","origin","https://github.com/jweter/test-repo.git"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.email","test@example.com"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.name","Test"],check=True)
     (repo/"ROADMAP.md").write_text("roadmap",encoding="utf-8")
@@ -83,4 +89,18 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     payload=json.loads(activation.read_text(encoding="utf-8"))
     assert payload["enabled"] is True
     assert payload["reason"]=="READINESS_PASS"
-    assert payload["heads"][str(repo.resolve())]
+    assert payload["heads"]["jweter/test-repo"]
+
+def test_repository_id_normalizes_https_and_ssh(monkeypatch, tmp_path):
+    import scripts.hands_off_readiness as readiness
+    monkeypatch.setattr(readiness,"_git",lambda repo,*args:"https://github.com/jweter/example.git")
+    assert readiness._repository_id(tmp_path)=="jweter/example"
+    monkeypatch.setattr(readiness,"_git",lambda repo,*args:"git@github.com:jweter/example.git")
+    assert readiness._repository_id(tmp_path)=="jweter/example"
+
+def test_repository_id_rejects_noncanonical_origin(monkeypatch, tmp_path):
+    import pytest
+    import scripts.hands_off_readiness as readiness
+    monkeypatch.setattr(readiness,"_git",lambda repo,*args:"C:/local/repo")
+    with pytest.raises(RuntimeError):
+        readiness._repository_id(tmp_path)
