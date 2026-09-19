@@ -114,11 +114,13 @@ def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_re
     if state_path.exists():
         try: prior=int(json.loads(state_path.read_text(encoding="utf-8")).get("last_repo_index",-1))
         except Exception: prior=-1
-    if eligible_repos is None:
-        eligible_repos=set(PORTFOLIO_REPOS) if eligible_products is None else {
-            repo for product in eligible_products for repo in PRODUCT_REPOS.get(product,())
-        }
-    repo_universe=tuple(sorted(eligible_repos)) if eligible_repos is not None else PORTFOLIO_REPOS
+    if eligible_repos is not None:
+        repo_universe=tuple(sorted(eligible_repos))
+    elif eligible_products is None:
+        repo_universe=PORTFOLIO_REPOS
+    else:
+        allowed={repo for product in eligible_products for repo in PRODUCT_REPOS.get(product,())}
+        repo_universe=tuple(repo for repo in PORTFOLIO_REPOS if repo in allowed)
     if not repo_universe:
         return None
     for offset in range(1,len(repo_universe)+1):
