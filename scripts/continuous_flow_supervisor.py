@@ -51,6 +51,21 @@ def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str]:
         reason="ACTIVATION_UNREADABLE"
     return p.returncode==0,reason
 
+def request_immediate_builder(state_root:Path)->None:
+    """Record that PR lifecycle progress should immediately feed the next build cycle."""
+    atomic(state_root/"continuation-request.json",{
+        "requested_at_utc":datetime.now(UTC).isoformat(),
+        "reason":"PR_LIFECYCLE_ADVANCED",
+    })
+
+def merge_watcher_advanced(state_root:Path)->bool:
+    path=state_root/"green-pr-watcher.json"
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError):
+        return False
+    return any(bool(item.get("merged")) for item in payload.get("results",[]))
+
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path)->int:
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")],
@@ -73,14 +88,20 @@ def main()->int:
         authorized,activation_reason=evolution_authorized(repo,state)
         rc=run_builder(repo,workspace,state) if authorized else 3
         builder_ok,builder_status=builder_health(state,rc)
+        lifecycle_advanced=merge_watcher_advanced(state)
+        if lifecycle_advanced:
+            request_immediate_builder(state)
         healthy=builder_ok and linear_rc in (None,0)
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
             "linear_reconciliation_returncode":linear_rc,
             "evolution_authorized":authorized,"activation_reason":activation_reason,
+            "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
-        time.sleep(max(60,a.builder_seconds))
+        # A merge exposes new roadmap work. Do not impose the normal idle delay
+        # after lifecycle advancement; re-enter selection immediately.
+        time.sleep(1 if lifecycle_advanced else max(60,a.builder_seconds))
 if __name__=="__main__": raise SystemExit(main())
