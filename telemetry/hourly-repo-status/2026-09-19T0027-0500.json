@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-09-19T00:27:02-05:00",
+  "mode": "execution_burst",
+  "control_plane": {"dowork_sha": "8d91d69eefb8e93faa17f3f2ad0e5328739bf869"},
+  "knowledge_engine": {"open_prs": 0, "worker_ledger": "knowledge-engine-ai#156", "latest_observed_worker_revision_core": "126f1f4f62d2", "state": "BUILD_MODE", "next_gate": "fresh coordinated unattended Research Report/Ollama acceptance"},
+  "rocksmith": {"merged_pr": 709, "merged_sha": "517f72a98eb76408d6a4053c10902d6890c458df", "fresh_pr_ci": "GREEN", "state": "MERGED"},
+  "everward": {"open_prs": 0, "worker_issue": 243, "published_tested_commit": "e380fed23101", "published_headless_smoke": "FAIL command_failure|exit=1", "state": "WORKER_EVIDENCE_STALE_AFTER_HEADLESS_FIX_MERGE", "next_gate": "rerun unattended worker on current main"},
+  "worker_transport": {"device": "Azathoth", "status": "offline", "last_seen": "2026-09-19T04:50:12.24+00:00"},
+  "product_advancement": {"eligible": 3, "materially_advanced": 1, "rate": "1/3"},
+  "needs_jeremy": []
+}
