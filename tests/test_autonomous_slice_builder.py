@@ -319,3 +319,20 @@ def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeyp
     assert result["status"]=="EXECUTION_GRANT_HEAD_MISMATCH"
     assert result["expected_sha"]=="authorized"
     assert result["actual_sha"]=="moved"
+
+def test_failure_lessons_compound_repeated_failure_into_promotion_candidate(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    first=builder.retain_failure_lesson(state,"preflight","TypeError: expected mapping","PREFLIGHT_FAILED")
+    second=builder.retain_failure_lesson(state,"preflight","  typeerror:   expected mapping  ","PREFLIGHT_FAILED")
+    assert first["fingerprint"]==second["fingerprint"]
+    assert second["occurrences"]==2
+    assert second["promotion_candidate"] is True
+    persisted=json.loads((tmp_path/"autonomous-failure-lessons.json").read_text())
+    assert persisted["lessons"][second["fingerprint"]]["occurrences"]==2
+
+def test_failure_fingerprint_separates_failure_stages():
+    import scripts.autonomous_slice_builder as builder
+    detail="same underlying text"
+    assert builder.failure_fingerprint("preflight",detail)!=builder.failure_fingerprint("aider_execution",detail)
