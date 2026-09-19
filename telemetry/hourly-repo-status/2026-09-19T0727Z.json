@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-09-19T07:27:00Z",
+  "open_product_prs": 0,
+  "projects": {
+    "knowledge_engine": {"state": "BUILD_MODE", "live_p1": "cross-domain golden retrieval baseline CACHED_FAIL; exact first error unavailable in sanitized ledger"},
+    "rocksmith": {"state": "BUILD_MODE", "main": "517f72a98eb76408d6a4053c10902d6890c458df", "next": "private Product Reality / EOF timing parity"},
+    "everward": {"state": "BUILD_MODE", "main": "8fd43e8b01d1ae32ad5ddc82cfe53e15109851b9", "worker_evidence": "stale: tested e380fed23101", "issue_270": "closed_completed"}
+  },
+  "product_advancement_rate": "1/3",
+  "needs_jeremy": []
+}
