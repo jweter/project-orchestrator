@@ -159,11 +159,20 @@ def merge_watcher_advanced(state_root:Path)->bool:
     atomic(cursor,event)
     return True
 
+def write_execution_grant(state_root:Path,products:list[str])->Path:
+    activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
+    grant={"schema_version":1,"products":{
+        name:{"repositories":activation["products"][name]["repositories"]}
+        for name in products}}
+    path=state_root/"hands-off-execution-grant.json"
+    atomic(path,grant)
+    return path
+
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")]
     if products is not None:
-        cmd.extend(["--eligible-products",",".join(products)])
+        cmd.extend(["--execution-grant",str(write_execution_grant(state_root,products))])
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
