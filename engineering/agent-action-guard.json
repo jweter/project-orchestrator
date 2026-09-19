@@ -1,59 +1,25 @@
 {
-  "schema_version": 1,
-  "purpose": "Require exact context and a bounded resource/cost envelope before autonomous engineering or experiment-like work fans out.",
-  "executable": "project-orchestrator-throughput action-gate",
-  "context_executable": "project-orchestrator-throughput action-context",
-  "states": [
-    "READY",
-    "GATHER_CONTEXT",
-    "APPROVAL_REQUIRED",
-    "FORBIDDEN"
-  ],
-  "required_context": [
-    "exact_head_sha",
-    "action_id_and_objective",
-    "authority_ref",
-    "bounded_scope_refs",
-    "context_refs",
-    "evidence_refs",
-    "context_lookup_performed",
-    "learning_lookup_performed"
-  ],
-  "failure_or_retry_additional_requirement": "exact_error_ref",
-  "default_policy": {
-    "max_compute_seconds_without_approval": 3600,
-    "hard_compute_seconds": 14400,
-    "max_network_calls_without_approval": 50,
-    "hard_network_calls": 500,
-    "max_write_operations_without_approval": 10,
-    "hard_write_operations": 100,
-    "max_concurrency_without_approval": 4,
-    "hard_concurrency": 12,
-    "max_external_cost_usd_without_approval": 0,
-    "hard_external_cost_usd": 50
-  },
-  "paid_external_service_rule": "unknown external cost requires approval; no paid external spend is autonomously authorized by the default policy",
-  "reserved_human_rule": "reserved-human, destructive, or irreversible actions require approval regardless of resource estimate",
-  "hard_cap_rule": "an explicit hard-cap violation is FORBIDDEN on this autonomous action path",
-  "execution_authority": "GATE_ONLY",
-  "existing_gates_preserved": [
-    "repository roadmap and architecture authority",
-    "canonical exact-head preflight",
-    "fresh PR CI",
-    "review and blocking comments",
-    "security and privacy",
-    "licensing and provenance",
-    "Product Reality",
-    "reserved human decisions"
-  ],
-  "secondary_effects_to_monitor": [
-    "branch and PR proliferation",
-    "local CPU/RAM contention",
-    "redundant full preflights",
-    "excessive Ollama calls",
-    "GitHub API/write volume",
-    "speculative retry loops",
-    "paid-service usage",
-    "first-pass verification degradation as throughput rises"
+  "description": "Configuration for the Agent Action Guard, which ensures that only authorized actions are performed.",
+  "rules": [
+    {
+      "id": "GATHER_CONTEXT",
+      "description": "Requires gathering exact live context before proceeding with an action.",
+      "enabled": true
+    },
+    {
+      "id": "APPROVAL_REQUIRED",
+      "description": "Requires approval from a human before proceeding with an action.",
+      "enabled": true
+    },
+    {
+      "id": "FORBIDDEN",
+      "description": "Denies any action that is not explicitly allowed.",
+      "enabled": true
+    },
+    {
+      "id": "READY",
+      "description": "Grants pre-action clearance but does not bypass repository-native architecture, CI, review, security, privacy, licensing/provenance, Product Reality, or reserved-human gates.",
+      "enabled": true
+    }
   ]
 }
