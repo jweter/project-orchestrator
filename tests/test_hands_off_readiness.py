@@ -2,7 +2,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from scripts.hands_off_readiness import audit
+from scripts.hands_off_readiness import activation_allowed, audit
 
 
 def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
@@ -47,3 +47,19 @@ def test_malformed_requirement_is_unknown(tmp_path: Path) -> None:
     repo = _repo(tmp_path, {"README.md": "hello"})
     report = audit(repo, {"required_authority": [{"id": "bad"}]})
     assert report["status"] == "UNKNOWN"
+
+
+def test_activation_requires_complete_exact_head_pass() -> None:
+    assert activation_allowed({
+        "status": "PASS",
+        "repositories": [{"status": "PASS", "head": "abc123"}],
+    })
+    assert not activation_allowed({
+        "status": "PASS",
+        "repositories": [{"status": "PASS", "head": None}],
+    })
+    assert not activation_allowed({
+        "status": "FAIL",
+        "repositories": [{"status": "PASS", "head": "abc123"}],
+    })
+    assert not activation_allowed({"status": "PASS", "repositories": []})
