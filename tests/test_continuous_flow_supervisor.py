@@ -361,3 +361,37 @@ def test_resume_pushed_orphan_requires_exact_remote_head(tmp_path, monkeypatch):
     monkeypatch.setattr(supervisor.subprocess,"run",run)
     assert supervisor.resume_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x",
         "ORPHAN_PUSHED_NO_PR",{"head_sha":"head","remote_head_sha":"head"})=="RECOVERY_REMOTE_HEAD_MISMATCH"
+
+def test_recertify_product_passes_only_target_product_repositories(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    repo_root=tmp_path/"orchestrator"; workspace=tmp_path/"workspace"; state=tmp_path/"state"
+    (repo_root/"engineering").mkdir(parents=True); state.mkdir()
+    contract={"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"],
+                          "knowledge-engine":["jweter/knowledge-engine-core","jweter/knowledge-engine-web"]}}
+    (repo_root/"engineering"/"hands-off-evolution.json").write_text(json.dumps(contract))
+    calls=[]
+    class Result:
+        returncode=1; stdout=""; stderr=""
+    def run(cmd,**kwargs):
+        calls.append(cmd)
+        # Simulate auditor writing a readable partial authority.
+        partial=state/"hands-off-recertify-rocksmith.json"
+        partial.write_text(json.dumps({"products":{"rocksmith":{"enabled":False,"repositories":{}}}}))
+        return Result()
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    monkeypatch.setattr(supervisor,"merge_product_recertification",lambda *a:(False,"PRODUCT_QUARANTINED"))
+    supervisor.recertify_product(repo_root,workspace,state,"rocksmith")
+    cmd=calls[0]
+    assert str(workspace/"rocksmith-cdlc-generator") in cmd
+    assert str(workspace/"knowledge-engine-core") not in cmd
+    assert str(workspace/"knowledge-engine-web") not in cmd
+
+def test_recertify_unknown_product_fails_before_auditor(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    repo_root=tmp_path/"orchestrator"; (repo_root/"engineering").mkdir(parents=True)
+    (repo_root/"engineering"/"hands-off-evolution.json").write_text(json.dumps({"products":{"rocksmith":["jweter/rock"]}}))
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:(_ for _ in ()).throw(AssertionError("must not audit")))
+    assert supervisor.recertify_product(repo_root,tmp_path/"workspace",tmp_path/"state","unknown")==(
+        False,"RECERTIFICATION_CONTRACT_UNREADABLE")
