@@ -36,6 +36,21 @@ def builder_health(state_root:Path,returncode:int)->tuple[bool,str]:
     degraded={"P1_BUILDER_FAILURE","BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
     return status not in degraded,status
 
+def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str]:
+    activation=state_root/"hands-off-activation.json"
+    expected=state_root/"hands-off-expected-heads.json"
+    if not activation.exists() or not expected.exists():
+        return False,"ACTIVATION_EVIDENCE_MISSING"
+    p=subprocess.run([sys.executable,str(repo_root/"scripts"/"evolution_activation_gate.py"),
+        "--activation-state",str(activation),"--expected-heads",str(expected)],
+        cwd=repo_root,text=True,capture_output=True,check=False)
+    (state_root/"activation-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    try:
+        reason=json.loads(p.stdout).get("reason","ACTIVATION_UNKNOWN")
+    except (json.JSONDecodeError,TypeError):
+        reason="ACTIVATION_UNREADABLE"
+    return p.returncode==0,reason
+
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path)->int:
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")],
@@ -55,13 +70,15 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
-        rc=run_builder(repo,workspace,state)
+        authorized,activation_reason=evolution_authorized(repo,state)
+        rc=run_builder(repo,workspace,state) if authorized else 3
         builder_ok,builder_status=builder_health(state,rc)
         healthy=builder_ok and linear_rc in (None,0)
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
             "linear_reconciliation_returncode":linear_rc,
+            "evolution_authorized":authorized,"activation_reason":activation_reason,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
