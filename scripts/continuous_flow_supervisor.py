@@ -65,7 +65,8 @@ def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path)->tu
     if not activation.exists() or not live_ok or not observed.exists():
         return False,"ACTIVATION_EVIDENCE_MISSING",[],[]
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"evolution_activation_gate.py"),
-        "--activation-state",str(activation),"--observed-heads",str(observed)],
+        "--activation-state",str(activation),"--observed-heads",str(observed),
+        "--contract",str(repo_root/"engineering"/"hands-off-evolution.json")],
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"activation-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     try:
