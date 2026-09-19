@@ -86,7 +86,7 @@ def ensure_workspace(repo:str,root:Path)->Path:
     return ws
 
 def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None,
-                         activation_path:Path|None=None,consumed_path:Path|None=None)->set[str]:
+                         activation_path:Path|None=None,lifecycle_path:Path|None=None)->set[str]:
     """Return repositories only when grant contract and all certified HEADs are still current."""
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
@@ -99,13 +99,14 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
     except (OSError,json.JSONDecodeError):
         return set()
     grant_id=payload.get("grant_id")
-    consumed=consumed_path or path.with_name("hands-off-consumed-grants.json")
+    lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
     try:
-        consumed_ids=set(json.loads(consumed.read_text(encoding="utf-8")).get("grant_ids",[])) if consumed.exists() else set()
+        lifecycle_state=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+        grants=lifecycle_state.get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return set()
     if (payload.get("schema_version") != 4 or not isinstance(grant_id,str) or not grant_id
-            or grant_id in consumed_ids
+            or grant_id in grants
             or payload.get("contract_sha256") != contract_digest
             or payload.get("activation_sha256") != activation_digest):
         return set()
@@ -125,8 +126,8 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         if current:
             allowed.update(repositories)
     if allowed:
-        consumed_ids.add(grant_id)
-        atomic_json(consumed,{"schema_version":1,"grant_ids":sorted(consumed_ids)})
+        grants[grant_id]={"state":"CLAIMED","claimed_at":datetime.now(UTC).isoformat()}
+        atomic_json(lifecycle,{"schema_version":1,"grants":grants})
     return allowed
 
 def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->str|None:
@@ -266,7 +267,7 @@ def atomic_json(path:Path,payload:dict[str,Any])->None:
     tmp=path.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     tmp.replace(path)
-def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None)->dict[str,Any]:
+def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
     if idle is not None and idle<MIN_IDLE_SECONDS:
         return {"status":"USER_ACTIVE","idle_seconds":idle}
@@ -351,6 +352,24 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     atomic_json(state_path,result)
     return result
 
+def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
+    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    try:
+        grant=json.loads(grant_path.read_text(encoding="utf-8"))
+        state=json.loads(lifecycle.read_text(encoding="utf-8"))
+        grant_id=grant["grant_id"]
+        record=state["grants"][grant_id]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return
+    record["state"]="COMPLETED" if result.get("status") in {
+        "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
+    } else "FAILED"
+    record["finished_at"]=datetime.now(UTC).isoformat()
+    record["result_status"]=result.get("status","UNKNOWN")
+    if result.get("repository"):
+        record["repository"]=result["repository"]
+    atomic_json(lifecycle,state)
+
 def main()->int:
     parser=argparse.ArgumentParser()
     parser.add_argument("--workspace-root",required=True)
@@ -371,6 +390,8 @@ def main()->int:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
         result=build_once(workspace,state,args.dry_run,eligible,eligible_repos)
+        if args.execution_grant:
+            finish_grant_lifecycle(args.execution_grant,result)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
         result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500]}
         atomic_json(state,result)

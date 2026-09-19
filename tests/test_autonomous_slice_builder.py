@@ -239,10 +239,38 @@ def test_execution_grant_is_single_use(tmp_path, monkeypatch):
         "contract_sha256":hashlib.sha256(contract.read_bytes()).hexdigest(),
         "activation_sha256":hashlib.sha256(activation.read_bytes()).hexdigest(),
         "products":{"rocksmith":{"repositories":{"jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
-    consumed=tmp_path/"consumed.json"
+    consumed=tmp_path/"lifecycle.json"
     class Result:
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
     assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)=={"jweter/rocksmith-cdlc-generator"}
     assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)==set()
-    assert json.loads(consumed.read_text())["grant_ids"]==["cycle-1"]
+    assert json.loads(consumed.read_text())["grants"]["cycle-1"]["state"]=="CLAIMED"
+
+def test_finish_grant_lifecycle_records_terminal_outcome(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"hands-off-execution-grant.json"
+    grant.write_text(json.dumps({"grant_id":"cycle-2"}),encoding="utf-8")
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{
+        "cycle-2":{"state":"CLAIMED","claimed_at":"earlier"}}}),encoding="utf-8")
+    builder.finish_grant_lifecycle(grant,{"status":"PR_OPEN","repository":"jweter/rock"})
+    record=json.loads(lifecycle.read_text())["grants"]["cycle-2"]
+    assert record["state"]=="COMPLETED"
+    assert record["result_status"]=="PR_OPEN"
+    assert record["repository"]=="jweter/rock"
+    assert record["finished_at"]
+
+def test_finish_grant_lifecycle_records_failure(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"hands-off-execution-grant.json"
+    grant.write_text(json.dumps({"grant_id":"cycle-3"}),encoding="utf-8")
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{
+        "cycle-3":{"state":"CLAIMED"}}}),encoding="utf-8")
+    builder.finish_grant_lifecycle(grant,{"status":"PREFLIGHT_FAILED","repository":"jweter/rock"})
+    record=json.loads(lifecycle.read_text())["grants"]["cycle-3"]
+    assert record["state"]=="FAILED"
+    assert record["result_status"]=="PREFLIGHT_FAILED"
