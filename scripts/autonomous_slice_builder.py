@@ -1,6 +1,6 @@
 """Idle-gated autonomous bounded-slice builder using local Ollama + Aider."""
 from __future__ import annotations
-import argparse, ctypes, json, os, shutil, subprocess, sys, time
+import argparse, ctypes, hashlib, json, os, shutil, subprocess, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -85,13 +85,15 @@ def ensure_workspace(repo:str,root:Path)->Path:
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
 
-def granted_repositories(path:Path,workspace_root:Path)->set[str]:
-    """Return only repositories belonging to products whose complete grant is still current."""
+def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None)->set[str]:
+    """Return repositories only when grant contract and all certified HEADs are still current."""
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
+        contract=contract_path or (Path(__file__).resolve().parents[1]/"engineering"/"hands-off-evolution.json")
+        contract_digest=hashlib.sha256(contract.read_bytes()).hexdigest()
     except (OSError,json.JSONDecodeError):
         return set()
-    if payload.get("schema_version") != 1:
+    if payload.get("schema_version") != 2 or payload.get("contract_sha256") != contract_digest:
         return set()
     allowed=set()
     for product,value in payload.get("products",{}).items():
