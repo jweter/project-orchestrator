@@ -336,3 +336,11 @@ def test_failure_fingerprint_separates_failure_stages():
     import scripts.autonomous_slice_builder as builder
     detail="same underlying text"
     assert builder.failure_fingerprint("preflight",detail)!=builder.failure_fingerprint("aider_execution",detail)
+
+def test_problem_solving_guidance_is_injected_into_worker_prompt():
+    import scripts.autonomous_slice_builder as builder
+    prompt=builder.prompt_for("jweter/rocksmith-cdlc-generator")
+    assert "Troubleshooting and engineering practice guidance:" in prompt
+    assert "Preserve evidence first" in prompt
+    assert "Form a falsifiable hypothesis" in prompt
+    assert "Never promote a learned behavior" in prompt
