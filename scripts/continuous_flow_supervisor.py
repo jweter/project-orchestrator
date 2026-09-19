@@ -1,6 +1,6 @@
 """Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
-import argparse, hashlib, json, subprocess, sys, time
+import argparse, hashlib, json, subprocess, sys, time, uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -189,7 +189,8 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
     activation=json.loads(activation_bytes)
     contract_path=repo_root/"engineering"/"hands-off-evolution.json"
     contract_bytes=contract_path.read_bytes()
-    grant={"schema_version":3,
+    grant={"schema_version":4,
+           "grant_id":str(uuid.uuid4()),
            "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
            "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
            "products":{
