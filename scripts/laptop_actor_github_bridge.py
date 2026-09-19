@@ -216,13 +216,30 @@ def main() -> int:
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
+    state_dir = Path(args.queue) / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    heartbeat = state_dir / "bridge-heartbeat.json"
+    consecutive_failures = 0
     while True:
+        started = time.time()
         try:
-            cycle(Path(args.queue), Path(args.workspace_root), Path(args.runner))
-        except (OSError, RuntimeError, ValueError, json.JSONDecodeError):
-            pass
+            result = cycle(Path(args.queue), Path(args.workspace_root), Path(args.runner))
+            consecutive_failures = 0
+            status = "HEALTHY"
+            error_class = None
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            consecutive_failures += 1
+            result = None
+            status = "P1_LIVENESS_DEFECT" if consecutive_failures >= 2 else "DEGRADED"
+            error_class = type(exc).__name__
+        atomic = {"updated_at": time.time(), "duration_seconds": time.time()-started,
+                  "status": status, "consecutive_failures": consecutive_failures,
+                  "error_class": error_class, "cycle": result}
+        tmp = heartbeat.with_suffix(".tmp")
+        tmp.write_text(json.dumps(atomic, sort_keys=True, indent=2) + chr(10), encoding="utf-8")
+        tmp.replace(heartbeat)
         if args.once:
-            return 0
+            return 0 if status == "HEALTHY" else 1
         time.sleep(max(30, args.poll_seconds))
 
 
