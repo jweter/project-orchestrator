@@ -12,7 +12,7 @@ except ModuleNotFoundError:
     from autonomous_contract_guard import contract_guard_failure
 
 PORTFOLIO_REPOS=(
-    "jweter/project-orchestrator","jweter/knowledge-engine-core",
+    "jweter/knowledge-engine-core",
     "jweter/knowledge-engine-web","jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator","jweter/Project-Everward",
 )
@@ -50,6 +50,17 @@ def lane_capacity(repo:str)->int:
     # autonomous lane. Two open PRs keep the repository saturated.
     return max(0,2-open_pr_count(repo))
 
+def clean_generated_workspace_artifacts(ws:Path)->None:
+    # Dedicated actor workspaces may retain tool/preflight output between runs.
+    cleanup_aider_artifacts(ws)
+    evidence=ws/"preflight-evidence.json"
+    if evidence.exists():
+        tracked=run(["git","ls-files","--error-unmatch","preflight-evidence.json"],ws)
+        if tracked.returncode==0:
+            run(["git","restore","--source=HEAD","--","preflight-evidence.json"],ws)
+        else:
+            evidence.unlink()
+
 def ensure_workspace(repo:str,root:Path)->Path:
     name=repo.split("/",1)[1]
     ws=root/name
@@ -61,6 +72,7 @@ def ensure_workspace(repo:str,root:Path)->Path:
     origin=run(["git","remote","get-url","origin"],ws)
     if origin.returncode or repo.lower() not in origin.stdout.lower():
         raise RuntimeError("origin mismatch")
+    clean_generated_workspace_artifacts(ws)
     dirty=run(["git","status","--porcelain"],ws)
     if dirty.returncode or dirty.stdout.strip():
         raise RuntimeError("workspace dirty")
@@ -288,7 +300,7 @@ def main()->int:
     try:
         result=build_once(Path(args.workspace_root),state,args.dry_run)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
-        result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__}
+        result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500]}
         atomic_json(state,result)
     print(json.dumps(result,indent=2,sort_keys=True))
     return 0 if result["status"] not in {"P1_BUILDER_FAILURE","BUILDER_FAILED"} else 1
