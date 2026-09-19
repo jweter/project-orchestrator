@@ -9,6 +9,11 @@ def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "remote", "add", "origin",
+         "https://github.com/jweter/test-repo.git"],
+        check=True,
+    )
     for name, content in files.items():
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
