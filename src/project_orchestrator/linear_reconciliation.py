@@ -45,3 +45,21 @@ def pr_references_issue(pr: dict, issue_number: int) -> bool:
     import re
     value="\n".join(str(pr.get(k) or "") for k in ("title","body"))
     return bool(re.search(rf"(?i)(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)?\s*#?{issue_number}\b", value))
+
+
+def choose_queue_refills(items: list[dict]) -> list[str]:
+    """Select one executable backlog item per product with no active queue item."""
+    by_project: dict[str,list[dict]] = {}
+    for item in items:
+        project=item.get("project")
+        if project and project != "Exponential Engine / Project Orchestrator":
+            by_project.setdefault(project,[]).append(item)
+    selected=[]
+    for project, rows in by_project.items():
+        active=any(r.get("status") in {"Todo","In Progress","In Review"} for r in rows)
+        if active: continue
+        candidates=[r for r in rows if r.get("status")=="Backlog" and "Human Required" not in r.get("labels",[]) and "Product Reality" not in r.get("labels",[])]
+        if candidates:
+            candidates.sort(key=lambda r:(r.get("priority_rank",99),r.get("linear_id","")))
+            selected.append(candidates[0]["linear_id"])
+    return selected

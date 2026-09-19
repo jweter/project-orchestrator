@@ -27,3 +27,20 @@ def test_todo_is_fail_closed_default():
     d=reconcile(GithubWorkState())
     assert d.state == "Todo"
     assert set(d.remove_labels) == {"Blocked","Human Required"}
+
+
+def test_queue_refill_selects_one_non_reality_candidate_per_empty_product():
+    from src.project_orchestrator.linear_reconciliation import choose_queue_refills
+    rows=[
+      {"linear_id":"JER-1","project":"A","status":"Done","labels":[]},
+      {"linear_id":"JER-2","project":"A","status":"Backlog","labels":[],"priority_rank":2},
+      {"linear_id":"JER-3","project":"A","status":"Backlog","labels":["Product Reality"],"priority_rank":1},
+      {"linear_id":"JER-4","project":"B","status":"Todo","labels":[]},
+      {"linear_id":"JER-5","project":"B","status":"Backlog","labels":[]},
+    ]
+    assert choose_queue_refills(rows)==["JER-2"]
+
+def test_control_plane_does_not_count_as_product_refill():
+    from src.project_orchestrator.linear_reconciliation import choose_queue_refills
+    rows=[{"linear_id":"JER-9","project":"Exponential Engine / Project Orchestrator","status":"Backlog","labels":[]}]
+    assert choose_queue_refills(rows)==[]

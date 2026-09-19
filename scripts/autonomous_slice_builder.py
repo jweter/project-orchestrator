@@ -278,8 +278,11 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False)->dict[str
     if push.returncode:
         result={"status":"PUSH_FAILED","repository":repo,"head":head,"last_repo_index":idx}
         atomic_json(state_path,result); return result
+    linear_id=os.environ.get("EXPONENTIAL_LINEAR_ID","").strip()
+    linear_ref=f" Linear: {linear_id}." if linear_id else ""
     body=("Autonomous laptop-actor bounded slice. Local Ollama/Aider produced the change; "
-          "canonical exact-head preflight passed. Merge authority remains external and fail-closed.")
+          "canonical exact-head preflight passed. Merge authority remains external and fail-closed."
+          +linear_ref)
     created=subprocess.run(["gh","pr","create","--repo",repo,"--base",main,"--head",branch,
                             "--title","AUTO: bounded autonomous engineering slice","--body",body],
                            cwd=ws,text=True,capture_output=True,check=False)
