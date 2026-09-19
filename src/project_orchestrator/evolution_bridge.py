@@ -369,3 +369,56 @@ def record_verified_repair_lesson(
         }
     )
     return add_lesson(memory, lesson)
+
+
+def compile_verified_capability(
+    *,
+    worker_result: dict[str, Any],
+    evolution_plan: dict[str, Any],
+    mechanism: str,
+    applicability: dict[str, Any],
+) -> dict[str, Any]:
+    """Compile an earned Evolution result into a scheduler-consumable capability.
+
+    Compilation is deliberately narrower than learning-memory persistence: only a
+    measured, gate-cleared EVOLUTION result can become executable scheduler advice.
+    Normal repository verification and promotion gates remain authoritative.
+    """
+
+    result = normalize_worker_result(worker_result)
+    if result["status"] != "PASS":
+        raise EvolutionBridgeError("capability compilation requires a verified PASS worker result")
+    if not isinstance(evolution_plan, dict) or not evolution_plan.get("evolution_eligible"):
+        raise EvolutionBridgeError("capability compilation requires evolution_eligible evidence")
+    if evolution_plan.get("gate_status") != "EVOLUTION_VERIFIED":
+        raise EvolutionBridgeError("capability compilation requires EVOLUTION_VERIFIED gate status")
+    if evolution_plan.get("repository") != result["repository"]:
+        raise EvolutionBridgeError("capability repository does not match worker evidence")
+    if evolution_plan.get("pattern_id") != result["pattern_id"]:
+        raise EvolutionBridgeError("capability pattern does not match worker evidence")
+    if not isinstance(mechanism, str) or not mechanism.strip():
+        raise EvolutionBridgeError("capability mechanism is required")
+    if not isinstance(applicability, dict) or not applicability:
+        raise EvolutionBridgeError("capability applicability is required")
+
+    import hashlib
+    import json
+
+    seed = json.dumps(
+        [result["repository"], result["pattern_id"], mechanism.strip(), applicability],
+        sort_keys=True,
+    )
+    return {
+        "rule_id": "cap-" + hashlib.sha256(seed.encode()).hexdigest()[:12],
+        "repository": result["repository"],
+        "scope": "repository",
+        "mechanism": mechanism.strip(),
+        "applicability": applicability,
+        "evidence_refs": list(evolution_plan.get("verified_evidence_refs", [])),
+        "safety_invariants": list(evolution_plan.get("safety_boundaries", [])),
+        "status": "VERIFIED_RETAINED",
+        "authority": "ADVISORY_TO_SCHEDULER_NORMAL_GATES_REQUIRED",
+        "source_pattern_id": result["pattern_id"],
+        "source_head_sha": result["head_sha"],
+        "measurement_summary": list(evolution_plan.get("measurement_summary", [])),
+    }
