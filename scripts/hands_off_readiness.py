@@ -203,7 +203,9 @@ def main() -> int:
             encoding="utf-8",
         )
     print(rendered, end="")
-    return 0 if report["status"] == "PASS" else 1
+    # Runtime readiness is product-scoped: a failing independent product must not
+    # suppress valid activation evidence for another product.
+    return 0 if any(p["status"] == "PASS" for p in products.values()) else 1
 
 
 if __name__ == "__main__":

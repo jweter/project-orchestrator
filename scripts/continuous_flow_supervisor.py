@@ -74,7 +74,13 @@ def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple
         return False,"READINESS_NOT_GREEN"
     try:
         payload=json.loads(activation.read_text(encoding="utf-8"))
-        heads=payload.get("heads",{})
+        heads={
+            repo: head
+            for product in payload.get("products",{}).values()
+            if isinstance(product,dict) and product.get("enabled") is True
+            for repo,head in product.get("repositories",{}).items()
+            if head
+        }
     except (OSError,json.JSONDecodeError):
         return False,"READINESS_ACTIVATION_UNREADABLE"
     atomic(state_root/"hands-off-expected-heads.json",heads)
