@@ -271,7 +271,8 @@ def test_reconcile_abandoned_claim_quarantines_orphan_actor_branch(tmp_path, mon
     def run(cmd,**kwargs):
         return Result("") if cmd[1:3]==["status","--porcelain"] else Result("actor/autonomous-rock-dead\n")
     monkeypatch.setattr(supervisor.subprocess,"run",run)
-    assert supervisor.reconcile_abandoned_claims(wsroot,state,["g1"])=={"g1":"ORPHAN_BRANCH_QUARANTINED"}
+    # A clean actor branch with no commits beyond origin/main is proven harmless.
+    assert supervisor.reconcile_abandoned_claims(wsroot,state,["g1"])=={"g1":"ORPHAN_NO_DIFF"}
 
 def test_classify_orphan_branch_with_matching_open_pr_is_recoverable(tmp_path, monkeypatch):
     import json
