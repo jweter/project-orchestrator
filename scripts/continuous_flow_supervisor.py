@@ -1,6 +1,6 @@
 """Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
-import argparse, json, subprocess, sys, time
+import argparse, hashlib, json, subprocess, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -183,9 +183,13 @@ def merge_watcher_advanced(state_root:Path)->bool:
     atomic(cursor,event)
     return True
 
-def write_execution_grant(state_root:Path,products:list[str])->Path:
+def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
     activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
-    grant={"schema_version":1,"products":{
+    contract_path=repo_root/"engineering"/"hands-off-evolution.json"
+    contract_bytes=contract_path.read_bytes()
+    grant={"schema_version":2,
+           "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
+           "products":{
         name:{"repositories":activation["products"][name]["repositories"]}
         for name in products}}
     path=state_root/"hands-off-execution-grant.json"
@@ -196,7 +200,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")]
     if products is not None:
-        cmd.extend(["--execution-grant",str(write_execution_grant(state_root,products))])
+        cmd.extend(["--execution-grant",str(write_execution_grant(repo_root,state_root,products))])
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
