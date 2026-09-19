@@ -15,14 +15,29 @@ def test_prompt_forbids_human_and_product_reality_boundaries():
     assert "does not require a human decision" in text
     assert "Do not claim Product Reality" in text
 
-def test_select_repo_rotates_and_skips_open_prs(monkeypatch,tmp_path:Path):
-    monkeypatch.setattr(b,"has_open_pr",lambda repo: repo.endswith("project-orchestrator"))
+def test_select_repo_rotates_and_skips_saturated_repos(monkeypatch,tmp_path:Path):
+    monkeypatch.setattr(b,"lane_capacity",lambda repo: 0 if repo.endswith("project-orchestrator") else 1)
     chosen=b.select_repo(tmp_path/"state.json")
     assert chosen=="jweter/knowledge-engine-core"
 
-def test_select_repo_returns_none_when_every_repo_owned(monkeypatch,tmp_path:Path):
-    monkeypatch.setattr(b,"has_open_pr",lambda repo: True)
+def test_select_repo_returns_none_when_every_repo_saturated(monkeypatch,tmp_path:Path):
+    monkeypatch.setattr(b,"lane_capacity",lambda repo: 0)
     assert b.select_repo(tmp_path/"state.json") is None
+
+def test_one_open_pr_leaves_one_parallel_lane(monkeypatch):
+    monkeypatch.setattr(b,"open_pr_count",lambda repo: 1)
+    assert b.lane_capacity("jweter/knowledge-engine-core")==1
+
+def test_two_open_prs_saturate_repo(monkeypatch):
+    monkeypatch.setattr(b,"open_pr_count",lambda repo: 2)
+    assert b.lane_capacity("jweter/knowledge-engine-core")==0
+
+def test_prompt_excludes_paths_owned_by_open_pr(monkeypatch):
+    from scripts.lane_leases import LaneLease
+    monkeypatch.setattr(b,"open_pr_paths",lambda repo:[LaneLease(repo,"pr-1","x",("src/retrieval.py",),"2026-09-19T00:00:00+00:00")])
+    text=b.prompt_for("jweter/knowledge-engine-core")
+    assert "src/retrieval.py" in text
+    assert "does not edit, rename, delete" in text
 
 
 def test_run_aider_uses_argument_vector_and_local_ollama(monkeypatch,tmp_path):
