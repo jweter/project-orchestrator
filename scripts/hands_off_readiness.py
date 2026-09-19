@@ -115,7 +115,12 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "engineering" / "hands-off-evolution.json",
     )
-    parser.add_argument("--output", type=Path)\n    parser.add_argument(\n        "--activation-state",\n        type=Path,\n        help="Write a fail-closed activation decision bound to audited exact heads.",\n    )
+    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--activation-state",
+        type=Path,
+        help="Write a fail-closed activation decision bound to audited exact heads.",
+    )
     args = parser.parse_args()
 
     try:
