@@ -38,9 +38,10 @@ def test_run_aider_uses_argument_vector_and_local_ollama(monkeypatch,tmp_path):
     assert seen["env"]["OLLAMA_API_BASE"]=="http://127.0.0.1:11434"
 
 
-def test_installer_defines_two_laptop_tasks():
+def test_installer_uses_current_user_startup_supervisor():
     installer=(Path(__file__).resolve().parents[1]/"scripts"/"install_continuous_flow.ps1").read_text(encoding="utf-8")
-    assert "ExponentialEngine-GreenPRMerger" in installer
-    assert "ExponentialEngine-AutonomousBuilder" in installer
-    assert "poll-seconds 60" in installer
-    assert "RepetitionInterval (New-TimeSpan -Minutes 5)" in installer
+    assert '[Environment]::GetFolderPath("Startup")' in installer
+    assert "ExponentialEngine-ContinuousFlow.cmd" in installer
+    assert "continuous_flow_supervisor.py" in installer
+    assert "Green PR merger: 60-second poll" in installer
+    assert "Autonomous builder: 5-minute loop" in installer
