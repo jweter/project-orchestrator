@@ -43,7 +43,7 @@ def _text_corpus(repo: Path, tracked: set[str]) -> str:
     return "\n".join(chunks).lower()
 
 
-def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
+def activation_allowed(report: dict[str, Any]) -> bool:\n    """Return True only for an exact, complete PASS result."""\n    repositories = report.get("repositories")\n    return bool(\n        report.get("status") == "PASS"\n        and isinstance(repositories, list)\n        and repositories\n        and all(r.get("status") == "PASS" and r.get("head") for r in repositories)\n    )\n\n\ndef audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
     repo = repo.resolve()
     result: dict[str, Any] = {
         "repository": str(repo),
@@ -104,7 +104,7 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parents[1] / "engineering" / "hands-off-evolution.json",
     )
-    parser.add_argument("--output", type=Path)
+    parser.add_argument("--output", type=Path)\n    parser.add_argument(\n        "--activation-state",\n        type=Path,\n        help="Write a fail-closed activation decision bound to audited exact heads.",\n    )
     args = parser.parse_args()
 
     try:
