@@ -278,6 +278,35 @@ def classify_orphan_branch(repo:str,ws:Path,branch:str)->tuple[str,dict]:
         return "ORPHAN_LOCAL_COMMIT_UNPUSHED",evidence
     return "ORPHAN_REMOTE_HEAD_MISMATCH",evidence
 
+def resume_orphan_branch(repo:str,ws:Path,branch:str,classification:str,evidence:dict)->str:
+    """Resume only exact-head committed orphan work; never repair or rewrite history here."""
+    expected=evidence.get("head_sha","")
+    actual=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+    if actual.returncode or actual.stdout.strip()!=expected:
+        return "RECOVERY_HEAD_CHANGED"
+    if classification=="ORPHAN_LOCAL_COMMIT_UNPUSHED":
+        preflight=subprocess.run([sys.executable,"scripts/preflight.py"],cwd=ws,text=True,capture_output=True,check=False)
+        if preflight.returncode:
+            return "RECOVERY_PREFLIGHT_FAILED"
+        pushed=subprocess.run(["git","push","-u","origin",branch],cwd=ws,text=True,capture_output=True,check=False)
+        if pushed.returncode:
+            return "RECOVERY_PUSH_FAILED"
+        remote=subprocess.run(["git","ls-remote","--heads","origin",branch],cwd=ws,text=True,capture_output=True,check=False)
+        if remote.returncode or not remote.stdout.strip() or remote.stdout.split()[0]!=expected:
+            return "RECOVERY_REMOTE_HEAD_MISMATCH"
+        classification="ORPHAN_PUSHED_NO_PR"
+    if classification=="ORPHAN_PUSHED_NO_PR":
+        remote_expected=evidence.get("remote_head_sha") or expected
+        remote=subprocess.run(["git","ls-remote","--heads","origin",branch],cwd=ws,text=True,capture_output=True,check=False)
+        if remote.returncode or not remote.stdout.strip() or remote.stdout.split()[0]!=remote_expected or remote_expected!=expected:
+            return "RECOVERY_REMOTE_HEAD_MISMATCH"
+        created=subprocess.run(["gh","pr","create","--repo",repo,"--base","main","--head",branch,
+                                "--title","AUTO: recovered autonomous engineering slice",
+                                "--body","Recovered exact-head autonomous work after worker lease expiry. Local preflight and remote SHA were verified before PR creation."],
+                               cwd=ws,text=True,capture_output=True,check=False)
+        return "RECOVERY_PR_OPENED" if created.returncode==0 else "RECOVERY_PR_CREATE_FAILED"
+    return classification
+
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str])->dict[str,str]:
     """Inspect abandoned workspaces without deleting evidence; only clean main is auto-recoverable."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -311,8 +340,11 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
             classification,evidence=classify_orphan_branch(repo,ws,current_branch)
             outcomes[grant_id]=classification
             record["recovery_evidence"]=evidence
-            if classification in {"ORPHAN_NO_DIFF","ORPHAN_PR_RECOVERABLE"}:
-                record["recovery_state"]="RECOVERABLE"
+            if classification in {"ORPHAN_LOCAL_COMMIT_UNPUSHED","ORPHAN_PUSHED_NO_PR"}:
+                classification=resume_orphan_branch(repo,ws,current_branch,classification,evidence)
+                outcomes[grant_id]=classification
+            if classification in {"ORPHAN_NO_DIFF","ORPHAN_PR_RECOVERABLE","RECOVERY_PR_OPENED"}:
+                record["recovery_state"]="RECOVERED"
                 record["recovered_at"]=datetime.now(UTC).isoformat()
         else:
             outcomes[grant_id]="CLEAN_WORKSPACE_RECOVERED"
