@@ -352,6 +352,24 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     atomic_json(state_path,result)
     return result
 
+def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
+    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    try:
+        grant=json.loads(grant_path.read_text(encoding="utf-8"))
+        state=json.loads(lifecycle.read_text(encoding="utf-8"))
+        grant_id=grant["grant_id"]
+        record=state["grants"][grant_id]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return
+    record["state"]="COMPLETED" if result.get("status") in {
+        "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
+    } else "FAILED"
+    record["finished_at"]=datetime.now(UTC).isoformat()
+    record["result_status"]=result.get("status","UNKNOWN")
+    if result.get("repository"):
+        record["repository"]=result["repository"]
+    atomic_json(lifecycle,state)
+
 def main()->int:
     parser=argparse.ArgumentParser()
     parser.add_argument("--workspace-root",required=True)
@@ -372,6 +390,8 @@ def main()->int:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
         result=build_once(workspace,state,args.dry_run,eligible,eligible_repos)
+        if args.execution_grant:
+            finish_grant_lifecycle(args.execution_grant,result)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
         result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500]}
         atomic_json(state,result)
