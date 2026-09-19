@@ -7,8 +7,8 @@ def test_current_green_activation_is_allowed() -> None:
 
 
 def test_stale_head_is_rejected() -> None:
-    state = {"enabled": True, "reason": "READINESS_PASS", "heads": {"repo": "abc"}}
-    assert validate_activation(state, {"repo": "def"}) == (False, "ACTIVATION_HEADS_STALE")
+    state = {"schema_version": 2, "enabled": True, "reason": "READINESS_PASS", "products": {"test": {"enabled": True, "repositories": {"repo": "abc"}}}}
+    assert validate_activation(state, {"repo": "def"}) == (False, "NO_CURRENT_PRODUCTS")
 
 
 def test_disabled_or_missing_evidence_is_rejected() -> None:
