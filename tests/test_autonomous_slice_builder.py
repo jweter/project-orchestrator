@@ -111,7 +111,7 @@ def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeyp
     class Result:
         returncode=0; stdout="moved\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_products(grant,tmp_path)==set()
+    assert builder.granted_repositories(grant,tmp_path)==set()
 
 def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     import json
@@ -123,4 +123,11 @@ def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     class Result:
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_products(grant,tmp_path)=={"rocksmith"}
+    assert builder.granted_repositories(grant,tmp_path)=={"jweter/rocksmith-cdlc-generator"}
+
+def test_grant_native_selection_needs_no_product_mapping(tmp_path, monkeypatch):
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
+    repo="jweter/future-product-repo"
+    monkeypatch.setattr(builder,"PORTFOLIO_REPOS",(repo,))
+    assert builder.select_repo(tmp_path/"state.json",eligible_repos={repo})==repo
