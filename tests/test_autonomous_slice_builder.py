@@ -108,8 +108,10 @@ def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeyp
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
     contract=tmp_path/"contract.json"; contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}',encoding="utf-8")
     digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+    activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
+    activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="moved\n"
@@ -123,8 +125,10 @@ def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
     contract=tmp_path/"contract.json"; contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}',encoding="utf-8")
     digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+    activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
+    activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="certified\n"
@@ -157,8 +161,10 @@ def test_execution_grant_rejects_contract_drift(tmp_path, monkeypatch):
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
     contract=tmp_path/"contract.json"; contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}',encoding="utf-8")
     digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+    activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
+    activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator","jweter/extra"]}}',encoding="utf-8")
     class Result:
@@ -173,8 +179,10 @@ def test_execution_grant_rejects_undeclared_product_even_with_valid_contract_dig
     contract=tmp_path/"contract.json"
     contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}',encoding="utf-8")
     digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+    activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
+    activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{
+    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{
         "ghost":{"repositories":{"jweter/ghost":"abc"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="abc\n"
@@ -188,10 +196,32 @@ def test_execution_grant_rejects_incomplete_declared_product_membership(tmp_path
     contract=tmp_path/"contract.json"
     contract.write_text('{"products":{"knowledge-engine":["jweter/knowledge-engine-core","jweter/knowledge-engine-web"]}}',encoding="utf-8")
     digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+    activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
+    activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{
+    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{
         "knowledge-engine":{"repositories":{"jweter/knowledge-engine-core":"abc"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="abc\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
     assert builder.granted_repositories(grant,tmp_path,contract)==set()
+
+def test_execution_grant_rejects_activation_revocation(tmp_path, monkeypatch):
+    import hashlib, json
+    import scripts.autonomous_slice_builder as builder
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    contract=tmp_path/"contract.json"
+    contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}',encoding="utf-8")
+    contract_digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+    activation=tmp_path/"hands-off-activation.json"
+    activation.write_text('{"schema_version":2,"reason":"READINESS_PASS"}',encoding="utf-8")
+    activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":contract_digest,
+        "activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
+        "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
+    activation.write_text('{"schema_version":2,"reason":"READINESS_NOT_PASS"}',encoding="utf-8")
+    class Result:
+        returncode=0; stdout="certified\n"
+    monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
+    assert builder.granted_repositories(grant,tmp_path,contract,activation)==set()
