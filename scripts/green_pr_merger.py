@@ -93,7 +93,14 @@ def cycle(dry_run:bool=False)->list[dict[str,Any]]:
     for repo in PORTFOLIO_REPOS:
         for pr in open_prs(repo):
             if pr.get("isDraft"):
-                results.append(promote(repo,pr,dry_run))
+                promotion=promote(repo,pr,dry_run)
+                results.append(promotion)
+                # Promotion changes GitHub state. Re-fetch the exact PR before any
+                # merge decision so a stale draft snapshot can never authorize merge.
+                if promotion.get("promoted") and not dry_run:
+                    refreshed=gh_json(["pr","view",str(pr["number"]),"--repo",repo,"--json",
+                        "number,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"])
+                    results.append(merge(repo,refreshed,dry_run))
             else:
                 results.append(merge(repo,pr,dry_run))
     return results
