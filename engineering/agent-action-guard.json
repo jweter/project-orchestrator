@@ -55,5 +55,17 @@
     "speculative retry loops",
     "paid-service usage",
     "first-pass verification degradation as throughput rises"
-  ]
+  ],
+  "examples": {
+    "max_compute_seconds_without_approval": "Maximum compute time allowed without explicit approval (e.g., 3600 seconds for 1 hour)",
+    "hard_compute_seconds": "Hard limit on compute time (e.g., 14400 seconds for 4 hours)",
+    "max_network_calls_without_approval": "Maximum number of network calls allowed without explicit approval (e.g., 50 calls)",
+    "hard_network_calls": "Hard limit on network calls (e.g., 500 calls)",
+    "max_write_operations_without_approval": "Maximum number of write operations allowed without explicit approval (e.g., 10 operations)",
+    "hard_write_operations": "Hard limit on write operations (e.g., 100 operations)",
+    "max_concurrency_without_approval": "Maximum number of concurrent operations allowed without explicit approval (e.g., 4 operations)",
+    "hard_concurrency": "Hard limit on concurrency (e.g., 12 operations)",
+    "max_external_cost_usd_without_approval": "Maximum external cost allowed without explicit approval (e.g., $0 for no external cost)",
+    "hard_external_cost_usd": "Hard limit on external cost (e.g., $50 for a maximum of $50 external cost)"
+  }
 }
