@@ -1,0 +1,88 @@
+"""Conservative always-on green-PR merger for the portfolio."""
+from __future__ import annotations
+import json, re, subprocess
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+PORTFOLIO_REPOS=(
+    "jweter/project-orchestrator","jweter/knowledge-engine-core",
+    "jweter/knowledge-engine-web","jweter/knowledge-engine-ai",
+    "jweter/rocksmith-cdlc-generator","jweter/Project-Everward",
+)
+PASS_CONCLUSIONS={"SUCCESS","NEUTRAL","SKIPPED"}
+ALLOWED_AUTHORS={"jweter","dependabot[bot]"}
+BLOCKING_RE=re.compile(r"(?i)(?:\bP[0-3]\b|blocking|must fix|security|incorrect|regression|data loss)")
+MIN_PR_AGE_SECONDS=120
+
+@dataclass(frozen=True)
+class MergeDecision:
+    eligible: bool
+    reason: str
+
+def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=9999)->MergeDecision:
+    if pr.get("isDraft"): return MergeDecision(False,"DRAFT")
+    if pr.get("author",{}).get("login") not in ALLOWED_AUTHORS: return MergeDecision(False,"AUTHOR_NOT_ALLOWED")
+    if age_seconds < MIN_PR_AGE_SECONDS: return MergeDecision(False,"REVIEW_SETTLE_WINDOW")
+    if pr.get("mergeStateStatus")!="CLEAN": return MergeDecision(False,f"MERGE_STATE_{pr.get('mergeStateStatus','UNKNOWN')}")
+    if pr.get("reviewDecision") in {"CHANGES_REQUESTED","REVIEW_REQUIRED"}: return MergeDecision(False,f"REVIEW_{pr['reviewDecision']}")
+    if blocking_findings: return MergeDecision(False,"BLOCKING_REVIEW_FINDING")
+    checks=pr.get("statusCheckRollup")
+    if not isinstance(checks,list) or not checks: return MergeDecision(False,"CHECKS_MISSING")
+    for check in checks:
+        status=str(check.get("status","")).upper()
+        conclusion=str(check.get("conclusion","")).upper()
+        if status!="COMPLETED": return MergeDecision(False,"CHECKS_PENDING")
+        if conclusion not in PASS_CONCLUSIONS: return MergeDecision(False,f"CHECK_{conclusion or 'UNKNOWN'}")
+    return MergeDecision(True,"GREEN")
+
+def gh_json(args:list[str])->Any:
+    p=subprocess.run(["gh",*args],text=True,capture_output=True,check=False)
+    if p.returncode: raise RuntimeError(p.stderr.strip() or "gh failed")
+    return json.loads(p.stdout)
+
+def open_prs(repo:str)->list[dict[str,Any]]:
+    fields="number,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"
+    return gh_json(["pr","list","--repo",repo,"--state","open","--json",fields,"--limit","100"])
+
+def _age_seconds(created_at:str)->float:
+    created=datetime.fromisoformat(created_at.replace("Z","+00:00"))
+    return max(0.0,(datetime.now(UTC)-created).total_seconds())
+
+def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
+    comments=gh_json(["api",f"repos/{repo}/pulls/{number}/comments"])
+    for comment in comments:
+        body=str(comment.get("body",""))
+        commit=str(comment.get("commit_id") or "")
+        if commit != head_sha:
+            continue
+        if BLOCKING_RE.search(body):
+            return True
+    return False
+def merge(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
+    head=str(pr.get("headRefOid") or "")
+    findings=blocking_review_findings(repo,int(pr["number"]),head)
+    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])))
+    result={"repository":repo,"pr":pr["number"],"head":head,"decision":decision.reason,"merged":False}
+    if not decision.eligible or dry_run:return result
+    cmd=["gh","pr","merge",str(pr["number"]),"--repo",repo,"--squash","--delete-branch","--match-head-commit",head]
+    proc=subprocess.run(cmd,text=True,capture_output=True,check=False)
+    result["merged"]=proc.returncode==0
+    result["merge_result"]="SUCCESS" if proc.returncode==0 else "FAILED"
+    if proc.returncode:
+        result["error_class"]="GH_MERGE_FAILED"
+    return result
+
+def cycle(dry_run:bool=False)->list[dict[str,Any]]:
+    results=[]
+    for repo in PORTFOLIO_REPOS:
+        for pr in open_prs(repo):
+            results.append(merge(repo,pr,dry_run))
+    return results
+
+if __name__=="__main__":
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--dry-run",action="store_true")
+    args=parser.parse_args()
+    print(json.dumps(cycle(args.dry_run),indent=2))

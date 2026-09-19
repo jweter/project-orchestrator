@@ -59,7 +59,7 @@ DETERMINISTIC REPAIR ENGINE
 For preflight/CI failures, use the deterministic repair engine before consuming an hourly cycle on trivial machine-fixable defects. Fingerprint the first meaningful failure into a fixed class. Auto-remediation is permitted only for FORMAT, IMPORT_SORT, or LINT_SAFE_FIX and only when the affected repository explicitly authorizes the exact command. TEST_FAILURE, SECURITY, DEPENDENCY, TYPE_CHECK, GOVERNANCE, PROVENANCE, PRODUCT_REALITY, ENVIRONMENT, and UNKNOWN fail closed. After any repair rerun full exact-head preflight. Repeated verified fingerprints should become earlier repository-native prevention when practical.
 
 MERGE
-Merge only verified GREEN PRs with all currently required checks passing, mergeability resolved, required reviews satisfied, blocking comments resolved, and no material architecture/security/licensing/provenance/privacy/policy concern. Verify merge success.
+Merge only verified GREEN PRs with all currently required checks passing, mergeability resolved, required reviews satisfied, blocking comments resolved, and no material architecture/security/licensing/provenance/privacy/policy concern. Verify merge success. The dedicated ExponentialEngine-GreenPRMerger laptop actor is authorized as routine central merge authority when it independently revalidates these gates, uses the exact observed head SHA, and fails closed on missing/pending/uncertain evidence.
 
 PRODUCT REALITY
 Human validation, packaged-app tests, listening/visual checks, Unreal playtests, real-game import/playback, and similar evidence are separate from implementation verification unless governing documents explicitly make them pre-merge. Never fabricate PASS/FAIL. Post-merge Product Reality debt stays visible but does not freeze independent safe engineering.
@@ -83,7 +83,7 @@ THROUGHPUT FLOOR
 When there are no active P0-P3 emergencies, a run must produce concrete engineering advancement whenever safe eligible work exists. The portfolio-level floor is not satisfied merely because one product moved while another eligible independent product sat idle. Product Advancement Rate target is 100% of explicitly eligible independent product projects. Repeated no-advancement for the same reason on two consecutive runs is P1 orchestration defect. Any eligible-but-idle product in a run is also an orchestration defect requiring diagnosis before passive triage repeats.
 
 PARALLEL SPECIALIST EXECUTION
-After live triage and conflict analysis, reserve concurrent specialist lanes for Knowledge Engine, Rocksmith, and Everward. Reservations are ephemeral projections of live ownership. Specialists may inspect, implement, repair within authority, run exact-head preflight, and prepare Ready PRs after PREFLIGHT_GREEN. Specialists never merge. The central orchestrator remains single merge authority and revalidates exact head, required fresh PR CI, reviews/comments, mergeability, architecture/security/licensing/provenance/privacy.
+After live triage and conflict analysis, reserve concurrent specialist lanes for Knowledge Engine, Rocksmith, and Everward. Reservations are ephemeral projections of live ownership. Specialists may inspect, implement, repair within authority, run exact-head preflight, and prepare Ready PRs after PREFLIGHT_GREEN. Specialists never merge. Central merge authority is held by the orchestrator and the dedicated ExponentialEngine-GreenPRMerger laptop actor; either must revalidate exact head, required fresh PR CI, reviews/comments, mergeability, architecture/security/licensing/provenance/privacy before merge.
 
 Knowledge Engine uses one coordinated parent lane with Core/Web/AI sub-lanes. Shared API/schema/model/serialized/config/retrieval/provenance changes require compatibility clearance. Independent Rocksmith and Everward lanes run concurrently when ownership/dependency checks are clear.
 
@@ -113,6 +113,9 @@ Preserve documented design pillars, deterministic simulation, player agency, dif
 
 HUMAN ESCALATION
 Ask Jeremy only for fundamental product direction, major unauthorized architecture changes, paid/meaningful recurring cost, license changes, destructive migrations, security/privacy boundary changes, credentials/secrets requiring him, release/publishing authorization, irreversible actions, or genuinely ambiguous requirements with materially different outcomes.
+
+LAPTOP CONTINUATION AUTHORITY
+The ExponentialEngine-AutonomousBuilder laptop actor is authorized to continue ordinary bounded P4/P5 engineering without Jeremy issuing a manual Continue prompt. It must remain idle-gated, create governed feature branches, avoid active/open-PR ownership conflicts, preserve repository-local authority, refuse protected governance/security/workflow/roadmap/architecture changes, require exact-head canonical preflight GREEN before opening a PR, and never merge its own work. Failed generation or failed preflight does not become a PR.
 
 SCHEDULER PERSISTENCE
 NEVER disable, pause, suspend, or delete DoWork Hourly unless Jeremy explicitly instructs it.
