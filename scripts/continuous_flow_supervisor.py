@@ -36,11 +36,11 @@ def builder_health(state_root:Path,returncode:int)->tuple[bool,str]:
     degraded={"P1_BUILDER_FAILURE","BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
     return status not in degraded,status
 
-def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str,list[str]]:
+def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str,list[str],list[str]]:
     activation=state_root/"hands-off-activation.json"
     expected=state_root/"hands-off-expected-heads.json"
     if not activation.exists() or not expected.exists():
-        return False,"ACTIVATION_EVIDENCE_MISSING",[]
+        return False,"ACTIVATION_EVIDENCE_MISSING",[],[]
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"evolution_activation_gate.py"),
         "--activation-state",str(activation),"--expected-heads",str(expected)],
         cwd=repo_root,text=True,capture_output=True,check=False)
@@ -48,12 +48,16 @@ def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str,list[st
     try:
         payload=json.loads(p.stdout)
         reason=payload.get("reason","ACTIVATION_UNKNOWN")
-        products=sorted(name for name,result in payload.get("products",{}).items()
+        results=payload.get("products",{})
+        products=sorted(name for name,result in results.items()
                         if isinstance(result,dict) and result.get("allowed") is True)
+        stale=sorted(name for name,result in results.items()
+                     if isinstance(result,dict) and result.get("reason")=="PRODUCT_HEADS_STALE")
     except (json.JSONDecodeError,TypeError):
         reason="ACTIVATION_UNREADABLE"
         products=[]
-    return p.returncode==0 and bool(products),reason,products
+        stale=[]
+    return p.returncode==0 and bool(products),reason,products,stale
 
 def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str]:
     """Regenerate exact-head activation evidence without conversational intervention."""
@@ -85,6 +89,26 @@ def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple
         return False,"READINESS_ACTIVATION_UNREADABLE"
     atomic(state_root/"hands-off-expected-heads.json",heads)
     return True,"READINESS_REFRESHED"
+
+def recertify_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str)->tuple[bool,str]:
+    """Audit one stale product and merge only its new authority."""
+    repos=[
+        workspace_root/"knowledge-engine-core", workspace_root/"knowledge-engine-web",
+        workspace_root/"knowledge-engine-ai", workspace_root/"rocksmith-cdlc-generator",
+        workspace_root/"Project-Everward",
+    ]
+    partial=state_root/f"hands-off-recertify-{product}.json"
+    report=state_root/f"hands-off-readiness-{product}.json"
+    cmd=[sys.executable,str(repo_root/"scripts"/"hands_off_readiness.py"),
+         *[str(path) for path in repos],"--product",product,
+         "--output",str(report),"--activation-state",str(partial)]
+    p=subprocess.run(cmd,cwd=repo_root,text=True,capture_output=True,check=False)
+    (state_root/f"recertify-{product}-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    try:
+        payload=json.loads(partial.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError):
+        return False,"RECERTIFICATION_UNREADABLE"
+    return merge_product_recertification(state_root,product,payload)
 
 def merge_product_recertification(state_root:Path,product:str,partial:dict)->tuple[bool,str]:
     """Atomically replace one product's authority while preserving unrelated products."""
@@ -157,11 +181,15 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
-        authorized,activation_reason,products=evolution_authorized(repo,state)
-        if not authorized and activation_reason in {"ACTIVATION_EVIDENCE_MISSING","ACTIVATION_HEADS_STALE"}:
+        authorized,activation_reason,products,stale_products=evolution_authorized(repo,state)
+        if stale_products:
+            for product in stale_products:
+                recertify_product(repo,workspace,state,product)
+            authorized,activation_reason,products,stale_products=evolution_authorized(repo,state)
+        if not authorized and activation_reason=="ACTIVATION_EVIDENCE_MISSING":
             refreshed,refresh_reason=refresh_readiness(repo,workspace,state)
             if refreshed:
-                authorized,activation_reason,products=evolution_authorized(repo,state)
+                authorized,activation_reason,products,stale_products=evolution_authorized(repo,state)
             else:
                 activation_reason=refresh_reason
         products=products if authorized else []
