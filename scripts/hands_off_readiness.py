@@ -43,7 +43,18 @@ def _text_corpus(repo: Path, tracked: set[str]) -> str:
     return "\n".join(chunks).lower()
 
 
-def activation_allowed(report: dict[str, Any]) -> bool:\n    """Return True only for an exact, complete PASS result."""\n    repositories = report.get("repositories")\n    return bool(\n        report.get("status") == "PASS"\n        and isinstance(repositories, list)\n        and repositories\n        and all(r.get("status") == "PASS" and r.get("head") for r in repositories)\n    )\n\n\ndef audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
+def activation_allowed(report: dict[str, Any]) -> bool:
+    """Return True only for an exact, complete PASS result."""
+    repositories = report.get("repositories")
+    return bool(
+        report.get("status") == "PASS"
+        and isinstance(repositories, list)
+        and repositories
+        and all(r.get("status") == "PASS" and r.get("head") for r in repositories)
+    )
+
+
+def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
     repo = repo.resolve()
     result: dict[str, Any] = {
         "repository": str(repo),
