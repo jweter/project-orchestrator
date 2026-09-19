@@ -18,7 +18,8 @@ $Line = '@echo off' + [Environment]::NewLine +
 Set-Content -Path $Launcher -Value $Line -Encoding ASCII
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like "*continuous_flow_supervisor.py*" -and $_.ProcessId -ne $PID } |
   ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Start-Process -FilePath $Python -ArgumentList @($Supervisor,"--repo-root",$RepoRoot,"--workspace-root",$WorkspaceRoot,"--state-root",$StateRoot) -WorkingDirectory $RepoRoot -WindowStyle Hidden
+$ArgsLine = '"' + $Supervisor + '" --repo-root "' + $RepoRoot + '" --workspace-root "' + $WorkspaceRoot + '" --state-root "' + $StateRoot + '"'
+Start-Process -FilePath $Python -ArgumentList $ArgsLine -WorkingDirectory $RepoRoot -WindowStyle Hidden
 Write-Host "CONTINUOUS LAPTOP FLOW INSTALLED (CURRENT USER)" -ForegroundColor Green
 Write-Host "Startup launcher: $Launcher"
 Write-Host "Green PR merger: 60-second poll"
