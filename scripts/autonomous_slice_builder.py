@@ -85,6 +85,30 @@ def ensure_workspace(repo:str,root:Path)->Path:
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
 
+def granted_products(path:Path,workspace_root:Path)->set[str]:
+    """Fail closed unless every repository in a product grant is still at its certified HEAD."""
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError):
+        return set()
+    if payload.get("schema_version") != 1:
+        return set()
+    allowed=set()
+    for product,value in payload.get("products",{}).items():
+        repositories=value.get("repositories",{}) if isinstance(value,dict) else {}
+        if not repositories:
+            continue
+        current=True
+        for repo,expected in repositories.items():
+            ws=workspace_root/repo.split("/",1)[-1]
+            head=run(["git","rev-parse","HEAD"],ws) if ws.is_dir() else None
+            if head is None or head.returncode or head.stdout.strip()!=expected:
+                current=False
+                break
+        if current:
+            allowed.add(product)
+    return allowed
+
 def select_repo(state_path:Path,eligible_products:set[str]|None=None)->str|None:
     prior=-1
     if state_path.exists():
@@ -307,12 +331,16 @@ def main()->int:
     parser.add_argument("--state",required=True)
     parser.add_argument("--dry-run",action="store_true")
     parser.add_argument("--eligible-products",default=None,
-                        help="Comma-separated product IDs authorized by Hands-Off activation")
+                        help="Legacy manual/dev product filter")
+    parser.add_argument("--execution-grant",type=Path,
+                        help="Exact-head autonomous execution grant")
     args=parser.parse_args()
     state=Path(args.state)
     try:
-        eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
-        result=build_once(Path(args.workspace_root),state,args.dry_run,eligible)
+        workspace=Path(args.workspace_root)
+        eligible=granted_products(args.execution_grant,workspace) if args.execution_grant else (
+            None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p})
+        result=build_once(workspace,state,args.dry_run,eligible)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
         result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500]}
         atomic_json(state,result)
