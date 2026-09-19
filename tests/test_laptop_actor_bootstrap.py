@@ -78,6 +78,11 @@ def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, 
         lambda *_: cycles.append(True) or 0,
     )
     monkeypatch.setattr(bootstrap.time, "sleep", lambda value: sleeps.append(value))
+    monkeypatch.setattr(
+        bootstrap,
+        "system_resource_snapshot",
+        lambda: {"memory_percent": 10.0, "disk_free_gb": 100.0},
+    )
 
     assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60) == 0
     assert len(updates) == 1
