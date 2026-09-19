@@ -51,6 +51,31 @@ def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str]:
         reason="ACTIVATION_UNREADABLE"
     return p.returncode==0,reason
 
+def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str]:
+    """Regenerate exact-head activation evidence without conversational intervention."""
+    repos=[
+        workspace_root/"knowledge-engine-core", workspace_root/"knowledge-engine-web",
+        workspace_root/"knowledge-engine-ai", workspace_root/"rocksmith-cdlc-generator",
+        workspace_root/"Project-Everward",
+    ]
+    if not all(path.is_dir() for path in repos):
+        return False,"READINESS_WORKSPACE_INCOMPLETE"
+    activation=state_root/"hands-off-activation.json"
+    report=state_root/"hands-off-readiness.json"
+    cmd=[sys.executable,str(repo_root/"scripts"/"hands_off_readiness.py"),
+         *[str(path) for path in repos],"--output",str(report),"--activation-state",str(activation)]
+    p=subprocess.run(cmd,cwd=repo_root,text=True,capture_output=True,check=False)
+    (state_root/"readiness-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    if p.returncode!=0:
+        return False,"READINESS_NOT_GREEN"
+    try:
+        payload=json.loads(activation.read_text(encoding="utf-8"))
+        heads=payload.get("heads",{})
+    except (OSError,json.JSONDecodeError):
+        return False,"READINESS_ACTIVATION_UNREADABLE"
+    atomic(state_root/"hands-off-expected-heads.json",heads)
+    return True,"READINESS_REFRESHED"
+
 def request_immediate_builder(state_root:Path)->None:
     """Record that PR lifecycle progress should immediately feed the next build cycle."""
     atomic(state_root/"continuation-request.json",{
@@ -100,6 +125,12 @@ def main()->int:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
         authorized,activation_reason=evolution_authorized(repo,state)
+        if not authorized and activation_reason in {"ACTIVATION_EVIDENCE_MISSING","ACTIVATION_HEADS_STALE"}:
+            refreshed,refresh_reason=refresh_readiness(repo,workspace,state)
+            if refreshed:
+                authorized,activation_reason=evolution_authorized(repo,state)
+            else:
+                activation_reason=refresh_reason
         rc=run_builder(repo,workspace,state) if authorized else 3
         builder_ok,builder_status=builder_health(state,rc)
         lifecycle_advanced=merge_watcher_advanced(state)

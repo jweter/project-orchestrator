@@ -53,3 +53,9 @@ def test_new_merge_event_advances_after_previous_consumed(tmp_path):
     assert merge_watcher_advanced(tmp_path) is True
     path.write_text(json.dumps({"updated_at_utc":"t2","results":[{"repository":"r","pr":2,"head":"b","merged":True}]}),encoding="utf-8")
     assert merge_watcher_advanced(tmp_path) is True
+
+def test_refresh_readiness_fails_closed_for_incomplete_workspace(tmp_path):
+    from scripts.continuous_flow_supervisor import refresh_readiness
+    ok,reason=refresh_readiness(tmp_path,tmp_path/"workspace",tmp_path/"state")
+    assert ok is False
+    assert reason=="READINESS_WORKSPACE_INCOMPLETE"
