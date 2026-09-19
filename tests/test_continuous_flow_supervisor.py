@@ -206,3 +206,16 @@ def test_recover_stale_grant_claims_never_reopens_terminal_claim(tmp_path):
         "done":{"state":"COMPLETED","claimed_at":old},
         "failed":{"state":"FAILED","claimed_at":old}}}),encoding="utf-8")
     assert supervisor.recover_stale_grant_claims(tmp_path,now)==[]
+
+def test_recover_stale_grant_claims_uses_last_heartbeat(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,9,19,23,0,tzinfo=UTC)
+    old=(now-timedelta(hours=2)).isoformat()
+    fresh=(now-timedelta(seconds=5)).isoformat()
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
+        "state":"CLAIMED","claimed_at":old,"last_heartbeat_at":fresh}}}),encoding="utf-8")
+    assert supervisor.recover_stale_grant_claims(tmp_path,now)==[]
+    assert json.loads(path.read_text())["grants"]["g1"]["state"]=="CLAIMED"

@@ -228,12 +228,12 @@ def recover_stale_grant_claims(state_root:Path,now:datetime|None=None)->list[str
         if not isinstance(record,dict) or record.get("state")!="CLAIMED":
             continue
         try:
-            claimed=datetime.fromisoformat(record["claimed_at"])
-            if claimed.tzinfo is None:
-                claimed=claimed.replace(tzinfo=UTC)
+            heartbeat=datetime.fromisoformat(record.get("last_heartbeat_at",record["claimed_at"]))
+            if heartbeat.tzinfo is None:
+                heartbeat=heartbeat.replace(tzinfo=UTC)
         except (KeyError,TypeError,ValueError):
             continue
-        age=(current-claimed).total_seconds()
+        age=(current-heartbeat).total_seconds()
         if age > CLAIM_LEASE_SECONDS:
             record["state"]="ABANDONED"
             record["finished_at"]=current.isoformat()
