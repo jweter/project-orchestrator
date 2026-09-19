@@ -7,8 +7,8 @@ This is the durable execution ledger. Update it whenever a slice changes state; 
 - Wave-1 corpus — OpenSpec, Spec Kit, Hermes Agent, Headroom, Docling, PageIndex, Scrapling, mem0, Fabric, AI Engineering Hub recorded.
 
 ## WORKING ON
-- Progress Tracker v2 — machine-checkable DONE / WORKING / TODO / BLOCKED state, evidence requirement, deterministic next-work selection.
-- OpenSpec + Spec Kit architecture extraction — map useful spec/change/repair primitives onto Daedalus without duplicating the control plane.
+- Progress Tracker v2 — machine-checkable DONE / WORKING / TODO / BLOCKED state. Evidence: merged PR #164; 24 focused tests and canonical preflight green.
+- OpenSpec + Spec Kit architecture extraction — native artifact graph implemented on branch orchestrator/spec-primitives-v3; next gate: focused tests + canonical preflight.
 
 ## STILL TO DO
 - Hermes Agent learning-loop comparison against Capability Compiler.
