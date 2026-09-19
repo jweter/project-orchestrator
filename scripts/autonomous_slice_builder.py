@@ -11,6 +11,11 @@ except ModuleNotFoundError:
     from lane_leases import open_pr_paths
     from autonomous_contract_guard import contract_guard_failure
 
+PRODUCT_REPOS={
+    "knowledge-engine": ("jweter/knowledge-engine-core","jweter/knowledge-engine-web","jweter/knowledge-engine-ai"),
+    "rocksmith": ("jweter/rocksmith-cdlc-generator",),
+    "everward": ("jweter/Project-Everward",),
+}
 PORTFOLIO_REPOS=(
     "jweter/knowledge-engine-core",
     "jweter/knowledge-engine-web","jweter/knowledge-engine-ai",
@@ -80,15 +85,18 @@ def ensure_workspace(repo:str,root:Path)->Path:
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
 
-def select_repo(state_path:Path)->str|None:
+def select_repo(state_path:Path,eligible_products:set[str]|None=None)->str|None:
     prior=-1
     if state_path.exists():
         try: prior=int(json.loads(state_path.read_text(encoding="utf-8")).get("last_repo_index",-1))
         except Exception: prior=-1
+    eligible_repos=set(PORTFOLIO_REPOS) if eligible_products is None else {
+        repo for product in eligible_products for repo in PRODUCT_REPOS.get(product,())
+    }
     for offset in range(1,len(PORTFOLIO_REPOS)+1):
         idx=(prior+offset)%len(PORTFOLIO_REPOS)
         repo=PORTFOLIO_REPOS[idx]
-        if lane_capacity(repo)>0:
+        if repo in eligible_repos and lane_capacity(repo)>0:
             return repo
     return None
 
@@ -208,11 +216,11 @@ def atomic_json(path:Path,payload:dict[str,Any])->None:
     tmp=path.with_suffix(".tmp")
     tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     tmp.replace(path)
-def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False)->dict[str,Any]:
+def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
     if idle is not None and idle<MIN_IDLE_SECONDS:
         return {"status":"USER_ACTIVE","idle_seconds":idle}
-    repo=select_repo(state_path)
+    repo=select_repo(state_path,eligible_products)
     if repo is None:
         return {"status":"NO_ELIGIBLE_REPOSITORY"}
     idx=PORTFOLIO_REPOS.index(repo)
@@ -298,10 +306,13 @@ def main()->int:
     parser.add_argument("--workspace-root",required=True)
     parser.add_argument("--state",required=True)
     parser.add_argument("--dry-run",action="store_true")
+    parser.add_argument("--eligible-products",default=None,
+                        help="Comma-separated product IDs authorized by Hands-Off activation")
     args=parser.parse_args()
     state=Path(args.state)
     try:
-        result=build_once(Path(args.workspace_root),state,args.dry_run)
+        eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
+        result=build_once(Path(args.workspace_root),state,args.dry_run,eligible)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
         result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500]}
         atomic_json(state,result)
