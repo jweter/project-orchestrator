@@ -369,3 +369,20 @@ def test_worker_prompt_receives_prior_failure_experience(tmp_path):
     assert "Prior recurring failure experience" in prompt
     assert "[fp]" in prompt
     assert "evidence, not permission to bypass gates" in prompt
+
+def test_verified_repair_attribution_requires_repeated_success_for_promotion(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    lesson=builder.retain_failure_lesson(state,"preflight","TypeError: expected mapping","PREFLIGHT_FAILED")
+    fp=lesson["fingerprint"]
+    first=builder.record_verified_repair(state,fp,"update_contract_test","canonical preflight passed")
+    second=builder.record_verified_repair(state,fp,"update_contract_test","canonical preflight passed")
+    assert first["verified_successes"]==1 and first["promotion_candidate"] is False
+    assert second["verified_successes"]==2 and second["promotion_candidate"] is True
+    experience=builder.prior_failure_experience(state)
+    assert "verified_repair=update_contract_test successes=2" in experience
+
+def test_verified_repair_does_not_invent_unknown_failure(tmp_path):
+    import scripts.autonomous_slice_builder as builder
+    assert builder.record_verified_repair(tmp_path/"state.json","unknown","anything","passed")=={}
