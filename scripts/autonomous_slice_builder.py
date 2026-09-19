@@ -4,6 +4,7 @@ import argparse, ctypes, json, os, shutil, subprocess, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from scripts.lane_leases import open_pr_paths
 
 PORTFOLIO_REPOS=(
     "jweter/project-orchestrator","jweter/knowledge-engine-core",
@@ -32,8 +33,13 @@ def windows_idle_seconds()->float|None:
     info=LASTINPUTINFO(); info.cbSize=ctypes.sizeof(info)
     if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)): return None
     return max(0.0,(ctypes.windll.kernel32.GetTickCount64()-info.dwTime)/1000.0)
-def has_open_pr(repo:str)->bool:
-    return bool(gh_json(["pr","list","--repo",repo,"--state","open","--json","number","--limit","1"]))
+def open_pr_count(repo:str)->int:
+    return len(gh_json(["pr","list","--repo",repo,"--state","open","--json","number","--limit","20"]))
+
+def lane_capacity(repo:str)->int:
+    # Conservative parallelism: one existing PR may coexist with one independent
+    # autonomous lane. Two open PRs keep the repository saturated.
+    return max(0,2-open_pr_count(repo))
 
 def ensure_workspace(repo:str,root:Path)->Path:
     name=repo.split("/",1)[1]
@@ -61,14 +67,19 @@ def select_repo(state_path:Path)->str|None:
     for offset in range(1,len(PORTFOLIO_REPOS)+1):
         idx=(prior+offset)%len(PORTFOLIO_REPOS)
         repo=PORTFOLIO_REPOS[idx]
-        if not has_open_pr(repo):
+        if lane_capacity(repo)>0:
             return repo
     return None
 
 def prompt_for(repo:str)->str:
+    owned=open_pr_paths(repo)
+    avoid=sorted({p for lease in owned for p in lease.paths})
+    avoid_text=", ".join(avoid[:80]) if avoid else "none"
     return f"""You are the autonomous laptop builder for {repo}.
 Read the repository's AGENTS.md, README, roadmap/milestone, architecture, and engineering/control-plane files before editing.
 Choose exactly ONE small, high-value, authorized P4/P5 slice that is independent of Product Reality and does not require a human decision.
+Open PRs already own these paths: {avoid_text}
+Choose an independent slice that does not edit, rename, delete, or semantically depend on those owned paths. If no independent slice exists, make no changes.
 Do not edit governance, roadmap, architecture, vision, security, license, workflow, or control-plane authority files.
 Do not change secrets, credentials, releases, publishing, destructive migrations, or licensing.
 Prefer source + regression test changes. Do not claim Product Reality. Do not commit, push, or merge.
