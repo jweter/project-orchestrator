@@ -85,7 +85,8 @@ def ensure_workspace(repo:str,root:Path)->Path:
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
 
-def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None)->set[str]:
+def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None,
+                         activation_path:Path|None=None)->set[str]:
     """Return repositories only when grant contract and all certified HEADs are still current."""
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
@@ -93,9 +94,13 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         contract_bytes=contract.read_bytes()
         contract_digest=hashlib.sha256(contract_bytes).hexdigest()
         declared_products=json.loads(contract_bytes).get("products",{})
+        activation=activation_path or path.with_name("hands-off-activation.json")
+        activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     except (OSError,json.JSONDecodeError):
         return set()
-    if payload.get("schema_version") != 2 or payload.get("contract_sha256") != contract_digest:
+    if (payload.get("schema_version") != 3
+            or payload.get("contract_sha256") != contract_digest
+            or payload.get("activation_sha256") != activation_digest):
         return set()
     allowed=set()
     for product,value in payload.get("products",{}).items():
