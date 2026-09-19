@@ -73,7 +73,10 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     import json, sys
     import scripts.hands_off_readiness as readiness
     contract=tmp_path/"contract.json"
-    contract.write_text(json.dumps({"required_authority":[{"id":"roadmap","evidence_any":["ROADMAP.md"]}]}),encoding="utf-8")
+    contract.write_text(json.dumps({
+        "required_authority":[{"id":"roadmap","evidence_any":["ROADMAP.md"]}],
+        "products":{"test-product":["jweter/test-repo"]}
+    }),encoding="utf-8")
     repo=tmp_path/"repo"; repo.mkdir()
     import subprocess
     subprocess.run(["git","init",str(repo)],check=True,capture_output=True)
