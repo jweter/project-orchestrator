@@ -4,7 +4,10 @@ import argparse, ctypes, json, os, shutil, subprocess, sys, time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from scripts.lane_leases import open_pr_paths
+try:
+    from scripts.lane_leases import open_pr_paths
+except ModuleNotFoundError:
+    from lane_leases import open_pr_paths
 
 PORTFOLIO_REPOS=(
     "jweter/project-orchestrator","jweter/knowledge-engine-core",
