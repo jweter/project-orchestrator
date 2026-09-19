@@ -24,3 +24,14 @@ def test_current_blocking_review_finding_blocks_merge():
 def test_neutral_and_skipped_checks_allowed():
     checks=[{"status":"COMPLETED","conclusion":"NEUTRAL"},{"status":"COMPLETED","conclusion":"SKIPPED"}]
     assert decide(pr(statusCheckRollup=checks),age_seconds=121).eligible
+
+def test_green_draft_can_be_promoted():
+    assert decide(pr(isDraft=True),age_seconds=121,allow_draft=True).eligible
+
+def test_green_draft_promotion_still_respects_review_gate():
+    d=decide(pr(isDraft=True,reviewDecision="CHANGES_REQUESTED"),age_seconds=121,allow_draft=True)
+    assert d.reason=="REVIEW_CHANGES_REQUESTED"
+
+def test_green_draft_promotion_still_requires_checks():
+    d=decide(pr(isDraft=True,statusCheckRollup=[]),age_seconds=121,allow_draft=True)
+    assert d.reason=="CHECKS_MISSING"
