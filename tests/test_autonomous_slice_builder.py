@@ -104,26 +104,32 @@ def test_select_repo_returns_none_when_no_product_authorized(monkeypatch, tmp_pa
 def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    import hashlib
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    contract=tmp_path/"contract.json"; contract.write_text('{"products":{}}',encoding="utf-8")
+    digest=hashlib.sha256(contract.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":1,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="moved\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path)==set()
+    assert builder.granted_repositories(grant,tmp_path,contract)==set()
 
 def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    import hashlib
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    contract=tmp_path/"contract.json"; contract.write_text('{"products":{}}',encoding="utf-8")
+    digest=hashlib.sha256(contract.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":1,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path)=={"jweter/rocksmith-cdlc-generator"}
+    assert builder.granted_repositories(grant,tmp_path,contract)=={"jweter/rocksmith-cdlc-generator"}
 
 def test_grant_native_selection_needs_no_product_mapping(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
@@ -144,3 +150,18 @@ def test_empty_execution_grant_selects_nothing_even_with_static_portfolio(tmp_pa
     monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
     monkeypatch.setattr(builder,"PORTFOLIO_REPOS",("jweter/old-static-repo",))
     assert builder.select_repo(tmp_path/"state.json",eligible_repos=set()) is None
+
+def test_execution_grant_rejects_contract_drift(tmp_path, monkeypatch):
+    import hashlib, json
+    import scripts.autonomous_slice_builder as builder
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    contract=tmp_path/"contract.json"; contract.write_text('{"products":{"rocksmith":[]}}',encoding="utf-8")
+    digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"schema_version":2,"contract_sha256":digest,"products":{"rocksmith":{"repositories":{
+        "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
+    contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}',encoding="utf-8")
+    class Result:
+        returncode=0; stdout="certified\n"
+    monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
+    assert builder.granted_repositories(grant,tmp_path,contract)==set()
