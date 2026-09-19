@@ -84,3 +84,17 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     assert payload["enabled"] is True
     assert payload["reason"]=="READINESS_PASS"
     assert payload["heads"][str(repo.resolve())]
+
+def test_repository_id_normalizes_https_and_ssh(monkeypatch, tmp_path):
+    import scripts.hands_off_readiness as readiness
+    monkeypatch.setattr(readiness,"_git",lambda repo,*args:"https://github.com/jweter/example.git")
+    assert readiness._repository_id(tmp_path)=="jweter/example"
+    monkeypatch.setattr(readiness,"_git",lambda repo,*args:"git@github.com:jweter/example.git")
+    assert readiness._repository_id(tmp_path)=="jweter/example"
+
+def test_repository_id_rejects_noncanonical_origin(monkeypatch, tmp_path):
+    import pytest
+    import scripts.hands_off_readiness as readiness
+    monkeypatch.setattr(readiness,"_git",lambda repo,*args:"C:/local/repo")
+    with pytest.raises(RuntimeError):
+        readiness._repository_id(tmp_path)
