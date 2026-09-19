@@ -386,3 +386,30 @@ def test_verified_repair_attribution_requires_repeated_success_for_promotion(tmp
 def test_verified_repair_does_not_invent_unknown_failure(tmp_path):
     import scripts.autonomous_slice_builder as builder
     assert builder.record_verified_repair(tmp_path/"state.json","unknown","anything","passed")=={}
+
+def test_promote_verified_repairs_materializes_only_repeated_verified_candidates(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    lesson=builder.retain_failure_lesson(state,"preflight","known","PREFLIGHT_FAILED")
+    fp=lesson["fingerprint"]
+    builder.record_verified_repair(state,fp,"repair_once","passed")
+    builder.record_verified_repair(state,fp,"repair_twice","passed")
+    builder.record_verified_repair(state,fp,"repair_twice","passed")
+    payload=builder.promote_verified_repairs(state)
+    caps=list(payload["capabilities"].values())
+    assert len(caps)==1
+    assert caps[0]["strategy"]=="repair_twice"
+    assert caps[0]["state"]=="CANDIDATE"
+    assert caps[0]["execution_authorized"] is False
+
+def test_repair_capability_identity_is_stable_and_idempotent(tmp_path):
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    fp=builder.retain_failure_lesson(state,"preflight","known","FAILED")["fingerprint"]
+    builder.record_verified_repair(state,fp,"repair","passed")
+    builder.record_verified_repair(state,fp,"repair","passed")
+    first=builder.promote_verified_repairs(state)
+    second=builder.promote_verified_repairs(state)
+    assert first==second
+    assert len(second["capabilities"])==1
