@@ -116,7 +116,7 @@ def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeyp
     class Result:
         returncode=0; stdout="moved\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path,contract)==set()
+    assert builder.granted_repositories(grant,tmp_path,contract)=={}
 
 def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     import json
@@ -133,7 +133,7 @@ def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     class Result:
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path,contract)=={"jweter/rocksmith-cdlc-generator"}
+    assert builder.granted_repositories(grant,tmp_path,contract)=={"jweter/rocksmith-cdlc-generator":"certified"}
 
 def test_grant_native_selection_needs_no_product_mapping(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
@@ -170,7 +170,7 @@ def test_execution_grant_rejects_contract_drift(tmp_path, monkeypatch):
     class Result:
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path,contract)==set()
+    assert builder.granted_repositories(grant,tmp_path,contract)=={}
 
 def test_execution_grant_rejects_undeclared_product_even_with_valid_contract_digest(tmp_path, monkeypatch):
     import hashlib, json
@@ -187,7 +187,7 @@ def test_execution_grant_rejects_undeclared_product_even_with_valid_contract_dig
     class Result:
         returncode=0; stdout="abc\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path,contract)==set()
+    assert builder.granted_repositories(grant,tmp_path,contract)=={}
 
 def test_execution_grant_rejects_incomplete_declared_product_membership(tmp_path, monkeypatch):
     import hashlib, json
@@ -204,7 +204,7 @@ def test_execution_grant_rejects_incomplete_declared_product_membership(tmp_path
     class Result:
         returncode=0; stdout="abc\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path,contract)==set()
+    assert builder.granted_repositories(grant,tmp_path,contract)=={}
 
 def test_execution_grant_rejects_activation_revocation(tmp_path, monkeypatch):
     import hashlib, json
@@ -224,7 +224,7 @@ def test_execution_grant_rejects_activation_revocation(tmp_path, monkeypatch):
     class Result:
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path,contract,activation)==set()
+    assert builder.granted_repositories(grant,tmp_path,contract,activation)=={}
 
 def test_execution_grant_is_single_use(tmp_path, monkeypatch):
     import hashlib, json
@@ -243,8 +243,10 @@ def test_execution_grant_is_single_use(tmp_path, monkeypatch):
     class Result:
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
-    assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)=={"jweter/rocksmith-cdlc-generator"}
-    assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)==set()
+    assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)=={"jweter/rocksmith-cdlc-generator":"certified"}
+    assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)=={"jweter/rocksmith-cdlc-generator":"certified"}
+    assert builder.claim_execution_grant(grant,"jweter/rocksmith-cdlc-generator","certified",consumed)
+    assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)=={}
     assert json.loads(consumed.read_text())["grants"]["cycle-1"]["state"]=="CLAIMED"
 
 def test_finish_grant_lifecycle_records_terminal_outcome(tmp_path):
@@ -290,3 +292,30 @@ def test_heartbeat_grant_renews_claim(tmp_path):
     import time; time.sleep(0.04); stop.set(); thread.join()
     record=json.loads(lifecycle.read_text())["grants"]["g1"]
     assert record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00"
+
+def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    grant.write_text(json.dumps({"grant_id":"g1"}),encoding="utf-8")
+    assert builder.claim_execution_grant(grant,"jweter/rock","abc",lifecycle)
+    record=json.loads(lifecycle.read_text())["grants"]["g1"]
+    assert record["state"]=="CLAIMED"
+    assert record["authorized_repositories"]==["jweter/rock"]
+    assert record["expected_sha"]=="abc"
+    assert not builder.claim_execution_grant(grant,"jweter/rock","abc",lifecycle)
+
+def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeypatch):
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
+    monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
+    class Result:
+        returncode=0; stdout="moved\n"; stderr=""
+    monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
+    result=builder.build_once(tmp_path,tmp_path/"state.json",eligible_repos={"jweter/rocksmith-cdlc-generator":"authorized"},
+                              execution_grant=tmp_path/"grant.json")
+    assert result["status"]=="EXECUTION_GRANT_HEAD_MISMATCH"
+    assert result["expected_sha"]=="authorized"
+    assert result["actual_sha"]=="moved"
