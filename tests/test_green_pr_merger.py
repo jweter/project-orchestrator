@@ -35,3 +35,18 @@ def test_green_draft_promotion_still_respects_review_gate():
 def test_green_draft_promotion_still_requires_checks():
     d=decide(pr(isDraft=True,statusCheckRollup=[]),age_seconds=121,allow_draft=True)
     assert d.reason=="CHECKS_MISSING"
+
+def test_draft_requires_refetch_before_merge(monkeypatch):
+    import scripts.green_pr_merger as merger
+    draft=pr(isDraft=True,number=7,headRefOid="abc",createdAt="2020-01-01T00:00:00Z")
+    monkeypatch.setattr(merger,"PORTFOLIO_REPOS",("owner/repo",))
+    monkeypatch.setattr(merger,"open_prs",lambda repo:[draft])
+    monkeypatch.setattr(merger,"blocking_review_findings",lambda *args:False)
+    monkeypatch.setattr(merger.subprocess,"run",lambda *args,**kwargs:type("P",(),{"returncode":0})())
+    refreshed=pr(isDraft=False,number=7,headRefOid="abc",createdAt="2020-01-01T00:00:00Z")
+    monkeypatch.setattr(merger,"gh_json",lambda args:refreshed)
+    seen=[]
+    monkeypatch.setattr(merger,"merge",lambda repo,p,dry_run=False:seen.append(p) or {"merged":True})
+    results=merger.cycle(False)
+    assert seen==[refreshed]
+    assert results[-1]["merged"] is True
