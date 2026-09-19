@@ -59,12 +59,26 @@ def request_immediate_builder(state_root:Path)->None:
     })
 
 def merge_watcher_advanced(state_root:Path)->bool:
+    """Consume each successful merge observation exactly once."""
     path=state_root/"green-pr-watcher.json"
+    cursor=state_root/"green-pr-watcher-consumed.json"
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError):
         return False
-    return any(bool(item.get("merged")) for item in payload.get("results",[]))
+    merged=[item for item in payload.get("results",[]) if item.get("merged")]
+    if not merged:
+        return False
+    event={"updated_at_utc":payload.get("updated_at_utc"),"merged":[
+        {"repository":item.get("repository"),"pr":item.get("pr"),"head":item.get("head")} for item in merged]}
+    try:
+        previous=json.loads(cursor.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError):
+        previous=None
+    if previous==event:
+        return False
+    atomic(cursor,event)
+    return True
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path)->int:
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
