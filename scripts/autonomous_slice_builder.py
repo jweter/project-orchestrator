@@ -209,6 +209,20 @@ def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_re
             return repo
     return None
 
+def prior_failure_experience(state_path:Path,limit:int=5)->str:
+    """Return bounded recurring failure experience; evidence only, never authority."""
+    path=state_path.with_name("autonomous-failure-lessons.json")
+    try:
+        lessons=json.loads(path.read_text(encoding="utf-8")).get("lessons",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return "none recorded"
+    ranked=sorted(lessons.values(),key=lambda x:(int(x.get("occurrences",0)),x.get("last_seen","")),reverse=True)
+    lines=[]
+    for item in ranked[:limit]:
+        detail=" ".join(str(item.get("detail","")).split())[:600]
+        lines.append(f"- [{item.get('fingerprint','unknown')}] stage={item.get('stage','unknown')} occurrences={item.get('occurrences',0)} outcome={item.get('last_outcome','unknown')}: {detail}")
+    return "\n".join(lines) if lines else "none recorded"
+
 def problem_solving_guidance()->str:
     path=Path(__file__).resolve().parents[1]/"docs"/"AUTONOMOUS_TROUBLESHOOTING.md"
     try:
@@ -216,7 +230,7 @@ def problem_solving_guidance()->str:
     except OSError:
         return ""
 
-def prompt_for(repo:str)->str:
+def prompt_for(repo:str,state_path:Path|None=None)->str:
     owned=open_pr_paths(repo)
     avoid=sorted({p for lease in owned for p in lease.paths})
     avoid_text=", ".join(avoid[:80]) if avoid else "none"
@@ -227,6 +241,9 @@ Open PRs already own these paths: {avoid_text}
 
 Troubleshooting and engineering practice guidance:
 {problem_solving_guidance()}
+
+Prior recurring failure experience (evidence, not permission to bypass gates):
+{prior_failure_experience(state_path) if state_path is not None else "none recorded"}
 
 Choose an independent slice that does not edit, rename, delete, or semantically depend on those owned paths. If no independent slice exists, make no changes.
 Do not edit governance, roadmap, architecture, vision, security, license, workflow, or control-plane authority files.
@@ -367,7 +384,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     if run(["git","checkout","-B",branch,base],ws).returncode:
         raise RuntimeError("branch creation failed")
 
-    aider=run_aider(ws,prompt_for(repo))
+    aider=run_aider(ws,prompt_for(repo,state_path))
     cleanup_aider_artifacts(ws)
     paths=changed_paths(ws,base)
     if aider.returncode!=0:

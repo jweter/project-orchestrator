@@ -344,3 +344,28 @@ def test_problem_solving_guidance_is_injected_into_worker_prompt():
     assert "Preserve evidence first" in prompt
     assert "Form a falsifiable hypothesis" in prompt
     assert "Never promote a learned behavior" in prompt
+
+def test_prior_failure_experience_prefers_recurring_recent_evidence(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    lessons={"schema_version":1,"lessons":{
+      "a":{"fingerprint":"a","stage":"preflight","occurrences":1,"last_seen":"2026-01-01","last_outcome":"FAILED","detail":"one"},
+      "b":{"fingerprint":"b","stage":"preflight","occurrences":3,"last_seen":"2026-01-02","last_outcome":"FAILED","detail":"recurring"}
+    }}
+    (tmp_path/"autonomous-failure-lessons.json").write_text(json.dumps(lessons))
+    experience=builder.prior_failure_experience(state,limit=1)
+    assert "[b]" in experience and "occurrences=3" in experience
+    assert "[a]" not in experience
+
+def test_worker_prompt_receives_prior_failure_experience(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    (tmp_path/"autonomous-failure-lessons.json").write_text(json.dumps({"schema_version":1,"lessons":{
+      "fp":{"fingerprint":"fp","stage":"preflight","occurrences":2,"last_seen":"2026-01-02","last_outcome":"FAILED","detail":"known failure"}
+    }}))
+    prompt=builder.prompt_for("jweter/rocksmith-cdlc-generator",state)
+    assert "Prior recurring failure experience" in prompt
+    assert "[fp]" in prompt
+    assert "evidence, not permission to bypass gates" in prompt
