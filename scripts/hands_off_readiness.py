@@ -141,7 +141,24 @@ def main() -> int:
     )
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered, encoding="utf-8")
+    if args.activation_state:
+        activation = {
+            "schema_version": 1,
+            "enabled": activation_allowed(report),
+            "reason": "READINESS_PASS" if activation_allowed(report) else "READINESS_NOT_PASS",
+            "heads": {
+                r["repository"]: r["head"]
+                for r in report["repositories"]
+                if r.get("head")
+            },
+        }
+        args.activation_state.parent.mkdir(parents=True, exist_ok=True)
+        args.activation_state.write_text(
+            json.dumps(activation, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(rendered, end="")
     return 0 if report["status"] == "PASS" else 1
 
