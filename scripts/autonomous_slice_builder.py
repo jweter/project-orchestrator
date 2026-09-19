@@ -90,7 +90,9 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
         contract=contract_path or (Path(__file__).resolve().parents[1]/"engineering"/"hands-off-evolution.json")
-        contract_digest=hashlib.sha256(contract.read_bytes()).hexdigest()
+        contract_bytes=contract.read_bytes()
+        contract_digest=hashlib.sha256(contract_bytes).hexdigest()
+        declared_products=json.loads(contract_bytes).get("products",{})
     except (OSError,json.JSONDecodeError):
         return set()
     if payload.get("schema_version") != 2 or payload.get("contract_sha256") != contract_digest:
@@ -98,7 +100,8 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
     allowed=set()
     for product,value in payload.get("products",{}).items():
         repositories=value.get("repositories",{}) if isinstance(value,dict) else {}
-        if not repositories:
+        if (not repositories or product not in declared_products
+                or set(repositories) != set(declared_products[product])):
             continue
         current=True
         for repo,expected in repositories.items():
