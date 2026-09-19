@@ -1,6 +1,6 @@
 """Idle-gated autonomous bounded-slice builder using local Ollama + Aider."""
 from __future__ import annotations
-import argparse, ctypes, hashlib, json, os, shutil, subprocess, sys, time
+import argparse, ctypes, hashlib, json, os, shutil, subprocess, sys, threading, time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -85,6 +85,25 @@ def ensure_workspace(repo:str,root:Path)->Path:
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
 
+HEARTBEAT_SECONDS=60
+
+def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS)->None:
+    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    try:
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return
+    while not stop.wait(interval):
+        try:
+            payload=json.loads(lifecycle.read_text(encoding="utf-8"))
+            record=payload["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return
+        if record.get("state")!="CLAIMED":
+            return
+        record["last_heartbeat_at"]=datetime.now(UTC).isoformat()
+        atomic_json(lifecycle,payload)
+
 def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None,
                          activation_path:Path|None=None,lifecycle_path:Path|None=None)->set[str]:
     """Return repositories only when grant contract and all certified HEADs are still current."""
@@ -126,7 +145,8 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         if current:
             allowed.update(repositories)
     if allowed:
-        grants[grant_id]={"state":"CLAIMED","claimed_at":datetime.now(UTC).isoformat()}
+        claimed=datetime.now(UTC).isoformat()
+        grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed}
         atomic_json(lifecycle,{"schema_version":1,"grants":grants})
     return allowed
 
@@ -389,7 +409,17 @@ def main()->int:
         else:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
-        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos)
+        stop_heartbeat=threading.Event()
+        heartbeat=None
+        if args.execution_grant and eligible_repos:
+            heartbeat=threading.Thread(target=heartbeat_grant,args=(args.execution_grant,stop_heartbeat),daemon=True)
+            heartbeat.start()
+        try:
+            result=build_once(workspace,state,args.dry_run,eligible,eligible_repos)
+        finally:
+            stop_heartbeat.set()
+            if heartbeat:
+                heartbeat.join(timeout=2)
         if args.execution_grant:
             finish_grant_lifecycle(args.execution_grant,result)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
