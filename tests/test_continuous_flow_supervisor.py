@@ -271,4 +271,52 @@ def test_reconcile_abandoned_claim_quarantines_orphan_actor_branch(tmp_path, mon
     def run(cmd,**kwargs):
         return Result("") if cmd[1:3]==["status","--porcelain"] else Result("actor/autonomous-rock-dead\n")
     monkeypatch.setattr(supervisor.subprocess,"run",run)
-    assert supervisor.reconcile_abandoned_claims(wsroot,state,["g1"])=={"g1":"ORPHAN_BRANCH_QUARANTINED"}
+    # A clean actor branch with no commits beyond origin/main is proven harmless.
+    assert supervisor.reconcile_abandoned_claims(wsroot,state,["g1"])=={"g1":"ORPHAN_NO_DIFF"}
+
+def test_classify_orphan_branch_with_matching_open_pr_is_recoverable(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout): self.stdout=stdout
+    def run(cmd,**kwargs):
+        if cmd[:2]==["git","merge-base"]: return Result("base\n")
+        if cmd[:2]==["git","rev-parse"]: return Result("head\n")
+        if cmd[:2]==["git","ls-remote"]: return Result("head\trefs/heads/actor/autonomous-x\n")
+        if cmd[:3]==["gh","pr","list"]: return Result(json.dumps([{"number":9,"url":"u","headRefOid":"head"}]))
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    status,evidence=supervisor.classify_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x")
+    assert status=="ORPHAN_PR_RECOVERABLE"
+    assert evidence["pr_number"]==9
+
+def test_classify_orphan_branch_detects_unpushed_commit(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout): self.stdout=stdout
+    def run(cmd,**kwargs):
+        if cmd[:2]==["git","merge-base"]: return Result("base\n")
+        if cmd[:2]==["git","rev-parse"]: return Result("head\n")
+        if cmd[:2]==["git","ls-remote"]: return Result("")
+        if cmd[:3]==["gh","pr","list"]: return Result("[]")
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    status,evidence=supervisor.classify_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x")
+    assert status=="ORPHAN_LOCAL_COMMIT_UNPUSHED"
+    assert evidence["head_sha"]=="head"
+
+def test_classify_orphan_branch_detects_pushed_branch_without_pr(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout): self.stdout=stdout
+    def run(cmd,**kwargs):
+        if cmd[:2]==["git","merge-base"]: return Result("base\n")
+        if cmd[:2]==["git","rev-parse"]: return Result("head\n")
+        if cmd[:2]==["git","ls-remote"]: return Result("head\trefs/heads/actor/autonomous-x\n")
+        if cmd[:3]==["gh","pr","list"]: return Result("[]")
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.classify_orphan_branch("jweter/rock",tmp_path,"actor/autonomous-x")[0]=="ORPHAN_PUSHED_NO_PR"
