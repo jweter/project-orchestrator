@@ -131,6 +131,8 @@ A failed autonomy mechanism blocks only the affected automation lane. It should 
 ### Phase 1 — Authority readiness
 Create a deterministic readiness audit for each product/repository that proves the required guiding documents, roadmap, architecture, verification, guardrails, Product Reality policy, and escalation boundaries exist and are internally coherent.
 
+The machine-readable readiness contract begins at `engineering/hands-off-evolution.json`. It is intentionally fail-closed: a product cannot be activated merely because an agent assumes a missing policy. The next implementation slice is an executable auditor that resolves these requirements against each live product repository and emits PASS/FAIL/UNKNOWN evidence without granting new authority.
+
 ### Phase 2 — Evolution activation
 Define a per-product enablement manifest/state. Activation must be explicit, auditable, reversible, and incapable of weakening repository-local gates.
 
