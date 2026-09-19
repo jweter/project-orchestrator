@@ -82,6 +82,33 @@ def record_verified_repair(state_path:Path,fingerprint:str,strategy:str,verifica
     atomic_json(path,payload)
     return repair
 
+def promote_verified_repairs(state_path:Path)->dict[str,Any]:
+    """Materialize evidence-backed repair candidates; promotion never grants execution authority."""
+    lessons_path=state_path.with_name("autonomous-failure-lessons.json")
+    capabilities_path=state_path.with_name("autonomous-repair-capabilities.json")
+    try:
+        lessons=json.loads(lessons_path.read_text(encoding="utf-8")).get("lessons",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        lessons={}
+    try:
+        payload=json.loads(capabilities_path.read_text(encoding="utf-8")) if capabilities_path.exists() else {"schema_version":1,"capabilities":{}}
+    except (OSError,json.JSONDecodeError,TypeError):
+        payload={"schema_version":1,"capabilities":{}}
+    capabilities=payload.setdefault("capabilities",{})
+    for fp,lesson in lessons.items():
+        for strategy,repair in lesson.get("verified_repairs",{}).items():
+            if int(repair.get("verified_successes",0))<2:
+                continue
+            capability_id=hashlib.sha256(f"{fp}|{strategy}".encode()).hexdigest()[:20]
+            capabilities[capability_id]={
+                "capability_id":capability_id,"failure_fingerprint":fp,"stage":lesson.get("stage"),
+                "strategy":strategy,"verified_successes":repair.get("verified_successes"),
+                "verification":repair.get("verification"),"state":"CANDIDATE",
+                "execution_authorized":False
+            }
+    atomic_json(capabilities_path,payload)
+    return payload
+
 def windows_idle_seconds()->float|None:
     if os.name!="nt": return None
     class LASTINPUTINFO(ctypes.Structure):
