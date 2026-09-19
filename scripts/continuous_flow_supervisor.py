@@ -15,6 +15,16 @@ def start_merge_watcher(repo_root:Path,state_root:Path,poll_seconds:int)->subpro
         "--state",str(state_root/"green-pr-watcher.json"),"--poll-seconds",str(poll_seconds)],
         cwd=repo_root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
+def run_linear_reconciliation(repo_root:Path,state_root:Path)->int|None:
+    bindings=state_root/"linear-bindings.json"
+    if not bindings.exists():
+        return None
+    p=subprocess.run([sys.executable,str(repo_root/"scripts"/"linear_reconciliation_worker.py"),
+        "--bindings",str(bindings),"--output",str(state_root/"linear-mutations.json")],
+        cwd=repo_root,text=True,capture_output=True,check=False)
+    (state_root/"linear-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    return p.returncode
+
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path)->int:
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")],
@@ -33,9 +43,12 @@ def main()->int:
     while True:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
+        linear_rc=run_linear_reconciliation(repo,state)
         rc=run_builder(repo,workspace,state)
+        healthy=rc==0 and linear_rc in (None,0)
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
-            "status":"HEALTHY" if rc==0 else "BUILDER_DEGRADED","builder_returncode":rc,
+            "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
+            "linear_reconciliation_returncode":linear_rc,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
