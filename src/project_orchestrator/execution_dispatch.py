@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .claude_dispatch import dispatch_if_warranted, select_actor
+from .live_laptop_dispatch import enqueue_live_laptop_task
 
 
 def execute_actor_selection(task: dict[str, Any], *, claude_state_dir: Path,
@@ -20,6 +21,15 @@ def execute_actor_selection(task: dict[str, Any], *, claude_state_dir: Path,
             kwargs["opener"] = claude_opener
         result = dispatch_if_warranted(task, claude_state_dir, **kwargs)
         return {"status": "DISPATCHED", **result}
+    # Production Laptop Actor tasks carry exact execution identity and are compiled
+    # into the same governed job format consumed by the GitHub-backed Azathoth bridge.
+    production_fields = ("base_sha", "branch", "verification")
+    if all(task.get(key) for key in production_fields):
+        workspace_root = task.get("workspace_root")
+        if not isinstance(workspace_root, str) or not workspace_root:
+            raise ValueError("production Laptop Actor task requires workspace_root")
+        result = enqueue_live_laptop_task(task, pending_dir=laptop_queue_dir, workspace_root=workspace_root)
+        return {"actor": "LAPTOP_ACTOR", **result}
     required = ("repository", "task_key")
     missing = [key for key in required if not task.get(key)]
     if missing:
