@@ -63,3 +63,24 @@ def test_activation_requires_complete_exact_head_pass() -> None:
         "repositories": [{"status": "PASS", "head": "abc123"}],
     })
     assert not activation_allowed({"status": "PASS", "repositories": []})
+
+def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
+    import json, sys
+    import scripts.hands_off_readiness as readiness
+    contract=tmp_path/"contract.json"
+    contract.write_text(json.dumps({"required_authority":[{"id":"roadmap","evidence_any":["ROADMAP.md"]}]}),encoding="utf-8")
+    repo=tmp_path/"repo"; repo.mkdir()
+    import subprocess
+    subprocess.run(["git","init",str(repo)],check=True,capture_output=True)
+    subprocess.run(["git","-C",str(repo),"config","user.email","test@example.com"],check=True)
+    subprocess.run(["git","-C",str(repo),"config","user.name","Test"],check=True)
+    (repo/"ROADMAP.md").write_text("roadmap",encoding="utf-8")
+    subprocess.run(["git","-C",str(repo),"add","ROADMAP.md"],check=True)
+    subprocess.run(["git","-C",str(repo),"commit","-m","init"],check=True,capture_output=True)
+    activation=tmp_path/"state"/"activation.json"
+    monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(repo),"--contract",str(contract),"--activation-state",str(activation)])
+    assert readiness.main()==0
+    payload=json.loads(activation.read_text(encoding="utf-8"))
+    assert payload["enabled"] is True
+    assert payload["reason"]=="READINESS_PASS"
+    assert payload["heads"][str(repo.resolve())]
