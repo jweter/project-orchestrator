@@ -74,3 +74,30 @@ def test_evolution_authorized_returns_only_gate_current_products(tmp_path, monke
         stderr=""
     monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:Result())
     assert supervisor.evolution_authorized(tmp_path,state)==(True,"ACTIVATION_CURRENT",["rocksmith"])
+
+def test_product_recertification_preserves_unrelated_authority(tmp_path):
+    import json
+    from scripts.continuous_flow_supervisor import merge_product_recertification
+    state=tmp_path
+    (state/"hands-off-activation.json").write_text(json.dumps({"schema_version":2,"products":{
+        "rocksmith":{"enabled":True,"status":"PASS","repositories":{"jweter/rock":"old"}},
+        "everward":{"enabled":True,"status":"PASS","repositories":{"jweter/ever":"stable"}}}}),encoding="utf-8")
+    partial={"products":{"rocksmith":{"enabled":True,"status":"PASS","repositories":{"jweter/rock":"new"}}}}
+    assert merge_product_recertification(state,"rocksmith",partial)==(True,"PRODUCT_RECERTIFIED")
+    merged=json.loads((state/"hands-off-activation.json").read_text(encoding="utf-8"))
+    assert merged["products"]["rocksmith"]["repositories"]["jweter/rock"]=="new"
+    assert merged["products"]["everward"]["repositories"]["jweter/ever"]=="stable"
+    assert json.loads((state/"hands-off-expected-heads.json").read_text())=={"jweter/ever":"stable","jweter/rock":"new"}
+
+def test_failed_product_recertification_quarantines_only_product(tmp_path):
+    import json
+    from scripts.continuous_flow_supervisor import merge_product_recertification
+    (tmp_path/"hands-off-activation.json").write_text(json.dumps({"schema_version":2,"products":{
+        "rocksmith":{"enabled":True,"status":"PASS","repositories":{"jweter/rock":"old"}},
+        "everward":{"enabled":True,"status":"PASS","repositories":{"jweter/ever":"stable"}}}}),encoding="utf-8")
+    partial={"products":{"rocksmith":{"enabled":False,"status":"FAIL","repositories":{"jweter/rock":"new"}}}}
+    assert merge_product_recertification(tmp_path,"rocksmith",partial)==(False,"PRODUCT_QUARANTINED")
+    merged=json.loads((tmp_path/"hands-off-activation.json").read_text())
+    assert merged["enabled"] is True
+    assert merged["products"]["everward"]["enabled"] is True
+    assert "jweter/rock" not in json.loads((tmp_path/"hands-off-expected-heads.json").read_text())

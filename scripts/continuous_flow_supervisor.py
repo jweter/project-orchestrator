@@ -86,6 +86,26 @@ def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple
     atomic(state_root/"hands-off-expected-heads.json",heads)
     return True,"READINESS_REFRESHED"
 
+def merge_product_recertification(state_root:Path,product:str,partial:dict)->tuple[bool,str]:
+    """Atomically replace one product's authority while preserving unrelated products."""
+    path=state_root/"hands-off-activation.json"
+    try:
+        current=json.loads(path.read_text(encoding="utf-8"))
+        candidate=partial["products"][product]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return False,"RECERTIFICATION_UNREADABLE"
+    products=dict(current.get("products",{}))
+    products[product]=candidate
+    enabled=any(isinstance(v,dict) and v.get("enabled") is True for v in products.values())
+    current.update({"schema_version":2,"products":products,"enabled":enabled,
+                    "reason":"READINESS_PASS" if enabled else "READINESS_NOT_PASS"})
+    current["heads"]={repo:head for value in products.values()
+                      if isinstance(value,dict) and value.get("enabled") is True
+                      for repo,head in value.get("repositories",{}).items() if head}
+    atomic(path,current)
+    atomic(state_root/"hands-off-expected-heads.json",current["heads"])
+    return candidate.get("enabled") is True,"PRODUCT_RECERTIFIED" if candidate.get("enabled") is True else "PRODUCT_QUARANTINED"
+
 def request_immediate_builder(state_root:Path)->None:
     """Record that PR lifecycle progress should immediately feed the next build cycle."""
     atomic(state_root/"continuation-request.json",{
