@@ -73,7 +73,7 @@ def test_evolution_authorized_returns_only_gate_current_products(tmp_path, monke
             "rocksmith":{"allowed":True,"reason":"PRODUCT_CURRENT"}}})
         stderr=""
     monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:Result())
-    assert supervisor.evolution_authorized(tmp_path,state)==(True,"ACTIVATION_CURRENT",["rocksmith"])
+    assert supervisor.evolution_authorized(tmp_path,state)==(True,"ACTIVATION_CURRENT",["rocksmith"],["knowledge-engine"])
 
 def test_product_recertification_preserves_unrelated_authority(tmp_path):
     import json
@@ -101,3 +101,27 @@ def test_failed_product_recertification_quarantines_only_product(tmp_path):
     assert merged["enabled"] is True
     assert merged["products"]["everward"]["enabled"] is True
     assert "jweter/rock" not in json.loads((tmp_path/"hands-off-expected-heads.json").read_text())
+
+def test_recertify_product_runs_targeted_audit_and_merges(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    workspace=tmp_path/"workspace"; workspace.mkdir()
+    for name in ["knowledge-engine-core","knowledge-engine-web","knowledge-engine-ai","rocksmith-cdlc-generator","Project-Everward"]:
+        (workspace/name).mkdir()
+    (state/"hands-off-activation.json").write_text(json.dumps({"schema_version":2,"products":{
+        "rocksmith":{"enabled":True,"status":"PASS","repositories":{"jweter/rocksmith-cdlc-generator":"old"}},
+        "everward":{"enabled":True,"status":"PASS","repositories":{"jweter/Project-Everward":"stable"}}}}),encoding="utf-8")
+    class Result:
+        returncode=0; stdout=""; stderr=""
+    def run(cmd,**kwargs):
+        assert cmd[cmd.index("--product")+1]=="rocksmith"
+        partial=state/"hands-off-recertify-rocksmith.json"
+        partial.write_text(json.dumps({"products":{"rocksmith":{
+            "enabled":True,"status":"PASS","repositories":{"jweter/rocksmith-cdlc-generator":"new"}}}}),encoding="utf-8")
+        return Result()
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.recertify_product(tmp_path,workspace,state,"rocksmith")== (True,"PRODUCT_RECERTIFIED")
+    merged=json.loads((state/"hands-off-activation.json").read_text())
+    assert merged["products"]["rocksmith"]["repositories"]["jweter/rocksmith-cdlc-generator"]=="new"
+    assert merged["products"]["everward"]["repositories"]["jweter/Project-Everward"]=="stable"
