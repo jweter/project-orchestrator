@@ -76,6 +76,23 @@ Selective ECC adoption is governed by `docs/ECC_GAP_ANALYSIS.md`. The first adop
 
 The full durable execution contract is docs/AUTONOMOUS_COMPLETION_PATH.md. Zero open PRs is explicitly a build trigger. Product work outranks governance expansion except when a P0/P1 control-plane defect prevents safe product execution. The existing execution schedule/processes continue this plan; do not create duplicate schedules.
 
+
+## Project Hands-Off Evolution — portfolio north star
+
+**Goal:** move Jeremy out of the necessary routine engineering loop. Establish product intent, guiding documents, roadmaps, acceptance criteria, and guardrails first; then enable the Evolution Engine to execute ordinary roadmap development continuously. Jeremy observes repository progress and realigns product authority when needed rather than manually driving each slice.
+
+Authoritative design: [HANDS_OFF_EVOLUTION.md](HANDS_OFF_EVOLUTION.md).
+
+- [ ] Phase 1 — deterministic authority/readiness audit for every product
+- [ ] Phase 2 — explicit reversible per-product Evolution activation
+- [ ] Phase 3 — durable supervised Evolution runtime with per-product liveness
+- [ ] Phase 4 — automatic merge/verification -> next-work continuation without a manual prompt
+- [ ] Phase 5 — closed-loop deterministic repair, regression prevention, and capability reuse
+- [ ] Phase 6 — repeated unattended roadmap advancement proof across Knowledge Engine, Rocksmith, and Everward
+- [ ] Phase 7 — retire remaining routine Jeremy touches; preserve only reserved decisions and genuine Product Reality
+
+**Completion test:** Jeremy can set/realign authoritative direction, leave the routine loop, and later inspect evidence of continuous verified product advancement. A recurring need to say "continue" is P1 liveness debt, not normal operation.
+
 ## After v1
 
 Freeze governance-layer expansion unless measured evidence identifies a bottleneck. Direct most engineering capacity into product roadmap work and use the orchestrator to measure, learn, and improve the loop.
