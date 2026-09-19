@@ -209,6 +209,13 @@ def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_re
             return repo
     return None
 
+def problem_solving_guidance()->str:
+    path=Path(__file__).resolve().parents[1]/"docs"/"AUTONOMOUS_TROUBLESHOOTING.md"
+    try:
+        return path.read_text(encoding="utf-8")[:12000]
+    except OSError:
+        return ""
+
 def prompt_for(repo:str)->str:
     owned=open_pr_paths(repo)
     avoid=sorted({p for lease in owned for p in lease.paths})
