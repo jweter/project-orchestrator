@@ -73,7 +73,10 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     import json, sys
     import scripts.hands_off_readiness as readiness
     contract=tmp_path/"contract.json"
-    contract.write_text(json.dumps({"required_authority":[{"id":"roadmap","evidence_any":["ROADMAP.md"]}]}),encoding="utf-8")
+    contract.write_text(json.dumps({
+        "required_authority":[{"id":"roadmap","evidence_any":["ROADMAP.md"]}],
+        "products":{"test-product":["jweter/test-repo"]}
+    }),encoding="utf-8")
     repo=tmp_path/"repo"; repo.mkdir()
     import subprocess
     subprocess.run(["git","init",str(repo)],check=True,capture_output=True)
@@ -104,3 +107,20 @@ def test_repository_id_rejects_noncanonical_origin(monkeypatch, tmp_path):
     monkeypatch.setattr(readiness,"_git",lambda repo,*args:"C:/local/repo")
     with pytest.raises(RuntimeError):
         readiness._repository_id(tmp_path)
+
+def test_product_activation_isolated_between_independent_products(tmp_path, monkeypatch):
+    import scripts.hands_off_readiness as readiness
+    reports={
+        "jweter/core":{"repository":"jweter/core","head":"a","status":"PASS","checks":[]},
+        "jweter/web":{"repository":"jweter/web","head":"b","status":"FAIL","checks":[]},
+        "jweter/rock":{"repository":"jweter/rock","head":"c","status":"PASS","checks":[]},
+    }
+    contract={"products":{"knowledge":["jweter/core","jweter/web"],"rocksmith":["jweter/rock"]}}
+    by_repo=reports
+    products={}
+    for product, ids in contract["products"].items():
+        members=[by_repo.get(x) for x in ids]
+        status="UNKNOWN" if any(x is None for x in members) else ("PASS" if all(x["status"]=="PASS" for x in members) else ("UNKNOWN" if any(x["status"]=="UNKNOWN" for x in members) else "FAIL"))
+        products[product]={"status":status}
+    assert products["knowledge"]["status"]=="FAIL"
+    assert products["rocksmith"]["status"]=="PASS"
