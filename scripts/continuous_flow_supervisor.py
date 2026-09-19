@@ -36,13 +36,36 @@ def builder_health(state_root:Path,returncode:int)->tuple[bool,str]:
     degraded={"P1_BUILDER_FAILURE","BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
     return status not in degraded,status
 
-def evolution_authorized(repo_root:Path,state_root:Path)->tuple[bool,str,list[str],list[str]]:
+def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str]:
+    """Snapshot contract-declared workspace identity and HEAD independently of readiness certificates."""
+    try:
+        contract=json.loads((repo_root/"engineering"/"hands-off-evolution.json").read_text(encoding="utf-8"))
+        repositories=sorted({repo for repos in contract.get("products",{}).values() for repo in repos})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return False,"LIVE_HEAD_CONTRACT_UNREADABLE"
+    observed={}
+    for repo in repositories:
+        ws=workspace_root/repo.split("/",1)[-1]
+        if not ws.is_dir():
+            continue
+        origin=subprocess.run(["git","remote","get-url","origin"],cwd=ws,text=True,capture_output=True,check=False)
+        head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+        if origin.returncode or head.returncode or repo.lower() not in origin.stdout.lower():
+            continue
+        value=head.stdout.strip()
+        if value:
+            observed[repo]=value
+    atomic(state_root/"hands-off-live-heads.json",observed)
+    return bool(observed),"LIVE_HEADS_OBSERVED" if observed else "LIVE_HEADS_UNAVAILABLE"
+
+def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str,list[str],list[str]]:
     activation=state_root/"hands-off-activation.json"
-    expected=state_root/"hands-off-expected-heads.json"
-    if not activation.exists() or not expected.exists():
+    observed=state_root/"hands-off-live-heads.json"
+    live_ok,_=observe_live_heads(repo_root,workspace_root,state_root)
+    if not activation.exists() or not live_ok or not observed.exists():
         return False,"ACTIVATION_EVIDENCE_MISSING",[],[]
     p=subprocess.run([sys.executable,str(repo_root/"scripts"/"evolution_activation_gate.py"),
-        "--activation-state",str(activation),"--expected-heads",str(expected)],
+        "--activation-state",str(activation),"--observed-heads",str(observed)],
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"activation-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     try:
@@ -190,15 +213,15 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
-        authorized,activation_reason,products,stale_products=evolution_authorized(repo,state)
+        authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
                 recertify_product(repo,workspace,state,product)
-            authorized,activation_reason,products,stale_products=evolution_authorized(repo,state)
+            authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if not authorized and activation_reason=="ACTIVATION_EVIDENCE_MISSING":
             refreshed,refresh_reason=refresh_readiness(repo,workspace,state)
             if refreshed:
-                authorized,activation_reason,products,stale_products=evolution_authorized(repo,state)
+                authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
             else:
                 activation_reason=refresh_reason
         products=products if authorized else []
