@@ -77,3 +77,16 @@ def test_semantic_gate_accepts_source_with_regression_test(tmp_path):
     (tmp_path/"src"/"feature.py").write_text("def useful(): return True\n",encoding="utf-8")
     (tmp_path/"tests"/"test_feature.py").write_text("def test_useful(): assert True\n",encoding="utf-8")
     assert b.semantic_quality_failure(tmp_path,["src/feature.py","tests/test_feature.py"]) is None
+
+def test_diff_anomaly_blocks_large_destructive_change(monkeypatch,tmp_path):
+    class R:
+        returncode=0
+        stdout="10\t100\tfile.py\n"
+    monkeypatch.setattr(b,"run",lambda *args,**kwargs:R())
+    assert b.diff_anomaly_failure(tmp_path,"a"*40)=="excessive_deletions:100"
+
+def test_repair_prompt_contains_exact_rejection_reason():
+    text=b.repair_prompt("jweter/project-orchestrator","AUTONOMOUS_POLICY_CONTRACT_WEAKENING_174:deleted_keys:x",["engineering/agent-action-guard.json"])
+    assert "AUTONOMOUS_POLICY_CONTRACT_WEAKENING_174" in text
+    assert "exactly ONE bounded repair attempt" in text
+    assert "Do not weaken or replace configuration contracts" in text

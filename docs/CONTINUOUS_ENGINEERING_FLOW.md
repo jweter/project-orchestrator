@@ -5,11 +5,13 @@ Jeremy should not have to send `Continue` between ordinary engineering slices. T
 ## 1. Autonomous builder actor
 `ExponentialEngine-AutonomousBuilder` runs from Windows Task Scheduler every five minutes. It exits immediately while the interactive session is active and only performs heavy work after five minutes of user idle time.
 
-The builder rotates across the six control/product repositories. A repository with an open PR is treated as already owned, so the actor rotates to another repository instead of stacking conflicting work.
+The builder rotates across the six control/product repositories. Open PRs reserve their changed paths rather than freezing an entire repository; bounded independent lanes may continue while conflict-aware capacity remains.
 
-For an eligible repository it creates an isolated governed branch from exact `origin/main`, asks the local Ollama/Aider coding model for exactly one bounded P4/P5 slice, rejects governance/security/workflow/roadmap/architecture edits, and runs the repository's canonical `engineering/preflight.py`.
+For an eligible repository it creates an isolated governed branch from exact `origin/main`, asks the local Ollama/Aider coding model for exactly one bounded P4/P5 slice, and evaluates the generated diff before any PR exists.
 
-Only an exact-head preflight PASS can be committed, pushed, and opened as an `AUTO:` PR. Failed generation, protected-path changes, environment failures, and failed preflight do not become PRs.
+The pre-PR gate rejects protected paths, policy-contract weakening, placeholder/generic output, source changes without regression coverage, and anomalously destructive diffs. A rejected generation receives exactly one bounded local repair attempt with the exact rejection reason. If the repaired diff still fails, the branch is discarded locally and no PR/CI/review capacity is consumed. The PR #174 agent-action-guard weakening is encoded as a permanent executable failure fingerprint.
+
+Only a guarded change with exact-head canonical preflight PASS can be committed, pushed, and opened as an `AUTO:` PR.
 
 ## 2. Existing laptop actor
 `ExponentialEngine-LaptopActor` remains the deterministic Windows/Ollama/native verification and queued-work executor. The new builder does not replace it; it feeds the same unattended engineering flow with bounded implementation slices.

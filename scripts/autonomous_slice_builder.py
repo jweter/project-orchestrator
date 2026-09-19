@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import Any
 try:
     from scripts.lane_leases import open_pr_paths
+    from scripts.autonomous_contract_guard import contract_guard_failure
 except ModuleNotFoundError:
     from lane_leases import open_pr_paths
+    from autonomous_contract_guard import contract_guard_failure
 
 PORTFOLIO_REPOS=(
     "jweter/project-orchestrator","jweter/knowledge-engine-core",
@@ -22,6 +24,8 @@ GENERIC_ROOT_FILES={"utils.py","util.py","helpers.py","helper.py","path/to/filen
 MIN_IDLE_SECONDS=300
 MAX_AIDER_SECONDS=2700
 MAX_PREFLIGHT_SECONDS=7200
+MAX_AUTONOMOUS_DELETIONS=80
+MAX_AUTONOMOUS_CHANGED_LINES=400
 
 def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
     return subprocess.run(argv,cwd=cwd,text=True,capture_output=True,check=False,**kwargs)
@@ -140,6 +144,42 @@ def semantic_quality_failure(ws:Path,paths:list[str])->str|None:
         return "source_change_without_regression_test"
     return None
 
+def diff_anomaly_failure(ws:Path,base:str)->str|None:
+    proc=run(["git","diff","--numstat",base,"--"],ws)
+    if proc.returncode:
+        return "diff_stat_unavailable"
+    added=deleted=0
+    for line in proc.stdout.splitlines():
+        parts=line.split("\t")
+        if len(parts)<3 or not parts[0].isdigit() or not parts[1].isdigit():
+            continue
+        added+=int(parts[0]); deleted+=int(parts[1])
+    if deleted>MAX_AUTONOMOUS_DELETIONS:
+        return f"excessive_deletions:{deleted}"
+    if added+deleted>MAX_AUTONOMOUS_CHANGED_LINES:
+        return f"excessive_changed_lines:{added+deleted}"
+    if deleted>=40 and deleted>max(added*2,40):
+        return f"destructive_diff_ratio:add={added}:delete={deleted}"
+    return None
+
+def generated_change_failure(ws:Path,base:str,paths:list[str])->str|None:
+    blocked=protected_change(paths)
+    if blocked:
+        return f"protected_path:{blocked}"
+    contract=contract_guard_failure(ws,base,paths)
+    if contract:
+        return contract
+    quality=semantic_quality_failure(ws,paths)
+    if quality:
+        return quality
+    return diff_anomaly_failure(ws,base)
+
+def repair_prompt(repo:str,failure:str,paths:list[str])->str:
+    return f"""Your autonomous change for {repo} was rejected before PR creation.
+Failure: {failure}
+Changed paths: {", ".join(paths)}
+Perform exactly ONE bounded repair attempt. Preserve all existing policy, authority, safety, security, provenance, licensing, Product Reality, and human-reserved boundaries. Do not weaken or replace configuration contracts. Reduce destructive diff size if flagged. Add regression coverage when source changed. If the requested repair cannot be made safely, revert your own changes and make no changes. Do not commit, push, or merge."""
+
 def run_preflight(ws:Path)->subprocess.CompletedProcess[str]:
     script=ws/"engineering"/"preflight.py"
     if not script.is_file():
@@ -188,16 +228,28 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False)->dict[str
     if not paths:
         result={"status":"NO_OP","repository":repo,"last_repo_index":idx}
         atomic_json(state_path,result); return result
-    blocked=protected_change(paths)
-    if blocked:
-        reset_workspace(ws,base)
-        result={"status":"PROTECTED_PATH_BLOCKED","repository":repo,"path":blocked,"last_repo_index":idx}
-        atomic_json(state_path,result); return result
-    quality=semantic_quality_failure(ws,paths)
-    if quality:
-        reset_workspace(ws,base)
-        result={"status":"SEMANTIC_QUALITY_BLOCKED","repository":repo,"reason":quality,"last_repo_index":idx}
-        atomic_json(state_path,result); return result
+    initial_failure=generated_change_failure(ws,base,paths)
+    if initial_failure:
+        repair=run_aider(ws,repair_prompt(repo,initial_failure,paths))
+        cleanup_aider_artifacts(ws)
+        paths=changed_paths(ws,base)
+        if repair.returncode!=0:
+            reset_workspace(ws,base)
+            result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
+                    "initial_failure":initial_failure,"final_failure":"repair_execution_failed",
+                    "repair_attempted":True,"last_repo_index":idx}
+            atomic_json(state_path,result); return result
+        if not paths:
+            result={"status":"SELF_REPAIRED_TO_NO_OP","repository":repo,
+                    "initial_failure":initial_failure,"repair_attempted":True,"last_repo_index":idx}
+            atomic_json(state_path,result); return result
+        final_failure=generated_change_failure(ws,base,paths)
+        if final_failure:
+            reset_workspace(ws,base)
+            result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
+                    "initial_failure":initial_failure,"final_failure":final_failure,
+                    "repair_attempted":True,"last_repo_index":idx}
+            atomic_json(state_path,result); return result
     preflight=run_preflight(ws)
     if preflight.returncode!=0:
         reset_workspace(ws,base)
