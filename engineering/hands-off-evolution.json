@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "project": "Project Hands-Off Evolution",
+  "purpose": "Machine-readable readiness contract for removing Jeremy and ChatGPT from routine product development.",
+  "required_authority": [
+    {
+      "id": "vision_completion",
+      "description": "Authoritative product vision and completion criteria",
+      "evidence_any": [
+        "README.md",
+        "docs/ROADMAP.md",
+        "ROADMAP.md"
+      ]
+    },
+    {
+      "id": "roadmap",
+      "description": "Authoritative unfinished-work roadmap",
+      "evidence_any": [
+        "docs/ROADMAP.md",
+        "ROADMAP.md"
+      ]
+    },
+    {
+      "id": "architecture",
+      "description": "Architecture and repository boundaries",
+      "evidence_any": [
+        "docs/ARCHITECTURE.md",
+        "ARCHITECTURE.md"
+      ]
+    },
+    {
+      "id": "agent_instructions",
+      "description": "Repository-local agent instructions",
+      "evidence_any": [
+        "AGENTS.md",
+        "CLAUDE.md"
+      ]
+    },
+    {
+      "id": "control_plane",
+      "description": "Machine-readable engineering policy",
+      "evidence_any": [
+        "engineering/control-plane.json"
+      ]
+    },
+    {
+      "id": "preflight",
+      "description": "Exact-head deterministic preflight entry point",
+      "evidence_any": [
+        "engineering/preflight.py",
+        "scripts/preflight.py"
+      ]
+    },
+    {
+      "id": "ci",
+      "description": "Repository CI workflows",
+      "evidence_any": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/ci.yaml"
+      ]
+    },
+    {
+      "id": "product_reality",
+      "description": "Product Reality boundary is explicitly documented",
+      "text_signal_any": [
+        "Product Reality",
+        "PRODUCT REALITY"
+      ]
+    },
+    {
+      "id": "security_privacy",
+      "description": "Security/privacy boundaries are explicit",
+      "text_signal_any": [
+        "security",
+        "privacy"
+      ]
+    },
+    {
+      "id": "licensing_provenance",
+      "description": "Licensing/provenance boundaries are explicit",
+      "text_signal_any": [
+        "licensing",
+        "license",
+        "provenance"
+      ]
+    },
+    {
+      "id": "human_boundary",
+      "description": "Reserved human escalation boundary is explicit",
+      "text_signal_any": [
+        "HUMAN ESCALATION",
+        "human boundary",
+        "Jeremy"
+      ]
+    }
+  ],
+  "activation_rule": "A product may enter Hands-Off Evolution only when all required authority checks are PASS. UNKNOWN or FAIL fails closed. Activation never overrides repository-local policy.",
+  "products": {
+    "knowledge-engine": [
+      "jweter/knowledge-engine-core",
+      "jweter/knowledge-engine-web",
+      "jweter/knowledge-engine-ai"
+    ],
+    "rocksmith": [
+      "jweter/rocksmith-cdlc-generator"
+    ],
+    "everward": [
+      "jweter/Project-Everward"
+    ]
+  }
+}
