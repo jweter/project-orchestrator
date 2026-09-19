@@ -111,7 +111,7 @@ def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeyp
     activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
     activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":4,"grant_id":"test-grant","contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="moved\n"
@@ -128,7 +128,7 @@ def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
     activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":4,"grant_id":"test-grant","contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="certified\n"
@@ -164,7 +164,7 @@ def test_execution_grant_rejects_contract_drift(tmp_path, monkeypatch):
     activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
     activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":4,"grant_id":"test-grant","contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator","jweter/extra"]}}',encoding="utf-8")
     class Result:
@@ -182,7 +182,7 @@ def test_execution_grant_rejects_undeclared_product_even_with_valid_contract_dig
     activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
     activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{
+    grant.write_text(json.dumps({"schema_version":4,"grant_id":"test-grant","contract_sha256":digest,"activation_sha256":activation_digest,"products":{
         "ghost":{"repositories":{"jweter/ghost":"abc"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="abc\n"
@@ -199,7 +199,7 @@ def test_execution_grant_rejects_incomplete_declared_product_membership(tmp_path
     activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
     activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":digest,"activation_sha256":activation_digest,"products":{
+    grant.write_text(json.dumps({"schema_version":4,"grant_id":"test-grant","contract_sha256":digest,"activation_sha256":activation_digest,"products":{
         "knowledge-engine":{"repositories":{"jweter/knowledge-engine-core":"abc"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="abc\n"
@@ -217,7 +217,7 @@ def test_execution_grant_rejects_activation_revocation(tmp_path, monkeypatch):
     activation.write_text('{"schema_version":2,"reason":"READINESS_PASS"}',encoding="utf-8")
     activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":3,"contract_sha256":contract_digest,
+    grant.write_text(json.dumps({"schema_version":4,"grant_id":"test-grant","contract_sha256":contract_digest,
         "activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     activation.write_text('{"schema_version":2,"reason":"READINESS_NOT_PASS"}',encoding="utf-8")
@@ -225,3 +225,24 @@ def test_execution_grant_rejects_activation_revocation(tmp_path, monkeypatch):
         returncode=0; stdout="certified\n"
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
     assert builder.granted_repositories(grant,tmp_path,contract,activation)==set()
+
+def test_execution_grant_is_single_use(tmp_path, monkeypatch):
+    import hashlib, json
+    import scripts.autonomous_slice_builder as builder
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    contract=tmp_path/"contract.json"
+    contract.write_text('{"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"]}}',encoding="utf-8")
+    activation=tmp_path/"hands-off-activation.json"
+    activation.write_text('{"schema_version":2,"reason":"READINESS_PASS"}',encoding="utf-8")
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"schema_version":4,"grant_id":"cycle-1",
+        "contract_sha256":hashlib.sha256(contract.read_bytes()).hexdigest(),
+        "activation_sha256":hashlib.sha256(activation.read_bytes()).hexdigest(),
+        "products":{"rocksmith":{"repositories":{"jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
+    consumed=tmp_path/"consumed.json"
+    class Result:
+        returncode=0; stdout="certified\n"
+    monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
+    assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)=={"jweter/rocksmith-cdlc-generator"}
+    assert builder.granted_repositories(grant,tmp_path,contract,activation,consumed)==set()
+    assert json.loads(consumed.read_text())["grant_ids"]==["cycle-1"]

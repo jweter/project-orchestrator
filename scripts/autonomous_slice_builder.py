@@ -86,7 +86,7 @@ def ensure_workspace(repo:str,root:Path)->Path:
     return ws
 
 def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None,
-                         activation_path:Path|None=None)->set[str]:
+                         activation_path:Path|None=None,consumed_path:Path|None=None)->set[str]:
     """Return repositories only when grant contract and all certified HEADs are still current."""
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
@@ -98,7 +98,14 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     except (OSError,json.JSONDecodeError):
         return set()
-    if (payload.get("schema_version") != 3
+    grant_id=payload.get("grant_id")
+    consumed=consumed_path or path.with_name("hands-off-consumed-grants.json")
+    try:
+        consumed_ids=set(json.loads(consumed.read_text(encoding="utf-8")).get("grant_ids",[])) if consumed.exists() else set()
+    except (OSError,json.JSONDecodeError,TypeError):
+        return set()
+    if (payload.get("schema_version") != 4 or not isinstance(grant_id,str) or not grant_id
+            or grant_id in consumed_ids
             or payload.get("contract_sha256") != contract_digest
             or payload.get("activation_sha256") != activation_digest):
         return set()
@@ -117,6 +124,9 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
                 break
         if current:
             allowed.update(repositories)
+    if allowed:
+        consumed_ids.add(grant_id)
+        atomic_json(consumed,{"schema_version":1,"grant_ids":sorted(consumed_ids)})
     return allowed
 
 def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->str|None:
