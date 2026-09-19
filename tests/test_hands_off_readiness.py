@@ -124,3 +124,17 @@ def test_product_activation_isolated_between_independent_products(tmp_path, monk
         products[product]={"status":status}
     assert products["knowledge"]["status"]=="FAIL"
     assert products["rocksmith"]["status"]=="PASS"
+
+def test_partial_product_pass_returns_success(tmp_path, monkeypatch):
+    import json, sys
+    import scripts.hands_off_readiness as readiness
+    contract=tmp_path/"contract.json"
+    contract.write_text(json.dumps({"required_authority":[],"products":{
+        "good":["jweter/good"],"bad":["jweter/bad"]}}),encoding="utf-8")
+    good=tmp_path/"good"; bad=tmp_path/"bad"; good.mkdir(); bad.mkdir()
+    monkeypatch.setattr(readiness,"audit",lambda repo,contract:{
+        "repository":"jweter/good" if repo.name=="good" else "jweter/bad",
+        "local_path":str(repo),"head":"aaa" if repo.name=="good" else "bbb",
+        "checks":[],"status":"PASS" if repo.name=="good" else "FAIL"})
+    monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(good),str(bad),"--contract",str(contract)])
+    assert readiness.main()==0
