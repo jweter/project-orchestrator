@@ -105,9 +105,21 @@ def merge_watcher_advanced(state_root:Path)->bool:
     atomic(cursor,event)
     return True
 
-def run_builder(repo_root:Path,workspace_root:Path,state_root:Path)->int:
-    p=subprocess.run([sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
-        "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")],
+def authorized_products(state_root:Path)->list[str]:
+    """Return only explicitly enabled products from the current activation certificate."""
+    try:
+        payload=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError):
+        return []
+    return sorted(name for name,value in payload.get("products",{}).items()
+                  if isinstance(value,dict) and value.get("enabled") is True)
+
+def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
+    cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
+        "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")]
+    if products is not None:
+        cmd.extend(["--eligible-products",",".join(products)])
+    p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     return p.returncode
@@ -131,7 +143,8 @@ def main()->int:
                 authorized,activation_reason=evolution_authorized(repo,state)
             else:
                 activation_reason=refresh_reason
-        rc=run_builder(repo,workspace,state) if authorized else 3
+        products=authorized_products(state) if authorized else []
+        rc=run_builder(repo,workspace,state,products) if products else 3
         builder_ok,builder_status=builder_health(state,rc)
         lifecycle_advanced=merge_watcher_advanced(state)
         if lifecycle_advanced:
@@ -142,6 +155,7 @@ def main()->int:
             "builder_status":builder_status,
             "linear_reconciliation_returncode":linear_rc,
             "evolution_authorized":authorized,"activation_reason":activation_reason,
+            "authorized_products":products,
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
         if a.once:

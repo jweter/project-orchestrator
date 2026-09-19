@@ -90,3 +90,13 @@ def test_repair_prompt_contains_exact_rejection_reason():
     assert "AUTONOMOUS_POLICY_CONTRACT_WEAKENING_174" in text
     assert "exactly ONE bounded repair attempt" in text
     assert "Do not weaken or replace configuration contracts" in text
+
+def test_select_repo_respects_authorized_product(monkeypatch, tmp_path):
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"lane_capacity",lambda repo:1)
+    assert builder.select_repo(tmp_path/"state.json",{"rocksmith"})=="jweter/rocksmith-cdlc-generator"
+
+def test_select_repo_returns_none_when_no_product_authorized(monkeypatch, tmp_path):
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"lane_capacity",lambda repo:1)
+    assert builder.select_repo(tmp_path/"state.json",set()) is None
