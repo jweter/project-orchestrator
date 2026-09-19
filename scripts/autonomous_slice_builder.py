@@ -209,6 +209,13 @@ def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_re
             return repo
     return None
 
+def problem_solving_guidance()->str:
+    path=Path(__file__).resolve().parents[1]/"docs"/"AUTONOMOUS_TROUBLESHOOTING.md"
+    try:
+        return path.read_text(encoding="utf-8")[:12000]
+    except OSError:
+        return ""
+
 def prompt_for(repo:str)->str:
     owned=open_pr_paths(repo)
     avoid=sorted({p for lease in owned for p in lease.paths})
@@ -217,6 +224,10 @@ def prompt_for(repo:str)->str:
 Read the repository's AGENTS.md, README, roadmap/milestone, architecture, and engineering/control-plane files before editing.
 Choose exactly ONE small, high-value, authorized P4/P5 slice that is independent of Product Reality and does not require a human decision.
 Open PRs already own these paths: {avoid_text}
+
+Troubleshooting and engineering practice guidance:
+{problem_solving_guidance()}
+
 Choose an independent slice that does not edit, rename, delete, or semantically depend on those owned paths. If no independent slice exists, make no changes.
 Do not edit governance, roadmap, architecture, vision, security, license, workflow, or control-plane authority files.
 Do not change secrets, credentials, releases, publishing, destructive migrations, or licensing.
