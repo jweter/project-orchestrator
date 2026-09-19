@@ -219,3 +219,56 @@ def test_recover_stale_grant_claims_uses_last_heartbeat(tmp_path):
         "state":"CLAIMED","claimed_at":old,"last_heartbeat_at":fresh}}}),encoding="utf-8")
     assert supervisor.recover_stale_grant_claims(tmp_path,now)==[]
     assert json.loads(path.read_text())["grants"]["g1"]["state"]=="CLAIMED"
+
+def test_reconcile_abandoned_claim_quarantines_dirty_workspace(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"workspace"; ws=(wsroot/"rock"); ws.mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
+        "state":"ABANDONED","repository":"jweter/rock"}}}),encoding="utf-8")
+    class Result:
+        returncode=0
+        def __init__(self,stdout): self.stdout=stdout; self.stderr=""
+    def run(cmd,**kwargs):
+        return Result("modified.txt\n") if cmd[1:3]==["status","--porcelain"] else Result("actor/autonomous-rock-x\n")
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    result=supervisor.reconcile_abandoned_claims(wsroot,state,["g1"])
+    assert result=={"g1":"DIRTY_WORKSPACE_QUARANTINED"}
+    assert json.loads(path.read_text())["grants"]["g1"]["recovery_result"]=="DIRTY_WORKSPACE_QUARANTINED"
+
+def test_reconcile_abandoned_claim_recovers_clean_workspace(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"workspace"; (wsroot/"rock").mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
+        "state":"ABANDONED","repository":"jweter/rock"}}}),encoding="utf-8")
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout): self.stdout=stdout
+    def run(cmd,**kwargs):
+        return Result("") if cmd[1:3]==["status","--porcelain"] else Result("main\n")
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.reconcile_abandoned_claims(wsroot,state,["g1"])=={"g1":"CLEAN_WORKSPACE_RECOVERED"}
+    record=json.loads(path.read_text())["grants"]["g1"]
+    assert record["recovery_state"]=="RECOVERED"
+    assert record["recovered_at"]
+
+def test_reconcile_abandoned_claim_quarantines_orphan_actor_branch(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"workspace"; (wsroot/"rock").mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
+        "state":"ABANDONED","repository":"jweter/rock"}}}),encoding="utf-8")
+    class Result:
+        returncode=0; stderr=""
+        def __init__(self,stdout): self.stdout=stdout
+    def run(cmd,**kwargs):
+        return Result("") if cmd[1:3]==["status","--porcelain"] else Result("actor/autonomous-rock-dead\n")
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.reconcile_abandoned_claims(wsroot,state,["g1"])=={"g1":"ORPHAN_BRANCH_QUARANTINED"}
