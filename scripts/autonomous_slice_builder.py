@@ -146,7 +146,8 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
             allowed.update(repositories)
     if allowed:
         claimed=datetime.now(UTC).isoformat()
-        grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed}
+        grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
+                          "authorized_repositories":sorted(allowed)}
         atomic_json(lifecycle,{"schema_version":1,"grants":grants})
     return allowed
 
@@ -388,6 +389,12 @@ def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
     record["result_status"]=result.get("status","UNKNOWN")
     if result.get("repository"):
         record["repository"]=result["repository"]
+    if result.get("branch"):
+        record["branch"]=result["branch"]
+    if result.get("base_sha"):
+        record["base_sha"]=result["base_sha"]
+    if result.get("head_sha"):
+        record["head_sha"]=result["head_sha"]
     atomic_json(lifecycle,state)
 
 def main()->int:
