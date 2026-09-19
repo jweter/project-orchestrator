@@ -118,10 +118,13 @@ def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_re
         eligible_repos=set(PORTFOLIO_REPOS) if eligible_products is None else {
             repo for product in eligible_products for repo in PRODUCT_REPOS.get(product,())
         }
-    for offset in range(1,len(PORTFOLIO_REPOS)+1):
-        idx=(prior+offset)%len(PORTFOLIO_REPOS)
-        repo=PORTFOLIO_REPOS[idx]
-        if repo in eligible_repos and lane_capacity(repo)>0:
+    repo_universe=tuple(sorted(eligible_repos)) if eligible_repos is not None else PORTFOLIO_REPOS
+    if not repo_universe:
+        return None
+    for offset in range(1,len(repo_universe)+1):
+        idx=(prior+offset)%len(repo_universe)
+        repo=repo_universe[idx]
+        if lane_capacity(repo)>0:
             return repo
     return None
 
