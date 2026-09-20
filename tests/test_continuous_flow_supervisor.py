@@ -695,3 +695,28 @@ def test_preserved_quarantine_recheck_never_releases_work(tmp_path,monkeypatch):
     saved=json.loads(path.read_text())["grants"]["g"]
     assert saved["recovery_state"]=="QUARANTINED"
     assert saved["preserved_work_revalidation"]=="PRESERVED_WORK_EXACT"
+
+def test_validate_preserved_work_requires_identity_before_and_after(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"preserved_work_evidence":{"diff_sha256":"abc"}}
+    checks=iter(["PRESERVED_WORK_EXACT","PRESERVED_WORK_EXACT"])
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:next(checks))
+    class R: returncode=0; stdout=""; stderr=""
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:R())
+    assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_PASSED"
+
+def test_validate_preserved_work_detects_validator_mutation(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"preserved_work_evidence":{"diff_sha256":"abc"}}
+    checks=iter(["PRESERVED_WORK_EXACT","PRESERVED_WORK_CHANGED"])
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:next(checks))
+    class R: returncode=0; stdout=""; stderr=""
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:R())
+    assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_MUTATED_WORKSPACE"
+
+def test_validate_preserved_work_does_not_run_preflight_without_identity(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"preserved_work_evidence":{"diff_sha256":"abc"}}
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:"PRESERVED_WORK_CHANGED")
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:(_ for _ in ()).throw(AssertionError("must not execute")))
+    assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_IDENTITY_PRECHECK_FAILED"
