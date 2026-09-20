@@ -586,10 +586,14 @@ def test_stage_aware_recovery_hands_off_verified_pr_open(tmp_path,monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
     wsroot=tmp_path/"ws"; ws=wsroot/"r"; ws.mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
     path=state/"hands-off-grant-lifecycle.json"
-    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","repository":"o/r","execution_stage":"PR_OPEN","branch":"actor/autonomous-r-x","head_sha":"abc","recovery_attempts":0}}}))
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","repository":"o/r","execution_stage":"PR_OPEN","branch":"actor/autonomous-r-x","head_sha":"abc","pr_number":42,"recovery_attempts":0}}}))
     class R:
         returncode=0; stdout="abc refs/heads/actor/autonomous-r-x\n"; stderr=""
-    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:R())
+    def fake(cmd,*a,**k):
+        if cmd[:3]==["gh","pr","view"]:
+            return type("PR",(),{"returncode":0,"stdout":json.dumps({"number":42,"state":"OPEN","headRefOid":"abc"}),"stderr":""})()
+        return R()
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
     out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
     assert out["g"]=="RECOVERY_DURABLE_PR_HANDOFF"
     saved=json.loads(path.read_text())["grants"]["g"]

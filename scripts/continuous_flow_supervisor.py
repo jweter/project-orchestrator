@@ -733,6 +733,27 @@ def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)
             return list(dict.fromkeys(newly_abandoned or []))
     return list(dict.fromkeys(pending))
 
+def verify_durable_pr(repo:str,ws:Path,pr_number:int,expected_head:str)->str:
+    """Recover PR_OPEN only by exact durable PR number and exact recorded head."""
+    viewed=subprocess.run(["gh","pr","view",str(pr_number),"--repo",repo,
+                           "--json","number,state,headRefOid"],cwd=ws,text=True,capture_output=True,check=False)
+    if viewed.returncode:
+        return "RECOVERY_DURABLE_PR_UNREADABLE"
+    try:
+        pr=json.loads(viewed.stdout)
+    except (json.JSONDecodeError,TypeError):
+        return "RECOVERY_DURABLE_PR_UNREADABLE"
+    if pr.get("number")!=pr_number or pr.get("headRefOid")!=expected_head:
+        return "RECOVERY_DURABLE_PR_IDENTITY_MISMATCH"
+    state=str(pr.get("state","")).upper()
+    if state=="OPEN":
+        return "RECOVERY_DURABLE_PR_HANDOFF"
+    if state=="MERGED":
+        return "RECOVERY_DURABLE_PR_MERGED"
+    if state=="CLOSED":
+        return "RECOVERY_DURABLE_PR_CLOSED_UNMERGED"
+    return "RECOVERY_DURABLE_PR_STATE_UNKNOWN"
+
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
     """Revisit durable recovery obligations until recovered or explicitly quarantined."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -823,9 +844,17 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
             if remote_head!=durable_head:
                 outcomes[grant_id]="RECOVERY_DURABLE_REMOTE_HEAD_MISMATCH"
             elif stage=="PR_OPEN":
-                outcomes[grant_id]="RECOVERY_DURABLE_PR_HANDOFF"
-                record["recovery_state"]="RECOVERED"
-                record["recovered_at"]=current.isoformat()
+                pr_number=record.get("pr_number")
+                if not isinstance(pr_number,int) or pr_number<1:
+                    outcomes[grant_id]="RECOVERY_DURABLE_PR_IDENTITY_REQUIRED"
+                else:
+                    outcomes[grant_id]=verify_durable_pr(repo,ws,pr_number,durable_head)
+                if outcomes[grant_id] in {"RECOVERY_DURABLE_PR_HANDOFF","RECOVERY_DURABLE_PR_MERGED"}:
+                    record["recovery_state"]="RECOVERED"
+                    record["recovered_at"]=current.isoformat()
+                elif outcomes[grant_id]=="RECOVERY_DURABLE_PR_CLOSED_UNMERGED":
+                    record["recovery_state"]="QUARANTINED"
+                    record["recovery_quarantine_reason"]="PR_CLOSED_WITHOUT_MERGE"
             else:
                 evidence={"head_sha":durable_head,"remote_head_sha":record.get("remote_head_sha") or durable_head}
                 outcomes[grant_id]=resume_orphan_branch(repo,ws,durable_branch,"ORPHAN_PUSHED_NO_PR",evidence)
