@@ -212,6 +212,56 @@ def grant_state_root(path:Path)->Path:
 def lifecycle_path_for_grant(path:Path)->Path:
     return grant_state_root(path)/"hands-off-grant-lifecycle.json"
 
+def _lifecycle_lock_path(lifecycle:Path)->Path:
+    return lifecycle.with_name(lifecycle.name+".lock")
+
+def _acquire_lifecycle_lock(lifecycle:Path):
+    """Kernel-owned cross-process lock for lifecycle read-modify-write transactions."""
+    lock_path=_lifecycle_lock_path(lifecycle)
+    handle=lock_path.open("a+b",buffering=0)
+    handle.seek(0,os.SEEK_END)
+    if handle.tell()==0:
+        handle.write(b"0")
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
+                break
+            except OSError:
+                time.sleep(0.01)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_EX)
+    return handle
+
+def _release_lifecycle_lock(handle)->None:
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+    handle.close()
+
+def mutate_grant_lifecycle(lifecycle:Path,grant_id:str,mutator)->bool:
+    """Serialize one grant-record mutation without losing concurrent grant updates."""
+    handle=_acquire_lifecycle_lock(lifecycle)
+    try:
+        try:
+            state=json.loads(lifecycle.read_text(encoding="utf-8"))
+            record=state["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return False
+        if not mutator(record):
+            return False
+        atomic_json(lifecycle,state)
+        return True
+    finally:
+        _release_lifecycle_lock(handle)
+
 def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
