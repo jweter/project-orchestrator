@@ -253,7 +253,9 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         grants=lifecycle_state.get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
+    unique_grant=path.parent.name=="hands-off-execution-grants"
     if (payload.get("schema_version") != 4 or not isinstance(grant_id,str) or not grant_id
+            or (unique_grant and grant_id not in grants)
             or (grant_id in grants and (not isinstance(grants[grant_id],dict) or grants[grant_id].get("state")!="ISSUED"))
             or payload.get("contract_sha256") != contract_digest
             or payload.get("activation_sha256") != activation_digest):
@@ -337,6 +339,9 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
     claimed=datetime.now(UTC).isoformat()
     authority=execution_slice_authority(path,repo,expected_sha)
     if authority is None:
+        return False
+    unique_grant=path.parent.name=="hands-off-execution-grants"
+    if unique_grant and grant_id not in grants:
         return False
     if grant_id in grants:
         record=grants[grant_id]
