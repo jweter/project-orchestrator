@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-09-20T10:26:53-05:00",
+  "mode": "EXECUTION_BURST",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "state": "MERGED",
+    "repository": "jweter/knowledge-engine-core",
+    "pr": 511,
+    "head": "d2ff41619869fc3a1b197b11d5724f5ad446bced",
+    "merge_sha": "7d741670adade513b46264ed94380765f619416b",
+    "evidence": "8 exact-head PR workflows successful; mergeable; no review threads"
+  },
+  "rocksmith": {
+    "state": "WORKER_DISPATCHED",
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "action": "private unattended Product Reality worker dispatched with strict exit against local lawful evidence",
+    "privacy": "private payload remains local"
+  },
+  "everward": {
+    "state": "PREFLIGHT_ENVIRONMENT_FAILURE",
+    "repository": "jweter/Project-Everward",
+    "branch": "orchestrator/slice7-release-momentum",
+    "head": "46b361f",
+    "evidence": "control plane, regression memory, growth engine, reference assets passed; canonical preflight reached cmake then WinError 2 because cmake is unavailable",
+    "next_gate": "rerun exact-head canonical preflight in cmake-capable unattended environment; no PR before green"
+  },
+  "control_plane": {"role": "control-plane-only", "throughput_floor": "met"}
+}
