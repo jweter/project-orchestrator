@@ -608,3 +608,45 @@ def test_stage_aware_recovery_rejects_remote_head_drift(tmp_path,monkeypatch):
     out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
     assert out["g"]=="RECOVERY_DURABLE_REMOTE_HEAD_MISMATCH"
     assert json.loads(path.read_text())["grants"]["g"].get("recovery_state")!="RECOVERED"
+
+def test_early_stage_clean_base_is_safe_no_product_work(tmp_path,monkeypatch):
+    import json
+    from datetime import UTC,datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; (wsroot/"r").mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","repository":"o/r","execution_stage":"BASE_VERIFIED","base_sha":"base","recovery_attempts":0}}}))
+    class R:
+        returncode=0; stderr=""
+        def __init__(self,out): self.stdout=out
+    def fake(cmd,**kwargs):
+        if cmd[1:3]==["status","--porcelain"]: return R("")
+        if cmd[1:3]==["rev-parse","HEAD"]: return R("base\n")
+        if cmd[1:3]==["branch","--show-current"]: return R("actor-staging\n")
+        return R("")
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
+    assert out["g"]=="RECOVERY_EARLY_STAGE_NO_PRODUCT_WORK"
+    assert json.loads(path.read_text())["grants"]["g"]["recovery_state"]=="RECOVERED"
+
+def test_early_stage_dirty_work_is_preserved_and_quarantined(tmp_path,monkeypatch):
+    import json
+    from datetime import UTC,datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; (wsroot/"r").mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","repository":"o/r","execution_stage":"BRANCH_CREATED","base_sha":"base","branch":"actor/autonomous-r-x","recovery_attempts":0}}}))
+    class R:
+        returncode=0; stderr=""
+        def __init__(self,out): self.stdout=out
+    def fake(cmd,**kwargs):
+        if cmd[1:3]==["status","--porcelain"]: return R(" M src/x.py\n")
+        if cmd[1:3]==["rev-parse","HEAD"]: return R("base\n")
+        if cmd[1:3]==["branch","--show-current"]: return R("actor/autonomous-r-x\n")
+        return R("")
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
+    assert out["g"]=="RECOVERY_EARLY_STAGE_DIRTY_PRESERVED"
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["recovery_state"]=="QUARANTINED"
+    assert saved["recovery_quarantine_reason"]=="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
