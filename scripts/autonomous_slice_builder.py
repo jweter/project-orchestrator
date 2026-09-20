@@ -320,8 +320,13 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
     if grant_id in grants:
         return False
     claimed=datetime.now(UTC).isoformat()
+    authority=execution_slice_authority(path,repo,expected_sha)
+    if authority is None:
+        return False
     grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
                       "authorized_repositories":[repo],"expected_sha":expected_sha,
+                      "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
+                      "execution_slice":authority,
                       "worker":worker or worker_incarnation()}
     atomic_json(lifecycle,{"schema_version":1,"grants":grants})
     return True
