@@ -501,6 +501,35 @@ def diff_anomaly_failure(ws:Path,base:str)->str|None:
         return f"destructive_diff_ratio:add={added}:delete={deleted}"
     return None
 
+def slice_path_failure(paths:list[str],authority:dict[str,Any]|None)->str|None:
+    """Enforce bounded slice path authority independently of worker prompt compliance."""
+    if authority is None:
+        return None
+    allowed=authority.get("allowed_paths",[])
+    forbidden=authority.get("forbidden_paths",[])
+    if not isinstance(allowed,list) or not isinstance(forbidden,list):
+        return "invalid_slice_path_authority"
+    def normalize(value:str)->str|None:
+        if not isinstance(value,str) or not value.strip():
+            return None
+        value=value.replace(chr(92),"/").strip()
+        if value.startswith("/") or ".." in value.split("/"):
+            return None
+        return value.rstrip("/")
+    allowed_n=[normalize(x) for x in allowed]
+    forbidden_n=[normalize(x) for x in forbidden]
+    if any(x is None for x in allowed_n+forbidden_n):
+        return "invalid_slice_path_authority"
+    def matches(path:str,prefix:str)->bool:
+        path=path.replace(chr(92),"/").strip("/")
+        return path==prefix or path.startswith(prefix+"/")
+    for path in paths:
+        if any(matches(path,prefix) for prefix in forbidden_n):
+            return f"slice_forbidden_path:{path}"
+        if allowed_n and not any(matches(path,prefix) for prefix in allowed_n):
+            return f"slice_path_outside_authority:{path}"
+    return None
+
 def generated_change_failure(ws:Path,base:str,paths:list[str])->str|None:
     blocked=protected_change(paths)
     if blocked:
@@ -591,7 +620,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     if not paths:
         result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
-    initial_failure=generated_change_failure(ws,base,paths)
+    initial_failure=generated_change_failure(ws,base,paths,slice_authority)
     if initial_failure:
         repair=run_aider(ws,repair_prompt(repo,initial_failure,paths))
         cleanup_aider_artifacts(ws)
@@ -606,7 +635,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             result={"status":"SELF_REPAIRED_TO_NO_OP","repository":repo,
                     "initial_failure":initial_failure,"repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
-        final_failure=generated_change_failure(ws,base,paths)
+        final_failure=generated_change_failure(ws,base,paths,slice_authority)
         if final_failure:
             reset_workspace(ws,base)
             result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
