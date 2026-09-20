@@ -530,7 +530,32 @@ def slice_path_failure(paths:list[str],authority:dict[str,Any]|None)->str|None:
             return f"slice_path_outside_authority:{path}"
     return None
 
+def persisted_change_failure(ws:Path,base:str,paths:list[str])->str|None:
+    """Read worker output back from disk and prove changed Python artifacts are structurally valid."""
+    for rel in paths:
+        path=ws/rel
+        if not path.is_file() or path.is_symlink():
+            continue
+        try:
+            data=path.read_bytes()
+        except OSError:
+            return f"persisted_artifact_unreadable:{rel}"
+        if rel.endswith(".py"):
+            try:
+                compile(data,rel,"exec")
+            except (SyntaxError,ValueError,TypeError):
+                return f"persisted_python_invalid:{rel}"
+    diff=run(["git","diff","--binary",base,"--",*paths],ws)
+    if diff.returncode:
+        return "persisted_diff_unreadable"
+    if not diff.stdout.strip():
+        return "persisted_change_missing"
+    return None
+
 def generated_change_failure(ws:Path,base:str,paths:list[str],slice_authority:dict[str,Any]|None=None)->str|None:
+    persisted=persisted_change_failure(ws,base,paths)
+    if persisted:
+        return persisted
     bounded=slice_path_failure(paths,slice_authority)
     if bounded:
         return bounded
