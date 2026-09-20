@@ -162,7 +162,7 @@ def worker_incarnation()->dict[str,Any]:
             "process_started_ns":int(time.time_ns()-time.monotonic_ns()),
             "lease_token":uuid.uuid4().hex}
 
-def heartbeat_grant(grant_path:Path,stop:threading.Event,worker:dict[str,Any]|None=None,interval:int=HEARTBEAT_SECONDS)->None:
+def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
     try:
         grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
@@ -246,7 +246,7 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
 
 def start_grant_heartbeat(grant_path:Path,worker:dict[str,Any])->tuple[threading.Event,threading.Thread]:
     stop=threading.Event()
-    thread=threading.Thread(target=heartbeat_grant,args=(grant_path,stop,worker),daemon=True)
+    thread=threading.Thread(target=heartbeat_grant,args=(grant_path,stop),kwargs={"worker":worker},daemon=True)
     thread.start()
     return stop,thread
 
