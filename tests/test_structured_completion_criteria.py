@@ -24,3 +24,21 @@ def test_duplicate_completion_criterion_ids_fail_closed():
     result=validate(intake("- [required] done: One | verify=acceptance\n- [required] done: Two | verify=product_reality"))
     assert result["status"]=="DIRECTION_REQUIRED"
     assert any(i["code"]=="DUPLICATE_COMPLETION_CRITERION" for i in result["issues"])
+
+
+def test_unknown_verification_kind_fails_closed():
+    result=validate(intake("- [required] done: Completion is proven | verify=magic"))
+    assert result["status"]=="DIRECTION_REQUIRED"
+    assert any(i["code"]=="UNSUPPORTED_COMPLETION_VERIFICATION_KIND" for i in result["issues"])
+
+
+def test_supported_verification_kinds_are_accepted():
+    criteria="\n".join([
+        "- [required] a: Acceptance suite passes | verify=acceptance",
+        "- [required] b: CI passes | verify=ci",
+        "- [required] c: Preflight passes | verify=preflight",
+        "- [required] d: Product Reality passes | verify=product_reality",
+        "- [required] e: Worker gate passes | verify=worker",
+    ])
+    result=validate(intake(criteria))
+    assert result["status"]=="READY"
