@@ -27,7 +27,7 @@ def validate(text: str) -> dict:
     # Completion criteria are terminal authority, not prose hints. Each required
     # criterion needs a stable machine identity and an explicit verification kind.
     completion=section(text,"Product Completion Criteria") or ""
-    criterion_lines=re.findall(r"(?im)^-\\s*\\[required\\]\\s+([a-z0-9][a-z0-9._-]*):\\s*(.+?)\\s*\\|\\s*verify=([a-z0-9_-]+)\\s*$",completion)
+    criterion_lines=re.findall(r"(?im)^-\s*\[required\]\s+([a-z0-9][a-z0-9._-]*):\s*(.+?)\s*\|\s*verify=([a-z0-9_-]+)\s*$",completion)
     criterion_ids=[item[0] for item in criterion_lines]
     duplicate_criteria=sorted({item for item in criterion_ids if criterion_ids.count(item)>1})
     # Intake must explicitly assert READY; unchecked template/default is not authority.
