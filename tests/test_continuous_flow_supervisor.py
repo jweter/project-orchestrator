@@ -673,3 +673,25 @@ def test_preserved_work_evidence_fingerprints_without_storing_diff(tmp_path,monk
     assert evidence["diff_sha256"]==hashlib.sha256(b"SECRET-DIFF-CONTENT").hexdigest()
     assert evidence["diff_bytes"]==len(b"SECRET-DIFF-CONTENT")
     assert "SECRET-DIFF-CONTENT" not in str(evidence)
+
+def test_revalidate_preserved_work_requires_exact_identity(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    expected={"capture_status":"CAPTURED","branch":"actor/x","head_sha":"h","status_porcelain":" M x\n","changed_paths":["x"],"diff_sha256":"abc","diff_bytes":3}
+    record={"base_sha":"b","preserved_work_evidence":expected}
+    monkeypatch.setattr(supervisor,"preserved_work_evidence",lambda ws,base:dict(expected))
+    assert supervisor.revalidate_preserved_work(tmp_path,record)=="PRESERVED_WORK_EXACT"
+    changed=dict(expected); changed["diff_sha256"]="different"
+    monkeypatch.setattr(supervisor,"preserved_work_evidence",lambda ws,base:changed)
+    assert supervisor.revalidate_preserved_work(tmp_path,record)=="PRESERVED_WORK_CHANGED"
+
+def test_preserved_quarantine_recheck_never_releases_work(tmp_path,monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; (wsroot/"r").mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","recovery_state":"QUARANTINED","recovery_quarantine_reason":"UNCOMMITTED_WORK_REQUIRES_PRESERVATION","repository":"o/r","base_sha":"b","preserved_work_evidence":{"capture_status":"CAPTURED"}}}}))
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,record:"PRESERVED_WORK_EXACT")
+    assert supervisor.recheck_preserved_work_quarantines(wsroot,state)=={"g":"PRESERVED_WORK_EXACT"}
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["recovery_state"]=="QUARANTINED"
+    assert saved["preserved_work_revalidation"]=="PRESERVED_WORK_EXACT"
