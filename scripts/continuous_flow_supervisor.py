@@ -1311,10 +1311,16 @@ def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
 
 def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder_ok:bool,builder_status:str,normal_seconds:int)->int:
     """Choose the next supervisor pass without turning successful work into idle time."""
-    if lifecycle_advanced or liveness_reacquire.get("requested"):
+    if lifecycle_advanced:
         return 1
     productive={"PR_OPEN"}
+    nonproductive={"NO_WORK","NO_OP","SELF_REPAIRED_TO_NO_OP","AUTONOMOUS_CHANGE_REJECTED",
+                   "COMMIT_FAILED","USER_ACTIVE","NO_ELIGIBLE_REPOSITORY"}
     if builder_ok and builder_status in productive:
+        return 1
+    # Idle-liveness recovery must not override a current nonproductive outcome.
+    # Otherwise the recovery request itself converts bounded backoff into a hot loop.
+    if liveness_reacquire.get("requested") and builder_status not in nonproductive:
         return 1
     return max(60,normal_seconds)
 
