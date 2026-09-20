@@ -363,10 +363,18 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         repo=record.get("repository")
         candidates=[repo] if repo else repos
         if len(candidates)!=1:
-            outcomes[grant_id]="RECOVERY_IDENTITY_AMBIGUOUS"; continue
-        repo=candidates[0]; ws=workspace_root/repo.split("/",1)[-1]
-        if not ws.is_dir():
-            outcomes[grant_id]="WORKSPACE_MISSING"; continue
+            outcomes[grant_id]="RECOVERY_IDENTITY_AMBIGUOUS"
+        else:
+            repo=candidates[0]; ws=workspace_root/repo.split("/",1)[-1]
+            if not ws.is_dir():
+                outcomes[grant_id]="WORKSPACE_MISSING"
+            else:
+                outcomes[grant_id]=None
+        if outcomes.get(grant_id) is not None:
+            record["recovery_result"]=outcomes[grant_id]
+            delay=min(3600,60*(2**attempts))
+            record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+            continue
         status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
         branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
         if status.returncode or branch.returncode:
