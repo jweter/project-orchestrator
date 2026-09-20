@@ -663,6 +663,7 @@ def test_preserved_work_evidence_fingerprints_without_storing_diff(tmp_path,monk
         if cmd[1:3]==["branch","--show-current"]: return R("actor/x\n")
         if cmd[1:3]==["diff","--name-only"]: return R("src/x.py\n")
         if cmd[1:3]==["diff","--binary"]: return R("SECRET-DIFF-CONTENT")
+        if cmd[1:3]==["ls-files","--others"]: return R("")
         raise AssertionError(cmd)
     monkeypatch.setattr(supervisor.subprocess,"run",fake)
     evidence=supervisor.preserved_work_evidence(tmp_path,"base")
