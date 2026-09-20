@@ -1373,5 +1373,5 @@ def main()->int:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
         # after lifecycle advancement; re-enter selection immediately.
-        time.sleep(1 if lifecycle_advanced else max(60,a.builder_seconds))
+        time.sleep(1 if lifecycle_advanced or liveness_reacquire.get("requested") else max(60,a.builder_seconds))
 if __name__=="__main__": raise SystemExit(main())
