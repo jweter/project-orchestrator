@@ -25,7 +25,7 @@ def test_terminal_no_work_does_not_request_reacquire(tmp_path):
     assert result["requested"] is False
 
 
-def test_supervisor_source_reenters_immediately_on_reacquire():
-    from pathlib import Path
-    source=Path("scripts/continuous_flow_supervisor.py").read_text(encoding="utf-8")
-    assert 'lifecycle_advanced or liveness_reacquire.get("requested")' in source
+def test_supervisor_reenters_immediately_on_safe_reacquire():
+    from scripts.continuous_flow_supervisor import continuation_delay
+    assert continuation_delay(lifecycle_advanced=False,liveness_reacquire={"requested":True},
+        builder_ok=False,builder_status="PROCESS_FAILURE",normal_seconds=300)==1
