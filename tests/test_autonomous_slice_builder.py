@@ -493,3 +493,19 @@ def test_advance_grant_stage_refuses_terminal_claim(tmp_path):
     assert not builder.advance_grant_stage(grant,"PUSHED",head_sha="new")
     saved=json.loads(lifecycle.read_text())["grants"]["g"]
     assert "execution_stage" not in saved
+
+def test_contract_products_discovers_brand_new_project(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    contract=tmp_path/"hands-off.json"
+    contract.write_text(json.dumps({"products":{"brand-new":["example/new-project"]}}))
+    assert builder.contract_products(contract)=={"brand-new":("example/new-project",)}
+    assert builder.portfolio_repositories(contract)==("example/new-project",)
+
+def test_contract_products_fails_closed_on_malformed_repository(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    contract=tmp_path/"hands-off.json"
+    contract.write_text(json.dumps({"products":{"bad":["not-a-repository"]}}))
+    assert builder.contract_products(contract)=={}
+    assert builder.portfolio_repositories(contract)==()
