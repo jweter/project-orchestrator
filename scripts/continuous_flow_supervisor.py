@@ -1586,6 +1586,42 @@ def start_or_resume_burst(state_root:Path,*,now:datetime|None=None,resume_second
     return {"burst_id":now.strftime("%Y%m%dT%H%M%S.%fZ"),"burst_pass":0,
             "resumed":False,"resume_age_seconds":None}
 
+def acquire_supervisor_instance_lock(state_root:Path)->dict:
+    """Own the control-plane loop once per state root using a kernel-owned fence."""
+    state_root.mkdir(parents=True,exist_ok=True)
+    path=state_root/"continuous-flow-supervisor.lock"
+    handle=path.open("a+b",buffering=0)
+    if not _acquire_os_file_lock(handle):
+        handle.close()
+        raise RuntimeError("SUPERVISOR_ALREADY_RUNNING")
+    instance_id=uuid.uuid4().hex
+    metadata=state_root/"continuous-flow-supervisor-instance.json"
+    payload={"schema_version":1,"instance_id":instance_id,
+             "pid":os.getpid(),"host":socket.gethostname(),
+             "process_start_fingerprint":process_start_fingerprint(),
+             "started_at_utc":datetime.now(UTC).isoformat()}
+    atomic(metadata,payload)
+    return {"path":path,"handle":handle,"metadata_path":metadata,
+            "instance_id":instance_id}
+
+def release_supervisor_instance_lock(lock:dict)->None:
+    """Release the kernel fence without letting diagnostic metadata control ownership."""
+    handle=lock["handle"]
+    metadata=lock["metadata_path"]
+    try:
+        if metadata.exists():
+            try:
+                current=json.loads(metadata.read_text(encoding="utf-8"))
+                if current.get("instance_id")==lock.get("instance_id"):
+                    metadata.unlink()
+            except (OSError,json.JSONDecodeError,TypeError):
+                pass
+    finally:
+        try:
+            _release_os_file_lock(handle)
+        finally:
+            handle.close()
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -1593,78 +1629,89 @@ def main()->int:
     p.add_argument("--merge-seconds",type=int,default=60); p.add_argument("--once",action="store_true")
     a=p.parse_args(); repo=Path(a.repo_root); workspace=Path(a.workspace_root); state=Path(a.state_root)
     state.mkdir(parents=True,exist_ok=True)
-    merge=None
-    burst=start_or_resume_burst(state)
-    burst_id=burst["burst_id"]
-    burst_pass=burst["burst_pass"]
-    while True:
-        burst_pass+=1
-        if merge is None or merge.poll() is not None:
-            merge=start_merge_watcher(repo,state,a.merge_seconds)
-        linear_rc=run_linear_reconciliation(repo,state)
-        abandoned_grants=recover_stale_grant_claims(state)
-        recovery_queue=pending_recovery_grants(state,abandoned_grants)
-        recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
-        preserved_work_rechecks=recheck_preserved_work_quarantines(workspace,state)
-        quarantine_rechecks=recheck_quarantined_claims(state)
-        newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
-        if newly_released:
-            recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
-        quarantines=quarantined_grants(state)
-        publish_direction_outbox(state)
-        authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
-        if stale_products:
-            for product in stale_products:
-                recertify_product(repo,workspace,state,product)
+    try:
+        supervisor_lock=acquire_supervisor_instance_lock(state)
+    except RuntimeError as exc:
+        if str(exc)!="SUPERVISOR_ALREADY_RUNNING":
+            raise
+        atomic(state/"supervisor-wake.json",{"status":"SUPERVISOR_ALREADY_RUNNING",
+            "observed_at_utc":datetime.now(UTC).isoformat()})
+        return 0
+    try:
+        merge=None
+        burst=start_or_resume_burst(state)
+        burst_id=burst["burst_id"]
+        burst_pass=burst["burst_pass"]
+        while True:
+            burst_pass+=1
+            if merge is None or merge.poll() is not None:
+                merge=start_merge_watcher(repo,state,a.merge_seconds)
+            linear_rc=run_linear_reconciliation(repo,state)
+            abandoned_grants=recover_stale_grant_claims(state)
+            recovery_queue=pending_recovery_grants(state,abandoned_grants)
+            recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
+            preserved_work_rechecks=recheck_preserved_work_quarantines(workspace,state)
+            quarantine_rechecks=recheck_quarantined_claims(state)
+            newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
+            if newly_released:
+                recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
+            quarantines=quarantined_grants(state)
+            publish_direction_outbox(state)
             authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
-        if not authorized and activation_reason=="ACTIVATION_EVIDENCE_MISSING":
-            refreshed,refresh_reason=refresh_readiness(repo,workspace,state)
-            if refreshed:
+            if stale_products:
+                for product in stale_products:
+                    recertify_product(repo,workspace,state,product)
                 authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
+            if not authorized and activation_reason=="ACTIVATION_EVIDENCE_MISSING":
+                refreshed,refresh_reason=refresh_readiness(repo,workspace,state)
+                if refreshed:
+                    authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
+                else:
+                    activation_reason=refresh_reason
+            products=products if authorized else []
+            if products:
+                rc,builder_invocation_id=run_builder(repo,workspace,state,products)
             else:
-                activation_reason=refresh_reason
-        products=products if authorized else []
-        if products:
-            rc,builder_invocation_id=run_builder(repo,workspace,state,products)
-        else:
-            rc,builder_invocation_id=3,None
-        builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
-        lifecycle_advanced=merge_watcher_advanced(state)
-        if lifecycle_advanced:
-            request_immediate_builder(state)
-        liveness=productive_liveness(state,products,builder_status=builder_status)
-        atomic(state/"productive-liveness.json",liveness)
-        liveness_reacquire=request_liveness_reacquire(state,liveness)
-        healthy=builder_ok and linear_rc in (None,0) and not quarantines and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
-        atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
-            "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
-            "builder_status":builder_status,
-            "linear_reconciliation_returncode":linear_rc,
-            "evolution_authorized":authorized,"activation_reason":activation_reason,
-            "authorized_products":products,
-            "productive_liveness":liveness,
-            "liveness_reacquire":liveness_reacquire,
-            "abandoned_grants":abandoned_grants,
-            "recovery_queue":recovery_queue,
-            "abandoned_recovery":recovery_results,
-            "preserved_work_rechecks":preserved_work_rechecks,
-            "quarantine_rechecks":quarantine_rechecks,
-            "quarantined_grants":quarantines,
-            "quarantine_count":len(quarantines),
-            "pr_lifecycle_advanced":lifecycle_advanced,
-            "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
-        if a.once:
-            merge.terminate(); return 0 if rc==0 else 1
-        # A merge exposes new roadmap work. Do not impose the normal idle delay
-        # after lifecycle advancement; re-enter selection immediately.
-        delay=continuation_delay(lifecycle_advanced=lifecycle_advanced,
-            liveness_reacquire=liveness_reacquire,builder_ok=builder_ok,
-            builder_status=builder_status,normal_seconds=a.builder_seconds)
-        record=record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
-            lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id)
-        record["burst_pass"]=burst_pass
-        atomic(state/"continuation-current-burst.json",{"schema_version":1,"burst_id":burst_id,
-            "pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
-            "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
-        time.sleep(delay)
+                rc,builder_invocation_id=3,None
+            builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
+            lifecycle_advanced=merge_watcher_advanced(state)
+            if lifecycle_advanced:
+                request_immediate_builder(state)
+            liveness=productive_liveness(state,products,builder_status=builder_status)
+            atomic(state/"productive-liveness.json",liveness)
+            liveness_reacquire=request_liveness_reacquire(state,liveness)
+            healthy=builder_ok and linear_rc in (None,0) and not quarantines and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
+            atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
+                "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
+                "builder_status":builder_status,
+                "linear_reconciliation_returncode":linear_rc,
+                "evolution_authorized":authorized,"activation_reason":activation_reason,
+                "authorized_products":products,
+                "productive_liveness":liveness,
+                "liveness_reacquire":liveness_reacquire,
+                "abandoned_grants":abandoned_grants,
+                "recovery_queue":recovery_queue,
+                "abandoned_recovery":recovery_results,
+                "preserved_work_rechecks":preserved_work_rechecks,
+                "quarantine_rechecks":quarantine_rechecks,
+                "quarantined_grants":quarantines,
+                "quarantine_count":len(quarantines),
+                "pr_lifecycle_advanced":lifecycle_advanced,
+                "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
+            if a.once:
+                merge.terminate(); return 0 if rc==0 else 1
+            # A merge exposes new roadmap work. Do not impose the normal idle delay
+            # after lifecycle advancement; re-enter selection immediately.
+            delay=continuation_delay(lifecycle_advanced=lifecycle_advanced,
+                liveness_reacquire=liveness_reacquire,builder_ok=builder_ok,
+                builder_status=builder_status,normal_seconds=a.builder_seconds)
+            record=record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
+                lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id)
+            record["burst_pass"]=burst_pass
+            atomic(state/"continuation-current-burst.json",{"schema_version":1,"burst_id":burst_id,
+                "pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
+                "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
+            time.sleep(delay)
+    finally:
+        release_supervisor_instance_lock(supervisor_lock)
 if __name__=="__main__": raise SystemExit(main())
