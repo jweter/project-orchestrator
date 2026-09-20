@@ -12,8 +12,9 @@ def test_selector_reports_all_complete_distinct_from_blocked(tmp_path,monkeypatc
 def test_run_builder_treats_all_complete_as_healthy_no_work(tmp_path,monkeypatch):
     monkeypatch.setattr(flow,"write_execution_grant",
         lambda *args,**kwargs: (_ for _ in ()).throw(RuntimeError("ALL_EXECUTION_LANES_COMPLETE")))
-    rc=flow.run_builder(tmp_path,tmp_path,tmp_path,["p"])
+    rc,invocation_id=flow.run_builder(tmp_path,tmp_path,tmp_path,["p"])
     assert rc==0
+    assert invocation_id is None
     state=json.loads((tmp_path/"builder.json").read_text())
     assert state=={"reason":"ALL_EXECUTION_LANES_COMPLETE","status":"NO_WORK"}
     assert flow.builder_health(tmp_path,rc)==(True,"NO_WORK")

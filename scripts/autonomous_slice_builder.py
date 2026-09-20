@@ -796,12 +796,15 @@ def main()->int:
                         help="Exact-head autonomous execution grant")
     parser.add_argument("--unsafe-manual-all",action="store_true",
                         help="Explicit manual/dev escape hatch for running without an execution grant")
+    parser.add_argument("--invocation-id",default=None,
+                        help="Supervisor-issued identity used to reject stale builder state")
     args=parser.parse_args()
     state=Path(args.state)
+    invocation_id=args.invocation_id or uuid.uuid4().hex
     try:
         workspace=Path(args.workspace_root)
         if not args.execution_grant and not args.unsafe_manual_all:
-            result={"status":"EXECUTION_GRANT_REQUIRED"}
+            result={"status":"EXECUTION_GRANT_REQUIRED","invocation_id":invocation_id}
             atomic_json(state,result)
             print(json.dumps(result,indent=2,sort_keys=True))
             return 1
@@ -812,10 +815,13 @@ def main()->int:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
         result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant)
+        result={**result,"invocation_id":invocation_id}
+        atomic_json(state,result)
         if args.execution_grant:
             finish_grant_lifecycle(args.execution_grant,result)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
-        result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500]}
+        result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500],
+                "invocation_id":invocation_id}
         atomic_json(state,result)
     print(json.dumps(result,indent=2,sort_keys=True))
     return 0 if result["status"] not in {"P1_BUILDER_FAILURE","BUILDER_FAILED"} else 1
