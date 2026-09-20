@@ -57,3 +57,17 @@ def test_invalid_generation_timestamp_fails_closed(tmp_path):
     record=json.loads(path.read_text())["grants"]["g"]
     assert record["recovery_generation"]=="tok"
     assert record["recovery_generation_result"]=="RECOVERY_GENERATION_TIMESTAMP_INVALID"
+    assert record["recovery_state"]=="QUARANTINED"
+    assert record["recovery_quarantine_reason"]=="RECOVERY_GENERATION_TIMESTAMP_INVALID"
+
+def test_repeated_unknown_generation_owner_becomes_explicit_quarantine(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    old=(datetime.now(UTC)-timedelta(seconds=supervisor.RECOVERY_GENERATION_LEASE_SECONDS+10)).isoformat()
+    _state(path,_record(old))
+    for _ in range(supervisor.UNKNOWN_LIVENESS_MAX_CHECKS):
+        assert supervisor.recover_stale_recovery_generations(tmp_path,liveness_probe=lambda _: "UNKNOWN")==[]
+    record=json.loads(path.read_text())["grants"]["g"]
+    assert record["recovery_generation"]=="tok"
+    assert record["recovery_generation_unknown_checks"]==supervisor.UNKNOWN_LIVENESS_MAX_CHECKS
+    assert record["recovery_state"]=="QUARANTINED"
+    assert record["recovery_quarantine_reason"]=="RECOVERY_GENERATION_OWNER_UNKNOWN"
