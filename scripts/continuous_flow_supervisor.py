@@ -453,8 +453,56 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
     detail=";".join(blocked) or "UNKNOWN"
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
 
+ISSUE_LEASE_SECONDS=60
+
+def recover_stale_issued_grants(state_root:Path,now:datetime|None=None)->list[str]:
+    """Release an unclaimed issuance only when its issuer is proven dead after the issue lease."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists():
+        return []
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        grants=payload.get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
+    current=now or datetime.now(UTC)
+    recovered=[]; changed=False
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("state")!="ISSUED":
+            continue
+        try:
+            issued=datetime.fromisoformat(record["issued_at"])
+            if issued.tzinfo is None:
+                issued=issued.replace(tzinfo=UTC)
+        except (KeyError,TypeError,ValueError):
+            continue
+        if (current-issued).total_seconds()<=ISSUE_LEASE_SECONDS:
+            continue
+        liveness=worker_liveness(record.get("issuer"))
+        record["last_issue_liveness_check_at"]=current.isoformat()
+        record["issuer_liveness"]=liveness
+        changed=True
+        if liveness=="DEAD":
+            record["state"]="ABANDONED"
+            record["finished_at"]=current.isoformat()
+            record["result_status"]="ISSUE_LEASE_EXPIRED_ISSUER_DEAD"
+            recovered.append(grant_id)
+        elif liveness=="UNKNOWN":
+            checks=int(record.get("issue_unknown_liveness_checks",0))+1
+            record["issue_unknown_liveness_checks"]=checks
+            if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
+                record["state"]="QUARANTINED"
+                record["finished_at"]=current.isoformat()
+                record["result_status"]="ISSUE_LEASE_UNKNOWN_QUARANTINED"
+        else:
+            record["issue_unknown_liveness_checks"]=0
+            record["result_status"]="ISSUE_LEASE_EXPIRED_ISSUER_ALIVE"
+    if changed:
+        atomic(path,payload)
+    return recovered
+
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
-    """Return existing ownership for the same bounded work; ambiguity fails closed."""
+    """Return existing nonterminal repository ownership; ambiguity fails closed."""
     path=state_root/"hands-off-grant-lifecycle.json"
     if not path.exists():
         return None
@@ -465,12 +513,10 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
     target=(execution_slice.get("capability_id"),execution_slice.get("slice_id"),
             execution_slice.get("repository"),execution_slice.get("exact_head"))
     for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("state") not in {"CLAIMED","QUARANTINED"}:
+        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"}:
             continue
         authority=record.get("execution_slice") or {}
-        identity=(authority.get("capability_id"),authority.get("slice_id"),
-                  authority.get("repository"),authority.get("exact_head"))
-        if repo in record.get("authorized_repositories",[]) and identity==target:
+        if repo in record.get("authorized_repositories",[]):
             return {"grant_id":grant_id,"state":record.get("state"),
                     "worker":record.get("worker"),"execution_slice":authority}
     return None
@@ -527,6 +573,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         activation=json.loads(activation_bytes)
         contract_path=repo_root/"engineering"/"hands-off-evolution.json"
         contract_bytes=contract_path.read_bytes()
+        recover_stale_issued_grants(state_root)
         repo,exact_head=select_execution_target(state_root,activation,products)
         selected_products={
             name for name in products
@@ -536,19 +583,53 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
         if conflict:
             raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
+        grant_id=str(uuid.uuid4())
         grant={"schema_version":4,
-               "grant_id":str(uuid.uuid4()),
+               "grant_id":grant_id,
                "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
                "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
                "products":{
             name:{"repositories":{repo:exact_head}}
             for name in selected_products},
                "execution_slice":execution_slice}
-        path=state_root/"hands-off-execution-grant.json"
+        path=state_root/"hands-off-execution-grants"/f"{grant_id}.json"
         atomic(path,grant)
+        lifecycle=state_root/"hands-off-grant-lifecycle.json"
+        try:
+            payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+            grants=payload.setdefault("grants",{})
+        except (OSError,json.JSONDecodeError,TypeError):
+            raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
+        issued=datetime.now(UTC).isoformat()
+        grants[grant_id]={"state":"ISSUED","issued_at":issued,
+                          "authorized_repositories":[repo],"expected_sha":exact_head,
+                          "capability_id":execution_slice["capability_id"],
+                          "slice_id":execution_slice["slice_id"],
+                          "execution_slice":execution_slice,
+                          "issuer":lock["worker"]}
+        atomic(lifecycle,payload)
         return path
     finally:
         release_grant_issue_lock(lock)
+
+def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
+    """Terminalize an issued grant when the builder exits before claiming it."""
+    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    if grant_path.parent.name=="hands-off-execution-grants":
+        lifecycle=grant_path.parent.parent/"hands-off-grant-lifecycle.json"
+    try:
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
+        payload=json.loads(lifecycle.read_text(encoding="utf-8"))
+        record=payload["grants"][grant_id]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return False
+    if record.get("state")!="ISSUED":
+        return False
+    record["state"]="ABANDONED"
+    record["finished_at"]=datetime.now(UTC).isoformat()
+    record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}"
+    atomic(lifecycle,payload)
+    return True
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
     if not products:
@@ -578,6 +659,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    finalize_unclaimed_grant(grant_path,p.returncode)
     return p.returncode
 
 CLAIM_LEASE_SECONDS=1800
