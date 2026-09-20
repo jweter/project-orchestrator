@@ -445,17 +445,13 @@ def preserved_work_evidence(ws:Path,base_sha:str)->dict:
         return {"capture_status":"UNREADABLE"}
     import hashlib
     payload=diff.stdout.encode("utf-8",errors="replace")
-    untracked=subprocess.run(["git","ls-files","--others","--exclude-standard","-z"],cwd=ws,capture_output=True,check=False)
+    untracked=subprocess.run(["git","ls-files","--others","--exclude-standard","-z"],cwd=ws,text=True,capture_output=True,check=False)
     if untracked.returncode:
         return {"capture_status":"UNREADABLE"}
     untracked_records=[]
-    for raw in untracked.stdout.split(bytes([0])):
+    for rel in untracked.stdout.split(chr(0)):
         if not raw:
             continue
-        try:
-            rel=raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return {"capture_status":"UNTRACKED_PATH_UNREADABLE"}
         path=ws/rel
         try:
             if path.is_symlink():
