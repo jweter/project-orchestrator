@@ -731,7 +731,7 @@ def test_validate_preserved_work_does_not_run_preflight_without_identity(tmp_pat
 def test_recovery_capability_is_exact_bound_and_single_use(tmp_path,monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
     record={"repository":"o/r","base_sha":"base","branch":"actor/x","preserved_work_validation":"PRESERVED_VALIDATION_PASSED",
-            "preserved_work_evidence":{"diff_sha256":"diff","head_sha":"base"}}
+            "preserved_work_evidence":{"diff_sha256":"diff","head_sha":"base","repair_eligible":True}}
     cap=supervisor.issue_preserved_recovery_capability(record)
     assert cap and cap["state"]=="ISSUED" and cap["preserved_diff_sha256"]=="diff"
     record["preserved_recovery_capability"]=cap
@@ -743,7 +743,7 @@ def test_recovery_capability_is_exact_bound_and_single_use(tmp_path,monkeypatch)
 def test_recovery_capability_rejects_binding_or_identity_drift(tmp_path,monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
     record={"repository":"o/r","base_sha":"base","branch":"actor/x","preserved_work_validation":"PRESERVED_VALIDATION_PASSED",
-            "preserved_work_evidence":{"diff_sha256":"diff","head_sha":"base"}}
+            "preserved_work_evidence":{"diff_sha256":"diff","head_sha":"base","repair_eligible":True}}
     record["preserved_recovery_capability"]=supervisor.issue_preserved_recovery_capability(record)
     record["branch"]="actor/changed"
     assert supervisor.consume_preserved_recovery_capability(tmp_path,record)=="RECOVERY_CAPABILITY_BINDING_MISMATCH"
