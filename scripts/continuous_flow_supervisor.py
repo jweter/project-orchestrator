@@ -1776,6 +1776,26 @@ def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
     atomic(state_root/"liveness-reacquire.json",result)
     return result
 
+def record_async_gate_rotation(state_root:Path,*,blocked_repository:str|None,blocked_status:str,
+                               next_repository:str|None,burst_id:str|None,process_instance_id:str|None)->dict:
+    path=state_root/"async-gate-rotation-history.json"
+    try:
+        history=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        history={"schema_version":1,"rotation_count":0,"rotations":[]}
+    rotations=history.get("rotations") if isinstance(history,dict) else None
+    if not isinstance(rotations,list): rotations=[]
+    prior_count=history.get("rotation_count",len(rotations)) if isinstance(history,dict) else len(rotations)
+    if not isinstance(prior_count,int) or isinstance(prior_count,bool) or prior_count < len(rotations):
+        prior_count=len(rotations)
+    record={"recorded_at_utc":datetime.now(UTC).isoformat(),"blocked_repository":blocked_repository,
+            "blocked_status":blocked_status,"next_repository":next_repository,"burst_id":burst_id,
+            "process_instance_id":process_instance_id,
+            "rotated":bool(next_repository and next_repository!=blocked_repository)}
+    rotations.append(record)
+    atomic(path,{"schema_version":1,"rotation_count":prior_count+1,"rotations":rotations[-100:]})
+    return record
+
 def selected_builder_repository(state_root:Path)->str|None:
     try:
         payload=json.loads((state_root/"builder.json").read_text(encoding="utf-8"))
