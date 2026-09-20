@@ -7,6 +7,12 @@ from scripts.project_capability_graph import validate as validate_graph
 
 def derive_slice(payload: dict[str, Any], *, repository: str, exact_head: str) -> dict[str, Any]:
     graph=validate_graph(payload)
+    if graph["status"]=="COMPLETE":
+        completion=payload.get("product_completion")
+        if not isinstance(completion,dict) or not completion.get("verified"):
+            return {"schema_version":1,"status":"DIRECTION_REQUIRED","slice":None,
+                    "issues":[{"code":"PRODUCT_COMPLETION_EVIDENCE_REQUIRED"}]}
+        return {"schema_version":1,"status":"NO_WORK","slice":None,"issues":[]}
     if graph["status"]!="READY" or not graph.get("selected"):
         return {"schema_version":1,"status":graph["status"],"slice":None,"issues":graph["issues"]}
     cid=graph["selected"]
