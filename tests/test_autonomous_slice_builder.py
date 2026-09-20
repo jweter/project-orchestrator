@@ -348,7 +348,7 @@ def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, mon
         returncode=0; stdout="authorized\n"; stderr=""
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
     seen={}
-    monkeypatch.setattr(builder,"run_aider",lambda ws,message:(seen.setdefault("message",message) or Result()))
+    def fake_aider(ws,message):\n        seen["message"]=message\n        return Result()\n    monkeypatch.setattr(builder,"run_aider",fake_aider)
     monkeypatch.setattr(builder,"cleanup_aider_artifacts",lambda ws:None)
     monkeypatch.setattr(builder,"changed_paths",lambda ws,base:[])
     grant=tmp_path/"grant.json"
