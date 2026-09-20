@@ -1324,6 +1324,26 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
         return 1
     return max(60,normal_seconds)
 
+def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict)->dict:
+    """Persist durable evidence that one wake produced another autonomous pass."""
+    path=state_root/"continuation-pass-history.json"
+    try:
+        history=json.loads(path.read_text(encoding="utf-8"))
+        passes=history.get("passes",[]) if isinstance(history,dict) else []
+    except (OSError,json.JSONDecodeError):
+        passes=[]
+    immediate=delay_seconds==1
+    record={"sequence":len(passes)+1,"recorded_at_utc":datetime.now(UTC).isoformat(),
+            "builder_status":builder_status,"delay_seconds":delay_seconds,
+            "immediate_continuation":immediate,"lifecycle_advanced":lifecycle_advanced,
+            "liveness_reacquire_requested":bool(liveness_reacquire.get("requested"))}
+    passes.append(record)
+    payload={"schema_version":1,"pass_count":len(passes),
+             "immediate_continuation_count":sum(1 for p in passes if p.get("immediate_continuation")),
+             "passes":passes[-100:]}
+    atomic(path,payload)
+    return record
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -1388,7 +1408,10 @@ def main()->int:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
         # after lifecycle advancement; re-enter selection immediately.
-        time.sleep(continuation_delay(lifecycle_advanced=lifecycle_advanced,
+        delay=continuation_delay(lifecycle_advanced=lifecycle_advanced,
             liveness_reacquire=liveness_reacquire,builder_ok=builder_ok,
-            builder_status=builder_status,normal_seconds=a.builder_seconds))
+            builder_status=builder_status,normal_seconds=a.builder_seconds)
+        record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
+            lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire)
+        time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
