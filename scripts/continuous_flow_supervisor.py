@@ -365,6 +365,27 @@ def resume_orphan_branch(repo:str,ws:Path,branch:str,classification:str,evidence
         return "RECOVERY_PR_OPENED" if created.returncode==0 else "RECOVERY_PR_CREATE_FAILED"
     return classification
 
+def preserved_work_evidence(ws:Path,base_sha:str)->dict:
+    """Capture bounded, non-destructive identity for uncertain local work."""
+    status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
+    head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+    branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+    names=subprocess.run(["git","diff","--name-only",base_sha],cwd=ws,text=True,capture_output=True,check=False)
+    diff=subprocess.run(["git","diff","--binary",base_sha],cwd=ws,text=True,capture_output=True,check=False)
+    if any(x.returncode for x in (status,head,branch,names,diff)):
+        return {"capture_status":"UNREADABLE"}
+    import hashlib
+    payload=diff.stdout.encode("utf-8",errors="replace")
+    return {
+        "capture_status":"CAPTURED",
+        "branch":branch.stdout.strip(),
+        "head_sha":head.stdout.strip(),
+        "status_porcelain":status.stdout[:12000],
+        "changed_paths":[p for p in names.stdout.splitlines() if p][:500],
+        "diff_sha256":hashlib.sha256(payload).hexdigest(),
+        "diff_bytes":len(payload),
+    }
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -441,14 +462,17 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
                 outcomes[grant_id]="RECOVERY_EARLY_STAGE_DIRTY_PRESERVED"
                 record["recovery_state"]="QUARANTINED"
                 record["recovery_quarantine_reason"]="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
+                record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
             elif head_now.stdout.strip()!=durable_base:
                 outcomes[grant_id]="RECOVERY_EARLY_STAGE_HEAD_DRIFT"
                 record["recovery_state"]="QUARANTINED"
                 record["recovery_quarantine_reason"]="UNRECORDED_COMMIT_REQUIRES_PRESERVATION"
+                record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
             elif stage=="BRANCH_CREATED" and durable_branch and branch_now.stdout.strip()!=durable_branch:
                 outcomes[grant_id]="RECOVERY_EARLY_STAGE_BRANCH_DRIFT"
                 record["recovery_state"]="QUARANTINED"
                 record["recovery_quarantine_reason"]="BRANCH_IDENTITY_MISMATCH"
+                record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
             else:
                 outcomes[grant_id]="RECOVERY_EARLY_STAGE_NO_PRODUCT_WORK"
                 record["recovery_state"]="RECOVERED"
