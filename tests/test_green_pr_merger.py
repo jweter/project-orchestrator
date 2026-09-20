@@ -8,7 +8,7 @@ def pr(**kw):
 def test_green_pr_is_eligible(): assert decide(pr(),age_seconds=121).eligible
 def test_draft_blocked(): assert decide(pr(isDraft=True),age_seconds=121).reason=="DRAFT"
 def test_unknown_author_blocked(): assert decide(pr(author={"login":"other"}),age_seconds=121).reason=="AUTHOR_NOT_ALLOWED"
-def test_review_settle_window_blocks_race(): assert decide(pr(),age_seconds=60).reason=="REVIEW_SETTLE_WINDOW"
+def test_review_settle_window_blocks_race(): assert decide(pr(),age_seconds=60).reason=="PR_AGE_WINDOW"
 def test_conflict_blocked(): assert not decide(pr(mergeStateStatus="DIRTY"),age_seconds=121).eligible
 def test_missing_checks_fail_closed(): assert decide(pr(statusCheckRollup=[]),age_seconds=121).reason=="CHECKS_MISSING"
 def test_pending_checks_fail_closed():
@@ -42,6 +42,7 @@ def test_draft_requires_refetch_before_merge(monkeypatch):
     monkeypatch.setattr(merger,"PORTFOLIO_REPOS",("owner/repo",))
     monkeypatch.setattr(merger,"open_prs",lambda repo:[draft])
     monkeypatch.setattr(merger,"blocking_review_findings",lambda *args:False)
+    monkeypatch.setattr(merger,"review_settled",lambda *args:True)
     monkeypatch.setattr(merger.subprocess,"run",lambda *args,**kwargs:type("P",(),{"returncode":0})())
     refreshed=pr(isDraft=False,number=7,headRefOid="abc",createdAt="2020-01-01T00:00:00Z")
     monkeypatch.setattr(merger,"gh_json",lambda args:refreshed)

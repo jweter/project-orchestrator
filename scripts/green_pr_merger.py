@@ -14,16 +14,18 @@ PASS_CONCLUSIONS={"SUCCESS","NEUTRAL","SKIPPED"}
 ALLOWED_AUTHORS={"jweter","dependabot[bot]"}
 BLOCKING_RE=re.compile(r"(?i)(?:\bP[0-3]\b|blocking|must fix|security|incorrect|regression|data loss)")
 MIN_PR_AGE_SECONDS=120
+REVIEW_SETTLE_SECONDS=300
 
 @dataclass(frozen=True)
 class MergeDecision:
     eligible: bool
     reason: str
 
-def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=9999, allow_draft:bool=False)->MergeDecision:
+def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=9999, review_settled:bool=True, allow_draft:bool=False)->MergeDecision:
     if pr.get("isDraft") and not allow_draft: return MergeDecision(False,"DRAFT")
     if pr.get("author",{}).get("login") not in ALLOWED_AUTHORS: return MergeDecision(False,"AUTHOR_NOT_ALLOWED")
-    if age_seconds < MIN_PR_AGE_SECONDS: return MergeDecision(False,"REVIEW_SETTLE_WINDOW")
+    if age_seconds < MIN_PR_AGE_SECONDS: return MergeDecision(False,"PR_AGE_WINDOW")
+    if not review_settled: return MergeDecision(False,"REVIEW_SETTLE_WINDOW")
     if pr.get("mergeStateStatus")!="CLEAN": return MergeDecision(False,f"MERGE_STATE_{pr.get('mergeStateStatus','UNKNOWN')}")
     if pr.get("reviewDecision") in {"CHANGES_REQUESTED","REVIEW_REQUIRED"}: return MergeDecision(False,f"REVIEW_{pr['reviewDecision']}")
     if blocking_findings: return MergeDecision(False,"BLOCKING_REVIEW_FINDING")
@@ -49,6 +51,27 @@ def _age_seconds(created_at:str)->float:
     created=datetime.fromisoformat(created_at.replace("Z","+00:00"))
     return max(0.0,(datetime.now(UTC)-created).total_seconds())
 
+def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
+    """Require a quiet review window on the exact head before merge authority."""
+    created=datetime.fromisoformat(created_at.replace("Z","+00:00"))
+    latest=created
+    comments=gh_json(["api",f"repos/{repo}/pulls/{number}/comments"])
+    for comment in comments:
+        if str(comment.get("commit_id") or "") != head_sha:
+            continue
+        stamp=comment.get("updated_at") or comment.get("created_at")
+        if stamp:
+            latest=max(latest,datetime.fromisoformat(str(stamp).replace("Z","+00:00")))
+    reviews=gh_json(["api",f"repos/{repo}/pulls/{number}/reviews"])
+    for review in reviews:
+        commit=str(review.get("commit_id") or "")
+        if commit and commit != head_sha:
+            continue
+        stamp=review.get("submitted_at")
+        if stamp:
+            latest=max(latest,datetime.fromisoformat(str(stamp).replace("Z","+00:00")))
+    return (datetime.now(UTC)-latest).total_seconds() >= REVIEW_SETTLE_SECONDS
+
 def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
     comments=gh_json(["api",f"repos/{repo}/pulls/{number}/comments"])
     for comment in comments:
@@ -62,7 +85,7 @@ def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
 def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     head=str(pr.get("headRefOid") or "")
     findings=blocking_review_findings(repo,int(pr["number"]),head)
-    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),allow_draft=True)
+    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),review_settled=review_settled(repo,int(pr["number"]),head,str(pr["createdAt"])),allow_draft=True)
     result={"repository":repo,"pr":pr["number"],"head":head,"decision":decision.reason,"promoted":False}
     if not pr.get("isDraft"):
         result["decision"]="ALREADY_READY"
@@ -77,7 +100,7 @@ def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
 def merge(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     head=str(pr.get("headRefOid") or "")
     findings=blocking_review_findings(repo,int(pr["number"]),head)
-    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])))
+    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),review_settled=review_settled(repo,int(pr["number"]),head,str(pr["createdAt"])))
     result={"repository":repo,"pr":pr["number"],"head":head,"decision":decision.reason,"merged":False}
     if not decision.eligible or dry_run:return result
     cmd=["gh","pr","merge",str(pr["number"]),"--repo",repo,"--squash","--delete-branch","--match-head-commit",head]
