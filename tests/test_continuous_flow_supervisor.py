@@ -579,3 +579,32 @@ def test_quarantine_recheck_preserves_unknown_ownership(tmp_path):
     saved=json.loads(path.read_text())["grants"]["g"]
     assert saved["state"]=="QUARANTINED"
     assert saved["quarantine_rechecks"]==1
+
+def test_stage_aware_recovery_hands_off_verified_pr_open(tmp_path,monkeypatch):
+    import json
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; ws=wsroot/"r"; ws.mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","repository":"o/r","execution_stage":"PR_OPEN","branch":"actor/autonomous-r-x","head_sha":"abc","recovery_attempts":0}}}))
+    class R:
+        returncode=0; stdout="abc refs/heads/actor/autonomous-r-x\n"; stderr=""
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:R())
+    out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
+    assert out["g"]=="RECOVERY_DURABLE_PR_HANDOFF"
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["recovery_state"]=="RECOVERED"
+
+def test_stage_aware_recovery_rejects_remote_head_drift(tmp_path,monkeypatch):
+    import json
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; (wsroot/"r").mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","repository":"o/r","execution_stage":"PUSHED","branch":"actor/autonomous-r-x","head_sha":"expected","recovery_attempts":0}}}))
+    class R:
+        returncode=0; stdout="other refs/heads/actor/autonomous-r-x\n"; stderr=""
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:R())
+    out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
+    assert out["g"]=="RECOVERY_DURABLE_REMOTE_HEAD_MISMATCH"
+    assert json.loads(path.read_text())["grants"]["g"].get("recovery_state")!="RECOVERED"
