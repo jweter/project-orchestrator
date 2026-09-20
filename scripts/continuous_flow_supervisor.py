@@ -521,49 +521,72 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
                     "worker":record.get("worker"),"execution_slice":authority}
     return None
 
+def _acquire_os_file_lock(handle)->bool:
+    """Acquire a nonblocking kernel-owned one-byte lock."""
+    handle.seek(0,os.SEEK_END)
+    if handle.tell()==0:
+        handle.write(b"0"); handle.flush()
+    handle.seek(0)
+    try:
+        if os.name=="nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        return True
+    except (OSError,BlockingIOError):
+        return False
+
+def _release_os_file_lock(handle)->None:
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+
 def acquire_grant_issue_lock(state_root:Path)->dict:
-    """Acquire a crash-recoverable host-local single-writer fence for grant issuance."""
+    """Acquire a crash-safe kernel-owned single-writer fence for grant issuance."""
+    state_root.mkdir(parents=True,exist_ok=True)
     path=state_root/"grant-issuance.lock"
+    handle=path.open("a+b",buffering=0)
+    if not _acquire_os_file_lock(handle):
+        handle.close()
+        raise RuntimeError("GRANT_ISSUANCE_BUSY")
     worker={"host":socket.gethostname(),"pid":os.getpid(),
             "incarnation_id":uuid.uuid4().hex,
             "process_start_fingerprint":process_start_fingerprint(),
             "lease_token":uuid.uuid4().hex}
-    lock={"schema_version":1,"lock_id":str(uuid.uuid4()),"worker":worker,
-          "created_at_utc":datetime.now(UTC).isoformat()}
-    for _ in range(2):
-        try:
-            fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
-            try:
-                os.write(fd,(json.dumps(lock,sort_keys=True)+"\n").encode("utf-8"))
-            finally:
-                os.close(fd)
-            return {"path":path,**lock}
-        except FileExistsError:
-            try:
-                prior=json.loads(path.read_text(encoding="utf-8"))
-            except (OSError,json.JSONDecodeError,TypeError):
-                raise RuntimeError("GRANT_ISSUANCE_LOCK_UNREADABLE")
-            liveness=worker_liveness(prior.get("worker"))
-            if liveness!="DEAD":
-                raise RuntimeError(f"GRANT_ISSUANCE_BUSY:{liveness}")
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
-    raise RuntimeError("GRANT_ISSUANCE_BUSY:RETRY_EXHAUSTED")
+    lock_id=str(uuid.uuid4())
+    metadata=state_root/"grant-issuance.lock.json"
+    atomic(metadata,{"schema_version":2,"lock_id":lock_id,"worker":worker,
+                     "created_at_utc":datetime.now(UTC).isoformat()})
+    return {"path":path,"metadata_path":metadata,"handle":handle,
+            "lock_id":lock_id,"worker":worker}
 
 def release_grant_issue_lock(lock:dict)->None:
-    """Release only the lock incarnation acquired by this issuer."""
-    path=lock["path"]
+    """Release only this process's kernel-owned issuance fence."""
+    handle=lock["handle"]; metadata=lock["metadata_path"]
+    error=None
     try:
-        current=json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return
-    except (OSError,json.JSONDecodeError,TypeError):
-        raise RuntimeError("GRANT_ISSUANCE_LOCK_UNREADABLE")
-    if current.get("lock_id")!=lock.get("lock_id"):
-        raise RuntimeError("GRANT_ISSUANCE_LOCK_OWNERSHIP_LOST")
-    path.unlink()
+        if metadata.exists():
+            try:
+                current=json.loads(metadata.read_text(encoding="utf-8"))
+                if current.get("lock_id")!=lock.get("lock_id"):
+                    error=RuntimeError("GRANT_ISSUANCE_LOCK_OWNERSHIP_LOST")
+                else:
+                    metadata.unlink()
+            except (OSError,json.JSONDecodeError,TypeError):
+                error=RuntimeError("GRANT_ISSUANCE_LOCK_METADATA_UNREADABLE")
+    finally:
+        try:
+            _release_os_file_lock(handle)
+        finally:
+            handle.close()
+    if error is not None:
+        raise error
 
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
     lock=acquire_grant_issue_lock(state_root)
@@ -638,12 +661,9 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     try:
         grant_path=write_execution_grant(repo_root,state_root,products)
     except RuntimeError as exc:
-        if str(exc).startswith("GRANT_ISSUANCE_BUSY:"):
+        if str(exc)=="GRANT_ISSUANCE_BUSY":
             atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
             return 0
-        if str(exc)=="GRANT_ISSUANCE_LOCK_UNREADABLE":
-            atomic(state_root/"builder.json",{"status":"OWNERSHIP_UNKNOWN","reason":str(exc)})
-            return 2
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
             atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
             (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
