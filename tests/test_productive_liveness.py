@@ -17,7 +17,7 @@ def test_recent_active_grant_is_productive(tmp_path):
         "head_sha":"a"*40,"last_productive_mutation_at":(NOW-timedelta(seconds=30)).isoformat()}})
     result=productive_liveness(tmp_path,["rocksmith"],NOW)
     assert result["status"]=="PRODUCTIVE"
-    assert result["active_grants"][0]["slice_id"]=="s"
+    assert result["grant_evidence"][0]["slice_id"]=="s"
 
 def test_stale_active_grant_is_not_productive(tmp_path):
     write_grants(tmp_path,{"g":{"state":"RUNNING","repository":"o/r",
@@ -29,3 +29,22 @@ def test_stale_active_grant_is_not_productive(tmp_path):
 def test_no_authorized_work_is_not_false_idle_alarm(tmp_path):
     result=productive_liveness(tmp_path,[],NOW)
     assert result["status"]=="NO_AUTHORIZED_WORK"
+
+def test_recent_completed_grant_proves_productive_cycle(tmp_path):
+    write_grants(tmp_path,{"g":{"state":"COMPLETED","repository":"o/r","execution_stage":"PR_OPEN",
+        "finished_at":(NOW-timedelta(seconds=10)).isoformat()}})
+    result=productive_liveness(tmp_path,["rocksmith"],NOW)
+    assert result["status"]=="PRODUCTIVE"
+
+def test_current_lifecycle_heartbeat_prevents_false_stale(tmp_path):
+    write_grants(tmp_path,{"g":{"state":"CLAIMED","repository":"o/r","execution_stage":"PREFLIGHT",
+        "claimed_at":(NOW-timedelta(seconds=2000)).isoformat(),
+        "last_heartbeat_at":(NOW-timedelta(seconds=5)).isoformat()}})
+    result=productive_liveness(tmp_path,["rocksmith"],NOW)
+    assert result["status"]=="PRODUCTIVE"
+    assert result["grant_evidence"][0]["stage"]=="PREFLIGHT"
+
+def test_terminal_builder_no_work_is_not_eligible_idle(tmp_path):
+    result=productive_liveness(tmp_path,["rocksmith"],NOW,builder_status="NO_WORK")
+    assert result["status"]=="NO_AUTHORIZED_WORK"
+    assert result["eligible_work"] is False

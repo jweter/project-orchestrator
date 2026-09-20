@@ -1253,37 +1253,44 @@ def quarantined_grants(state_root:Path)->dict[str,dict]:
             }
     return result
 
-def productive_liveness(state_root:Path,authorized_products:list[str],now:datetime|None=None,stale_seconds:int=900)->dict:
-    """Expose whether Hands-Off has recent evidence of productive autonomous flow."""
+def productive_liveness(state_root:Path,authorized_products:list[str],now:datetime|None=None,stale_seconds:int=900,
+                        builder_status:str|None=None)->dict:
+    """Expose recent productive flow without confusing authorization with executable work."""
     current=now or datetime.now(UTC)
     lifecycle=state_root/"hands-off-grant-lifecycle.json"
     try:
         grants=json.loads(lifecycle.read_text(encoding="utf-8")).get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         grants={}
-    active=[]; latest=None
+    records=[]; latest=None; active=False
     for grant_id,record in grants.items():
         if not isinstance(record,dict): continue
-        if record.get("state") not in {"CLAIMED","RUNNING"}: continue
-        stamp=record.get("last_productive_mutation_at") or record.get("claimed_at") or record.get("started_at")
+        state=record.get("state")
+        if state not in {"CLAIMED","RUNNING","COMPLETED"}: continue
+        stamp=(record.get("last_productive_mutation_at") or record.get("stage_updated_at")
+               or record.get("last_heartbeat_at") or record.get("finished_at")
+               or record.get("claimed_at") or record.get("started_at"))
         parsed=None
         if isinstance(stamp,str):
             try: parsed=datetime.fromisoformat(stamp.replace("Z","+00:00"))
             except ValueError: parsed=None
         if parsed and (latest is None or parsed>latest): latest=parsed
-        active.append({"grant_id":grant_id,"repository":record.get("repository"),
-                       "slice_id":record.get("slice_id"),"head_sha":record.get("head_sha") or record.get("exact_head"),
-                       "stage":record.get("stage") or record.get("state"),
-                       "last_productive_mutation_at":stamp})
+        is_active=state in {"CLAIMED","RUNNING"}
+        active=active or is_active
+        records.append({"grant_id":grant_id,"repository":record.get("repository"),
+                        "slice_id":record.get("slice_id"),"head_sha":record.get("head_sha") or record.get("exact_head"),
+                        "stage":record.get("execution_stage") or record.get("stage") or state,
+                        "state":state,"progress_at":stamp})
     age=(current-latest).total_seconds() if latest else None
-    eligible=bool(authorized_products)
-    productive=bool(active) and age is not None and age<=stale_seconds
-    if not eligible: status="NO_AUTHORIZED_WORK"
+    terminal=builder_status=="NO_WORK"
+    eligible=bool(authorized_products) and not terminal
+    productive=bool(records) and age is not None and age<=stale_seconds
+    if terminal or not authorized_products: status="NO_AUTHORIZED_WORK"
     elif productive: status="PRODUCTIVE"
     elif active: status="STALE_ACTIVE_WORK"
     else: status="ELIGIBLE_IDLE"
     return {"status":status,"productive":productive,"eligible_work":eligible,
-            "authorized_products":sorted(authorized_products),"active_grants":active,
+            "authorized_products":sorted(authorized_products),"grant_evidence":records,
             "last_productive_mutation_at":latest.isoformat() if latest else None,
             "seconds_since_productive_mutation":age,"stale_after_seconds":stale_seconds}
 
@@ -1326,7 +1333,7 @@ def main()->int:
         lifecycle_advanced=merge_watcher_advanced(state)
         if lifecycle_advanced:
             request_immediate_builder(state)
-        liveness=productive_liveness(state,products)
+        liveness=productive_liveness(state,products,builder_status=builder_status)
         atomic(state/"productive-liveness.json",liveness)
         healthy=builder_ok and linear_rc in (None,0) and not quarantines and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
