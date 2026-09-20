@@ -2,7 +2,7 @@
 from __future__ import annotations
 import argparse, hashlib, json, os, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path\nfrom scripts.capability_slice_contract import derive_slice
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -187,19 +187,40 @@ def merge_watcher_advanced(state_root:Path)->bool:
     atomic(cursor,event)
     return True
 
+def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
+    """Derive bounded mutation authority from the repository's machine-readable capability graph."""
+    path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError):
+        raise RuntimeError(f"CAPABILITY_GRAPH_REQUIRED:{repo}")
+    derived=derive_slice(payload,repository=repo,exact_head=exact_head)
+    if derived.get("status")!="READY" or not isinstance(derived.get("slice"),dict):
+        raise RuntimeError(f"EXECUTION_SLICE_NOT_READY:{repo}:{derived.get('status','UNKNOWN')}")
+    return derived["slice"]
+
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
     activation_path=state_root/"hands-off-activation.json"
     activation_bytes=activation_path.read_bytes()
     activation=json.loads(activation_bytes)
     contract_path=repo_root/"engineering"/"hands-off-evolution.json"
     contract_bytes=contract_path.read_bytes()
+    selected_repositories={
+        repo:head
+        for name in products
+        for repo,head in activation["products"][name]["repositories"].items()
+    }
+    if len(selected_repositories)!=1:
+        raise RuntimeError("BOUNDED_GRANT_REQUIRES_ONE_REPOSITORY")
+    repo,exact_head=next(iter(selected_repositories.items()))
     grant={"schema_version":4,
            "grant_id":str(uuid.uuid4()),
            "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
            "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
            "products":{
         name:{"repositories":activation["products"][name]["repositories"]}
-        for name in products}}
+        for name in products},
+           "execution_slice":load_execution_slice(state_root,repo,exact_head)}
     path=state_root/"hands-off-execution-grant.json"
     atomic(path,grant)
     return path
