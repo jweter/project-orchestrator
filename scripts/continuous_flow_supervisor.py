@@ -193,7 +193,15 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
     path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
     try:
         payload=json.loads(path.read_text(encoding="utf-8"))
-    except (OSError,json.JSONDecodeError):
+    except (OSError,json.JSONDecodeError) as exc:
+        direction_dir=state_root/"direction-requests"
+        direction_dir.mkdir(parents=True,exist_ok=True)
+        atomic(direction_dir/f"{repo.replace('/','__')}.json",{
+            "schema_version":1,"status":"DIRECTION_REQUIRED","repository":repo,"exact_head":exact_head,
+            "reason":"CAPABILITY_GRAPH_REQUIRED",
+            "issues":[{"code":"CAPABILITY_GRAPH_REQUIRED","detail":type(exc).__name__}],
+            "requested_at_utc":datetime.now(UTC).isoformat(),
+        })
         raise RuntimeError(f"CAPABILITY_GRAPH_REQUIRED:{repo}")
     derived=derive_slice(payload,repository=repo,exact_head=exact_head)
     if derived.get("status")!="READY" or not isinstance(derived.get("slice"),dict):
