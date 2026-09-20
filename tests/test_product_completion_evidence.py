@@ -23,4 +23,4 @@ def test_unverified_product_reality_fails_closed():
 def test_no_product_reality_debt_is_valid_when_acceptance_is_proven():
     result=build_completion_proof(exact_head=HEAD,acceptance=acceptance(),product_reality=[])
     assert result["status"]=="VERIFIED"
-    assert result["product_completion"]["checks"]==[{"name":"final-acceptance","status":"PASS"}]
+    assert result["product_completion"]["checks"]==[{"name":"final-acceptance","verification_kind":"acceptance","status":"PASS"}]
