@@ -24,6 +24,12 @@ def validate(text: str) -> dict:
             missing.append(name)
         elif not body.strip() or PLACEHOLDER.fullmatch(body.strip()):
             incomplete.append(name)
+    # Completion criteria are terminal authority, not prose hints. Each required
+    # criterion needs a stable machine identity and an explicit verification kind.
+    completion=section(text,"Product Completion Criteria") or ""
+    criterion_lines=re.findall(r"(?im)^-\\s*\\[required\\]\\s+([a-z0-9][a-z0-9._-]*):\\s*(.+?)\\s*\\|\\s*verify=([a-z0-9_-]+)\\s*$",completion)
+    criterion_ids=[item[0] for item in criterion_lines]
+    duplicate_criteria=sorted({item for item in criterion_ids if criterion_ids.count(item)>1})
     # Intake must explicitly assert READY; unchecked template/default is not authority.
     activation=section(text,"Activation Checklist") or ""
     ready=bool(re.search(r"(?im)^\*\*Activation decision:\*\*\s*READY\s*$",activation))
@@ -33,12 +39,20 @@ def validate(text: str) -> dict:
     if missing: issues.append({"code":"MISSING_SECTION","sections":missing})
     if incomplete: issues.append({"code":"INCOMPLETE_SECTION","sections":incomplete})
     if unknown: issues.append({"code":"UNKNOWN_DIRECTION","sections":unknown})
+    if completion and not criterion_lines:
+        issues.append({"code":"STRUCTURED_COMPLETION_CRITERIA_REQUIRED","sections":["Product Completion Criteria"]})
+    if duplicate_criteria:
+        issues.append({"code":"DUPLICATE_COMPLETION_CRITERION","criteria":duplicate_criteria})
     if not ready: issues.append({"code":"ACTIVATION_NOT_READY","sections":["Activation Checklist"]})
     return {
         "schema_version":1,
         "status":"READY" if not issues else "DIRECTION_REQUIRED",
         "issues":issues,
-        "direction_required": sorted(set(missing+incomplete+unknown+([] if ready else ["Activation Checklist"]))),
+        "completion_criteria":[{"id":cid,"description":desc.strip(),"verification_kind":kind}
+                               for cid,desc,kind in criterion_lines],
+        "direction_required": sorted(set(missing+incomplete+unknown+
+            (["Product Completion Criteria"] if completion and not criterion_lines else [])+
+            ([] if ready else ["Activation Checklist"]))),
     }
 
 def main()->int:
