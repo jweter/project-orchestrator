@@ -51,3 +51,8 @@ def test_draft_requires_refetch_before_merge(monkeypatch):
     results=merger.cycle(False)
     assert seen==[refreshed]
     assert results[-1]["merged"] is True
+
+
+def test_review_usage_limit_is_blocking_evidence(monkeypatch):
+    monkeypatch.setattr(merger,"gh_json",lambda args:[{"commit_id":"head","body":"You have reached your Codex usage limits for code reviews."}] if args[-1].endswith("/comments") else [])
+    assert merger.blocking_review_findings("o/r",1,"head") is True
