@@ -220,14 +220,17 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
         after=[item for item in candidates if item[0]>previous]
         before=[item for item in candidates if item[0]<=previous]
         ordered=after+before
+    blocked=[]
     for repo,head in ordered:
         try:
             load_execution_slice(state_root,repo,head)
-        except RuntimeError:
+        except RuntimeError as exc:
+            blocked.append(f"{repo}={exc}")
             continue
         atomic(cursor_path,{"repository":repo})
         return repo,head
-    raise RuntimeError("NO_READY_EXECUTION_SLICE")
+    detail=";".join(blocked) or "UNKNOWN"
+    raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
 
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
     activation_path=state_root/"hands-off-activation.json"
