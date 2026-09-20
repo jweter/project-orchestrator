@@ -427,6 +427,49 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
             delay=min(3600,60*(2**attempts))
             record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
             continue
+        stage=record.get("execution_stage")
+        durable_branch=record.get("branch")
+        durable_head=record.get("head_sha")
+        if stage in {"PUSHED","PR_OPEN"} and durable_branch and durable_head:
+            remote=subprocess.run(["git","ls-remote","--heads","origin",durable_branch],cwd=ws,text=True,capture_output=True,check=False)
+            remote_head=remote.stdout.split()[0] if remote.returncode==0 and remote.stdout.strip() else ""
+            if remote_head!=durable_head:
+                outcomes[grant_id]="RECOVERY_DURABLE_REMOTE_HEAD_MISMATCH"
+            elif stage=="PR_OPEN":
+                outcomes[grant_id]="RECOVERY_DURABLE_PR_HANDOFF"
+                record["recovery_state"]="RECOVERED"
+                record["recovered_at"]=current.isoformat()
+            else:
+                evidence={"head_sha":durable_head,"remote_head_sha":record.get("remote_head_sha") or durable_head}
+                outcomes[grant_id]=resume_orphan_branch(repo,ws,durable_branch,"ORPHAN_PUSHED_NO_PR",evidence)
+                if outcomes[grant_id]=="RECOVERY_PR_OPENED":
+                    record["recovery_state"]="RECOVERED"
+                    record["recovered_at"]=current.isoformat()
+            record["recovery_result"]=outcomes[grant_id]
+            if record.get("recovery_state")=="RECOVERED":
+                record.pop("recovery_next_attempt_at",None)
+            else:
+                delay=min(3600,60*(2**attempts))
+                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+            continue
+        if stage=="COMMITTED" and durable_branch and durable_head:
+            branch_now=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+            head_now=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+            if branch_now.returncode or head_now.returncode or branch_now.stdout.strip()!=durable_branch or head_now.stdout.strip()!=durable_head:
+                outcomes[grant_id]="RECOVERY_DURABLE_LOCAL_HEAD_MISMATCH"
+            else:
+                evidence={"head_sha":durable_head}
+                outcomes[grant_id]=resume_orphan_branch(repo,ws,durable_branch,"ORPHAN_LOCAL_COMMIT_UNPUSHED",evidence)
+                if outcomes[grant_id]=="RECOVERY_PR_OPENED":
+                    record["recovery_state"]="RECOVERED"
+                    record["recovered_at"]=current.isoformat()
+            record["recovery_result"]=outcomes[grant_id]
+            if record.get("recovery_state")=="RECOVERED":
+                record.pop("recovery_next_attempt_at",None)
+            else:
+                delay=min(3600,60*(2**attempts))
+                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+            continue
         status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
         branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
         if status.returncode or branch.returncode:
