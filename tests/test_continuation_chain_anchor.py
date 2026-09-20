@@ -19,15 +19,8 @@ def test_metadata_rewrite_invalidates_chain_anchor(tmp_path,field,value):
     history=json.loads(path.read_text())
     history[field]=value
     path.write_text(json.dumps(history))
-    if field in {"pass_count","chain_head"}:
-        with pytest.raises(RuntimeError,match="diverges"):
-            _record(tmp_path)
-    else:
-        fresh=_record(tmp_path)
-        assert fresh["sequence"]==1
-        rewritten=json.loads(path.read_text())
-        assert rewritten["pass_count"]==1
-        assert rewritten["anchor_hash"]
+    with pytest.raises(RuntimeError,match="invalid history|diverges"):
+        _record(tmp_path)
 
 def test_chain_anchor_is_stable_for_untampered_history(tmp_path):
     _record(tmp_path); second=_record(tmp_path)

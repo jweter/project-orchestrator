@@ -1795,10 +1795,12 @@ def reconcile_continuation_journal(state_root:Path)->dict:
     """Reconcile interrupted continuation commits before advancing sequence authority."""
     journal_path=state_root/"continuation-pass-journal.json"
     history_path=state_root/"continuation-pass-history.json"
+    if not journal_path.exists():
+        return {"status":"NO_JOURNAL"}
     try:
         journal=json.loads(journal_path.read_text(encoding="utf-8"))
-    except (OSError,json.JSONDecodeError,TypeError,ValueError):
-        return {"status":"NO_JOURNAL"}
+    except (OSError,json.JSONDecodeError,TypeError,ValueError) as exc:
+        raise RuntimeError("unreadable or malformed continuation journal") from exc
     if not isinstance(journal,dict) or journal.get("schema_version")!=1:
         raise RuntimeError("invalid continuation journal")
     status=journal.get("status")
@@ -1810,7 +1812,33 @@ def reconcile_continuation_journal(state_root:Path)->dict:
         history=json.loads(history_path.read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError):
         history=None
-    matches=(isinstance(history,dict)
+    history_valid=False
+    if isinstance(history,dict) and history.get("schema_version")==4:
+        candidate=history.get("passes")
+        total=history.get("pass_count")
+        immediate_total=history.get("immediate_continuation_count")
+        anchor_material={"pass_count":total,"immediate_continuation_count":immediate_total,
+                         "retained_predecessor_hash":history.get("retained_predecessor_hash"),
+                         "chain_head":history.get("chain_head")}
+        expected_anchor=hashlib.sha256(json.dumps(anchor_material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+        history_valid=(isinstance(candidate,list)
+                       and isinstance(total,int) and not isinstance(total,bool)
+                       and isinstance(immediate_total,int) and not isinstance(immediate_total,bool)
+                       and 0 <= immediate_total <= total <= 10000000
+                       and history.get("anchor_hash")==expected_anchor)
+        expected=history.get("retained_predecessor_hash")
+        if history_valid:
+            for item in candidate:
+                if not isinstance(item,dict) or item.get("previous_hash")!=expected:
+                    history_valid=False; break
+                material={k:v for k,v in item.items() if k!="record_hash"}
+                calculated=hashlib.sha256(json.dumps(material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+                if item.get("record_hash")!=calculated:
+                    history_valid=False; break
+                expected=item.get("record_hash")
+            if history_valid:
+                history_valid=(expected==history.get("chain_head") and (not candidate or candidate[-1].get("sequence")==total))
+    matches=(history_valid
              and history.get("pass_count")==journal.get("sequence")
              and history.get("chain_head")==journal.get("record_hash")
              and history.get("anchor_hash")==journal.get("anchor_hash"))
@@ -1827,7 +1855,7 @@ def reconcile_continuation_journal(state_root:Path)->dict:
         atomic(journal_path,aborted)
         return {"status":"RECOVERED_ABORTED","sequence":journal.get("sequence")}
     if not matches:
-        raise RuntimeError("committed continuation journal diverges from authoritative history")
+        raise RuntimeError("committed continuation journal diverges from authoritative or invalid history")
     return {"status":"COMMITTED","sequence":journal.get("sequence")}
 
 def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict,burst_id:str|None=None,process_instance_id:str|None=None)->dict:
