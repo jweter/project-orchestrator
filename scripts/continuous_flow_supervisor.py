@@ -525,7 +525,9 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
     target=(execution_slice.get("capability_id"),execution_slice.get("slice_id"),
             execution_slice.get("repository"),execution_slice.get("exact_head"))
     for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"}:
+        if not isinstance(record,dict):
+            continue
+        if record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"} and not record.get("recovery_generation"):
             continue
         authority=record.get("execution_slice") or {}
         if repo in record.get("authorized_repositories",[]):
