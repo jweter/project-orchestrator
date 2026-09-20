@@ -545,3 +545,37 @@ def test_quarantined_grants_exposes_safe_actionable_evidence(tmp_path):
     assert result["q"]["worker_pid"]==7
     assert "lease_token" not in result["q"]
     assert "SECRET" not in json.dumps(result)
+
+def test_quarantine_recheck_releases_only_proven_dead_worker(tmp_path):
+    import json
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,1,1,tzinfo=UTC); path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"QUARANTINED","result_status":"CLAIM_LEASE_UNKNOWN_QUARANTINED","worker":{"host":"h","pid":7}}}}))
+    assert supervisor.recheck_quarantined_claims(tmp_path,now,lambda worker:"DEAD")=={"g":"RELEASED_TO_RECOVERY"}
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["state"]=="ABANDONED"
+    assert saved["result_status"]=="CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
+
+def test_quarantine_recheck_restores_proven_live_worker(tmp_path):
+    import json
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,1,1,tzinfo=UTC); path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"QUARANTINED","result_status":"CLAIM_LEASE_UNKNOWN_QUARANTINED","unknown_liveness_checks":5,"finished_at":"old","worker":{"host":"h","pid":7}}}}))
+    assert supervisor.recheck_quarantined_claims(tmp_path,now,lambda worker:"ALIVE")=={"g":"RESTORED_TO_CLAIMED"}
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["state"]=="CLAIMED"
+    assert saved["unknown_liveness_checks"]==0
+    assert "finished_at" not in saved
+
+def test_quarantine_recheck_preserves_unknown_ownership(tmp_path):
+    import json
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,1,1,tzinfo=UTC); path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"QUARANTINED","result_status":"CLAIM_LEASE_UNKNOWN_QUARANTINED"}}}))
+    assert supervisor.recheck_quarantined_claims(tmp_path,now,lambda worker:"UNKNOWN")=={"g":"STILL_UNKNOWN"}
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["state"]=="QUARANTINED"
+    assert saved["quarantine_rechecks"]==1
