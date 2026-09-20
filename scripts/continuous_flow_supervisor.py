@@ -311,6 +311,10 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
         })
         raise RuntimeError(f"CAPABILITY_GRAPH_REQUIRED:{repo}")
     derived=derive_slice(payload,repository=repo,exact_head=exact_head)
+    request_path=state_root/"direction-requests"/f"{repo.replace('/','__')}.json"
+    if derived.get("status")=="NO_WORK":
+        request_path.unlink(missing_ok=True)
+        return {"status":"NO_WORK","repository":repo,"exact_head":exact_head}
     if derived.get("status")!="READY" or not isinstance(derived.get("slice"),dict):
         request={
             "schema_version":1,
@@ -325,7 +329,6 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
         direction_dir.mkdir(parents=True,exist_ok=True)
         atomic(direction_dir/f"{repo.replace('/','__')}.json",request)
         raise RuntimeError(f"EXECUTION_SLICE_NOT_READY:{repo}:{derived.get('status','UNKNOWN')}")
-    request_path=state_root/"direction-requests"/f"{repo.replace('/','__')}.json"
     request_path.unlink(missing_ok=True)
     return derived["slice"]
 
@@ -406,9 +409,12 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
     blocked=[]
     for repo,head in ordered:
         try:
-            load_execution_slice(state_root,repo,head)
+            execution=load_execution_slice(state_root,repo,head)
         except RuntimeError as exc:
             blocked.append(f"{repo}={exc}")
+            continue
+        if execution.get("status")=="NO_WORK":
+            blocked.append(f"{repo}=NO_WORK")
             continue
         atomic(cursor_path,{"repository":repo})
         return repo,head
