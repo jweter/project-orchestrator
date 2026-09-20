@@ -1848,6 +1848,15 @@ def record_product_identity_advancement(state_root:Path,*,repository:str|None,bu
            "all_three_products_proven":len(products)==3,"events":events[-100:]}
     atomic(path,proof); return proof
 
+def maybe_record_async_rotation(state_root:Path,*,previous_repository:str|None,previous_status:str|None,
+                                current_repository:str|None,burst_id:str|None,process_instance_id:str|None)->dict|None:
+    async_states={"REVIEW_BLOCKED","CI_PENDING","PR_BLOCKED"}
+    if previous_status not in async_states or not previous_repository or not current_repository:
+        return None
+    return record_async_gate_rotation(state_root,blocked_repository=previous_repository,
+        blocked_status=previous_status,next_repository=current_repository,
+        burst_id=burst_id,process_instance_id=process_instance_id)
+
 def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder_ok:bool,builder_status:str,normal_seconds:int)->int:
     """Choose the next supervisor pass without turning successful work into idle time."""
     if lifecycle_advanced:
@@ -2101,6 +2110,9 @@ def main()->int:
     except (OSError,json.JSONDecodeError,TypeError,ValueError): burst_proof={}
     try: product_proof=json.loads((state/"portfolio-product-advancement-proof.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError): product_proof={}
+    previous_repository=None
+    previous_builder_status=None
+    rotation_evidence=None
     while True:
         burst_pass+=1
         if merge is None or merge.poll() is not None:
@@ -2134,6 +2146,12 @@ def main()->int:
         else:
             rc,builder_invocation_id=3,None
         builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
+        current_repository=selected_builder_repository(state)
+        rotation_evidence=maybe_record_async_rotation(state,previous_repository=previous_repository,
+            previous_status=previous_builder_status,current_repository=current_repository,
+            burst_id=burst_id,process_instance_id=process_instance_id)
+        previous_repository=current_repository
+        previous_builder_status=builder_status
         lifecycle_advanced=merge_watcher_advanced(state)
         if lifecycle_advanced:
             request_immediate_builder(state)
@@ -2160,7 +2178,8 @@ def main()->int:
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None,
             "process_instance_id":process_instance_id,"burst_id":burst_id,
             "autonomous_burst_proof":burst_proof,
-            "portfolio_product_advancement_proof":product_proof})
+            "portfolio_product_advancement_proof":product_proof,
+            "async_gate_rotation":rotation_evidence})
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
