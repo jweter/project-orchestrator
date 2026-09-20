@@ -1624,8 +1624,11 @@ def main()->int:
             else:
                 activation_reason=refresh_reason
         products=products if authorized else []
-        rc=run_builder(repo,workspace,state,products) if products else 3
-        builder_ok,builder_status=builder_health(state,rc)
+        if products:
+            rc,builder_invocation_id=run_builder(repo,workspace,state,products)
+        else:
+            rc,builder_invocation_id=3,None
+        builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
         lifecycle_advanced=merge_watcher_advanced(state)
         if lifecycle_advanced:
             request_immediate_builder(state)
