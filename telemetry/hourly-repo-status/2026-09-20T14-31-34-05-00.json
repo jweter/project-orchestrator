@@ -22,13 +22,15 @@
     "pr": 719
   },
   "everward": {
-    "state": "CI_PENDING",
+    "state": "P1_REPAIR_PREFLIGHT_RUNNING",
     "repository": "jweter/Project-Everward",
-    "branch": "orchestrator/slice7-release-momentum",
-    "head": "8ce5d41a227e926e5158f824927964e112d3b05d",
+    "branch": "repair/released-body-authority",
+    "head": "6b09dc0",
     "pr": 305,
-    "evidence": "first preflight exposed stale source-contract test; bounded repair applied; targeted 7 passed; canonical exact-head preflight GREEN; PR opened; Foundation, Control Plane, TruffleHog, Golden Verification green; Execution Director pending",
-    "product_reality": "not inferred"
+    "evidence": "post-merge Codex review found P1 body velocity not integrated and P2 velocity not persisted; bounded repair adds deterministic body motion, backward-compatible persistence, and targeted manipulator/save tests pass; full preflight dispatched",
+    "product_reality": "not inferred",
+    "merged_pr": 305,
+    "merge_sha": "23ecfb85dc84696d6f417b4b9aba17b15b468343"
   },
   "control_plane": {
     "role": "control-plane-only",
