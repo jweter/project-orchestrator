@@ -200,27 +200,56 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
         raise RuntimeError(f"EXECUTION_SLICE_NOT_READY:{repo}:{derived.get('status','UNKNOWN')}")
     return derived["slice"]
 
+def select_execution_target(state_root:Path,activation:dict,products:list[str])->tuple[str,str]:
+    """Select one READY repository deterministically; unavailable authority isolates only that lane."""
+    candidates=sorted(
+        (repo,head)
+        for name in products
+        for repo,head in activation["products"][name]["repositories"].items()
+        if head
+    )
+    if not candidates:
+        raise RuntimeError("NO_EXECUTION_TARGET")
+    cursor_path=state_root/"execution-target-cursor.json"
+    try:
+        previous=json.loads(cursor_path.read_text(encoding="utf-8")).get("repository")
+    except (OSError,json.JSONDecodeError,TypeError):
+        previous=None
+    ordered=candidates
+    if previous:
+        after=[item for item in candidates if item[0]>previous]
+        before=[item for item in candidates if item[0]<=previous]
+        ordered=after+before
+    blocked=[]
+    for repo,head in ordered:
+        try:
+            load_execution_slice(state_root,repo,head)
+        except RuntimeError as exc:
+            blocked.append(f"{repo}={exc}")
+            continue
+        atomic(cursor_path,{"repository":repo})
+        return repo,head
+    detail=";".join(blocked) or "UNKNOWN"
+    raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
+
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
     activation_path=state_root/"hands-off-activation.json"
     activation_bytes=activation_path.read_bytes()
     activation=json.loads(activation_bytes)
     contract_path=repo_root/"engineering"/"hands-off-evolution.json"
     contract_bytes=contract_path.read_bytes()
-    selected_repositories={
-        repo:head
-        for name in products
-        for repo,head in activation["products"][name]["repositories"].items()
+    repo,exact_head=select_execution_target(state_root,activation,products)
+    selected_products={
+        name for name in products
+        if repo in activation["products"][name]["repositories"]
     }
-    if len(selected_repositories)!=1:
-        raise RuntimeError("BOUNDED_GRANT_REQUIRES_ONE_REPOSITORY")
-    repo,exact_head=next(iter(selected_repositories.items()))
     grant={"schema_version":4,
            "grant_id":str(uuid.uuid4()),
            "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
            "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
            "products":{
-        name:{"repositories":activation["products"][name]["repositories"]}
-        for name in products},
+        name:{"repositories":{repo:exact_head}}
+        for name in selected_products},
            "execution_slice":load_execution_slice(state_root,repo,exact_head)}
     path=state_root/"hands-off-execution-grant.json"
     atomic(path,grant)
