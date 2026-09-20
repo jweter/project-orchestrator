@@ -560,12 +560,17 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         expected=eligible_repos.get(repo)
         if not expected or base!=expected:
             return {"status":"EXECUTION_GRANT_HEAD_MISMATCH","repository":repo,"expected_sha":expected,"actual_sha":base}
+        slice_authority=execution_slice_authority(execution_grant,repo,expected)
+        if slice_authority is None:
+            return {"status":"EXECUTION_SLICE_AUTHORITY_REQUIRED","repository":repo,"expected_sha":expected}
         worker=worker_incarnation()
         if not claim_execution_grant(execution_grant,repo,expected,worker=worker):
             return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
         heartbeat_stop,heartbeat_thread=start_grant_heartbeat(execution_grant,worker)
-        advance_grant_stage(execution_grant,"BASE_VERIFIED",repository=repo,base_sha=base)
+        advance_grant_stage(execution_grant,"BASE_VERIFIED",repository=repo,base_sha=base,
+                            capability_id=slice_authority["capability_id"],slice_id=slice_authority["slice_id"])
     else:
+        slice_authority=None
         heartbeat_stop=heartbeat_thread=None
     stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
@@ -574,7 +579,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     if execution_grant is not None:
         advance_grant_stage(execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch)
 
-    aider=run_aider(ws,prompt_for(repo,state_path))
+    task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)\n    aider=run_aider(ws,task_prompt)
     cleanup_aider_artifacts(ws)
     paths=changed_paths(ws,base)
     if aider.returncode!=0:
