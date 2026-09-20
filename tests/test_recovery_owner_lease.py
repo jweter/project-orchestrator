@@ -15,7 +15,7 @@ def test_dead_stale_recovery_generation_is_reclaimed(tmp_path, monkeypatch):
     token,reserved=result
     assert token!="old"
     assert reserved["recovery_version"]==2
-    assert reserved["recovery_owner"]["pid"]>0
+    assert reserved["recovery_generation_worker"]["pid"]>0
 
 def test_live_or_recent_recovery_generation_is_not_stolen(tmp_path, monkeypatch):
     path=tmp_path/"hands-off-grant-lifecycle.json"
