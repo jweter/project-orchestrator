@@ -226,6 +226,50 @@ def reconcile_verified_merge(state_root:Path,event:dict)->dict:
     atomic(path,evidence)
     return {"status":"SLICE_VERIFIED_COMPLETE","evidence":str(path),"capability_id":capability_id,"slice_id":slice_id}
 
+def reconcile_capability_from_slice_evidence(state_root:Path,repo:str,capability_id:str)->dict:
+    """Advance authoritative slice/capability state only from exact durable merge evidence."""
+    graph_path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
+    try:
+        graph=json.loads(graph_path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError):
+        return {"status":"CAPABILITY_GRAPH_UNAVAILABLE"}
+    capability=next((c for c in graph.get("capabilities",[]) if isinstance(c,dict) and c.get("id")==capability_id),None)
+    if capability is None:
+        return {"status":"CAPABILITY_IDENTITY_UNPROVEN"}
+    slices=capability.get("slices")
+    if not isinstance(slices,list) or not slices:
+        return {"status":"CAPABILITY_SLICES_REQUIRED"}
+    evidence_dir=state_root/"slice-completion-evidence"; changed=False
+    for slice_record in slices:
+        if not isinstance(slice_record,dict) or not slice_record.get("id"):
+            return {"status":"CAPABILITY_SLICE_IDENTITY_UNPROVEN"}
+        sid=slice_record["id"]; path=evidence_dir/f"{repo.replace('/','__')}__{sid}.json"
+        if not path.exists():
+            continue
+        try:
+            evidence=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError):
+            return {"status":"SLICE_EVIDENCE_UNREADABLE","slice_id":sid}
+        if (evidence.get("status")!="VERIFIED_COMPLETE" or evidence.get("repository")!=repo
+                or evidence.get("capability_id")!=capability_id or evidence.get("slice_id")!=sid
+                or not evidence.get("head_sha") or not isinstance(evidence.get("pr_number"),int)):
+            return {"status":"SLICE_EVIDENCE_IDENTITY_CONFLICT","slice_id":sid}
+        verification={"source":"verified_merge","pr_number":evidence["pr_number"],"head_sha":evidence["head_sha"],
+                      "grant_id":evidence.get("grant_id")}
+        if slice_record.get("state")!="VERIFIED_COMPLETE" or slice_record.get("verification")!=verification:
+            slice_record["state"]="VERIFIED_COMPLETE"; slice_record["verification"]=verification; changed=True
+    complete=all(isinstance(s,dict) and s.get("state")=="VERIFIED_COMPLETE" and s.get("verification") for s in slices)
+    if complete:
+        verification={"source":"all_required_slices_verified","slice_ids":[s["id"] for s in slices]}
+        if capability.get("state")!="VERIFIED_COMPLETE" or capability.get("verification")!=verification:
+            capability["state"]="VERIFIED_COMPLETE"; capability["verification"]=verification; changed=True
+    elif capability.get("state")=="VERIFIED_COMPLETE":
+        return {"status":"CAPABILITY_COMPLETION_CONFLICT"}
+    if changed:
+        atomic(graph_path,graph)
+    return {"status":"CAPABILITY_VERIFIED_COMPLETE" if complete else "CAPABILITY_IN_PROGRESS",
+            "capability_id":capability_id,"changed":changed}
+
 def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
     """Derive bounded mutation authority from the repository's machine-readable capability graph."""
     path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
