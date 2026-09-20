@@ -200,13 +200,31 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
         raise RuntimeError(f"EXECUTION_SLICE_NOT_READY:{repo}:{derived.get('status','UNKNOWN')}")
     return derived["slice"]
 
+def reserved_quarantine_repositories(state_root:Path)->set[str]:
+    """Reserve only lanes whose ownership or preserved-work recovery remains quarantined."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return set()
+    reserved=set()
+    for record in grants.values():
+        if not isinstance(record,dict):
+            continue
+        if record.get("state")=="QUARANTINED" or record.get("recovery_state")=="QUARANTINED":
+            repo=record.get("repository")
+            if isinstance(repo,str) and repo:
+                reserved.add(repo)
+    return reserved
+
 def select_execution_target(state_root:Path,activation:dict,products:list[str])->tuple[str,str]:
     """Select one READY repository deterministically; unavailable authority isolates only that lane."""
+    reserved=reserved_quarantine_repositories(state_root)
     candidates=sorted(
         (repo,head)
         for name in products
         for repo,head in activation["products"][name]["repositories"].items()
-        if head
+        if head and repo not in reserved
     )
     if not candidates:
         raise RuntimeError("NO_EXECUTION_TARGET")
