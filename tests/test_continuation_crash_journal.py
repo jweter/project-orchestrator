@@ -45,3 +45,23 @@ def test_committed_journal_history_divergence_fails_closed(tmp_path):
     import pytest
     with pytest.raises(RuntimeError,match="diverges"):
         supervisor.reconcile_continuation_journal(tmp_path)
+
+
+def test_malformed_existing_journal_fails_closed(tmp_path):
+    (tmp_path/"continuation-pass-journal.json").write_text("{truncated")
+    import pytest
+    with pytest.raises(RuntimeError,match="malformed"):
+        supervisor.record_continuation_pass(tmp_path,builder_status="PR_OPEN",delay_seconds=1,
+            lifecycle_advanced=True,liveness_reacquire={"requested":False},burst_id="b",process_instance_id="p")
+
+def test_committed_journal_with_tampered_retained_record_fails_closed(tmp_path):
+    supervisor.record_continuation_pass(tmp_path,builder_status="PR_OPEN",delay_seconds=1,
+        lifecycle_advanced=True,liveness_reacquire={"requested":False},burst_id="b",process_instance_id="p")
+    path=tmp_path/"continuation-pass-history.json"
+    history=json.loads(path.read_text())
+    history["passes"][-1]["builder_status"]="TAMPERED"
+    path.write_text(json.dumps(history))
+    import pytest
+    with pytest.raises(RuntimeError,match="invalid history"):
+        supervisor.record_continuation_pass(tmp_path,builder_status="PR_OPEN",delay_seconds=1,
+            lifecycle_advanced=True,liveness_reacquire={"requested":False},burst_id="b",process_instance_id="p")
