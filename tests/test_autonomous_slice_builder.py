@@ -238,7 +238,8 @@ def test_execution_grant_is_single_use(tmp_path, monkeypatch):
     grant.write_text(json.dumps({"schema_version":4,"grant_id":"cycle-1",
         "contract_sha256":hashlib.sha256(contract.read_bytes()).hexdigest(),
         "activation_sha256":hashlib.sha256(activation.read_bytes()).hexdigest(),
-        "products":{"rocksmith":{"repositories":{"jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
+        "products":{"rocksmith":{"repositories":{"jweter/rocksmith-cdlc-generator":"certified"}}},
+            "execution_slice":{"capability_id":"cap","slice_id":"slice","repository":"jweter/rocksmith-cdlc-generator","exact_head":"certified","objective":"bounded work","acceptance":["tests pass"]}}),encoding="utf-8")
     consumed=tmp_path/"lifecycle.json"
     class Result:
         returncode=0; stdout="certified\n"
@@ -281,7 +282,7 @@ def test_heartbeat_grant_renews_claim(tmp_path):
     import json, threading
     import scripts.autonomous_slice_builder as builder
     grant=tmp_path/"hands-off-execution-grant.json"
-    grant.write_text(json.dumps({"grant_id":"g1"}),encoding="utf-8")
+    grant.write_text(json.dumps({"grant_id":"g1","execution_slice":{"capability_id":"cap","slice_id":"slice","repository":"jweter/rock","exact_head":"abc","objective":"bounded work","acceptance":["tests pass"]}}),encoding="utf-8")
     lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
     lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
         "state":"CLAIMED","claimed_at":"2026-01-01T00:00:00+00:00",
@@ -494,7 +495,7 @@ def test_claim_persists_concrete_worker_incarnation(tmp_path):
     import json
     import scripts.autonomous_slice_builder as builder
     grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
-    grant.write_text(json.dumps({"grant_id":"g"}))
+    grant.write_text(json.dumps({"grant_id":"g","execution_slice":{"capability_id":"cap","slice_id":"slice","repository":"o/r","exact_head":"abc","objective":"bounded work","acceptance":["tests pass"]}}))
     worker={"host":"h","pid":7,"process_started_ns":11,"lease_token":"token"}
     assert builder.claim_execution_grant(grant,"o/r","abc",lifecycle,worker)
     record=json.loads(lifecycle.read_text())["grants"]["g"]
