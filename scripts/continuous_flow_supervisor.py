@@ -769,10 +769,10 @@ def worker_liveness(worker:dict|None)->str:
     return "ALIVE"
 
 def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
-    lifecycle_lock=_acquire_lifecycle_lock(path)
     try:
         """Abandon an expired claim only when its owning worker is proven dead."""
         path=state_root/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=_acquire_lifecycle_lock(path)
         if not path.exists():
             return []
         try:
@@ -1160,10 +1160,10 @@ def commit_reconciled_staged_work(ws:Path,record:dict)->str:
     return "STAGED_COMMIT_RECOVERED"
 
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
-    lifecycle_lock=_acquire_lifecycle_lock(path)
     try:
         """Return every durable abandoned claim that has not reached a terminal recovery state."""
         path=state_root/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=_acquire_lifecycle_lock(path)
         try:
             payload=json.loads(path.read_text(encoding="utf-8"))
             grants=payload.get("grants",{})
@@ -1218,10 +1218,10 @@ def verify_durable_pr(repo:str,ws:Path,pr_number:int,expected_head:str)->str:
     return "RECOVERY_DURABLE_PR_STATE_UNKNOWN"
 
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
-    lifecycle_lock=_acquire_lifecycle_lock(path)
     try:
         """Revisit durable recovery obligations until recovered or explicitly quarantined."""
         path=state_root/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=_acquire_lifecycle_lock(path)
         if not grant_ids or not path.exists():
             return {}
         try:
@@ -1386,10 +1386,10 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         _release_lifecycle_lock(lifecycle_lock)
 
 def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dict[str,str]:
-    lifecycle_lock=_acquire_lifecycle_lock(path)
     try:
         """Continuously revalidate preserved crash work without mutating it."""
         path=state_root/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=_acquire_lifecycle_lock(path)
         if not path.exists(): return {}
         try:
             payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
@@ -1449,10 +1449,10 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
         _release_lifecycle_lock(lifecycle_lock)
 
 def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->dict[str,str]:
-    lifecycle_lock=_acquire_lifecycle_lock(path)
     try:
         """Re-evaluate ownership quarantine; only proof of death authorizes recovery."""
         path=state_root/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=_acquire_lifecycle_lock(path)
         if not path.exists():
             return {}
         try:
