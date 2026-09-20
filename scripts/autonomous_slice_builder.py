@@ -456,7 +456,9 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         worker=worker_incarnation()
         if not claim_execution_grant(execution_grant,repo,expected,worker):
             return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
-        start_grant_heartbeat(execution_grant,worker)
+        heartbeat_stop,heartbeat_thread=start_grant_heartbeat(execution_grant,worker)
+    else:
+        heartbeat_stop=heartbeat_thread=None
     stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
     if run(["git","checkout","-B",branch,base],ws).returncode:
@@ -526,6 +528,12 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             "last_repo_index":idx,"last_repository":repo}
     atomic_json(state_path,result)
     return result
+
+def stop_grant_heartbeat(stop:threading.Event|None,thread:threading.Thread|None)->None:
+    if stop is not None:
+        stop.set()
+    if thread is not None:
+        thread.join(timeout=2)
 
 def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
