@@ -614,8 +614,17 @@ def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)
         return list(dict.fromkeys(newly_abandoned or []))
     pending=list(newly_abandoned or [])
     for grant_id,record in grants.items():
-        if (isinstance(record,dict) and record.get("state")=="ABANDONED"
-                and record.get("recovery_state") not in {"RECOVERED","QUARANTINED"}):
+        if not isinstance(record,dict) or record.get("state")!="ABANDONED":
+            continue
+        recovery_state=record.get("recovery_state")
+        if recovery_state not in {"RECOVERED","QUARANTINED"}:
+            pending.append(grant_id)
+        elif (recovery_state=="QUARANTINED" and record.get("execution_stage")=="COMMITTED"
+              and record.get("head_sha") and record.get("recovery_result") in {
+                  "PRESERVED_COMMIT_RECOVERED","CONSUMED_RECOVERY_COMMIT_ADOPTED","STAGED_COMMIT_RECOVERED"
+              }):
+            # Exact recovered commits must re-enter durable push/PR recovery.
+            record["recovery_state"]="RECOVERING"
             pending.append(grant_id)
     return list(dict.fromkeys(pending))
 
