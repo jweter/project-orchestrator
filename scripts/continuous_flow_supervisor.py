@@ -1800,7 +1800,7 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
         candidate=history.get("passes",[]) if isinstance(history,dict) else []
         candidate_total=history.get("pass_count") if isinstance(history,dict) else None
         candidate_immediate=history.get("immediate_continuation_count") if isinstance(history,dict) else None
-        valid=(history.get("schema_version") in {1,2,3}
+        valid=(history.get("schema_version") in {1,2,3,4}
                and isinstance(candidate,list)
                and isinstance(candidate_total,int) and not isinstance(candidate_total,bool)
                and 0 <= candidate_total <= 10000000
@@ -1809,7 +1809,7 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
         if valid and history.get("schema_version")==2 and candidate:
             tail=candidate[-1]
             valid=(isinstance(tail,dict) and tail.get("sequence")==candidate_total)
-        if valid and history.get("schema_version")==3:
+        if valid and history.get("schema_version")==4:
             anchor_material={"pass_count":candidate_total,
                              "immediate_continuation_count":candidate_immediate,
                              "retained_predecessor_hash":history.get("retained_predecessor_hash"),
@@ -1835,7 +1835,7 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
             passes=candidate
             total=candidate_total
             immediate_total=candidate_immediate
-            if history.get("schema_version")!=3:
+            if history.get("schema_version") not in {3,4}:
                 chain_head=None
     except (OSError,json.JSONDecodeError,TypeError,ValueError,AttributeError):
         pass
@@ -1851,7 +1851,7 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
     passes.append(record)
     retained=passes[-100:]
     retained_predecessor_hash=retained[0].get("previous_hash") if retained else None
-    payload={"schema_version":3,"pass_count":sequence,
+    payload={"schema_version":4,"pass_count":sequence,
              "immediate_continuation_count":immediate_total+(1 if immediate else 0),
              "chain_head":record["record_hash"],
              "retained_predecessor_hash":retained_predecessor_hash,"passes":retained}
