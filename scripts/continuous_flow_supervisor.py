@@ -453,28 +453,206 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
     detail=";".join(blocked) or "UNKNOWN"
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
 
+ISSUE_LEASE_SECONDS=60
+
+def recover_stale_issued_grants(state_root:Path,now:datetime|None=None)->list[str]:
+    """Release an unclaimed issuance only when its issuer is proven dead after the issue lease."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists():
+        return []
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        grants=payload.get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
+    current=now or datetime.now(UTC)
+    recovered=[]; changed=False
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("state")!="ISSUED":
+            continue
+        try:
+            issued=datetime.fromisoformat(record["issued_at"])
+            if issued.tzinfo is None:
+                issued=issued.replace(tzinfo=UTC)
+        except (KeyError,TypeError,ValueError):
+            continue
+        if (current-issued).total_seconds()<=ISSUE_LEASE_SECONDS:
+            continue
+        liveness=worker_liveness(record.get("issuer"))
+        record["last_issue_liveness_check_at"]=current.isoformat()
+        record["issuer_liveness"]=liveness
+        changed=True
+        if liveness=="DEAD":
+            record["state"]="ABANDONED"
+            record["finished_at"]=current.isoformat()
+            record["result_status"]="ISSUE_LEASE_EXPIRED_ISSUER_DEAD"
+            recovered.append(grant_id)
+        elif liveness=="UNKNOWN":
+            checks=int(record.get("issue_unknown_liveness_checks",0))+1
+            record["issue_unknown_liveness_checks"]=checks
+            if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
+                record["state"]="QUARANTINED"
+                record["finished_at"]=current.isoformat()
+                record["result_status"]="ISSUE_LEASE_UNKNOWN_QUARANTINED"
+        else:
+            record["issue_unknown_liveness_checks"]=0
+            record["result_status"]="ISSUE_LEASE_EXPIRED_ISSUER_ALIVE"
+    if changed:
+        atomic(path,payload)
+    return recovered
+
+def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
+    """Return existing nonterminal repository ownership; ambiguity fails closed."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists():
+        return None
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
+    target=(execution_slice.get("capability_id"),execution_slice.get("slice_id"),
+            execution_slice.get("repository"),execution_slice.get("exact_head"))
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"}:
+            continue
+        authority=record.get("execution_slice") or {}
+        if repo in record.get("authorized_repositories",[]):
+            return {"grant_id":grant_id,"state":record.get("state"),
+                    "worker":record.get("worker"),"execution_slice":authority}
+    return None
+
+def _acquire_os_file_lock(handle)->bool:
+    """Acquire a nonblocking kernel-owned one-byte lock."""
+    handle.seek(0,os.SEEK_END)
+    if handle.tell()==0:
+        handle.write(b"0"); handle.flush()
+    handle.seek(0)
+    try:
+        if os.name=="nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        return True
+    except (OSError,BlockingIOError):
+        return False
+
+def _release_os_file_lock(handle)->None:
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+
+def acquire_grant_issue_lock(state_root:Path)->dict:
+    """Acquire a crash-safe kernel-owned single-writer fence for grant issuance."""
+    state_root.mkdir(parents=True,exist_ok=True)
+    path=state_root/"grant-issuance.lock"
+    handle=path.open("a+b",buffering=0)
+    if not _acquire_os_file_lock(handle):
+        handle.close()
+        raise RuntimeError("GRANT_ISSUANCE_BUSY")
+    worker={"host":socket.gethostname(),"pid":os.getpid(),
+            "incarnation_id":uuid.uuid4().hex,
+            "process_start_fingerprint":process_start_fingerprint(),
+            "lease_token":uuid.uuid4().hex}
+    lock_id=str(uuid.uuid4())
+    metadata=state_root/"grant-issuance.lock.json"
+    atomic(metadata,{"schema_version":2,"lock_id":lock_id,"worker":worker,
+                     "created_at_utc":datetime.now(UTC).isoformat()})
+    return {"path":path,"metadata_path":metadata,"handle":handle,
+            "lock_id":lock_id,"worker":worker}
+
+def release_grant_issue_lock(lock:dict)->None:
+    """Release only this process's kernel-owned issuance fence."""
+    handle=lock["handle"]; metadata=lock["metadata_path"]
+    error=None
+    try:
+        if metadata.exists():
+            try:
+                current=json.loads(metadata.read_text(encoding="utf-8"))
+                if current.get("lock_id")!=lock.get("lock_id"):
+                    error=RuntimeError("GRANT_ISSUANCE_LOCK_OWNERSHIP_LOST")
+                else:
+                    metadata.unlink()
+            except (OSError,json.JSONDecodeError,TypeError):
+                error=RuntimeError("GRANT_ISSUANCE_LOCK_METADATA_UNREADABLE")
+    finally:
+        try:
+            _release_os_file_lock(handle)
+        finally:
+            handle.close()
+    if error is not None:
+        raise error
+
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
-    activation_path=state_root/"hands-off-activation.json"
-    activation_bytes=activation_path.read_bytes()
-    activation=json.loads(activation_bytes)
-    contract_path=repo_root/"engineering"/"hands-off-evolution.json"
-    contract_bytes=contract_path.read_bytes()
-    repo,exact_head=select_execution_target(state_root,activation,products)
-    selected_products={
-        name for name in products
-        if repo in activation["products"][name]["repositories"]
-    }
-    grant={"schema_version":4,
-           "grant_id":str(uuid.uuid4()),
-           "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
-           "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
-           "products":{
-        name:{"repositories":{repo:exact_head}}
-        for name in selected_products},
-           "execution_slice":load_execution_slice(state_root,repo,exact_head)}
-    path=state_root/"hands-off-execution-grant.json"
-    atomic(path,grant)
-    return path
+    lock=acquire_grant_issue_lock(state_root)
+    try:
+        activation_path=state_root/"hands-off-activation.json"
+        activation_bytes=activation_path.read_bytes()
+        activation=json.loads(activation_bytes)
+        contract_path=repo_root/"engineering"/"hands-off-evolution.json"
+        contract_bytes=contract_path.read_bytes()
+        recover_stale_issued_grants(state_root)
+        repo,exact_head=select_execution_target(state_root,activation,products)
+        selected_products={
+            name for name in products
+            if repo in activation["products"][name]["repositories"]
+        }
+        execution_slice=load_execution_slice(state_root,repo,exact_head)
+        conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
+        if conflict:
+            raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
+        grant_id=str(uuid.uuid4())
+        grant={"schema_version":4,
+               "grant_id":grant_id,
+               "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
+               "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
+               "products":{
+            name:{"repositories":{repo:exact_head}}
+            for name in selected_products},
+               "execution_slice":execution_slice}
+        path=state_root/"hands-off-execution-grants"/f"{grant_id}.json"
+        atomic(path,grant)
+        lifecycle=state_root/"hands-off-grant-lifecycle.json"
+        try:
+            payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+            grants=payload.setdefault("grants",{})
+        except (OSError,json.JSONDecodeError,TypeError):
+            raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
+        issued=datetime.now(UTC).isoformat()
+        grants[grant_id]={"state":"ISSUED","issued_at":issued,
+                          "authorized_repositories":[repo],"expected_sha":exact_head,
+                          "capability_id":execution_slice["capability_id"],
+                          "slice_id":execution_slice["slice_id"],
+                          "execution_slice":execution_slice,
+                          "issuer":lock["worker"]}
+        atomic(lifecycle,payload)
+        return path
+    finally:
+        release_grant_issue_lock(lock)
+
+def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
+    """Terminalize an issued grant when the builder exits before claiming it."""
+    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    if grant_path.parent.name=="hands-off-execution-grants":
+        lifecycle=grant_path.parent.parent/"hands-off-grant-lifecycle.json"
+    try:
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
+        payload=json.loads(lifecycle.read_text(encoding="utf-8"))
+        record=payload["grants"][grant_id]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return False
+    if record.get("state")!="ISSUED":
+        return False
+    record["state"]="ABANDONED"
+    record["finished_at"]=datetime.now(UTC).isoformat()
+    record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}"
+    atomic(lifecycle,payload)
+    return True
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
     if not products:
@@ -483,9 +661,16 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     try:
         grant_path=write_execution_grant(repo_root,state_root,products)
     except RuntimeError as exc:
+        if str(exc)=="GRANT_ISSUANCE_BUSY":
+            atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+            return 0
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
             atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
             (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
+            return 0
+        if str(exc).startswith("EXECUTION_SLICE_ALREADY_OWNED:"):
+            atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+            (state_root/"builder-last-output.txt").write_text(str(exc)+"\n",encoding="utf-8")
             return 0
         raise
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
@@ -494,10 +679,44 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    finalize_unclaimed_grant(grant_path,p.returncode)
     return p.returncode
 
 CLAIM_LEASE_SECONDS=1800
 UNKNOWN_LIVENESS_MAX_CHECKS=5
+
+def process_start_fingerprint(pid:int|None=None)->str|None:
+    """Return a lightweight OS-backed process creation identity."""
+    pid=pid or os.getpid()
+    if sys.platform.startswith("linux"):
+        try:
+            stat=Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+            start_ticks=stat[stat.rfind(")")+2:].split()[19]
+            boot_id=Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+            return f"linux:{boot_id}:{start_ticks}"
+        except (OSError,IndexError,ValueError):
+            return None
+    if sys.platform=="win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            kernel32=ctypes.WinDLL("kernel32",use_last_error=True)
+            handle=kernel32.OpenProcess(0x1000,False,pid)
+            if not handle:
+                return None
+            creation=wintypes.FILETIME(); exit_time=wintypes.FILETIME()
+            kernel=wintypes.FILETIME(); user=wintypes.FILETIME()
+            try:
+                if not kernel32.GetProcessTimes(handle,ctypes.byref(creation),ctypes.byref(exit_time),
+                                                ctypes.byref(kernel),ctypes.byref(user)):
+                    return None
+                ticks=(creation.dwHighDateTime<<32)|creation.dwLowDateTime
+                return f"windows:{ticks}"
+            finally:
+                kernel32.CloseHandle(handle)
+        except (AttributeError,OSError):
+            return None
+    return None
 
 def worker_liveness(worker:dict|None)->str:
     """Return ALIVE, DEAD, or UNKNOWN without guessing across hosts or legacy state."""
@@ -520,8 +739,8 @@ def worker_liveness(worker:dict|None)->str:
     expected=worker.get("process_start_fingerprint")
     if expected:
         try:
-            from scripts.autonomous_slice_builder import process_start_fingerprint
-            actual=process_start_fingerprint(pid)
+            from scripts.autonomous_slice_builder import process_start_fingerprint as builder_process_start_fingerprint
+            actual=builder_process_start_fingerprint(pid)
         except (ImportError,OSError):
             return "UNKNOWN"
         if actual is None:
