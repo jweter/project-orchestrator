@@ -25,7 +25,7 @@ def run_linear_reconciliation(repo_root:Path,state_root:Path)->int|None:
         "--bindings",str(bindings),"--output",str(state_root/"linear-mutations.json")],
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"linear-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
-    return p.returncode,invocation_id
+    return p.returncode
 
 def builder_health(state_root:Path,returncode:int,expected_invocation_id:str|None=None)->tuple[bool,str]:
     path=state_root/"builder.json"
@@ -684,7 +684,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     finalize_unclaimed_grant(grant_path,p.returncode)
-    return p.returncode
+    return p.returncode,invocation_id
 
 CLAIM_LEASE_SECONDS=1800
 UNKNOWN_LIVENESS_MAX_CHECKS=5
