@@ -1,0 +1,40 @@
+{
+  "captured_at": "2026-09-20T09:26:57-05:00",
+  "mode": "EXECUTION_BURST",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "state": "MERGED",
+    "repository": "jweter/knowledge-engine-core",
+    "pr": 512,
+    "head": "2e34a85905e72f2e4b36f02a42e0413ec0ccbefc",
+    "merge_sha": "bcea805d5fb45106c01fceefa709f1d4eaa603e6",
+    "evidence": "8 exact-head PR workflows successful; mergeable; no review threads"
+  },
+  "rocksmith": {
+    "state": "WORKER_DISPATCHED",
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "main": "2a7600d4c33ea786c83ef371415fed28f7ae5650",
+    "action": "private unattended Product Reality worker running against local lawful evidence",
+    "privacy": "no private payloads exported by scheduler"
+  },
+  "everward": {
+    "state": "IMPLEMENTING_PREFLIGHT_BLOCKED_ENVIRONMENT",
+    "repository": "jweter/Project-Everward",
+    "branch": "orchestrator/slice7-release-momentum",
+    "head": "46b361f",
+    "action": "added authoritative registered-body inertial velocity and probe-velocity inheritance on safe manipulator release with regression assertions",
+    "next_gate": "canonical exact-head preflight on environment with cmake available; no PR opened before gate"
+  },
+  "control_plane": {
+    "role": "control-plane-only",
+    "throughput_floor": "met",
+    "telemetry_branch": "telemetry/hourly-repo-status"
+  },
+  "reusable_capabilities_created_or_reused": [
+    "Knowledge Engine exact-head CI merge gate reused",
+    "Rocksmith private unattended Product Reality worker reused",
+    "Everward deterministic manipulator release regression coverage extended"
+  ]
+}
