@@ -23,3 +23,9 @@ def test_productive_flow_does_not_request_reacquire(tmp_path):
 def test_terminal_no_work_does_not_request_reacquire(tmp_path):
     result=request_liveness_reacquire(tmp_path,{"status":"NO_AUTHORIZED_WORK","grant_evidence":[]})
     assert result["requested"] is False
+
+
+def test_supervisor_source_reenters_immediately_on_reacquire():
+    from pathlib import Path
+    source=Path("scripts/continuous_flow_supervisor.py").read_text(encoding="utf-8")
+    assert 'lifecycle_advanced or liveness_reacquire.get("requested")' in source
