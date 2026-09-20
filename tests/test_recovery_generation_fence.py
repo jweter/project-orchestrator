@@ -52,3 +52,26 @@ def test_quarantine_recheck_does_not_reclaim_during_recovery_generation(tmp_path
     assert out["g"]=="RECOVERY_GENERATION_ACTIVE"
     assert called==[]
     assert json.loads(path.read_text())["grants"]["g"]["state"]=="QUARANTINED"
+
+
+def test_recovery_generation_refuses_existing_repo_owner(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    abandoned={"state":"ABANDONED","recovery_state":"RECOVERING","authorized_repositories":["o/repo"]}
+    claimed={"state":"CLAIMED","authorized_repositories":["o/repo"],"worker":{"pid":2}}
+    path.write_text(json.dumps({"schema_version":1,"grants":{"old":abandoned,"live":claimed}}))
+    assert supervisor.begin_recovery_generation(path,"old",dict(abandoned)) is None
+    live=json.loads(path.read_text())
+    assert "recovery_generation" not in live["grants"]["old"]
+    assert live["grants"]["live"]["state"]=="CLAIMED"
+
+def test_preserved_missing_repo_does_not_strand_recovery_generation(tmp_path):
+    state=tmp_path/"state"; state.mkdir(); work=tmp_path/"work"; work.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    record={"state":"QUARANTINED","recovery_state":"QUARANTINED",
+            "recovery_quarantine_reason":"UNCOMMITTED_WORK_REQUIRES_PRESERVATION",
+            "execution_stage":"BRANCH_CREATED","branch":"actor/a","head_sha":"abc"}
+    _write(path,record)
+    out=supervisor.recheck_preserved_work_quarantines(work,state)
+    assert out["g"]=="PRESERVED_REPOSITORY_MISSING"
+    live=json.loads(path.read_text())["grants"]["g"]
+    assert "recovery_generation" not in live
