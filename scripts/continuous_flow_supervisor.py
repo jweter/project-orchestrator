@@ -313,8 +313,22 @@ def resume_orphan_branch(repo:str,ws:Path,branch:str,classification:str,evidence
         return "RECOVERY_PR_OPENED" if created.returncode==0 else "RECOVERY_PR_CREATE_FAILED"
     return classification
 
-def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str])->dict[str,str]:
-    """Inspect abandoned workspaces without deleting evidence; only clean main is auto-recoverable."""
+def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
+    """Return every durable abandoned claim that has not reached a terminal recovery state."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return list(dict.fromkeys(newly_abandoned or []))
+    pending=list(newly_abandoned or [])
+    for grant_id,record in grants.items():
+        if (isinstance(record,dict) and record.get("state")=="ABANDONED"
+                and record.get("recovery_state") not in {"RECOVERED","QUARANTINED"}):
+            pending.append(grant_id)
+    return list(dict.fromkeys(pending))
+
+def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
+    """Revisit durable recovery obligations until recovered or explicitly quarantined."""
     path=state_root/"hands-off-grant-lifecycle.json"
     if not grant_ids or not path.exists():
         return {}
@@ -324,8 +338,27 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return {grant_id:"LIFECYCLE_UNREADABLE" for grant_id in grant_ids}
     outcomes={}
+    current=now or datetime.now(UTC)
     for grant_id in grant_ids:
         record=grants.get(grant_id,{})
+        attempts=int(record.get("recovery_attempts",0))
+        next_attempt=record.get("recovery_next_attempt_at")
+        if next_attempt:
+            try:
+                due=datetime.fromisoformat(next_attempt)
+                if due.tzinfo is None: due=due.replace(tzinfo=UTC)
+                if current<due:
+                    outcomes[grant_id]="RECOVERY_BACKOFF"
+                    continue
+            except (TypeError,ValueError):
+                pass
+        if attempts>=5:
+            record["recovery_state"]="QUARANTINED"
+            record["recovery_result"]="RECOVERY_RETRY_EXHAUSTED"
+            outcomes[grant_id]="RECOVERY_RETRY_EXHAUSTED"
+            continue
+        record["recovery_attempts"]=attempts+1
+        record["recovery_last_attempt_at"]=current.isoformat()
         repos=record.get("authorized_repositories",[])
         repo=record.get("repository")
         candidates=[repo] if repo else repos
@@ -357,6 +390,11 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
             record["recovery_state"]="RECOVERED"
             record["recovered_at"]=datetime.now(UTC).isoformat()
         record["recovery_result"]=outcomes[grant_id]
+        if record.get("recovery_state") not in {"RECOVERED","QUARANTINED"}:
+            delay=min(3600,60*(2**attempts))
+            record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+        else:
+            record.pop("recovery_next_attempt_at",None)
     atomic(path,payload)
     return outcomes
 
@@ -373,7 +411,8 @@ def main()->int:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
         abandoned_grants=recover_stale_grant_claims(state)
-        recovery_results=reconcile_abandoned_claims(workspace,state,abandoned_grants)
+        recovery_queue=pending_recovery_grants(state,abandoned_grants)
+        recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
@@ -399,6 +438,7 @@ def main()->int:
             "evolution_authorized":authorized,"activation_reason":activation_reason,
             "authorized_products":products,
             "abandoned_grants":abandoned_grants,
+            "recovery_queue":recovery_queue,
             "abandoned_recovery":recovery_results,
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
