@@ -1294,6 +1294,21 @@ def productive_liveness(state_root:Path,authorized_products:list[str],now:dateti
             "last_productive_mutation_at":latest.isoformat() if latest else None,
             "seconds_since_productive_mutation":age,"stale_after_seconds":stale_seconds}
 
+def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
+    """Turn a proven idle/stale condition into a bounded immediate scheduler request."""
+    status=liveness.get("status")
+    if status not in {"ELIGIBLE_IDLE","STALE_ACTIVE_WORK"}:
+        return {"requested":False,"reason":"LIVENESS_RECOVERY_NOT_REQUIRED"}
+    # Never steal an active claim here. Stale ownership is handled by the
+    # lease/liveness recovery path; this only requests another scheduler pass.
+    request_immediate_builder(state_root)
+    result={"requested":True,"reason":status,
+            "requested_at_utc":datetime.now(UTC).isoformat(),
+            "active_claim_present":any(r.get("state") in {"CLAIMED","RUNNING"}
+                for r in liveness.get("grant_evidence",[]) if isinstance(r,dict))}
+    atomic(state_root/"liveness-reacquire.json",result)
+    return result
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -1335,6 +1350,7 @@ def main()->int:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
         atomic(state/"productive-liveness.json",liveness)
+        liveness_reacquire=request_liveness_reacquire(state,liveness)
         healthy=builder_ok and linear_rc in (None,0) and not quarantines and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
@@ -1343,6 +1359,7 @@ def main()->int:
             "evolution_authorized":authorized,"activation_reason":activation_reason,
             "authorized_products":products,
             "productive_liveness":liveness,
+            "liveness_reacquire":liveness_reacquire,
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,
             "abandoned_recovery":recovery_results,
