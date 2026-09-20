@@ -1330,16 +1330,18 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
     try:
         history=json.loads(path.read_text(encoding="utf-8"))
         passes=history.get("passes",[]) if isinstance(history,dict) else []
-    except (OSError,json.JSONDecodeError):
-        passes=[]
+        total=int(history.get("pass_count",len(passes))) if isinstance(history,dict) else len(passes)
+        immediate_total=int(history.get("immediate_continuation_count",sum(1 for p in passes if p.get("immediate_continuation")))) if isinstance(history,dict) else 0
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        passes=[]; total=0; immediate_total=0
     immediate=delay_seconds==1
-    record={"sequence":len(passes)+1,"recorded_at_utc":datetime.now(UTC).isoformat(),
+    record={"sequence":total+1,"recorded_at_utc":datetime.now(UTC).isoformat(),
             "builder_status":builder_status,"delay_seconds":delay_seconds,
             "immediate_continuation":immediate,"lifecycle_advanced":lifecycle_advanced,
             "liveness_reacquire_requested":bool(liveness_reacquire.get("requested"))}
     passes.append(record)
-    payload={"schema_version":1,"pass_count":len(passes),
-             "immediate_continuation_count":sum(1 for p in passes if p.get("immediate_continuation")),
+    payload={"schema_version":1,"pass_count":total+1,
+             "immediate_continuation_count":immediate_total+(1 if immediate else 0),
              "passes":passes[-100:]}
     atomic(path,payload)
     return record
