@@ -5,7 +5,7 @@ def _filled():
            "Product Completion Criteria","Roadmap","Architecture and Boundaries",
            "Quality Gates","Security and Privacy","Licensing and Provenance",
            "Human Escalation Boundary")
-    parts=[f"## {i}. {name}\nProject-specific {name.lower()} direction." for i,name in enumerate(names,1)]
+    parts=[f"## {i}. {name}\n{("- [required] final_acceptance: Final acceptance passes | verify=acceptance" if name=="Product Completion Criteria" else "Project-specific "+name.lower()+" direction.")}" for i,name in enumerate(names,1)]
     parts.append("## 14. Activation Checklist\n- [x] complete\n\n**Activation decision:** READY")
     return "\n\n".join(parts)
 
