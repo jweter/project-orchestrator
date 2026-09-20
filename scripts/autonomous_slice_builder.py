@@ -413,23 +413,22 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
     return True
 
 def advance_grant_stage(grant_path:Path,stage:str,**evidence:Any)->bool:
-    """Durably record execution progress so recovery need not infer completed stages."""
+    """Durably record execution progress without clobbering another grant."""
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
-        grant=json.loads(grant_path.read_text(encoding="utf-8"))
-        state=json.loads(lifecycle.read_text(encoding="utf-8"))
-        record=state["grants"][grant["grant_id"]]
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return False
-    if record.get("state")!="CLAIMED":
-        return False
-    record["execution_stage"]=stage
-    record["stage_updated_at"]=datetime.now(UTC).isoformat()
-    for key,value in evidence.items():
-        if value not in (None,""):
-            record[key]=value
-    atomic_json(lifecycle,state)
-    return True
+    def update(record):
+        if record.get("state")!="CLAIMED":
+            return False
+        record["execution_stage"]=stage
+        record["stage_updated_at"]=datetime.now(UTC).isoformat()
+        for key,value in evidence.items():
+            if value not in (None,""):
+                record[key]=value
+        return True
+    return mutate_grant_lifecycle(lifecycle,grant_id,update)
 
 def start_grant_heartbeat(grant_path:Path,worker:dict[str,Any])->tuple[threading.Event,threading.Thread]:
     stop=threading.Event()
@@ -819,26 +818,20 @@ def stop_grant_heartbeat(stop:threading.Event|None,thread:threading.Thread|None)
 def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
-        grant=json.loads(grant_path.read_text(encoding="utf-8"))
-        state=json.loads(lifecycle.read_text(encoding="utf-8"))
-        grant_id=grant["grant_id"]
-        record=state["grants"][grant_id]
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return
-    record["state"]="COMPLETED" if result.get("status") in {
-        "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
-    } else "FAILED"
-    record["finished_at"]=datetime.now(UTC).isoformat()
-    record["result_status"]=result.get("status","UNKNOWN")
-    if result.get("repository"):
-        record["repository"]=result["repository"]
-    if result.get("branch"):
-        record["branch"]=result["branch"]
-    if result.get("base_sha"):
-        record["base_sha"]=result["base_sha"]
-    if result.get("head_sha"):
-        record["head_sha"]=result["head_sha"]
-    atomic_json(lifecycle,state)
+    def update(record):
+        record["state"]="COMPLETED" if result.get("status") in {
+            "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
+        } else "FAILED"
+        record["finished_at"]=datetime.now(UTC).isoformat()
+        record["result_status"]=result.get("status","UNKNOWN")
+        for key in ("repository","branch","base_sha","head_sha"):
+            if result.get(key):
+                record[key]=result[key]
+        return True
+    mutate_grant_lifecycle(lifecycle,grant_id,update)
 
 def main()->int:
     parser=argparse.ArgumentParser()
