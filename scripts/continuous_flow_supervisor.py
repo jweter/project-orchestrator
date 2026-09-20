@@ -1325,6 +1325,8 @@ def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->b
         final=dict(updated)
         final.pop("recovery_generation",None)
         final.pop("recovery_generation_started_at",None)
+        final.pop("recovery_generation_worker",None)
+        final.pop("recovery_generation_unknown_checks",None)
         payload["grants"][grant_id]=final
         atomic(path,payload)
         return True
