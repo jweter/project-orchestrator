@@ -449,7 +449,7 @@ def preserved_work_evidence(ws:Path,base_sha:str)->dict:
     if untracked.returncode:
         return {"capture_status":"UNREADABLE"}
     untracked_records=[]
-    for raw in untracked.stdout.split(b"\\0"):
+    for raw in untracked.stdout.split(bytes([0])):
         if not raw:
             continue
         try:
