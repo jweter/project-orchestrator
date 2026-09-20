@@ -171,7 +171,7 @@ def test_observe_live_heads_ignores_origin_mismatch(tmp_path, monkeypatch):
     assert supervisor.observe_live_heads(repo_root,workspace,state)==(False,"LIVE_HEADS_UNAVAILABLE")
     assert json.loads((state/"hands-off-live-heads.json").read_text())=={}
 
-def test_recover_stale_grant_claims_marks_expired_claim_abandoned(tmp_path):
+def test_legacy_stale_claim_without_worker_identity_fails_closed(tmp_path):
     import json
     from datetime import UTC, datetime, timedelta
     import scripts.continuous_flow_supervisor as supervisor
