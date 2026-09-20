@@ -1221,6 +1221,24 @@ def verify_durable_pr(repo:str,ws:Path,pr_number:int,expected_head:str)->str:
         return "RECOVERY_DURABLE_PR_CLOSED_UNMERGED"
     return "RECOVERY_DURABLE_PR_STATE_UNKNOWN"
 
+def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->bool:
+    """CAS-style lifecycle commit: external recovery may not overwrite concurrent ownership changes."""
+    lock=_acquire_lifecycle_lock(path)
+    try:
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+            current=payload["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return False
+        fingerprint=("state","recovery_state","execution_stage","head_sha","branch","pr_number","worker","claimed_at","last_heartbeat_at")
+        if any(current.get(k)!=expected.get(k) for k in fingerprint):
+            return False
+        payload["grants"][grant_id]=updated
+        atomic(path,payload)
+        return True
+    finally:
+        _release_lifecycle_lock(lock)
+
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
     """Revisit durable recovery obligations until recovered or explicitly quarantined."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -1233,6 +1251,7 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         return {grant_id:"LIFECYCLE_UNREADABLE" for grant_id in grant_ids}
     outcomes={}
     current=now or datetime.now(UTC)
+    expected_records={grant_id:dict(grants.get(grant_id,{})) for grant_id in grant_ids}
     for grant_id in grant_ids:
         record=grants.get(grant_id,{})
         attempts=int(record.get("recovery_attempts",0))
@@ -1381,7 +1400,11 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
             record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
         else:
             record.pop("recovery_next_attempt_at",None)
-    atomic(path,payload)
+    for grant_id in grant_ids:
+        if grant_id not in grants:
+            continue
+        if not commit_recovery_record(path,grant_id,expected_records.get(grant_id,{}),grants[grant_id]):
+            outcomes[grant_id]="RECOVERY_CONCURRENT_STATE_CHANGE"
     return outcomes
 
 def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dict[str,str]:
@@ -1393,6 +1416,7 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
     outcomes={}; changed=False
+    expected_records={grant_id:dict(record) for grant_id,record in grants.items() if isinstance(record,dict)}
     for grant_id,record in grants.items():
         if not isinstance(record,dict) or record.get("recovery_state")!="QUARANTINED":
             continue
@@ -1439,7 +1463,12 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
             else:
                 outcomes[grant_id]=validation
         changed=True
-    if changed: atomic(path,payload)
+    if changed:
+        for grant_id in list(outcomes):
+            record=grants.get(grant_id)
+            if isinstance(record,dict) and record!=expected_records.get(grant_id):
+                if not commit_recovery_record(path,grant_id,expected_records.get(grant_id,{}),record):
+                    outcomes[grant_id]="PRESERVED_RECOVERY_CONCURRENT_STATE_CHANGE"
     return outcomes
 
 def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->dict[str,str]:
