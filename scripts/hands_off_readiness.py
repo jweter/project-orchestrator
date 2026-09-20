@@ -139,6 +139,12 @@ def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
         for path in paths:
             if path in tracked:
                 evidence.append(path)
+        if requirement.get("id") == "ci":
+            workflow_evidence = sorted(path for path in tracked
+                if path.startswith(".github/workflows/") and path.lower().endswith((".yml", ".yaml")))
+            for path in workflow_evidence:
+                if path not in evidence:
+                    evidence.append(path)
         for path in declared or []:
             if isinstance(path, str) and path in tracked and path not in evidence:
                 evidence.append(path)
