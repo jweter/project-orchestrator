@@ -418,6 +418,8 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
             continue
         atomic(cursor_path,{"repository":repo})
         return repo,head
+    if blocked and all(item.endswith("=NO_WORK") for item in blocked):
+        raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
     detail=";".join(blocked) or "UNKNOWN"
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
 
@@ -448,9 +450,17 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     if not products:
         (state_root/"builder-last-output.txt").write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
         return 2
+    try:
+        grant_path=write_execution_grant(repo_root,state_root,products)
+    except RuntimeError as exc:
+        if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
+            atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
+            (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
+            return 0
+        raise
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json"),
-        "--execution-grant",str(write_execution_grant(repo_root,state_root,products))]
+        "--execution-grant",str(grant_path)]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
