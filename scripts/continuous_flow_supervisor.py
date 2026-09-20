@@ -1332,7 +1332,7 @@ def begin_recovery_generation(path:Path,grant_id:str,expected:dict)->tuple[str,d
         if current!=expected:
             return None
         if current.get("recovery_generation"):
-            owner=current.get("recovery_owner")
+            owner=current.get("recovery_generation_worker") or current.get("recovery_owner")
             started=current.get("recovery_generation_started_at")
             stale=False
             try:
@@ -1346,7 +1346,7 @@ def begin_recovery_generation(path:Path,grant_id:str,expected:dict)->tuple[str,d
             current=dict(current)
             current.pop("recovery_generation",None)
             current.pop("recovery_generation_started_at",None)
-            current.pop("recovery_owner",None)
+            current.pop("recovery_owner",None)\n            current.pop("recovery_generation_worker",None)
             current["recovery_generation_reclaimed_at"]=datetime.now(UTC).isoformat()
         target_repos=set(current.get("authorized_repositories",[]))
         if current.get("repository"):
