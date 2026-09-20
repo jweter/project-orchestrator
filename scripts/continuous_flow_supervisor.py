@@ -478,8 +478,10 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
 def acquire_grant_issue_lock(state_root:Path)->dict:
     """Acquire a crash-recoverable host-local single-writer fence for grant issuance."""
     path=state_root/"grant-issuance.lock"
-    from scripts.autonomous_slice_builder import worker_incarnation
-    worker=worker_incarnation()
+    worker={"host":socket.gethostname(),"pid":os.getpid(),
+            "incarnation_id":uuid.uuid4().hex,
+            "process_start_fingerprint":process_start_fingerprint(),
+            "lease_token":uuid.uuid4().hex}
     lock={"schema_version":1,"lock_id":str(uuid.uuid4()),"worker":worker,
           "created_at_utc":datetime.now(UTC).isoformat()}
     for _ in range(2):
@@ -581,6 +583,39 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
 CLAIM_LEASE_SECONDS=1800
 UNKNOWN_LIVENESS_MAX_CHECKS=5
 
+def process_start_fingerprint(pid:int|None=None)->str|None:
+    """Return a lightweight OS-backed process creation identity."""
+    pid=pid or os.getpid()
+    if sys.platform.startswith("linux"):
+        try:
+            stat=Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+            start_ticks=stat[stat.rfind(")")+2:].split()[19]
+            boot_id=Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+            return f"linux:{boot_id}:{start_ticks}"
+        except (OSError,IndexError,ValueError):
+            return None
+    if sys.platform=="win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            kernel32=ctypes.WinDLL("kernel32",use_last_error=True)
+            handle=kernel32.OpenProcess(0x1000,False,pid)
+            if not handle:
+                return None
+            creation=wintypes.FILETIME(); exit_time=wintypes.FILETIME()
+            kernel=wintypes.FILETIME(); user=wintypes.FILETIME()
+            try:
+                if not kernel32.GetProcessTimes(handle,ctypes.byref(creation),ctypes.byref(exit_time),
+                                                ctypes.byref(kernel),ctypes.byref(user)):
+                    return None
+                ticks=(creation.dwHighDateTime<<32)|creation.dwLowDateTime
+                return f"windows:{ticks}"
+            finally:
+                kernel32.CloseHandle(handle)
+        except (AttributeError,OSError):
+            return None
+    return None
+
 def worker_liveness(worker:dict|None)->str:
     """Return ALIVE, DEAD, or UNKNOWN without guessing across hosts or legacy state."""
     if not isinstance(worker,dict):
@@ -602,9 +637,8 @@ def worker_liveness(worker:dict|None)->str:
     expected=worker.get("process_start_fingerprint")
     if expected:
         try:
-            from scripts.autonomous_slice_builder import process_start_fingerprint
             actual=process_start_fingerprint(pid)
-        except (ImportError,OSError):
+        except OSError:
             return "UNKNOWN"
         if actual is None:
             return "UNKNOWN"
