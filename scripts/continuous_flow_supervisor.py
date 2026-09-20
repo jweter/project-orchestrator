@@ -1822,6 +1822,32 @@ def record_burst_repository_pass(state_root:Path,*,repository:str|None,builder_s
     atomic(path,proof)
     return proof
 
+PRODUCT_BY_REPOSITORY={
+    "jweter/knowledge-engine-core":"knowledge-engine","jweter/knowledge-engine-web":"knowledge-engine",
+    "jweter/knowledge-engine-ai":"knowledge-engine","jweter/rocksmith-cdlc-generator":"rocksmith",
+    "jweter/Project-Everward":"everward",
+}
+
+def product_for_repository(repository:str|None)->str|None:
+    return PRODUCT_BY_REPOSITORY.get(repository) if repository else None
+
+def record_product_identity_advancement(state_root:Path,*,repository:str|None,builder_status:str,lifecycle_advanced:bool,
+                                        burst_id:str,process_instance_id:str,sequence:int)->dict:
+    product=product_for_repository(repository)
+    advanced=bool(product) and (builder_status in {"PR_OPEN","GREEN","MERGED","PRODUCT_REALITY_VERIFIED","REPAIRED"} or lifecycle_advanced)
+    path=state_root/"portfolio-product-advancement-proof.json"
+    try: payload=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError): payload={}
+    events=payload.get("events",[]) if isinstance(payload,dict) and payload.get("burst_id")==burst_id else []
+    if not isinstance(events,list): events=[]
+    events.append({"sequence":sequence,"repository":repository,"product":product,"builder_status":builder_status,
+                   "lifecycle_advanced":lifecycle_advanced,"advanced":advanced,"process_instance_id":process_instance_id,
+                   "recorded_at_utc":datetime.now(UTC).isoformat()})
+    products=sorted({e.get("product") for e in events if isinstance(e,dict) and e.get("advanced") is True and e.get("product") in {"knowledge-engine","rocksmith","everward"}})
+    proof={"schema_version":1,"burst_id":burst_id,"advanced_products":products,"advanced_product_count":len(products),
+           "all_three_products_proven":len(products)==3,"events":events[-100:]}
+    atomic(path,proof); return proof
+
 def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder_ok:bool,builder_status:str,normal_seconds:int)->int:
     """Choose the next supervisor pass without turning successful work into idle time."""
     if lifecycle_advanced:
@@ -2129,7 +2155,8 @@ def main()->int:
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None,
             "process_instance_id":process_instance_id,"burst_id":burst_id,
-            "autonomous_burst_proof":burst_proof})
+            "autonomous_burst_proof":burst_proof,
+            "portfolio_product_advancement_proof":product_proof})
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
@@ -2143,6 +2170,9 @@ def main()->int:
         burst_proof=record_burst_repository_pass(state,repository=selected_builder_repository(state),
             builder_status=builder_status,burst_id=burst_id,process_instance_id=process_instance_id,
             sequence=record["sequence"])
+        product_proof=record_product_identity_advancement(state,repository=selected_builder_repository(state),
+            builder_status=builder_status,lifecycle_advanced=lifecycle_advanced,burst_id=burst_id,
+            process_instance_id=process_instance_id,sequence=record["sequence"])
         record["burst_pass"]=burst_pass
         atomic(state/"continuation-current-burst.json",{"schema_version":2,"burst_id":burst_id,
             "process_instance_id":process_instance_id,
