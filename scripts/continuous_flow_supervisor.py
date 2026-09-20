@@ -3,6 +3,11 @@ from __future__ import annotations
 import argparse, hashlib, json, os, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+try:
+    from scripts.autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
+except ModuleNotFoundError:
+    from autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
+
 from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
 
@@ -626,14 +631,20 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
             grants=payload.setdefault("grants",{})
         except (OSError,json.JSONDecodeError,TypeError):
             raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
-        issued=datetime.now(UTC).isoformat()
-        grants[grant_id]={"state":"ISSUED","issued_at":issued,
+        lifecycle_lock=_acquire_lifecycle_lock(lifecycle)
+        try:
+            payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+            grants=payload.setdefault("grants",{})
+            issued=datetime.now(UTC).isoformat()
+            grants[grant_id]={"state":"ISSUED","issued_at":issued,
                           "authorized_repositories":[repo],"expected_sha":exact_head,
                           "capability_id":execution_slice["capability_id"],
                           "slice_id":execution_slice["slice_id"],
                           "execution_slice":execution_slice,
-                          "issuer":lock["worker"]}
-        atomic(lifecycle,payload)
+                              "issuer":lock["worker"]}
+            atomic(lifecycle,payload)
+        finally:
+            _release_lifecycle_lock(lifecycle_lock)
         return path
     finally:
         release_grant_issue_lock(lock)
