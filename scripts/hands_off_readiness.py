@@ -56,6 +56,32 @@ def _text_corpus(repo: Path, tracked: set[str]) -> str:
     return "\n".join(chunks).lower()
 
 
+def alignment_sufficiency(repo: Path, tracked: set[str]) -> dict[str, Any]:
+    """Require durable product intent before autonomous mutation."""
+    groups = {
+        "purpose": ("README.md", "docs/VISION.md", "VISION.md"),
+        "roadmap": ("docs/ROADMAP.md", "ROADMAP.md"),
+    }
+    missing: list[str] = []
+    evidence: dict[str, list[str]] = {}
+    for name, candidates in groups.items():
+        hits = [path for path in candidates if path in tracked]
+        evidence[name] = hits
+        if not hits:
+            missing.append(name)
+    status = "ALIGNED" if not missing else "ALIGNMENT_INSUFFICIENT"
+    return {
+        "status": status,
+        "evidence": evidence,
+        "missing": missing,
+        "request": None if not missing else {
+            "type": "DIRECTION_REQUIRED",
+            "message": "More project direction is required before autonomous development can safely choose work.",
+            "needed": missing,
+        },
+    }
+
+
 def activation_allowed(report: dict[str, Any]) -> bool:
     """Return True only for an exact, complete PASS result."""
     repositories = report.get("repositories")
@@ -81,6 +107,7 @@ def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
         result["head"] = _git(repo, "rev-parse", "HEAD")
         tracked = _tracked_files(repo)
         corpus = _text_corpus(repo, tracked)
+        result["alignment"] = alignment_sufficiency(repo, tracked)
     except (OSError, RuntimeError) as exc:
         result["error"] = str(exc)
         return result
@@ -114,10 +141,16 @@ def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    result["status"] = (
+    authority_status = (
         "PASS" if statuses and all(s == "PASS" for s in statuses)
         else "UNKNOWN" if not statuses or any(s == "UNKNOWN" for s in statuses)
         else "FAIL"
+    )
+    result["authority_status"] = authority_status
+    result["status"] = (
+        "PASS" if authority_status == "PASS" and result["alignment"]["status"] == "ALIGNED"
+        else "ALIGNMENT_INSUFFICIENT" if authority_status == "PASS"
+        else authority_status
     )
     return result
 

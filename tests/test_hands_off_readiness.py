@@ -32,7 +32,7 @@ def test_readiness_passes_with_path_and_text_evidence(tmp_path: Path) -> None:
         {"id": "roadmap", "evidence_any": ["ROADMAP.md"]},
         {"id": "privacy", "text_signal_any": ["privacy"]},
     ]}
-    repo = _repo(tmp_path, {"ROADMAP.md": "Roadmap\n\nPrivacy boundary."})
+    repo = _repo(tmp_path, {"README.md": "Purpose", "ROADMAP.md": "Roadmap\n\nPrivacy boundary."})
     report = audit(repo, contract)
     assert report["status"] == "PASS"
     assert report["head"]
@@ -83,8 +83,9 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     subprocess.run(["git","-C",str(repo),"remote","add","origin","https://github.com/jweter/test-repo.git"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.email","test@example.com"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.name","Test"],check=True)
+    (repo/"README.md").write_text("Purpose: test product",encoding="utf-8")
     (repo/"ROADMAP.md").write_text("roadmap",encoding="utf-8")
-    subprocess.run(["git","-C",str(repo),"add","ROADMAP.md"],check=True)
+    subprocess.run(["git","-C",str(repo),"add","README.md","ROADMAP.md"],check=True)
     subprocess.run(["git","-C",str(repo),"commit","-m","init"],check=True,capture_output=True)
     activation=tmp_path/"state"/"activation.json"
     monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(repo),"--contract",str(contract),"--activation-state",str(activation)])
@@ -164,3 +165,25 @@ def test_unknown_product_filter_fails_closed(tmp_path, monkeypatch):
     repo=tmp_path/"rock"; repo.mkdir()
     monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(repo),"--contract",str(contract),"--product","ghost"])
     assert readiness.main()==2
+
+def test_alignment_reports_precise_missing_direction(tmp_path: Path) -> None:
+    contract={"required_authority":[{"id":"agent","evidence_any":["AGENTS.md"]}]}
+    repo=_repo(tmp_path,{"AGENTS.md":"safe execution rules"})
+    report=audit(repo,contract)
+    assert report["authority_status"]=="PASS"
+    assert report["status"]=="ALIGNMENT_INSUFFICIENT"
+    assert report["alignment"]["status"]=="ALIGNMENT_INSUFFICIENT"
+    assert report["alignment"]["request"]["type"]=="DIRECTION_REQUIRED"
+    assert set(report["alignment"]["request"]["needed"])=={"purpose","roadmap"}
+
+def test_alignment_allows_clear_purpose_and_roadmap(tmp_path: Path) -> None:
+    contract={"required_authority":[{"id":"agent","evidence_any":["AGENTS.md"]}]}
+    repo=_repo(tmp_path,{
+        "AGENTS.md":"safe execution rules",
+        "README.md":"Purpose: build a deterministic example.",
+        "ROADMAP.md":"Next: implement the verified slice.",
+    })
+    report=audit(repo,contract)
+    assert report["status"]=="PASS"
+    assert report["alignment"]["status"]=="ALIGNED"
+    assert report["alignment"]["request"] is None
