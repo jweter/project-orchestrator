@@ -676,6 +676,12 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         try:
             payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
             grants=payload.setdefault("grants",{})
+            for existing_id,existing in grants.items():
+                if not isinstance(existing,dict):
+                    continue
+                owns=existing.get("state") in {"ISSUED","CLAIMED","QUARANTINED"} or bool(existing.get("recovery_generation"))
+                if owns and repo in existing.get("authorized_repositories",[]):
+                    raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{existing_id}:{existing.get('state')}")
             issued=datetime.now(UTC).isoformat()
             grants[grant_id]={"state":"ISSUED","issued_at":issued,
                           "authorized_repositories":[repo],"expected_sha":exact_head,
@@ -1323,8 +1329,26 @@ def begin_recovery_generation(path:Path,grant_id:str,expected:dict)->tuple[str,d
             current=payload["grants"][grant_id]
         except (OSError,json.JSONDecodeError,KeyError,TypeError):
             return None
-        if current!=expected or current.get("recovery_generation"):
+        if current!=expected:
             return None
+        if current.get("recovery_generation"):
+            owner=current.get("recovery_generation_worker") or current.get("recovery_owner")
+            started=current.get("recovery_generation_started_at")
+            stale=False
+            try:
+                when=datetime.fromisoformat(started)
+                if when.tzinfo is None: when=when.replace(tzinfo=UTC)
+                stale=(datetime.now(UTC)-when).total_seconds()>CLAIM_LEASE_SECONDS
+            except (TypeError,ValueError):
+                stale=True
+            if not stale or worker_liveness(owner)!="DEAD":
+                return None
+            current=dict(current)
+            current.pop("recovery_generation",None)
+            current.pop("recovery_generation_started_at",None)
+            current.pop("recovery_owner",None)
+            current.pop("recovery_generation_worker",None)
+            current["recovery_generation_reclaimed_at"]=datetime.now(UTC).isoformat()
         target_repos=set(current.get("authorized_repositories",[]))
         if current.get("repository"):
             target_repos.add(current["repository"])
