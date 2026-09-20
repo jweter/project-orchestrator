@@ -609,14 +609,32 @@ def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
     try:
-        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        grants=payload.get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return list(dict.fromkeys(newly_abandoned or []))
     pending=list(newly_abandoned or [])
+    changed=False
     for grant_id,record in grants.items():
-        if (isinstance(record,dict) and record.get("state")=="ABANDONED"
-                and record.get("recovery_state") not in {"RECOVERED","QUARANTINED"}):
+        if not isinstance(record,dict) or record.get("state")!="ABANDONED":
+            continue
+        recovery_state=record.get("recovery_state")
+        if recovery_state not in {"RECOVERED","QUARANTINED"}:
             pending.append(grant_id)
+        elif (recovery_state=="QUARANTINED" and record.get("execution_stage")=="COMMITTED"
+              and record.get("head_sha") and record.get("recovery_result") in {
+                  "PRESERVED_COMMIT_RECOVERED","CONSUMED_RECOVERY_COMMIT_ADOPTED","STAGED_COMMIT_RECOVERED"
+              }):
+            # Exact recovered commits must re-enter durable push/PR recovery.
+            record["recovery_state"]="RECOVERING"
+            changed=True
+            pending.append(grant_id)
+    if changed:
+        try:
+            payload["grants"]=grants
+            atomic(path,payload)
+        except (OSError,TypeError):
+            return list(dict.fromkeys(newly_abandoned or []))
     return list(dict.fromkeys(pending))
 
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
