@@ -1234,6 +1234,18 @@ def begin_recovery_generation(path:Path,grant_id:str,expected:dict)->tuple[str,d
             return None
         if current!=expected or current.get("recovery_generation"):
             return None
+        target_repos=set(current.get("authorized_repositories",[]))
+        if current.get("repository"):
+            target_repos.add(current["repository"])
+        for other_id,other in payload.get("grants",{}).items():
+            if other_id==grant_id or not isinstance(other,dict):
+                continue
+            other_repos=set(other.get("authorized_repositories",[]))
+            if other.get("repository"):
+                other_repos.add(other["repository"])
+            owns=other.get("state") in {"ISSUED","CLAIMED","QUARANTINED"} or bool(other.get("recovery_generation"))
+            if owns and target_repos.intersection(other_repos):
+                return None
         token=uuid.uuid4().hex
         reserved=dict(current)
         reserved["recovery_generation"]=token
@@ -1434,9 +1446,9 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         else:
             record.pop("recovery_next_attempt_at",None)
     for grant_id in grant_ids:
-        if grant_id not in grants:
+        if grant_id not in grants or grant_id not in expected_records:
             continue
-        if not commit_recovery_record(path,grant_id,expected_records.get(grant_id,{}),grants[grant_id]):
+        if not commit_recovery_record(path,grant_id,expected_records[grant_id],grants[grant_id]):
             outcomes[grant_id]="RECOVERY_CONCURRENT_STATE_CHANGE"
     return outcomes
 
@@ -1466,7 +1478,10 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
         expected_records[grant_id]=dict(record)
         repo=record.get("repository")
         if not repo:
-            outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"; continue
+            outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"
+            record["preserved_work_revalidation"]="PRESERVED_REPOSITORY_MISSING"
+            changed=True
+            continue
         ws=workspace_root/repo.split("/",1)[-1]
         if ws.is_dir() and record.get("preserved_recovery_capability",{}).get("state")=="CONSUMED":
             reconciled=reconcile_consumed_recovery(ws,record)
