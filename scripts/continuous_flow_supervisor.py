@@ -560,6 +560,51 @@ def reconcile_consumed_staged_work(ws:Path,record:dict)->str:
     record["recovery_result"]="CONSUMED_RECOVERY_EXACT_STAGED"
     return "CONSUMED_RECOVERY_EXACT_STAGED"
 
+def issue_staged_commit_capability(record:dict)->dict|None:
+    """Issue replacement authority for commit only after exact staged reconciliation."""
+    old=record.get("preserved_recovery_capability")
+    evidence=record.get("preserved_work_evidence",{})
+    if record.get("recovery_result")!="CONSUMED_RECOVERY_EXACT_STAGED" or not isinstance(old,dict):
+        return None
+    if old.get("state")!="CONSUMED" or old.get("outcome")!="EXACT_STAGED_RECONCILED":
+        return None
+    if not old.get("capability_id") or not evidence.get("diff_sha256"):
+        return None
+    import secrets
+    return {"capability_id":secrets.token_urlsafe(18),"state":"ISSUED","scope":"COMMIT_ONLY",
+            "parent_capability_id":old["capability_id"],"repository":record.get("repository"),
+            "base_sha":record.get("base_sha"),"branch":record.get("branch"),
+            "preserved_diff_sha256":evidence["diff_sha256"],"issued_at":datetime.now(UTC).isoformat()}
+
+def commit_reconciled_staged_work(ws:Path,record:dict)->str:
+    """Consume commit-only replacement authority; never stage/reset preserved work."""
+    cap=record.get("staged_commit_capability")
+    if not isinstance(cap,dict) or cap.get("state")!="ISSUED" or cap.get("scope")!="COMMIT_ONLY":
+        return "STAGED_COMMIT_CAPABILITY_UNAVAILABLE"
+    old=record.get("preserved_recovery_capability",{}); evidence=record.get("preserved_work_evidence",{})
+    bindings={"parent_capability_id":old.get("capability_id"),"repository":record.get("repository"),
+              "base_sha":record.get("base_sha"),"branch":record.get("branch"),
+              "preserved_diff_sha256":evidence.get("diff_sha256")}
+    if any(cap.get(k)!=v for k,v in bindings.items()):
+        return "STAGED_COMMIT_CAPABILITY_BINDING_MISMATCH"
+    if reconcile_consumed_staged_work(ws,record)!="CONSUMED_RECOVERY_EXACT_STAGED":
+        return "STAGED_COMMIT_IDENTITY_CHANGED"
+    cap["state"]="CONSUMED"; cap["consumed_at"]=datetime.now(UTC).isoformat()
+    commit=subprocess.run(["git","commit","-m","chore: recover validated autonomous work"],cwd=ws,text=True,capture_output=True,check=False)
+    if commit.returncode:
+        cap["outcome"]="COMMIT_FAILED"; return "STAGED_COMMIT_FAILED"
+    head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+    branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+    diff=subprocess.run(["git","diff","--binary",record["base_sha"],head.stdout.strip()],cwd=ws,text=True,capture_output=True,check=False) if not head.returncode else None
+    import hashlib
+    digest=hashlib.sha256(diff.stdout.encode("utf-8",errors="replace")).hexdigest() if diff and not diff.returncode else None
+    if head.returncode or branch.returncode or branch.stdout.strip()!=record["branch"] or digest!=evidence.get("diff_sha256"):
+        cap["outcome"]="POST_COMMIT_PROOF_FAILED"; return "STAGED_COMMIT_PROOF_FAILED"
+    record["execution_stage"]="COMMITTED"; record["head_sha"]=head.stdout.strip()
+    record["recovery_state"]="RECOVERING"; record["recovery_result"]="STAGED_COMMIT_RECOVERED"
+    cap["outcome"]="COMMITTED_EXACT"; cap["committed_head_sha"]=record["head_sha"]
+    return "STAGED_COMMIT_RECOVERED"
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -757,6 +802,11 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
             if reconciled=="CONSUMED_RECOVERY_NO_COMMIT":
                 staged=reconcile_consumed_staged_work(ws,record)
                 if staged=="CONSUMED_RECOVERY_EXACT_STAGED":
+                    if not record.get("staged_commit_capability"):
+                        replacement=issue_staged_commit_capability(record)
+                        if replacement: record["staged_commit_capability"]=replacement
+                    if record.get("staged_commit_capability",{}).get("state")=="ISSUED":
+                        staged=commit_reconciled_staged_work(ws,record)
                     outcomes[grant_id]=staged
                     changed=True
                     continue
