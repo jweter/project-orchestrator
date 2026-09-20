@@ -746,3 +746,42 @@ def test_recovery_capability_rejects_binding_or_identity_drift(tmp_path,monkeypa
     monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:"PRESERVED_WORK_CHANGED")
     assert supervisor.consume_preserved_recovery_capability(tmp_path,record)=="RECOVERY_CAPABILITY_IDENTITY_CHANGED"
     assert record["preserved_recovery_capability"]["state"]=="ISSUED"
+
+def test_commit_preserved_work_advances_only_after_exact_commit_fingerprint(tmp_path,monkeypatch):
+    import hashlib
+    import scripts.continuous_flow_supervisor as supervisor
+    diff="validated-diff"
+    record={"repository":"o/r","base_sha":"base","branch":"actor/x","preserved_work_validation":"PRESERVED_VALIDATION_PASSED",
+            "preserved_work_evidence":{"diff_sha256":hashlib.sha256(diff.encode()).hexdigest(),"head_sha":"base"},
+            "preserved_recovery_capability":{"state":"ISSUED"}}
+    monkeypatch.setattr(supervisor,"consume_preserved_recovery_capability",lambda ws,r:"RECOVERY_CAPABILITY_CONSUMED")
+    class R:
+        returncode=0
+        def __init__(self,out=""): self.stdout=out; self.stderr=""
+    def fake(cmd,**kwargs):
+        if cmd[:3]==["git","rev-parse","HEAD"]: return R("newhead\n")
+        if cmd[:3]==["git","branch","--show-current"]: return R("actor/x\n")
+        if cmd[:2]==["git","diff"]: return R(diff)
+        return R()
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.commit_preserved_work(tmp_path,record)=="PRESERVED_COMMIT_RECOVERED"
+    assert record["execution_stage"]=="COMMITTED"
+    assert record["head_sha"]=="newhead"
+    assert record["recovery_state"]=="RECOVERING"
+
+def test_commit_preserved_work_rejects_commit_fingerprint_drift(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"base_sha":"base","branch":"actor/x","preserved_work_evidence":{"diff_sha256":"expected"},
+            "preserved_recovery_capability":{"state":"ISSUED"}}
+    monkeypatch.setattr(supervisor,"consume_preserved_recovery_capability",lambda ws,r:"RECOVERY_CAPABILITY_CONSUMED")
+    class R:
+        returncode=0
+        def __init__(self,out=""): self.stdout=out; self.stderr=""
+    def fake(cmd,**kwargs):
+        if cmd[:3]==["git","rev-parse","HEAD"]: return R("newhead\n")
+        if cmd[:3]==["git","branch","--show-current"]: return R("actor/x\n")
+        if cmd[:2]==["git","diff"]: return R("different")
+        return R()
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.commit_preserved_work(tmp_path,record)=="PRESERVED_COMMIT_FINGERPRINT_MISMATCH"
+    assert "execution_stage" not in record
