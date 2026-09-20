@@ -1857,7 +1857,14 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
              "retained_predecessor_hash":retained_predecessor_hash,"passes":retained}
     anchor_material={k:payload[k] for k in ("pass_count","immediate_continuation_count","retained_predecessor_hash","chain_head")}
     payload["anchor_hash"]=hashlib.sha256(json.dumps(anchor_material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+    journal=state_root/"continuation-pass-journal.json"
+    atomic(journal,{"schema_version":1,"status":"PREPARED","sequence":sequence,
+                    "record_hash":record["record_hash"],"anchor_hash":payload["anchor_hash"],
+                    "prepared_at_utc":datetime.now(UTC).isoformat()})
     atomic(path,payload)
+    atomic(journal,{"schema_version":1,"status":"COMMITTED","sequence":sequence,
+                    "record_hash":record["record_hash"],"anchor_hash":payload["anchor_hash"],
+                    "committed_at_utc":datetime.now(UTC).isoformat()})
     return record
 
 def prove_restart_takeover(state_root:Path,instance_lock:dict,burst:dict)->dict:
