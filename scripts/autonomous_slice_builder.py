@@ -579,7 +579,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     if execution_grant is not None:
         advance_grant_stage(execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch)
 
-    task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)\n    aider=run_aider(ws,task_prompt)
+    task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)
+    aider=run_aider(ws,task_prompt)
     cleanup_aider_artifacts(ws)
     paths=changed_paths(ws,base)
     if aider.returncode!=0:
