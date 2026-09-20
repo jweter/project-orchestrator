@@ -43,8 +43,26 @@ def validate(payload:dict)->dict:
     complete={c.get("id") for c in caps if isinstance(c,dict) and c.get("state")=="VERIFIED_COMPLETE" and c.get("verification")}
     remaining=[c.get("id") for c in caps if isinstance(c,dict) and c.get("id") in known and c.get("id") not in complete]
     eligible=[c.get("id") for c in caps if isinstance(c,dict) and c.get("id") in remaining and c.get("state") not in {"BLOCKED","IMPLEMENTED_UNVERIFIED"} and all(d in complete for d in c.get("depends_on",[]))]
+    roadmap=payload.get("roadmap")
+    selected=None
+    if not issues and remaining:
+        if not isinstance(roadmap,list) or not roadmap:
+            issues.append({"code":"ROADMAP_REQUIRED_FOR_REMAINING_WORK"})
+        else:
+            unknown=[x for x in roadmap if x not in known]
+            duplicates=[x for x in set(roadmap) if roadmap.count(x)>1]
+            if unknown: issues.append({"code":"ROADMAP_UNKNOWN_CAPABILITY","capabilities":unknown})
+            if duplicates: issues.append({"code":"ROADMAP_DUPLICATE_CAPABILITY","capabilities":sorted(duplicates)})
+            stale=[x for x in roadmap if x in complete]
+            if stale: issues.append({"code":"ROADMAP_STALE_COMPLETE","capabilities":stale})
+            omitted=[x for x in remaining if x not in roadmap]
+            if omitted: issues.append({"code":"ROADMAP_OMITS_REMAINING","capabilities":omitted})
+            if not issues:
+                selected=next((x for x in roadmap if x in eligible),None)
+                if eligible and selected is None:
+                    issues.append({"code":"ROADMAP_HAS_NO_ELIGIBLE_PRIORITY","eligible":eligible})
     status="DIRECTION_REQUIRED" if issues else ("COMPLETE" if not remaining else ("READY" if eligible else "BLOCKED"))
-    return {"schema_version":1,"status":status,"issues":issues,"eligible":eligible,"remaining":remaining}
+    return {"schema_version":1,"status":status,"issues":issues,"eligible":eligible,"remaining":remaining,"selected":selected}
 
 def main()->int:
     p=argparse.ArgumentParser();p.add_argument("graph",type=Path);a=p.parse_args()
