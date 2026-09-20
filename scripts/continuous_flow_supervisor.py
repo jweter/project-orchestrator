@@ -1309,6 +1309,15 @@ def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
     atomic(state_root/"liveness-reacquire.json",result)
     return result
 
+def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder_ok:bool,builder_status:str,normal_seconds:int)->int:
+    """Choose the next supervisor pass without turning successful work into idle time."""
+    if lifecycle_advanced or liveness_reacquire.get("requested"):
+        return 1
+    terminal={"NO_WORK"}
+    if builder_ok and builder_status not in terminal:
+        return 1
+    return max(60,normal_seconds)
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -1373,5 +1382,7 @@ def main()->int:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
         # after lifecycle advancement; re-enter selection immediately.
-        time.sleep(1 if lifecycle_advanced or liveness_reacquire.get("requested") else max(60,a.builder_seconds))
+        time.sleep(continuation_delay(lifecycle_advanced=lifecycle_advanced,
+            liveness_reacquire=liveness_reacquire,builder_ok=builder_ok,
+            builder_status=builder_status,normal_seconds=a.builder_seconds))
 if __name__=="__main__": raise SystemExit(main())
