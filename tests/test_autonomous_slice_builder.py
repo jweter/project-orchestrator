@@ -298,7 +298,7 @@ def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
     import json
     import scripts.autonomous_slice_builder as builder
     grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
-    grant.write_text(json.dumps({"grant_id":"g1"}),encoding="utf-8")
+    grant.write_text(json.dumps({"grant_id":"g1","execution_slice":{"capability_id":"cap","slice_id":"slice","repository":"jweter/rock","exact_head":"abc","objective":"bounded work","acceptance":["tests pass"]}}),encoding="utf-8")
     assert builder.claim_execution_grant(grant,"jweter/rock","abc",lifecycle)
     record=json.loads(lifecycle.read_text())["grants"]["g1"]
     assert record["state"]=="CLAIMED"
