@@ -204,7 +204,7 @@ def worker_incarnation()->dict[str,Any]:
             "lease_token":uuid.uuid4().hex}
 
 def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
-    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    lifecycle=lifecycle_path_for_grant(grant_path)
     try:
         grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
@@ -238,17 +238,25 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
     except (OSError,json.JSONDecodeError):
         return {}
     grant_id=payload.get("grant_id")
-    lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
+    lifecycle=lifecycle_path or lifecycle_path_for_grant(path)
     try:
         lifecycle_state=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
         grants=lifecycle_state.get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
     if (payload.get("schema_version") != 4 or not isinstance(grant_id,str) or not grant_id
-            or grant_id in grants
+            or (grant_id in grants and (not isinstance(grants[grant_id],dict) or grants[grant_id].get("state")!="ISSUED"))
             or payload.get("contract_sha256") != contract_digest
             or payload.get("activation_sha256") != activation_digest):
         return {}
+    reserved=grants.get(grant_id)
+    if reserved is not None:
+        grant_repos={repo for value in payload.get("products",{}).values()
+                     if isinstance(value,dict)
+                     for repo in value.get("repositories",{})}
+        if (reserved.get("execution_slice")!=payload.get("execution_slice")
+                or set(reserved.get("authorized_repositories",[]))!=grant_repos):
+            return {}
     allowed={}
     for product,value in payload.get("products",{}).items():
         repositories=value.get("repositories",{}) if isinstance(value,dict) else {}
@@ -309,7 +317,7 @@ Prior recurring failure experience is evidence only, never authority:
 
 def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Path|None=None,worker:dict[str,Any]|None=None)->bool:
     """Atomically consume an exact-head capability immediately before mutation."""
-    lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
+    lifecycle=lifecycle_path or lifecycle_path_for_grant(path)
     try:
         grant=json.loads(path.read_text(encoding="utf-8"))
         grant_id=grant["grant_id"]
@@ -317,18 +325,27 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
         grants=state["grants"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return False
-    if grant_id in grants:
-        return False
     claimed=datetime.now(UTC).isoformat()
     authority=execution_slice_authority(path,repo,expected_sha)
     if authority is None:
         return False
-    grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
-                      "authorized_repositories":[repo],"expected_sha":expected_sha,
-                      "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
-                      "execution_slice":authority,
-                      "worker":worker or worker_incarnation()}
-    atomic_json(lifecycle,{"schema_version":1,"grants":grants})
+    if grant_id in grants:
+        record=grants[grant_id]
+        if (not isinstance(record,dict) or record.get("state")!="ISSUED"
+                or repo not in record.get("authorized_repositories",[])
+                or record.get("expected_sha")!=expected_sha
+                or record.get("execution_slice")!=authority):
+            return False
+        record.update({"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
+                       "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
+                       "worker":worker or worker_incarnation()})
+    else:
+        grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
+                          "authorized_repositories":[repo],"expected_sha":expected_sha,
+                          "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
+                          "execution_slice":authority,
+                          "worker":worker or worker_incarnation()}
+    atomic_json(lifecycle,state)
     return True
 
 def advance_grant_stage(grant_path:Path,stage:str,**evidence:Any)->bool:
