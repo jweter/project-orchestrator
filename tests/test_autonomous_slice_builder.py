@@ -468,3 +468,28 @@ def test_stale_worker_cannot_heartbeat_new_incarnation(tmp_path, monkeypatch):
     old={"host":"h","pid":7,"process_started_ns":11,"lease_token":"old"}
     builder.heartbeat_grant(grant,stop,interval=0,worker=old)
     assert json.loads(lifecycle.read_text())["grants"]["g"]["last_heartbeat_at"]=="before"
+
+def test_advance_grant_stage_persists_recovery_evidence(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    grant.write_text(json.dumps({"grant_id":"g"}))
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g":{"state":"CLAIMED"}}}))
+    assert builder.advance_grant_stage(grant,"COMMITTED",repository="o/r",base_sha="base",branch="actor/x",head_sha="head")
+    saved=json.loads(lifecycle.read_text())["grants"]["g"]
+    assert saved["execution_stage"]=="COMMITTED"
+    assert saved["repository"]=="o/r"
+    assert saved["base_sha"]=="base"
+    assert saved["branch"]=="actor/x"
+    assert saved["head_sha"]=="head"
+    assert saved["stage_updated_at"]
+
+def test_advance_grant_stage_refuses_terminal_claim(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    grant.write_text(json.dumps({"grant_id":"g"}))
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g":{"state":"COMPLETED"}}}))
+    assert not builder.advance_grant_stage(grant,"PUSHED",head_sha="new")
+    saved=json.loads(lifecycle.read_text())["grants"]["g"]
+    assert "execution_stage" not in saved
