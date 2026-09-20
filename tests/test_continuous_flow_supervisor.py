@@ -498,3 +498,34 @@ def test_worker_liveness_accepts_matching_process_fingerprint(monkeypatch):
     monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:"linux:boot:same")
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"linux:boot:same"}
     assert supervisor.worker_liveness(worker)=="ALIVE"
+
+def test_unknown_worker_liveness_is_bounded_by_quarantine(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,1,1,tzinfo=UTC)
+    old=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS+1)).isoformat()
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED","claimed_at":old,"last_heartbeat_at":old}}}))
+    for i in range(supervisor.UNKNOWN_LIVENESS_MAX_CHECKS-1):
+        assert supervisor.recover_stale_grant_claims(tmp_path,now+timedelta(seconds=i),lambda worker:"UNKNOWN")==[]
+        assert json.loads(path.read_text())["grants"]["g"]["state"]=="CLAIMED"
+    assert supervisor.recover_stale_grant_claims(tmp_path,now+timedelta(seconds=99),lambda worker:"UNKNOWN")==[]
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["state"]=="QUARANTINED"
+    assert saved["result_status"]=="CLAIM_LEASE_UNKNOWN_QUARANTINED"
+    assert saved["unknown_liveness_checks"]==supervisor.UNKNOWN_LIVENESS_MAX_CHECKS
+
+def test_live_worker_resets_unknown_liveness_budget(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,1,1,tzinfo=UTC)
+    old=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS+1)).isoformat()
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED","claimed_at":old,"last_heartbeat_at":old,"unknown_liveness_checks":3,"unknown_liveness_first_seen_at":old}}}))
+    supervisor.recover_stale_grant_claims(tmp_path,now,lambda worker:"ALIVE")
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["state"]=="CLAIMED"
+    assert saved["unknown_liveness_checks"]==0
+    assert "unknown_liveness_first_seen_at" not in saved

@@ -217,6 +217,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     return p.returncode
 
 CLAIM_LEASE_SECONDS=1800
+UNKNOWN_LIVENESS_MAX_CHECKS=5
 
 def worker_liveness(worker:dict|None)->str:
     """Return ALIVE, DEAD, or UNKNOWN without guessing across hosts or legacy state."""
@@ -282,8 +283,20 @@ def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_p
             record["finished_at"]=current.isoformat()
             record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_DEAD"
             abandoned.append(grant_id)
+        elif liveness=="UNKNOWN":
+            checks=int(record.get("unknown_liveness_checks",0))+1
+            record["unknown_liveness_checks"]=checks
+            record.setdefault("unknown_liveness_first_seen_at",current.isoformat())
+            if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
+                record["state"]="QUARANTINED"
+                record["finished_at"]=current.isoformat()
+                record["result_status"]="CLAIM_LEASE_UNKNOWN_QUARANTINED"
+            else:
+                record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_UNKNOWN"
         else:
-            record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_"+liveness
+            record["unknown_liveness_checks"]=0
+            record.pop("unknown_liveness_first_seen_at",None)
+            record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_ALIVE"
     if changed:
         atomic(path,payload)
     return abandoned
