@@ -1800,6 +1800,28 @@ def record_async_gate_rotation(state_root:Path,*,blocked_repository:str|None,blo
     atomic(path,payload)
     return record
 
+def record_burst_repository_pass(state_root:Path,*,repository:str|None,builder_status:str,
+                                 burst_id:str,process_instance_id:str,sequence:int)->dict:
+    """Persist burst-level proof of consecutive autonomous repository selections."""
+    path=state_root/"autonomous-burst-proof.json"
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        payload={}
+    same_burst=isinstance(payload,dict) and payload.get("burst_id")==burst_id
+    passes=payload.get("passes",[]) if same_burst else []
+    if not isinstance(passes,list): passes=[]
+    record={"sequence":sequence,"repository":repository,"builder_status":builder_status,
+            "process_instance_id":process_instance_id,"recorded_at_utc":datetime.now(UTC).isoformat()}
+    passes.append(record)
+    repositories=sorted({p.get("repository") for p in passes if isinstance(p,dict) and isinstance(p.get("repository"),str) and p.get("repository")})
+    proof={"schema_version":1,"burst_id":burst_id,"pass_count":len(passes),
+           "distinct_repositories":repositories,"distinct_repository_count":len(repositories),
+           "multi_repository_proven":len(repositories)>=2 and len(passes)>=2,
+           "passes":passes[-100:]}
+    atomic(path,proof)
+    return proof
+
 def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder_ok:bool,builder_status:str,normal_seconds:int)->int:
     """Choose the next supervisor pass without turning successful work into idle time."""
     if lifecycle_advanced:
@@ -2106,7 +2128,8 @@ def main()->int:
             "quarantine_count":len(quarantines),
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None,
-            "process_instance_id":process_instance_id,"burst_id":burst_id})
+            "process_instance_id":process_instance_id,"burst_id":burst_id,
+            "autonomous_burst_proof":burst_proof})
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
@@ -2117,6 +2140,9 @@ def main()->int:
         record=record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
             lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id,
             process_instance_id=process_instance_id)
+        burst_proof=record_burst_repository_pass(state,repository=selected_builder_repository(state),
+            builder_status=builder_status,burst_id=burst_id,process_instance_id=process_instance_id,
+            sequence=record["sequence"])
         record["burst_pass"]=burst_pass
         atomic(state/"continuation-current-burst.json",{"schema_version":2,"burst_id":burst_id,
             "process_instance_id":process_instance_id,
