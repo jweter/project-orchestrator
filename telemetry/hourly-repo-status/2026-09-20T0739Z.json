@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "observed_at_utc": "2026-09-20T07:39:00Z",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 2,
+  "product_advancement_rate": "2/3",
+  "products": {
+    "knowledge_engine": {
+      "state": "PR_OPEN_CI_PENDING",
+      "repository": "jweter/knowledge-engine-ai",
+      "pr": 168,
+      "head": "0a9f0a5eb1757a2d4493bfbcedce55481a3eec26",
+      "preflight": "GREEN"
+    },
+    "rocksmith": {
+      "state": "PR_OPEN_CI_PENDING",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "pr": 718,
+      "head": "d9761a93e47aaad952c72eeb15218a4b55f80dbb",
+      "preflight": "GREEN",
+      "review_threads": "RESOLVED"
+    },
+    "everward": {
+      "state": "PRODUCT_REALITY_WORKER_RUNNING",
+      "repository": "jweter/Project-Everward",
+      "target_main": "ef74658e2e38bc97929c26f13105ebc8678273a4",
+      "previous_worker_result": "FAIL_HEADLESS_SMOKE_TIMEOUT",
+      "current_gate": "unattended exact-main Windows/UE verification"
+    }
+  },
+  "reusable_capabilities_created_or_reused": [
+    "Rocksmith exact Git object identity regression (SHA-1/SHA-256)",
+    "Knowledge Engine BT-2 unclassified-draft funnel regression",
+    "Everward unattended Windows Product Reality worker"
+  ],
+  "needs_jeremy": []
+}
