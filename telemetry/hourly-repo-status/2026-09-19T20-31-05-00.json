@@ -1,0 +1,10 @@
+{
+  "captured_at": "2026-09-19T20:31:00-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 2,
+  "knowledge_engine": {"state":"IMPLEMENTING","branch":"orchestrator/research-funnel-metrics","head":"ec49fdeaf413480355a3d3cc824f4b76f4c4d8bb","blocker":"local delegated implementation unavailable: Claude OAuth expired; Aider terminal initialization failed"},
+  "rocksmith": {"state":"PREFLIGHT_RUNNING","branch":"orchestrator/dense-recognition-fail-closed","head":"c32fcf4","change":"deterministic suspicious uniform dense TAB fingering warning + regression test","targeted_tests":"20 passed"},
+  "everward": {"state":"PREFLIGHT_RUNNING","branch":"repair/headless-smoke-startup-timeout","head":"dffa179eec527096df35f7b2811076e31ce36fca","change":"bounded cold-start headless smoke timeout floor","environment_repair":"preflight resumed after locating Visual Studio bundled CMake"},
+  "open_product_prs_at_start": 0,
+  "product_advancement_rate": "2/3 at snapshot; active preflights still running"
+}
