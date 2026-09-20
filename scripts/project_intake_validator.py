@@ -11,6 +11,7 @@ REQUIRED = (
     "Human Escalation Boundary","Activation Checklist",
 )
 PLACEHOLDER = re.compile(r"(?im)^\s*(?:\*\*[^*]+:\*\*\s*)?(?:unknown|tbd|todo|n/?a)?\s*$")
+ALLOWED_VERIFICATION_KINDS = {"acceptance", "ci", "preflight", "product_reality", "worker"}
 
 def section(text: str, name: str) -> str | None:
     m=re.search(rf"(?ms)^##\s+\d+\.\s+{re.escape(name)}\s*$\n(.*?)(?=^##\s+\d+\.|\Z)",text)
@@ -30,6 +31,7 @@ def validate(text: str) -> dict:
     criterion_lines=re.findall(r"(?im)^-\s*\[required\]\s+([a-z0-9][a-z0-9._-]*):\s*(.+?)\s*\|\s*verify=([a-z0-9_-]+)\s*$",completion)
     criterion_ids=[item[0] for item in criterion_lines]
     duplicate_criteria=sorted({item for item in criterion_ids if criterion_ids.count(item)>1})
+    unsupported_verification_kinds=sorted({item[2] for item in criterion_lines if item[2] not in ALLOWED_VERIFICATION_KINDS})
     # Intake must explicitly assert READY; unchecked template/default is not authority.
     activation=section(text,"Activation Checklist") or ""
     ready=bool(re.search(r"(?im)^\*\*Activation decision:\*\*\s*READY\s*$",activation))
@@ -43,6 +45,8 @@ def validate(text: str) -> dict:
         issues.append({"code":"STRUCTURED_COMPLETION_CRITERIA_REQUIRED","sections":["Product Completion Criteria"]})
     if duplicate_criteria:
         issues.append({"code":"DUPLICATE_COMPLETION_CRITERION","criteria":duplicate_criteria})
+    if unsupported_verification_kinds:
+        issues.append({"code":"UNSUPPORTED_COMPLETION_VERIFICATION_KIND","verification_kinds":unsupported_verification_kinds})
     if not ready: issues.append({"code":"ACTIVATION_NOT_READY","sections":["Activation Checklist"]})
     return {
         "schema_version":1,
