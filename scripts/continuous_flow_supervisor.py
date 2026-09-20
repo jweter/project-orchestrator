@@ -462,6 +462,7 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
 
 ISSUE_LEASE_SECONDS=60
+RECOVERY_GENERATION_LEASE_SECONDS=60
 
 def recover_stale_issued_grants(state_root:Path,now:datetime|None=None)->list[str]:
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -773,6 +774,62 @@ def worker_liveness(worker:dict|None)->str:
         if actual!=expected:
             return "DEAD"
     return "ALIVE"
+
+def recover_stale_recovery_generations(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
+    """Release recovery generations only when their owning supervisor is proven dead."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    lock=_acquire_lifecycle_lock(path)
+    try:
+        if not path.exists():
+            return []
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+            grants=payload.get("grants",{})
+        except (OSError,json.JSONDecodeError,TypeError):
+            return []
+        current=now or datetime.now(UTC)
+        released=[]; changed=False
+        for grant_id,record in grants.items():
+            if not isinstance(record,dict) or not record.get("recovery_generation"):
+                continue
+            try:
+                started=datetime.fromisoformat(record["recovery_generation_started_at"])
+                if started.tzinfo is None:
+                    started=started.replace(tzinfo=UTC)
+            except (KeyError,TypeError,ValueError):
+                record["recovery_generation_liveness"]="UNKNOWN"
+                record["recovery_generation_result"]="RECOVERY_GENERATION_TIMESTAMP_INVALID"
+                record["recovery_state"]="QUARANTINED"
+                record["recovery_quarantine_reason"]="RECOVERY_GENERATION_TIMESTAMP_INVALID"
+                changed=True
+                continue
+            if (current-started).total_seconds()<=RECOVERY_GENERATION_LEASE_SECONDS:
+                continue
+            liveness=liveness_probe(record.get("recovery_generation_worker"))
+            record["recovery_generation_last_liveness_check_at"]=current.isoformat()
+            record["recovery_generation_liveness"]=liveness
+            changed=True
+            if liveness=="DEAD":
+                record.pop("recovery_generation",None)
+                record.pop("recovery_generation_started_at",None)
+                record.pop("recovery_generation_worker",None)
+                record["recovery_generation_released_at"]=current.isoformat()
+                record["recovery_generation_result"]="RECOVERY_GENERATION_OWNER_DEAD"
+                released.append(grant_id)
+            elif liveness=="ALIVE":
+                record["recovery_generation_result"]="RECOVERY_GENERATION_OWNER_ALIVE"
+            else:
+                checks=int(record.get("recovery_generation_unknown_checks",0))+1
+                record["recovery_generation_unknown_checks"]=checks
+                record["recovery_generation_result"]="RECOVERY_GENERATION_OWNER_UNKNOWN"
+                if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
+                    record["recovery_state"]="QUARANTINED"
+                    record["recovery_quarantine_reason"]="RECOVERY_GENERATION_OWNER_UNKNOWN"
+        if changed:
+            atomic(path,payload)
+        return released
+    finally:
+        _release_lifecycle_lock(lock)
 
 def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
     try:
@@ -1250,6 +1307,8 @@ def begin_recovery_generation(path:Path,grant_id:str,expected:dict)->tuple[str,d
         reserved=dict(current)
         reserved["recovery_generation"]=token
         reserved["recovery_generation_started_at"]=datetime.now(UTC).isoformat()
+        reserved["recovery_generation_worker"]={"host":socket.gethostname(),"pid":os.getpid(),
+                                                 "process_start_fingerprint":process_start_fingerprint()}
         reserved["recovery_version"]=int(current.get("recovery_version",0))+1
         payload["grants"][grant_id]=reserved
         atomic(path,payload)
@@ -1271,6 +1330,8 @@ def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->b
         final=dict(updated)
         final.pop("recovery_generation",None)
         final.pop("recovery_generation_started_at",None)
+        final.pop("recovery_generation_worker",None)
+        final.pop("recovery_generation_unknown_checks",None)
         payload["grants"][grant_id]=final
         atomic(path,payload)
         return True
@@ -1724,6 +1785,7 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
+        released_recovery_generations=recover_stale_recovery_generations(state)
         abandoned_grants=recover_stale_grant_claims(state)
         recovery_queue=pending_recovery_grants(state,abandoned_grants)
         recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
