@@ -1346,6 +1346,23 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
     atomic(path,payload)
     return record
 
+def start_or_resume_burst(state_root:Path,*,now:datetime|None=None,resume_seconds:int=900)->dict:
+    """Resume a recently interrupted immediate burst; otherwise create a new wake identity."""
+    now=now or datetime.now(UTC)
+    path=state_root/"continuation-current-burst.json"
+    try:
+        prior=json.loads(path.read_text(encoding="utf-8"))
+        updated=datetime.fromisoformat(str(prior.get("updated_at_utc","")).replace("Z","+00:00"))
+        age=(now-updated).total_seconds()
+        if (prior.get("immediate_continuation") is True and prior.get("burst_id")
+                and 0 <= age <= resume_seconds):
+            return {"burst_id":prior["burst_id"],"burst_pass":int(prior.get("pass_count",0)),
+                    "resumed":True,"resume_age_seconds":age}
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        pass
+    return {"burst_id":now.strftime("%Y%m%dT%H%M%S.%fZ"),"burst_pass":0,
+            "resumed":False,"resume_age_seconds":None}
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -1354,8 +1371,9 @@ def main()->int:
     a=p.parse_args(); repo=Path(a.repo_root); workspace=Path(a.workspace_root); state=Path(a.state_root)
     state.mkdir(parents=True,exist_ok=True)
     merge=None
-    burst_id=datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-    burst_pass=0
+    burst=start_or_resume_burst(state)
+    burst_id=burst["burst_id"]
+    burst_pass=burst["burst_pass"]
     while True:
         burst_pass+=1
         if merge is None or merge.poll() is not None:
