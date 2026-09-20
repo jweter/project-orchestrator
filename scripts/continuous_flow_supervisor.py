@@ -460,27 +460,34 @@ def commit_preserved_work(ws:Path,record:dict)->str:
     outcome=consume_preserved_recovery_capability(ws,record)
     if outcome!="RECOVERY_CAPABILITY_CONSUMED":
         return outcome
+    cap=record["preserved_recovery_capability"]
+    cap["outcome"]="MUTATION_STARTED"
     expected=record.get("preserved_work_evidence",{})
     add=subprocess.run(["git","add","-A"],cwd=ws,text=True,capture_output=True,check=False)
     if add.returncode:
+        cap["outcome"]="STAGE_FAILED"
         return "PRESERVED_COMMIT_STAGE_FAILED"
     commit=subprocess.run(["git","commit","-m","chore: recover validated autonomous work"],cwd=ws,text=True,capture_output=True,check=False)
     if commit.returncode:
+        cap["outcome"]="COMMIT_FAILED"
         return "PRESERVED_COMMIT_FAILED"
     head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
     branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
     if head.returncode or branch.returncode or branch.stdout.strip()!=record.get("branch"):
+        cap["outcome"]="IDENTITY_FAILED"
         return "PRESERVED_COMMIT_IDENTITY_FAILED"
     new_head=head.stdout.strip()
     changed=subprocess.run(["git","diff","--binary",record["base_sha"],new_head],cwd=ws,text=True,capture_output=True,check=False)
     import hashlib
     if changed.returncode or hashlib.sha256(changed.stdout.encode("utf-8",errors="replace")).hexdigest()!=expected.get("diff_sha256"):
+        cap["outcome"]="FINGERPRINT_MISMATCH"
         return "PRESERVED_COMMIT_FINGERPRINT_MISMATCH"
     record["execution_stage"]="COMMITTED"
     record["head_sha"]=new_head
     record["recovery_state"]="RECOVERING"
     record["recovery_result"]="PRESERVED_COMMIT_RECOVERED"
-    record["preserved_recovery_capability"]["committed_head_sha"]=new_head
+    cap["committed_head_sha"]=new_head
+    cap["outcome"]="COMMITTED_EXACT"
     return "PRESERVED_COMMIT_RECOVERED"
 
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
