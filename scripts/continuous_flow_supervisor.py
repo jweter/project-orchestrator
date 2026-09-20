@@ -525,7 +525,9 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
     target=(execution_slice.get("capability_id"),execution_slice.get("slice_id"),
             execution_slice.get("repository"),execution_slice.get("exact_head"))
     for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"}:
+        if not isinstance(record,dict):
+            continue
+        if record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"} and not record.get("recovery_generation"):
             continue
         authority=record.get("execution_slice") or {}
         if repo in record.get("authorized_repositories",[]):
@@ -1221,8 +1223,42 @@ def verify_durable_pr(repo:str,ws:Path,pr_number:int,expected_head:str)->str:
         return "RECOVERY_DURABLE_PR_CLOSED_UNMERGED"
     return "RECOVERY_DURABLE_PR_STATE_UNKNOWN"
 
+def begin_recovery_generation(path:Path,grant_id:str,expected:dict)->tuple[str,dict]|None:
+    """Reserve one exact lifecycle generation before recovery may perform side effects."""
+    lock=_acquire_lifecycle_lock(path)
+    try:
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+            current=payload["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return None
+        if current!=expected or current.get("recovery_generation"):
+            return None
+        target_repos=set(current.get("authorized_repositories",[]))
+        if current.get("repository"):
+            target_repos.add(current["repository"])
+        for other_id,other in payload.get("grants",{}).items():
+            if other_id==grant_id or not isinstance(other,dict):
+                continue
+            other_repos=set(other.get("authorized_repositories",[]))
+            if other.get("repository"):
+                other_repos.add(other["repository"])
+            owns=other.get("state") in {"ISSUED","CLAIMED","QUARANTINED"} or bool(other.get("recovery_generation"))
+            if owns and target_repos.intersection(other_repos):
+                return None
+        token=uuid.uuid4().hex
+        reserved=dict(current)
+        reserved["recovery_generation"]=token
+        reserved["recovery_generation_started_at"]=datetime.now(UTC).isoformat()
+        reserved["recovery_version"]=int(current.get("recovery_version",0))+1
+        payload["grants"][grant_id]=reserved
+        atomic(path,payload)
+        return token,reserved
+    finally:
+        _release_lifecycle_lock(lock)
+
 def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->bool:
-    """CAS-style lifecycle commit: external recovery may not overwrite concurrent ownership changes."""
+    """Commit only the exact reserved recovery generation; compare the complete record."""
     lock=_acquire_lifecycle_lock(path)
     try:
         try:
@@ -1230,10 +1266,12 @@ def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->b
             current=payload["grants"][grant_id]
         except (OSError,json.JSONDecodeError,KeyError,TypeError):
             return False
-        fingerprint=("state","recovery_state","execution_stage","head_sha","branch","pr_number","worker","claimed_at","last_heartbeat_at")
-        if any(current.get(k)!=expected.get(k) for k in fingerprint):
+        if current!=expected:
             return False
-        payload["grants"][grant_id]=updated
+        final=dict(updated)
+        final.pop("recovery_generation",None)
+        final.pop("recovery_generation_started_at",None)
+        payload["grants"][grant_id]=final
         atomic(path,payload)
         return True
     finally:
@@ -1251,9 +1289,16 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         return {grant_id:"LIFECYCLE_UNREADABLE" for grant_id in grant_ids}
     outcomes={}
     current=now or datetime.now(UTC)
-    expected_records={grant_id:dict(grants.get(grant_id,{})) for grant_id in grant_ids}
+    expected_records={}
     for grant_id in grant_ids:
-        record=grants.get(grant_id,{})
+        original=dict(grants.get(grant_id,{}))
+        reservation=begin_recovery_generation(path,grant_id,original)
+        if reservation is None:
+            outcomes[grant_id]="RECOVERY_GENERATION_BUSY_OR_STALE"
+            continue
+        _,record=reservation
+        grants[grant_id]=record
+        expected_records[grant_id]=dict(record)
         attempts=int(record.get("recovery_attempts",0))
         next_attempt=record.get("recovery_next_attempt_at")
         if next_attempt:
@@ -1401,9 +1446,9 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         else:
             record.pop("recovery_next_attempt_at",None)
     for grant_id in grant_ids:
-        if grant_id not in grants:
+        if grant_id not in grants or grant_id not in expected_records:
             continue
-        if not commit_recovery_record(path,grant_id,expected_records.get(grant_id,{}),grants[grant_id]):
+        if not commit_recovery_record(path,grant_id,expected_records[grant_id],grants[grant_id]):
             outcomes[grant_id]="RECOVERY_CONCURRENT_STATE_CHANGE"
     return outcomes
 
@@ -1416,16 +1461,27 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
     outcomes={}; changed=False
-    expected_records={grant_id:dict(record) for grant_id,record in grants.items() if isinstance(record,dict)}
-    for grant_id,record in grants.items():
+    expected_records={}
+    for grant_id,record in list(grants.items()):
         if not isinstance(record,dict) or record.get("recovery_state")!="QUARANTINED":
             continue
         if record.get("recovery_quarantine_reason") not in {
             "UNCOMMITTED_WORK_REQUIRES_PRESERVATION","UNRECORDED_COMMIT_REQUIRES_PRESERVATION","BRANCH_IDENTITY_MISMATCH"
         }: continue
+        original=dict(record)
+        reservation=begin_recovery_generation(path,grant_id,original)
+        if reservation is None:
+            outcomes[grant_id]="PRESERVED_RECOVERY_GENERATION_BUSY_OR_STALE"
+            continue
+        _,record=reservation
+        grants[grant_id]=record
+        expected_records[grant_id]=dict(record)
         repo=record.get("repository")
         if not repo:
-            outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"; continue
+            outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"
+            record["preserved_work_revalidation"]="PRESERVED_REPOSITORY_MISSING"
+            changed=True
+            continue
         ws=workspace_root/repo.split("/",1)[-1]
         if ws.is_dir() and record.get("preserved_recovery_capability",{}).get("state")=="CONSUMED":
             reconciled=reconcile_consumed_recovery(ws,record)
@@ -1487,6 +1543,9 @@ def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_p
             if not isinstance(record,dict) or record.get("state")!="QUARANTINED":
                 continue
             if record.get("result_status")!="CLAIM_LEASE_UNKNOWN_QUARANTINED":
+                continue
+            if record.get("recovery_generation"):
+                outcomes[grant_id]="RECOVERY_GENERATION_ACTIVE"
                 continue
             liveness=liveness_probe(record.get("worker"))
             record["quarantine_last_recheck_at"]=current.isoformat()
