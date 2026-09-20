@@ -162,7 +162,7 @@ def worker_incarnation()->dict[str,Any]:
             "process_started_ns":int(time.time_ns()-time.monotonic_ns()),
             "lease_token":uuid.uuid4().hex}
 
-def heartbeat_grant(grant_path:Path,stop:threading.Event,worker:dict[str,Any],interval:int=HEARTBEAT_SECONDS)->None:
+def heartbeat_grant(grant_path:Path,stop:threading.Event,worker:dict[str,Any]|None=None,interval:int=HEARTBEAT_SECONDS)->None:
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
     try:
         grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
@@ -174,7 +174,11 @@ def heartbeat_grant(grant_path:Path,stop:threading.Event,worker:dict[str,Any],in
             record=payload["grants"][grant_id]
         except (OSError,json.JSONDecodeError,KeyError,TypeError):
             return
-        if record.get("state")!="CLAIMED" or record.get("worker")!=worker:
+        if record.get("state")!="CLAIMED":
+            return
+        # Legacy records without worker identity remain renewable during migration.
+        # Once identity exists, only that exact incarnation may renew it.
+        if record.get("worker") is not None and record.get("worker")!=worker:
             return
         record["last_heartbeat_at"]=datetime.now(UTC).isoformat()
         atomic_json(lifecycle,payload)
@@ -221,7 +225,7 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
             allowed.update(repositories)
     return allowed
 
-def claim_execution_grant(path:Path,repo:str,expected_sha:str,worker:dict[str,Any]|None=None,lifecycle_path:Path|None=None)->bool:
+def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Path|None=None,worker:dict[str,Any]|None=None)->bool:
     """Atomically consume an exact-head capability immediately before mutation."""
     lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
     try:
@@ -454,7 +458,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         if not expected or base!=expected:
             return {"status":"EXECUTION_GRANT_HEAD_MISMATCH","repository":repo,"expected_sha":expected,"actual_sha":base}
         worker=worker_incarnation()
-        if not claim_execution_grant(execution_grant,repo,expected,worker):
+        if not claim_execution_grant(execution_grant,repo,expected,worker=worker):
             return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
         heartbeat_stop,heartbeat_thread=start_grant_heartbeat(execution_grant,worker)
     else:
