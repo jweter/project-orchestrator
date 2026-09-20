@@ -1787,13 +1787,16 @@ def record_async_gate_rotation(state_root:Path,*,blocked_repository:str|None,blo
     rotations=history.get("rotations") if isinstance(history,dict) else None
     if not isinstance(rotations,list):
         rotations=[]
+    prior_count=history.get("rotation_count",len(rotations)) if isinstance(history,dict) else len(rotations)
+    if not isinstance(prior_count,int) or isinstance(prior_count,bool) or prior_count < len(rotations):
+        prior_count=len(rotations)
     record={"recorded_at_utc":datetime.now(UTC).isoformat(),
             "blocked_repository":blocked_repository,"blocked_status":blocked_status,
             "next_repository":next_repository,"burst_id":burst_id,
             "process_instance_id":process_instance_id,
             "rotated":bool(next_repository and next_repository!=blocked_repository)}
     rotations.append(record)
-    payload={"schema_version":1,"rotation_count":len(rotations),"rotations":rotations[-100:]}
+    payload={"schema_version":1,"rotation_count":prior_count+1,"rotations":rotations[-100:]}
     atomic(path,payload)
     return record
 
