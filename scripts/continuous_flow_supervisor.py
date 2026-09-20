@@ -1230,7 +1230,7 @@ def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->b
             current=payload["grants"][grant_id]
         except (OSError,json.JSONDecodeError,KeyError,TypeError):
             return False
-        fingerprint=("state","recovery_state","execution_stage","head_sha","branch","pr_number")
+        fingerprint=("state","recovery_state","execution_stage","head_sha","branch","pr_number","worker","claimed_at","last_heartbeat_at")
         if any(current.get(k)!=expected.get(k) for k in fingerprint):
             return False
         payload["grants"][grant_id]=updated
@@ -1251,6 +1251,7 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         return {grant_id:"LIFECYCLE_UNREADABLE" for grant_id in grant_ids}
     outcomes={}
     current=now or datetime.now(UTC)
+    expected_records={grant_id:dict(grants.get(grant_id,{})) for grant_id in grant_ids}
     for grant_id in grant_ids:
         record=grants.get(grant_id,{})
         attempts=int(record.get("recovery_attempts",0))
@@ -1399,7 +1400,11 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
             record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
         else:
             record.pop("recovery_next_attempt_at",None)
-    atomic(path,payload)
+    for grant_id in grant_ids:
+        if grant_id not in grants:
+            continue
+        if not commit_recovery_record(path,grant_id,expected_records.get(grant_id,{}),grants[grant_id]):
+            outcomes[grant_id]="RECOVERY_CONCURRENT_STATE_CHANGE"
     return outcomes
 
 def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dict[str,str]:
