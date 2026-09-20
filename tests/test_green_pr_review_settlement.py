@@ -12,7 +12,8 @@ def test_exact_head_recent_review_keeps_merge_in_settlement_window(monkeypatch):
         if args[-1].endswith("/reviews"):
             return []
         raise AssertionError(args)
-    monkeypatch.setattr(merger,"gh_json",fake)
+    monkeypatch.setattr(merger,"gh_json",lambda args:{"commit":{"committer":{"date":created}}})
+    monkeypatch.setattr(merger,"gh_paginated",lambda endpoint: fake(["api",endpoint]))
     assert merger.review_settled("o/r",1,"head",created) is False
 
 def test_old_exact_head_review_allows_settlement(monkeypatch):
@@ -23,7 +24,8 @@ def test_old_exact_head_review_allows_settlement(monkeypatch):
         if args[-1].endswith("/reviews"):
             return [{"commit_id":"head","submitted_at":_iso(550)}]
         raise AssertionError(args)
-    monkeypatch.setattr(merger,"gh_json",fake)
+    monkeypatch.setattr(merger,"gh_json",lambda args:{"commit":{"committer":{"date":created}}})
+    monkeypatch.setattr(merger,"gh_paginated",lambda endpoint: fake(["api",endpoint]))
     assert merger.review_settled("o/r",1,"head",created) is True
 
 def test_stale_head_comment_does_not_delay_current_head(monkeypatch):
@@ -34,7 +36,8 @@ def test_stale_head_comment_does_not_delay_current_head(monkeypatch):
         if args[-1].endswith("/reviews"):
             return []
         raise AssertionError(args)
-    monkeypatch.setattr(merger,"gh_json",fake)
+    monkeypatch.setattr(merger,"gh_json",lambda args:{"commit":{"committer":{"date":created}}})
+    monkeypatch.setattr(merger,"gh_paginated",lambda endpoint: fake(["api",endpoint]))
     assert merger.review_settled("o/r",1,"head",created) is True
 
 def test_decision_rejects_unsettled_review_even_when_ci_green():
@@ -43,3 +46,22 @@ def test_decision_rejects_unsettled_review_even_when_ci_green():
     decision=merger.decide(pr,age_seconds=600,review_settled=False)
     assert not decision.eligible
     assert decision.reason=="REVIEW_SETTLE_WINDOW"
+
+
+def test_new_head_restarts_settlement_clock_on_old_pr(monkeypatch):
+    created=_iso(86400)
+    head_time=_iso(30)
+    monkeypatch.setattr(merger,"gh_json",lambda args:{"commit":{"committer":{"date":head_time}}})
+    monkeypatch.setattr(merger,"gh_paginated",lambda endpoint:[])
+    assert merger.review_settled("o/r",1,"new-head",created) is False
+
+def test_paginated_review_activity_uses_late_page(monkeypatch):
+    created=_iso(900)
+    head_time=_iso(800)
+    monkeypatch.setattr(merger,"gh_json",lambda args:{"commit":{"committer":{"date":head_time}}})
+    def pages(endpoint):
+        if endpoint.endswith("/comments"):
+            return [{"commit_id":"head","updated_at":_iso(700)},{"commit_id":"head","updated_at":_iso(20)}]
+        return []
+    monkeypatch.setattr(merger,"gh_paginated",pages)
+    assert merger.review_settled("o/r",1,"head",created) is False
