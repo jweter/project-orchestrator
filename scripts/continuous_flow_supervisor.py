@@ -453,6 +453,28 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
     detail=";".join(blocked) or "UNKNOWN"
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
 
+def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
+    """Return existing ownership for the same bounded work; ambiguity fails closed."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists():
+        return None
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
+    target=(execution_slice.get("capability_id"),execution_slice.get("slice_id"),
+            execution_slice.get("repository"),execution_slice.get("exact_head"))
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("state") not in {"CLAIMED","QUARANTINED"}:
+            continue
+        authority=record.get("execution_slice") or {}
+        identity=(authority.get("capability_id"),authority.get("slice_id"),
+                  authority.get("repository"),authority.get("exact_head"))
+        if repo in record.get("authorized_repositories",[]) and identity==target:
+            return {"grant_id":grant_id,"state":record.get("state"),
+                    "worker":record.get("worker"),"execution_slice":authority}
+    return None
+
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
     activation_path=state_root/"hands-off-activation.json"
     activation_bytes=activation_path.read_bytes()
@@ -464,6 +486,10 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         name for name in products
         if repo in activation["products"][name]["repositories"]
     }
+    execution_slice=load_execution_slice(state_root,repo,exact_head)
+    conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
+    if conflict:
+        raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
     grant={"schema_version":4,
            "grant_id":str(uuid.uuid4()),
            "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
@@ -471,7 +497,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
            "products":{
         name:{"repositories":{repo:exact_head}}
         for name in selected_products},
-           "execution_slice":load_execution_slice(state_root,repo,exact_head)}
+           "execution_slice":execution_slice}
     path=state_root/"hands-off-execution-grant.json"
     atomic(path,grant)
     return path
@@ -486,6 +512,10 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
             atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
             (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
+            return 0
+        if str(exc).startswith("EXECUTION_SLICE_ALREADY_OWNED:"):
+            atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+            (state_root/"builder-last-output.txt").write_text(str(exc)+"\n",encoding="utf-8")
             return 0
         raise
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
