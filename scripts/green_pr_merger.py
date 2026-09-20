@@ -12,7 +12,7 @@ PORTFOLIO_REPOS=(
 )
 PASS_CONCLUSIONS={"SUCCESS","NEUTRAL","SKIPPED"}
 ALLOWED_AUTHORS={"jweter","dependabot[bot]"}
-BLOCKING_RE=re.compile(r"(?i)(?:\bP[0-3]\b|blocking|must fix|security|incorrect|regression|data loss)")
+BLOCKING_RE=re.compile(r"(?i)(?:\bP[0-3]\b|blocking|must fix|security|incorrect|regression|data loss|usage limits?|review unavailable|unable to review|could not review)")
 MIN_PR_AGE_SECONDS=120
 REVIEW_SETTLE_SECONDS=300
 
