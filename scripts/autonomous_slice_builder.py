@@ -234,10 +234,16 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
     return True
 
 def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->str|None:
-    prior=-1
+    prior_repo=None
+    prior_index=-1
     if state_path.exists():
-        try: prior=int(json.loads(state_path.read_text(encoding="utf-8")).get("last_repo_index",-1))
-        except Exception: prior=-1
+        try:
+            previous=json.loads(state_path.read_text(encoding="utf-8"))
+            prior_repo=previous.get("last_repository")
+            prior_index=int(previous.get("last_repo_index",-1))
+        except Exception:
+            prior_repo=None
+            prior_index=-1
     if eligible_repos is not None:
         repo_universe=tuple(sorted(eligible_repos))
     elif eligible_products is None:
@@ -247,6 +253,13 @@ def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_re
         repo_universe=tuple(repo for repo in PORTFOLIO_REPOS if repo in allowed)
     if not repo_universe:
         return None
+    if prior_repo in repo_universe:
+        prior=repo_universe.index(prior_repo)
+    elif prior_repo is not None:
+        prior=-1
+    else:
+        # One-way compatibility for state written before repository identity was persisted.
+        prior=prior_index if 0<=prior_index<len(repo_universe) else -1
     for offset in range(1,len(repo_universe)+1):
         idx=(prior+offset)%len(repo_universe)
         repo=repo_universe[idx]
@@ -413,7 +426,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         return {"status":"NO_ELIGIBLE_REPOSITORY"}
     idx=PORTFOLIO_REPOS.index(repo)
     if dry_run:
-        result={"status":"DRY_RUN","repository":repo,"last_repo_index":idx}
+        result={"status":"DRY_RUN","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
 
     ws=ensure_workspace(repo,workspace_root)
@@ -440,10 +453,10 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     if aider.returncode!=0:
         reset_workspace(ws,base)
         lesson=retain_failure_lesson(state_path,"aider_execution",aider.stderr or aider.stdout or f"returncode={aider.returncode}","BUILDER_FAILED")
-        result={"status":"BUILDER_FAILED","repository":repo,"returncode":aider.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx}
+        result={"status":"BUILDER_FAILED","repository":repo,"returncode":aider.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     if not paths:
-        result={"status":"NO_OP","repository":repo,"last_repo_index":idx}
+        result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     initial_failure=generated_change_failure(ws,base,paths)
     if initial_failure:
@@ -454,35 +467,35 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             reset_workspace(ws,base)
             result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
                     "initial_failure":initial_failure,"final_failure":"repair_execution_failed",
-                    "repair_attempted":True,"last_repo_index":idx}
+                    "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
         if not paths:
             result={"status":"SELF_REPAIRED_TO_NO_OP","repository":repo,
-                    "initial_failure":initial_failure,"repair_attempted":True,"last_repo_index":idx}
+                    "initial_failure":initial_failure,"repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
         final_failure=generated_change_failure(ws,base,paths)
         if final_failure:
             reset_workspace(ws,base)
             result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
                     "initial_failure":initial_failure,"final_failure":final_failure,
-                    "repair_attempted":True,"last_repo_index":idx}
+                    "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
     preflight=run_preflight(ws)
     if preflight.returncode!=0:
         reset_workspace(ws,base)
         lesson=retain_failure_lesson(state_path,"preflight",preflight.stderr or preflight.stdout or f"returncode={preflight.returncode}","PREFLIGHT_FAILED")
-        result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx}
+        result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     run(["git","add","-A"],ws)
     commit=run(["git","commit","-m",f"actor autonomous bounded slice {stamp}"],ws)
     if commit.returncode:
         reset_workspace(ws,base)
-        result={"status":"COMMIT_FAILED","repository":repo,"last_repo_index":idx}
+        result={"status":"COMMIT_FAILED","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
     push=run(["git","push","-u","origin",branch],ws)
     if push.returncode:
-        result={"status":"PUSH_FAILED","repository":repo,"head":head,"last_repo_index":idx}
+        result={"status":"PUSH_FAILED","repository":repo,"head":head,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     linear_id=os.environ.get("EXPONENTIAL_LINEAR_ID","").strip()
     linear_ref=f" Linear: {linear_id}." if linear_id else ""
@@ -495,7 +508,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     status="PR_OPEN" if created.returncode==0 else "PR_CREATE_FAILED"
     result={"status":status,"repository":repo,"branch":branch,"base_sha":base,
             "head_sha":head,"changed_paths":paths,"pr_url":created.stdout.strip(),
-            "last_repo_index":idx}
+            "last_repo_index":idx,"last_repository":repo}
     atomic_json(state_path,result)
     return result
 
