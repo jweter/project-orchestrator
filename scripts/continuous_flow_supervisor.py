@@ -680,7 +680,10 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
                 if not isinstance(existing,dict):
                     continue
                 owns=existing.get("state") in {"ISSUED","CLAIMED","QUARANTINED"} or bool(existing.get("recovery_generation"))
-                if owns and repo in existing.get("authorized_repositories",[]):
+                existing_repos=set(existing.get("authorized_repositories",[]))
+                if existing.get("repository"):
+                    existing_repos.add(existing["repository"])
+                if owns and repo in existing_repos:
                     raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{existing_id}:{existing.get('state')}")
             issued=datetime.now(UTC).isoformat()
             grants[grant_id]={"state":"ISSUED","issued_at":issued,
@@ -1338,7 +1341,7 @@ def begin_recovery_generation(path:Path,grant_id:str,expected:dict)->tuple[str,d
             try:
                 when=datetime.fromisoformat(started)
                 if when.tzinfo is None: when=when.replace(tzinfo=UTC)
-                stale=(datetime.now(UTC)-when).total_seconds()>CLAIM_LEASE_SECONDS
+                stale=(datetime.now(UTC)-when).total_seconds()>RECOVERY_GENERATION_LEASE_SECONDS
             except (TypeError,ValueError):
                 stale=True
             if not stale or worker_liveness(owner)!="DEAD":
