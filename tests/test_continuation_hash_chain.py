@@ -37,3 +37,15 @@ def test_recomputed_old_record_hash_still_breaks_successor_link(tmp_path):
     first["record_hash"]=hashlib.sha256(json.dumps(material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
     path.write_text(json.dumps(history))
     assert _record(tmp_path)["sequence"]==1
+
+
+def test_hash_chain_survives_bounded_history_truncation(tmp_path):
+    for i in range(105):
+        _record(tmp_path,burst=f"b{i}",process="p")
+    history=json.loads((tmp_path/"continuation-pass-history.json").read_text())
+    assert history["pass_count"]==105
+    assert len(history["passes"])==100
+    assert history["passes"][0]["sequence"]==6
+    assert history["retained_predecessor_hash"]==history["passes"][0]["previous_hash"]
+    assert history["chain_head"]==history["passes"][-1]["record_hash"]
+    assert _record(tmp_path)["sequence"]==106
