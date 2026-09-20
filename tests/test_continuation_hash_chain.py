@@ -21,11 +21,9 @@ def test_tampered_retained_record_invalidates_chain_authority(tmp_path):
     history=json.loads(path.read_text())
     history["passes"][0]["builder_status"]="TAMPERED"
     path.write_text(json.dumps(history))
-    fresh=_record(tmp_path,"new","new-process")
-    assert fresh["sequence"]==1
-    rewritten=json.loads(path.read_text())
-    assert rewritten["pass_count"]==1
-    assert rewritten["chain_head"]==fresh["record_hash"]
+    import pytest
+    with pytest.raises(RuntimeError,match="invalid history"):
+        _record(tmp_path,"new","new-process")
 
 def test_recomputed_old_record_hash_still_breaks_successor_link(tmp_path):
     _record(tmp_path); _record(tmp_path)
@@ -36,7 +34,9 @@ def test_recomputed_old_record_hash_still_breaks_successor_link(tmp_path):
     material={k:v for k,v in first.items() if k!="record_hash"}
     first["record_hash"]=hashlib.sha256(json.dumps(material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
     path.write_text(json.dumps(history))
-    assert _record(tmp_path)["sequence"]==1
+    import pytest
+    with pytest.raises(RuntimeError,match="invalid history"):
+        _record(tmp_path)
 
 
 def test_hash_chain_survives_bounded_history_truncation(tmp_path):
