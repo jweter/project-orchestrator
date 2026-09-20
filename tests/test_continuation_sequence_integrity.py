@@ -21,7 +21,7 @@ def test_invalid_history_cannot_manufacture_or_rewind_sequence(tmp_path,history)
     record=_record(tmp_path)
     assert record["sequence"]==1
     persisted=json.loads((tmp_path/"continuation-pass-history.json").read_text())
-    assert persisted["schema_version"]==2
+    assert persisted["schema_version"]==3
     assert persisted["pass_count"]==1
     assert persisted["immediate_continuation_count"]==1
 
@@ -40,5 +40,5 @@ def test_legacy_v1_history_migrates_without_losing_total(tmp_path):
     (tmp_path/"continuation-pass-history.json").write_text(json.dumps(history))
     assert _record(tmp_path)["sequence"]==6
     persisted=json.loads((tmp_path/"continuation-pass-history.json").read_text())
-    assert persisted["schema_version"]==2
+    assert persisted["schema_version"]==3
     assert persisted["pass_count"]==6
