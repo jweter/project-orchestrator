@@ -529,3 +529,19 @@ def test_live_worker_resets_unknown_liveness_budget(tmp_path):
     assert saved["state"]=="CLAIMED"
     assert saved["unknown_liveness_checks"]==0
     assert "unknown_liveness_first_seen_at" not in saved
+
+def test_quarantined_grants_exposes_safe_actionable_evidence(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{
+        "q":{"state":"QUARANTINED","repository":"o/r","result_status":"CLAIM_LEASE_UNKNOWN_QUARANTINED",
+             "unknown_liveness_checks":5,"worker":{"host":"h","pid":7,"process_start_fingerprint":"fp","lease_token":"SECRET"}},
+        "done":{"state":"COMPLETED","worker":{"lease_token":"OTHER"}}
+    }}))
+    result=supervisor.quarantined_grants(tmp_path)
+    assert set(result)=={"q"}
+    assert result["q"]["repository"]=="o/r"
+    assert result["q"]["worker_pid"]==7
+    assert "lease_token" not in result["q"]
+    assert "SECRET" not in json.dumps(result)

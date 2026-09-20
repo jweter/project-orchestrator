@@ -458,6 +458,33 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
     atomic(path,payload)
     return outcomes
 
+def quarantined_grants(state_root:Path)->dict[str,dict]:
+    """Expose terminal ownership/recovery quarantines without leaking worker secrets."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists():
+        return {}
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    result={}
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict):
+            continue
+        if record.get("state")=="QUARANTINED" or record.get("recovery_state")=="QUARANTINED":
+            worker=record.get("worker") if isinstance(record.get("worker"),dict) else {}
+            result[grant_id]={
+                "repository":record.get("repository"),
+                "result_status":record.get("result_status"),
+                "recovery_result":record.get("recovery_result"),
+                "unknown_liveness_checks":record.get("unknown_liveness_checks",0),
+                "worker_host":worker.get("host"),
+                "worker_pid":worker.get("pid"),
+                "process_start_fingerprint":worker.get("process_start_fingerprint"),
+                "finished_at":record.get("finished_at"),
+            }
+    return result
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -473,6 +500,7 @@ def main()->int:
         abandoned_grants=recover_stale_grant_claims(state)
         recovery_queue=pending_recovery_grants(state,abandoned_grants)
         recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
+        quarantines=quarantined_grants(state)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
@@ -490,7 +518,7 @@ def main()->int:
         lifecycle_advanced=merge_watcher_advanced(state)
         if lifecycle_advanced:
             request_immediate_builder(state)
-        healthy=builder_ok and linear_rc in (None,0)
+        healthy=builder_ok and linear_rc in (None,0) and not quarantines
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
@@ -500,6 +528,8 @@ def main()->int:
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,
             "abandoned_recovery":recovery_results,
+            "quarantined_grants":quarantines,
+            "quarantine_count":len(quarantines),
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
         if a.once:
