@@ -1163,7 +1163,7 @@ def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)
     try:
         """Return every durable abandoned claim that has not reached a terminal recovery state."""
         path=state_root/"hands-off-grant-lifecycle.json"
-    lifecycle_lock=_acquire_lifecycle_lock(path)
+        lifecycle_lock=_acquire_lifecycle_lock(path)
         try:
             payload=json.loads(path.read_text(encoding="utf-8"))
             grants=payload.get("grants",{})
@@ -1221,7 +1221,7 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
     try:
         """Revisit durable recovery obligations until recovered or explicitly quarantined."""
         path=state_root/"hands-off-grant-lifecycle.json"
-    lifecycle_lock=_acquire_lifecycle_lock(path)
+        lifecycle_lock=_acquire_lifecycle_lock(path)
         if not grant_ids or not path.exists():
             return {}
         try:
@@ -1389,7 +1389,7 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
     try:
         """Continuously revalidate preserved crash work without mutating it."""
         path=state_root/"hands-off-grant-lifecycle.json"
-    lifecycle_lock=_acquire_lifecycle_lock(path)
+        lifecycle_lock=_acquire_lifecycle_lock(path)
         if not path.exists(): return {}
         try:
             payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
@@ -1452,7 +1452,7 @@ def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_p
     try:
         """Re-evaluate ownership quarantine; only proof of death authorizes recovery."""
         path=state_root/"hands-off-grant-lifecycle.json"
-    lifecycle_lock=_acquire_lifecycle_lock(path)
+        lifecycle_lock=_acquire_lifecycle_lock(path)
         if not path.exists():
             return {}
         try:
