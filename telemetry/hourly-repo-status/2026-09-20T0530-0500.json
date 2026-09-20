@@ -1,0 +1,25 @@
+{
+  "captured_at": "2026-09-20T05:30:45-05:00",
+  "knowledge_engine": {
+    "state": "ADVANCED",
+    "action": "merged knowledge-engine-core PR #510",
+    "merge_commit": "6e443c07c0d4e226277355222baa2530cc304006",
+    "open_existing_work": ["core#507", "core#508", "core#509", "core#511", "core#512", "core#513"]
+  },
+  "rocksmith": {
+    "state": "ELIGIBLE_NOT_ADVANCED",
+    "top_candidate": "#511 dense recognition correctness",
+    "evidence": "issue remains open; main already contains independent Official TAB role UI for stale #560 candidate"
+  },
+  "everward": {
+    "state": "PREFLIGHT_UNVERIFIED",
+    "branch": "repair/unattended-worker-exception-stage",
+    "head": "be3324d07be933d8eb70cb07b8c67361d5321136",
+    "next_gate": "repository-native exact-head preflight"
+  },
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 1,
+  "product_advancement_rate": "1/3",
+  "idle_eligible_lanes": ["Rocksmith"],
+  "notes": "Everward existing repair remains gated; no Product Reality claims fabricated."
+}
