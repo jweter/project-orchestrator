@@ -9,9 +9,8 @@ def _record(root):
 
 @pytest.mark.parametrize("tail",[
     {"sequence":40,"burst_id":"old","process_instance_id":"p"},
-    {"sequence":41,"burst_id":"","process_instance_id":"p"},
-    {"sequence":41,"burst_id":"old","process_instance_id":""},
-    {"sequence":41,"burst_id":"old"},
+    {"sequence":42,"burst_id":"old","process_instance_id":"p"},
+    {"burst_id":"old","process_instance_id":"p"},
     "not-a-record",
 ])
 def test_v2_history_without_authoritative_tail_lineage_resets_sequence(tmp_path,tail):
