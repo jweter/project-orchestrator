@@ -466,5 +466,5 @@ def test_stale_worker_cannot_heartbeat_new_incarnation(tmp_path, monkeypatch):
     stop=threading.Event()
     monkeypatch.setattr(stop,"wait",lambda interval: False)
     old={"host":"h","pid":7,"process_started_ns":11,"lease_token":"old"}
-    builder.heartbeat_grant(grant,stop,old,interval=0)
+    builder.heartbeat_grant(grant,stop,interval=0,worker=old)
     assert json.loads(lifecycle.read_text())["grants"]["g"]["last_heartbeat_at"]=="before"
