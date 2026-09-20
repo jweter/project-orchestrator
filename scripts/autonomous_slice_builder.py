@@ -700,13 +700,29 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                             "--title","AUTO: bounded autonomous engineering slice","--body",body],
                            cwd=ws,text=True,capture_output=True,check=False)
     status="PR_OPEN" if created.returncode==0 else "PR_CREATE_FAILED"
-    if execution_grant is not None and created.returncode==0:
-        advance_grant_stage(execution_grant,"PR_OPEN",repository=repo,base_sha=base,branch=branch,head_sha=head,remote_head_sha=head,pr_url=created.stdout.strip())
+    pr_url=created.stdout.strip()
+    pr_number=pr_number_from_url(pr_url) if created.returncode==0 else None
+    if created.returncode==0 and pr_number is None:
+        status="PR_IDENTITY_UNPROVEN"
+    if execution_grant is not None and status=="PR_OPEN":
+        advance_grant_stage(execution_grant,"PR_OPEN",repository=repo,base_sha=base,branch=branch,head_sha=head,remote_head_sha=head,
+                            pr_url=pr_url,pr_number=pr_number)
     result={"status":status,"repository":repo,"branch":branch,"base_sha":base,
-            "head_sha":head,"changed_paths":paths,"pr_url":created.stdout.strip(),
+            "head_sha":head,"changed_paths":paths,"pr_url":pr_url,"pr_number":pr_number,
             "last_repo_index":idx,"last_repository":repo}
     atomic_json(state_path,result)
     return result
+
+def pr_number_from_url(value:str)->int|None:
+    """Extract durable PR identity from the canonical gh create output."""
+    try:
+        marker="/pull/"
+        if marker not in value:
+            return None
+        number=value.strip().rstrip("/").rsplit(marker,1)[1]
+        return int(number) if number.isdigit() else None
+    except (TypeError,ValueError):
+        return None
 
 def stop_grant_heartbeat(stop:threading.Event|None,thread:threading.Thread|None)->None:
     if stop is not None:
