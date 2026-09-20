@@ -414,6 +414,47 @@ def validate_preserved_work(ws:Path,record:dict)->str:
         return "PRESERVED_VALIDATION_EVIDENCE_INCOMPLETE"
     return "PRESERVED_VALIDATION_PASSED"
 
+def issue_preserved_recovery_capability(record:dict)->dict|None:
+    """Issue inert, single-use authority bound to exact validated preserved work."""
+    evidence=record.get("preserved_work_evidence",{})
+    if record.get("preserved_work_validation")!="PRESERVED_VALIDATION_PASSED":
+        return None
+    required=("repository","base_sha","branch")
+    if any(not record.get(k) for k in required) or not evidence.get("diff_sha256"):
+        return None
+    import secrets
+    return {
+        "capability_id":secrets.token_urlsafe(18),
+        "state":"ISSUED",
+        "repository":record["repository"],
+        "base_sha":record["base_sha"],
+        "branch":record["branch"],
+        "preserved_diff_sha256":evidence["diff_sha256"],
+        "preserved_head_sha":evidence.get("head_sha"),
+        "issued_at":datetime.now(UTC).isoformat(),
+    }
+
+def consume_preserved_recovery_capability(ws:Path,record:dict)->str:
+    """Consume exact recovery authority once; does not itself mutate product work."""
+    cap=record.get("preserved_recovery_capability")
+    if not isinstance(cap,dict) or cap.get("state")!="ISSUED":
+        return "RECOVERY_CAPABILITY_UNAVAILABLE"
+    if record.get("preserved_work_validation")!="PRESERVED_VALIDATION_PASSED":
+        return "RECOVERY_CAPABILITY_VALIDATION_STALE"
+    evidence=record.get("preserved_work_evidence",{})
+    bindings={
+        "repository":record.get("repository"),"base_sha":record.get("base_sha"),
+        "branch":record.get("branch"),"preserved_diff_sha256":evidence.get("diff_sha256"),
+        "preserved_head_sha":evidence.get("head_sha"),
+    }
+    if any(cap.get(k)!=v for k,v in bindings.items()):
+        return "RECOVERY_CAPABILITY_BINDING_MISMATCH"
+    if revalidate_preserved_work(ws,record)!="PRESERVED_WORK_EXACT":
+        return "RECOVERY_CAPABILITY_IDENTITY_CHANGED"
+    cap["state"]="CONSUMED"
+    cap["consumed_at"]=datetime.now(UTC).isoformat()
+    return "RECOVERY_CAPABILITY_CONSUMED"
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -610,6 +651,10 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
             validation=validate_preserved_work(ws,record)
             record["preserved_work_validation"]=validation
             record["preserved_work_validated_at"]=datetime.now(UTC).isoformat()
+            if validation=="PRESERVED_VALIDATION_PASSED" and not record.get("preserved_recovery_capability"):
+                capability=issue_preserved_recovery_capability(record)
+                if capability:
+                    record["preserved_recovery_capability"]=capability
             outcomes[grant_id]=validation
         changed=True
     if changed: atomic(path,payload)
