@@ -1776,6 +1776,27 @@ def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
     atomic(state_root/"liveness-reacquire.json",result)
     return result
 
+def record_async_gate_rotation(state_root:Path,*,blocked_repository:str|None,blocked_status:str,
+                               next_repository:str|None,burst_id:str|None,process_instance_id:str|None)->dict:
+    """Persist proof that an asynchronous product gate caused portfolio rotation rather than idle."""
+    path=state_root/"async-gate-rotation-history.json"
+    try:
+        history=json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        history={"schema_version":1,"rotations":[]}
+    rotations=history.get("rotations") if isinstance(history,dict) else None
+    if not isinstance(rotations,list):
+        rotations=[]
+    record={"recorded_at_utc":datetime.now(UTC).isoformat(),
+            "blocked_repository":blocked_repository,"blocked_status":blocked_status,
+            "next_repository":next_repository,"burst_id":burst_id,
+            "process_instance_id":process_instance_id,
+            "rotated":bool(next_repository and next_repository!=blocked_repository)}
+    rotations.append(record)
+    payload={"schema_version":1,"rotation_count":len(rotations),"rotations":rotations[-100:]}
+    atomic(path,payload)
+    return record
+
 def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder_ok:bool,builder_status:str,normal_seconds:int)->int:
     """Choose the next supervisor pass without turning successful work into idle time."""
     if lifecycle_advanced:
