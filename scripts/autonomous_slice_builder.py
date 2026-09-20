@@ -203,6 +203,15 @@ def worker_incarnation()->dict[str,Any]:
             "process_start_fingerprint":process_start_fingerprint(),
             "lease_token":uuid.uuid4().hex}
 
+def grant_state_root(path:Path)->Path:
+    """Return the durable state root for legacy or unique per-grant files."""
+    if path.parent.name=="hands-off-execution-grants":
+        return path.parent.parent
+    return path.parent
+
+def lifecycle_path_for_grant(path:Path)->Path:
+    return grant_state_root(path)/"hands-off-grant-lifecycle.json"
+
 def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
@@ -233,7 +242,7 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         contract_bytes=contract.read_bytes()
         contract_digest=hashlib.sha256(contract_bytes).hexdigest()
         declared_products=json.loads(contract_bytes).get("products",{})
-        activation=activation_path or path.with_name("hands-off-activation.json")
+        activation=activation_path or (grant_state_root(path)/"hands-off-activation.json")
         activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     except (OSError,json.JSONDecodeError):
         return {}
@@ -350,7 +359,7 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
 
 def advance_grant_stage(grant_path:Path,stage:str,**evidence:Any)->bool:
     """Durably record execution progress so recovery need not infer completed stages."""
-    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    lifecycle=lifecycle_path_for_grant(grant_path)
     try:
         grant=json.loads(grant_path.read_text(encoding="utf-8"))
         state=json.loads(lifecycle.read_text(encoding="utf-8"))
@@ -753,7 +762,7 @@ def stop_grant_heartbeat(stop:threading.Event|None,thread:threading.Thread|None)
         thread.join(timeout=2)
 
 def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
-    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    lifecycle=lifecycle_path_for_grant(grant_path)
     try:
         grant=json.loads(grant_path.read_text(encoding="utf-8"))
         state=json.loads(lifecycle.read_text(encoding="utf-8"))
