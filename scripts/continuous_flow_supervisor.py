@@ -166,8 +166,21 @@ def request_immediate_builder(state_root:Path)->None:
         "reason":"PR_LIFECYCLE_ADVANCED",
     })
 
+def reconcile_merge_feedback(state_root:Path,merged:list[dict])->list[dict]:
+    """Advance exact merged slices into capability state before selecting more work."""
+    outcomes=[]
+    for event in merged:
+        slice_result=reconcile_verified_merge(state_root,event)
+        outcome={"event":event,"slice":slice_result}
+        capability_id=slice_result.get("capability_id")
+        if capability_id:
+            outcome["capability"]=reconcile_capability_from_slice_evidence(
+                state_root,event.get("repository"),capability_id)
+        outcomes.append(outcome)
+    return outcomes
+
 def merge_watcher_advanced(state_root:Path)->bool:
-    """Consume each successful merge observation exactly once."""
+    """Consume each successful merge observation exactly once, after product-state reconciliation."""
     path=state_root/"green-pr-watcher.json"
     cursor=state_root/"green-pr-watcher-consumed.json"
     try:
@@ -189,6 +202,18 @@ def merge_watcher_advanced(state_root:Path)->bool:
         previous=None
     if previous==event:
         return False
+    outcomes=reconcile_merge_feedback(state_root,event["merged"])
+    blocking={"MERGE_IDENTITY_INCOMPLETE","LIFECYCLE_UNAVAILABLE","MERGE_SLICE_IDENTITY_UNPROVEN",
+              "COMPLETION_EVIDENCE_CONFLICT","CAPABILITY_GRAPH_UNAVAILABLE","CAPABILITY_IDENTITY_UNPROVEN",
+              "CAPABILITY_SLICES_REQUIRED","CAPABILITY_SLICE_IDENTITY_UNPROVEN","SLICE_EVIDENCE_UNREADABLE",
+              "SLICE_EVIDENCE_IDENTITY_CONFLICT","CAPABILITY_COMPLETION_CONFLICT"}
+    if any(item.get("slice",{}).get("status") in blocking
+           or item.get("capability",{}).get("status") in blocking for item in outcomes):
+        atomic(state_root/"merge-feedback-blocked.json",{"event":event,"outcomes":outcomes})
+        return False
+    blocked=state_root/"merge-feedback-blocked.json"
+    if blocked.exists(): blocked.unlink()
+    atomic(state_root/"merge-feedback-last.json",{"event":event,"outcomes":outcomes})
     atomic(cursor,event)
     return True
 
