@@ -24,10 +24,12 @@ def test_terminal_old_grant_does_not_block_new_work(tmp_path):
     write_lifecycle(tmp_path,state="COMPLETED")
     assert conflicting_nonterminal_grant(tmp_path,"jweter/repo",SLICE) is None
 
-def test_different_slice_does_not_collide(tmp_path):
+def test_different_slice_in_same_repo_is_fenced(tmp_path):
     write_lifecycle(tmp_path)
     other=dict(SLICE,slice_id="slice-2")
-    assert conflicting_nonterminal_grant(tmp_path,"jweter/repo",other) is None
+    conflict=conflicting_nonterminal_grant(tmp_path,"jweter/repo",other)
+    assert conflict["grant_id"]=="grant-old"
+    assert conflict["state"]=="CLAIMED"
 
 def test_unreadable_lifecycle_fails_closed(tmp_path):
     (tmp_path/"hands-off-grant-lifecycle.json").write_text("{bad",encoding="utf-8")
