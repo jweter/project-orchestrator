@@ -691,10 +691,12 @@ def test_preserved_quarantine_recheck_never_releases_work(tmp_path,monkeypatch):
     path=state/"hands-off-grant-lifecycle.json"
     path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","recovery_state":"QUARANTINED","recovery_quarantine_reason":"UNCOMMITTED_WORK_REQUIRES_PRESERVATION","repository":"o/r","base_sha":"b","preserved_work_evidence":{"capture_status":"CAPTURED"}}}}))
     monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,record:"PRESERVED_WORK_EXACT")
-    assert supervisor.recheck_preserved_work_quarantines(wsroot,state)=={"g":"PRESERVED_WORK_EXACT"}
+    monkeypatch.setattr(supervisor,"validate_preserved_work",lambda ws,record:"PRESERVED_VALIDATION_PASSED")
+    assert supervisor.recheck_preserved_work_quarantines(wsroot,state)=={"g":"PRESERVED_VALIDATION_PASSED"}
     saved=json.loads(path.read_text())["grants"]["g"]
     assert saved["recovery_state"]=="QUARANTINED"
     assert saved["preserved_work_revalidation"]=="PRESERVED_WORK_EXACT"
+    assert saved["preserved_work_validation"]=="PRESERVED_VALIDATION_PASSED"
 
 def test_validate_preserved_work_requires_identity_before_and_after(tmp_path,monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
