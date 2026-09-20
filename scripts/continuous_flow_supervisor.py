@@ -1810,6 +1810,12 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
             tail=candidate[-1]
             valid=(isinstance(tail,dict) and tail.get("sequence")==candidate_total)
         if valid and history.get("schema_version")==3:
+            anchor_material={"pass_count":candidate_total,
+                             "immediate_continuation_count":candidate_immediate,
+                             "retained_predecessor_hash":history.get("retained_predecessor_hash"),
+                             "chain_head":history.get("chain_head")}
+            anchor_hash=hashlib.sha256(json.dumps(anchor_material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+            valid=(history.get("anchor_hash")==anchor_hash)
             expected=history.get("retained_predecessor_hash")
             for item in candidate:
                 if not isinstance(item,dict):
@@ -1849,6 +1855,8 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
              "immediate_continuation_count":immediate_total+(1 if immediate else 0),
              "chain_head":record["record_hash"],
              "retained_predecessor_hash":retained_predecessor_hash,"passes":retained}
+    anchor_material={k:payload[k] for k in ("pass_count","immediate_continuation_count","retained_predecessor_hash","chain_head")}
+    payload["anchor_hash"]=hashlib.sha256(json.dumps(anchor_material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
     atomic(path,payload)
     return record
 
