@@ -110,6 +110,9 @@ def test_recertify_product_runs_targeted_audit_and_merges(tmp_path, monkeypatch)
     workspace=tmp_path/"workspace"; workspace.mkdir()
     for name in ["knowledge-engine-core","knowledge-engine-web","knowledge-engine-ai","rocksmith-cdlc-generator","Project-Everward"]:
         (workspace/name).mkdir()
+    (tmp_path/"engineering").mkdir()
+    (tmp_path/"engineering"/"hands-off-evolution.json").write_text(json.dumps({"products":{
+        "rocksmith":["jweter/rocksmith-cdlc-generator"]}}))
     (state/"hands-off-activation.json").write_text(json.dumps({"schema_version":2,"products":{
         "rocksmith":{"enabled":True,"status":"PASS","repositories":{"jweter/rocksmith-cdlc-generator":"old"}},
         "everward":{"enabled":True,"status":"PASS","repositories":{"jweter/Project-Everward":"stable"}}}}),encoding="utf-8")
