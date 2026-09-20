@@ -4,6 +4,7 @@ import argparse, hashlib, json, os, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from scripts.capability_slice_contract import derive_slice
+from scripts.product_completion_proof import build_completion_proof
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -295,6 +296,31 @@ def reconcile_capability_from_slice_evidence(state_root:Path,repo:str,capability
     return {"status":"CAPABILITY_VERIFIED_COMPLETE" if complete else "CAPABILITY_IN_PROGRESS",
             "capability_id":capability_id,"changed":changed}
 
+def reconcile_product_completion(state_root:Path,repo:str,exact_head:str,payload:dict)->dict:
+    """Promote exact-head final evidence into authoritative product completion."""
+    graph=derive_slice(payload,repository=repo,exact_head=exact_head)
+    if graph.get("status")!="DIRECTION_REQUIRED" or graph.get("issues")!=[{"code":"PRODUCT_COMPLETION_EVIDENCE_REQUIRED"}]:
+        return {"status":"NOT_APPLICABLE"}
+    root=state_root/"product-completion-evidence"
+    def load(name:str):
+        path=root/f"{repo.replace('/','__')}__{name}.json"
+        if not path.exists(): return []
+        try:
+            value=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError):
+            return None
+        return value if isinstance(value,list) else None
+    acceptance=load("acceptance"); reality=load("product-reality")
+    if acceptance is None or reality is None:
+        return {"status":"EVIDENCE_UNREADABLE"}
+    proof=build_completion_proof(exact_head=exact_head,acceptance=acceptance,product_reality=reality)
+    if proof.get("status")!="VERIFIED":
+        return proof
+    payload["product_completion"]=proof["product_completion"]
+    graph_path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
+    atomic(graph_path,payload)
+    return {"status":"PRODUCT_COMPLETION_VERIFIED","product_completion":proof["product_completion"]}
+
 def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
     """Derive bounded mutation authority from the repository's machine-readable capability graph."""
     path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
@@ -311,6 +337,10 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
         })
         raise RuntimeError(f"CAPABILITY_GRAPH_REQUIRED:{repo}")
     derived=derive_slice(payload,repository=repo,exact_head=exact_head)
+    if derived.get("status")=="DIRECTION_REQUIRED" and derived.get("issues")==[{"code":"PRODUCT_COMPLETION_EVIDENCE_REQUIRED"}]:
+        reconciliation=reconcile_product_completion(state_root,repo,exact_head,payload)
+        if reconciliation.get("status")=="PRODUCT_COMPLETION_VERIFIED":
+            derived=derive_slice(payload,repository=repo,exact_head=exact_head)
     request_path=state_root/"direction-requests"/f"{repo.replace('/','__')}.json"
     if derived.get("status")=="NO_WORK":
         request_path.unlink(missing_ok=True)
