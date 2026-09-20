@@ -490,6 +490,45 @@ def commit_preserved_work(ws:Path,record:dict)->str:
     cap["outcome"]="COMMITTED_EXACT"
     return "PRESERVED_COMMIT_RECOVERED"
 
+def reconcile_consumed_recovery(ws:Path,record:dict)->str:
+    """Adopt only a provably exact commit left by an interrupted recovery mutation."""
+    cap=record.get("preserved_recovery_capability")
+    if not isinstance(cap,dict) or cap.get("state")!="CONSUMED":
+        return "CONSUMED_RECOVERY_NOT_APPLICABLE"
+    if record.get("execution_stage")=="COMMITTED" and record.get("head_sha"):
+        return "CONSUMED_RECOVERY_ALREADY_DURABLE"
+    expected=record.get("preserved_work_evidence",{})
+    base=record.get("base_sha"); branch_expected=record.get("branch")
+    if not base or not branch_expected or not expected.get("diff_sha256"):
+        return "CONSUMED_RECOVERY_EVIDENCE_MISSING"
+    status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
+    head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+    branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+    if status.returncode or head.returncode or branch.returncode:
+        return "CONSUMED_RECOVERY_WORKSPACE_UNREADABLE"
+    if branch.stdout.strip()!=branch_expected:
+        return "CONSUMED_RECOVERY_BRANCH_MISMATCH"
+    current_head=head.stdout.strip()
+    if current_head==base:
+        return "CONSUMED_RECOVERY_NO_COMMIT"
+    if status.stdout.strip():
+        return "CONSUMED_RECOVERY_DIRTY_AFTER_COMMIT"
+    ancestor=subprocess.run(["git","merge-base","--is-ancestor",base,current_head],cwd=ws,text=True,capture_output=True,check=False)
+    if ancestor.returncode:
+        return "CONSUMED_RECOVERY_NON_DESCENDANT"
+    diff=subprocess.run(["git","diff","--binary",base,current_head],cwd=ws,text=True,capture_output=True,check=False)
+    import hashlib
+    digest=hashlib.sha256(diff.stdout.encode("utf-8",errors="replace")).hexdigest() if not diff.returncode else None
+    if digest!=expected.get("diff_sha256"):
+        return "CONSUMED_RECOVERY_COMMIT_MISMATCH"
+    record["execution_stage"]="COMMITTED"
+    record["head_sha"]=current_head
+    record["recovery_state"]="RECOVERING"
+    record["recovery_result"]="CONSUMED_RECOVERY_COMMIT_ADOPTED"
+    cap["outcome"]="COMMITTED_EXACT_RECONCILED"
+    cap["committed_head_sha"]=current_head
+    return "CONSUMED_RECOVERY_COMMIT_ADOPTED"
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -678,6 +717,12 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
         if not repo:
             outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"; continue
         ws=workspace_root/repo.split("/",1)[-1]
+        if ws.is_dir() and record.get("preserved_recovery_capability",{}).get("state")=="CONSUMED":
+            reconciled=reconcile_consumed_recovery(ws,record)
+            if reconciled in {"CONSUMED_RECOVERY_COMMIT_ADOPTED","CONSUMED_RECOVERY_ALREADY_DURABLE"}:
+                outcomes[grant_id]=reconciled
+                changed=True
+                continue
         outcome=revalidate_preserved_work(ws,record) if ws.is_dir() else "PRESERVED_WORKSPACE_MISSING"
         outcomes[grant_id]=outcome
         record["preserved_work_revalidation"]=outcome

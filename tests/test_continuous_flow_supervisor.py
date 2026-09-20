@@ -816,3 +816,38 @@ def test_exact_recovery_commit_records_terminal_success(tmp_path,monkeypatch):
     monkeypatch.setattr(supervisor.subprocess,"run",fake)
     assert supervisor.commit_preserved_work(tmp_path,record)=="PRESERVED_COMMIT_RECOVERED"
     assert record["preserved_recovery_capability"]["outcome"]=="COMMITTED_EXACT"
+
+def test_reconcile_consumed_recovery_adopts_only_exact_clean_descendant(tmp_path,monkeypatch):
+    import hashlib
+    import scripts.continuous_flow_supervisor as supervisor
+    diff="exact"
+    record={"base_sha":"base","branch":"actor/x","preserved_work_evidence":{"diff_sha256":hashlib.sha256(diff.encode()).hexdigest()},
+            "preserved_recovery_capability":{"state":"CONSUMED","outcome":"MUTATION_STARTED"}}
+    class R:
+        def __init__(self,code=0,out=""): self.returncode=code; self.stdout=out; self.stderr=""
+    def fake(cmd,**kwargs):
+        if cmd[1:3]==["status","--porcelain"]: return R(0,"")
+        if cmd[1:3]==["rev-parse","HEAD"]: return R(0,"new\n")
+        if cmd[1:3]==["branch","--show-current"]: return R(0,"actor/x\n")
+        if cmd[1:3]==["merge-base","--is-ancestor"]: return R()
+        if cmd[1:3]==["diff","--binary"]: return R(0,diff)
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.reconcile_consumed_recovery(tmp_path,record)=="CONSUMED_RECOVERY_COMMIT_ADOPTED"
+    assert record["execution_stage"]=="COMMITTED" and record["head_sha"]=="new"
+    assert record["preserved_recovery_capability"]["outcome"]=="COMMITTED_EXACT_RECONCILED"
+
+def test_reconcile_consumed_recovery_refuses_dirty_or_wrong_commit(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"base_sha":"base","branch":"actor/x","preserved_work_evidence":{"diff_sha256":"expected"},
+            "preserved_recovery_capability":{"state":"CONSUMED"}}
+    class R:
+        def __init__(self,code=0,out=""): self.returncode=code; self.stdout=out; self.stderr=""
+    def dirty(cmd,**kwargs):
+        if cmd[1:3]==["status","--porcelain"]: return R(0," M x\n")
+        if cmd[1:3]==["rev-parse","HEAD"]: return R(0,"new\n")
+        if cmd[1:3]==["branch","--show-current"]: return R(0,"actor/x\n")
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",dirty)
+    assert supervisor.reconcile_consumed_recovery(tmp_path,record)=="CONSUMED_RECOVERY_DIRTY_AFTER_COMMIT"
+    assert "execution_stage" not in record
