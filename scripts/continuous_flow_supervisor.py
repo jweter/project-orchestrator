@@ -1776,6 +1776,23 @@ def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
     atomic(state_root/"liveness-reacquire.json",result)
     return result
 
+def selected_builder_repository(state_root:Path)->str|None:
+    try:
+        payload=json.loads((state_root/"builder.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        return None
+    value=payload.get("repository") or payload.get("last_repository")
+    return value if isinstance(value,str) and value else None
+
+def maybe_record_async_rotation(state_root:Path,*,previous_repository:str|None,previous_status:str|None,
+                                current_repository:str|None,burst_id:str|None,process_instance_id:str|None)->dict|None:
+    async_states={"REVIEW_BLOCKED","CI_PENDING","PR_BLOCKED"}
+    if previous_status not in async_states or not previous_repository or not current_repository:
+        return None
+    return record_async_gate_rotation(state_root,blocked_repository=previous_repository,
+        blocked_status=previous_status,next_repository=current_repository,
+        burst_id=burst_id,process_instance_id=process_instance_id)
+
 def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder_ok:bool,builder_status:str,normal_seconds:int)->int:
     """Choose the next supervisor pass without turning successful work into idle time."""
     if lifecycle_advanced:
@@ -2025,6 +2042,8 @@ def main()->int:
         "worker":instance_lock["worker"],"started_at_utc":datetime.now(UTC).isoformat()})
     burst_id=burst["burst_id"]
     burst_pass=burst["burst_pass"]
+    previous_repository=None
+    previous_builder_status=None
     while True:
         burst_pass+=1
         if merge is None or merge.poll() is not None:
@@ -2058,6 +2077,12 @@ def main()->int:
         else:
             rc,builder_invocation_id=3,None
         builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
+        current_repository=selected_builder_repository(state)
+        rotation_evidence=maybe_record_async_rotation(state,previous_repository=previous_repository,
+            previous_status=previous_builder_status,current_repository=current_repository,
+            burst_id=burst_id,process_instance_id=process_instance_id)
+        previous_repository=current_repository
+        previous_builder_status=builder_status
         lifecycle_advanced=merge_watcher_advanced(state)
         if lifecycle_advanced:
             request_immediate_builder(state)
@@ -2081,6 +2106,7 @@ def main()->int:
             "quarantined_grants":quarantines,
             "quarantine_count":len(quarantines),
             "pr_lifecycle_advanced":lifecycle_advanced,
+            "async_gate_rotation":rotation_evidence,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None,
             "process_instance_id":process_instance_id,"burst_id":burst_id})
         if a.once:
