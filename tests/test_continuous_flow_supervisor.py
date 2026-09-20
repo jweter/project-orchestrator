@@ -926,3 +926,23 @@ def test_staged_commit_capability_refuses_parent_binding_drift(tmp_path):
                 "repository":"o/r","base_sha":"b","branch":"x","preserved_diff_sha256":"d"}}
     assert supervisor.commit_reconciled_staged_work(tmp_path,record)=="STAGED_COMMIT_CAPABILITY_BINDING_MISMATCH"
     assert record["staged_commit_capability"]["state"]=="ISSUED"
+
+def test_pending_recovery_requeues_exact_recovered_commit_from_quarantine(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","recovery_state":"QUARANTINED",
+        "execution_stage":"COMMITTED","head_sha":"abc","recovery_result":"STAGED_COMMIT_RECOVERED"}}}))
+    assert supervisor.pending_recovery_grants(state)==["g"]
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["recovery_state"]=="RECOVERING"
+
+def test_pending_recovery_does_not_requeue_ambiguous_quarantine(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{"g":{"state":"ABANDONED",
+        "recovery_state":"QUARANTINED","execution_stage":"COMMITTED","head_sha":"abc",
+        "recovery_result":"PRESERVED_COMMIT_FINGERPRINT_MISMATCH"}}}))
+    assert supervisor.pending_recovery_grants(state)==[]
