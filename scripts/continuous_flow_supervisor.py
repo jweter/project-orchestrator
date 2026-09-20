@@ -455,6 +455,34 @@ def consume_preserved_recovery_capability(ws:Path,record:dict)->str:
     cap["consumed_at"]=datetime.now(UTC).isoformat()
     return "RECOVERY_CAPABILITY_CONSUMED"
 
+def commit_preserved_work(ws:Path,record:dict)->str:
+    """Consume exact recovery authority and durably preserve validated work in Git."""
+    outcome=consume_preserved_recovery_capability(ws,record)
+    if outcome!="RECOVERY_CAPABILITY_CONSUMED":
+        return outcome
+    expected=record.get("preserved_work_evidence",{})
+    add=subprocess.run(["git","add","-A"],cwd=ws,text=True,capture_output=True,check=False)
+    if add.returncode:
+        return "PRESERVED_COMMIT_STAGE_FAILED"
+    commit=subprocess.run(["git","commit","-m","chore: recover validated autonomous work"],cwd=ws,text=True,capture_output=True,check=False)
+    if commit.returncode:
+        return "PRESERVED_COMMIT_FAILED"
+    head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+    branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+    if head.returncode or branch.returncode or branch.stdout.strip()!=record.get("branch"):
+        return "PRESERVED_COMMIT_IDENTITY_FAILED"
+    new_head=head.stdout.strip()
+    changed=subprocess.run(["git","diff","--binary",record["base_sha"],new_head],cwd=ws,text=True,capture_output=True,check=False)
+    import hashlib
+    if changed.returncode or hashlib.sha256(changed.stdout.encode("utf-8",errors="replace")).hexdigest()!=expected.get("diff_sha256"):
+        return "PRESERVED_COMMIT_FINGERPRINT_MISMATCH"
+    record["execution_stage"]="COMMITTED"
+    record["head_sha"]=new_head
+    record["recovery_state"]="RECOVERING"
+    record["recovery_result"]="PRESERVED_COMMIT_RECOVERED"
+    record["preserved_recovery_capability"]["committed_head_sha"]=new_head
+    return "PRESERVED_COMMIT_RECOVERED"
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -655,7 +683,12 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
                 capability=issue_preserved_recovery_capability(record)
                 if capability:
                     record["preserved_recovery_capability"]=capability
-            outcomes[grant_id]=validation
+            if validation=="PRESERVED_VALIDATION_PASSED" and record.get("preserved_recovery_capability",{}).get("state")=="ISSUED":
+                commit_outcome=commit_preserved_work(ws,record)
+                record["preserved_work_commit_result"]=commit_outcome
+                outcomes[grant_id]=commit_outcome
+            else:
+                outcomes[grant_id]=validation
         changed=True
     if changed: atomic(path,payload)
     return outcomes
