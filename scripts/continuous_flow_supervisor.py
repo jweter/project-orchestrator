@@ -609,7 +609,8 @@ def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
     try:
-        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        grants=payload.get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return list(dict.fromkeys(newly_abandoned or []))
     pending=list(newly_abandoned or [])
