@@ -480,3 +480,21 @@ def test_stale_claim_is_abandoned_only_when_worker_proven_dead(tmp_path):
     saved=json.loads(path.read_text())["grants"]["g"]
     assert saved["state"]=="ABANDONED"
     assert saved["result_status"]=="CLAIM_LEASE_EXPIRED_WORKER_DEAD"
+
+def test_worker_liveness_rejects_pid_reuse(monkeypatch):
+    import socket
+    import scripts.continuous_flow_supervisor as supervisor
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: None)
+    monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:"linux:boot:new")
+    worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"linux:boot:old"}
+    assert supervisor.worker_liveness(worker)=="DEAD"
+
+def test_worker_liveness_accepts_matching_process_fingerprint(monkeypatch):
+    import socket
+    import scripts.continuous_flow_supervisor as supervisor
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: None)
+    monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:"linux:boot:same")
+    worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"linux:boot:same"}
+    assert supervisor.worker_liveness(worker)=="ALIVE"

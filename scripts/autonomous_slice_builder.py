@@ -156,10 +156,43 @@ def ensure_workspace(repo:str,root:Path)->Path:
 
 HEARTBEAT_SECONDS=60
 
+def process_start_fingerprint(pid:int|None=None)->str|None:
+    """Return an OS-backed process creation identity when available."""
+    pid=pid or os.getpid()
+    if sys.platform.startswith("linux"):
+        try:
+            stat=Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+            start_ticks=stat[stat.rfind(")")+2:].split()[19]
+            boot_id=Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+            return f"linux:{boot_id}:{start_ticks}"
+        except (OSError,IndexError,ValueError):
+            return None
+    if sys.platform=="win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            kernel32=ctypes.WinDLL("kernel32",use_last_error=True)
+            handle=kernel32.OpenProcess(0x1000,False,pid)
+            if not handle:
+                return None
+            creation=wintypes.FILETIME(); exit_time=wintypes.FILETIME()
+            kernel=wintypes.FILETIME(); user=wintypes.FILETIME()
+            try:
+                if not kernel32.GetProcessTimes(handle,ctypes.byref(creation),ctypes.byref(exit_time),ctypes.byref(kernel),ctypes.byref(user)):
+                    return None
+                ticks=(creation.dwHighDateTime<<32)|creation.dwLowDateTime
+                return f"windows:{ticks}"
+            finally:
+                kernel32.CloseHandle(handle)
+        except (AttributeError,OSError):
+            return None
+    return None
+
 def worker_incarnation()->dict[str,Any]:
     """Identify this concrete worker process; PID alone is intentionally insufficient."""
     return {"host":socket.gethostname(),"pid":os.getpid(),
-            "process_started_ns":int(time.time_ns()-time.monotonic_ns()),
+            "incarnation_id":uuid.uuid4().hex,
+            "process_start_fingerprint":process_start_fingerprint(),
             "lease_token":uuid.uuid4().hex}
 
 def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
