@@ -1806,6 +1806,12 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
                and 0 <= candidate_total <= 10000000
                and isinstance(candidate_immediate,int) and not isinstance(candidate_immediate,bool)
                and 0 <= candidate_immediate <= candidate_total)
+        if valid and history.get("schema_version")==2 and candidate:
+            tail=candidate[-1]
+            valid=(isinstance(tail,dict)
+                   and tail.get("sequence")==candidate_total
+                   and isinstance(tail.get("burst_id"),str) and tail.get("burst_id")
+                   and isinstance(tail.get("process_instance_id"),str) and tail.get("process_instance_id"))
         if valid:
             passes=candidate
             total=candidate_total
