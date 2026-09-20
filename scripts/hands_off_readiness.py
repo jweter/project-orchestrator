@@ -107,7 +107,23 @@ def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
         result["head"] = _git(repo, "rev-parse", "HEAD")
         tracked = _tracked_files(repo)
         corpus = _text_corpus(repo, tracked)
-        result["alignment"] = alignment_sufficiency(repo, tracked)
+        authority_manifest = {}
+        manifest_path = repo / "engineering" / "hands-off-authority.json"
+        if "engineering/hands-off-authority.json" in tracked:
+            try:
+                authority_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                result["error"] = f"invalid repository authority manifest: {exc}"
+                return result
+            if not isinstance(authority_manifest, dict) or authority_manifest.get("schema_version") != 1 or not isinstance(authority_manifest.get("authority"), dict):
+                result["error"] = "invalid repository authority manifest schema"
+                return result
+        alignment_tracked = set(tracked)
+        for authority_id in ("vision_completion", "roadmap"):
+            declared = authority_manifest.get("authority", {}).get(authority_id, [])
+            if isinstance(declared, list) and any(isinstance(path, str) and path in tracked for path in declared):
+                alignment_tracked.add("README.md" if authority_id == "vision_completion" else "ROADMAP.md")
+        result["alignment"] = alignment_sufficiency(repo, alignment_tracked)
     except (OSError, RuntimeError) as exc:
         result["error"] = str(exc)
         return result
@@ -116,8 +132,15 @@ def audit(repo: Path, contract: dict[str, Any]) -> dict[str, Any]:
     for requirement in contract.get("required_authority", []):
         evidence: list[str] = []
         paths = requirement.get("evidence_any", [])
+        declared = authority_manifest.get("authority", {}).get(requirement.get("id"), [])
+        if declared is not None and not isinstance(declared, list):
+            result["error"] = f"invalid authority declaration for {requirement.get('id', 'unknown')}"
+            return result
         for path in paths:
             if path in tracked:
+                evidence.append(path)
+        for path in declared or []:
+            if isinstance(path, str) and path in tracked and path not in evidence:
                 evidence.append(path)
         signals = [str(s).lower() for s in requirement.get("text_signal_any", [])]
         signal_hits = [s for s in signals if s in corpus]
