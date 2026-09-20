@@ -785,3 +785,34 @@ def test_commit_preserved_work_rejects_commit_fingerprint_drift(tmp_path,monkeyp
     monkeypatch.setattr(supervisor.subprocess,"run",fake)
     assert supervisor.commit_preserved_work(tmp_path,record)=="PRESERVED_COMMIT_FINGERPRINT_MISMATCH"
     assert "execution_stage" not in record
+
+def test_consumed_recovery_capability_records_terminal_mutation_failure(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"base_sha":"base","branch":"actor/x","preserved_work_evidence":{"diff_sha256":"x"},
+            "preserved_recovery_capability":{"state":"CONSUMED"}}
+    monkeypatch.setattr(supervisor,"consume_preserved_recovery_capability",lambda ws,r:"RECOVERY_CAPABILITY_CONSUMED")
+    class R:
+        def __init__(self,code=0,out=""): self.returncode=code; self.stdout=out; self.stderr=""
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda cmd,**kwargs:R(1) if cmd[:2]==["git","add"] else R())
+    assert supervisor.commit_preserved_work(tmp_path,record)=="PRESERVED_COMMIT_STAGE_FAILED"
+    assert record["preserved_recovery_capability"]["state"]=="CONSUMED"
+    assert record["preserved_recovery_capability"]["outcome"]=="STAGE_FAILED"
+
+def test_exact_recovery_commit_records_terminal_success(tmp_path,monkeypatch):
+    import hashlib
+    import scripts.continuous_flow_supervisor as supervisor
+    diff="d"
+    record={"base_sha":"base","branch":"actor/x","preserved_work_evidence":{"diff_sha256":hashlib.sha256(diff.encode()).hexdigest()},
+            "preserved_recovery_capability":{"state":"CONSUMED"}}
+    monkeypatch.setattr(supervisor,"consume_preserved_recovery_capability",lambda ws,r:"RECOVERY_CAPABILITY_CONSUMED")
+    class R:
+        returncode=0
+        def __init__(self,out=""): self.stdout=out; self.stderr=""
+    def fake(cmd,**kwargs):
+        if cmd[:3]==["git","rev-parse","HEAD"]: return R("h\n")
+        if cmd[:3]==["git","branch","--show-current"]: return R("actor/x\n")
+        if cmd[:2]==["git","diff"]: return R(diff)
+        return R()
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.commit_preserved_work(tmp_path,record)=="PRESERVED_COMMIT_RECOVERED"
+    assert record["preserved_recovery_capability"]["outcome"]=="COMMITTED_EXACT"
