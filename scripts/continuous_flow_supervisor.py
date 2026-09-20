@@ -1780,7 +1780,7 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
     """Choose the next supervisor pass without turning successful work into idle time."""
     if lifecycle_advanced:
         return 1
-    productive={"PR_OPEN"}
+    productive={"PR_OPEN","REVIEW_BLOCKED","CI_PENDING","PR_BLOCKED"}
     nonproductive={"NO_WORK","NO_OP","SELF_REPAIRED_TO_NO_OP","AUTONOMOUS_CHANGE_REJECTED",
                    "COMMIT_FAILED","USER_ACTIVE","NO_ELIGIBLE_REPOSITORY"}
     if builder_ok and builder_status in productive:
