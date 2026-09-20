@@ -43,6 +43,9 @@ def validate(text: str) -> dict:
         issues.append({"code":"STRUCTURED_COMPLETION_CRITERIA_REQUIRED","sections":["Product Completion Criteria"]})
     if duplicate_criteria:
         issues.append({"code":"DUPLICATE_COMPLETION_CRITERION","criteria":duplicate_criteria})
+    if unsupported_verification_kinds:
+        issues.append({"code":"UNSUPPORTED_COMPLETION_VERIFICATION_KIND",
+                       "verification_kinds":unsupported_verification_kinds})
     if not ready: issues.append({"code":"ACTIVATION_NOT_READY","sections":["Activation Checklist"]})
     return {
         "schema_version":1,
