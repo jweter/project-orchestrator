@@ -411,3 +411,35 @@ def test_run_builder_refuses_dispatch_without_authorized_products(tmp_path, monk
     assert supervisor.run_builder(tmp_path,tmp_path/"workspace",state,None)==2
     assert called is False
     assert "EXECUTION_GRANT_REQUIRED" in (state/"builder-last-output.txt").read_text()
+
+def test_pending_recovery_queue_rediscovers_old_abandoned_claims(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{
+        "old":{"state":"ABANDONED","recovery_result":"RECOVERY_PUSH_FAILED"},
+        "done":{"state":"ABANDONED","recovery_state":"RECOVERED"},
+        "live":{"state":"CLAIMED"}}}))
+    assert supervisor.pending_recovery_grants(state,["new"])==["new","old"]
+
+def test_recovery_queue_uses_bounded_backoff_and_eventual_quarantine(tmp_path):
+    import json
+    from datetime import datetime, UTC
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    workspace=tmp_path/"workspace"; workspace.mkdir()
+    lifecycle=state/"hands-off-grant-lifecycle.json"
+    lifecycle.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","authorized_repositories":[]}}}))
+    now=datetime(2026,1,1,tzinfo=UTC)
+    first=supervisor.reconcile_abandoned_claims(workspace,state,["g"],now)
+    assert first["g"]=="RECOVERY_IDENTITY_AMBIGUOUS"
+    saved=json.loads(lifecycle.read_text())["grants"]["g"]
+    assert saved["recovery_attempts"]==1
+    assert saved["recovery_next_attempt_at"]
+    assert supervisor.reconcile_abandoned_claims(workspace,state,["g"],now)["g"]=="RECOVERY_BACKOFF"
+    saved["recovery_attempts"]=5
+    saved.pop("recovery_next_attempt_at",None)
+    lifecycle.write_text(json.dumps({"grants":{"g":saved}}))
+    final=supervisor.reconcile_abandoned_claims(workspace,state,["g"],now)
+    assert final["g"]=="RECOVERY_RETRY_EXHAUSTED"
+    assert json.loads(lifecycle.read_text())["grants"]["g"]["recovery_state"]=="QUARANTINED"
