@@ -400,6 +400,20 @@ def revalidate_preserved_work(ws:Path,record:dict)->str:
         return "PRESERVED_WORK_CHANGED"
     return "PRESERVED_WORK_EXACT"
 
+def validate_preserved_work(ws:Path,record:dict)->str:
+    """Run deterministic validation only between two exact identity proofs."""
+    if revalidate_preserved_work(ws,record)!="PRESERVED_WORK_EXACT":
+        return "PRESERVED_VALIDATION_IDENTITY_PRECHECK_FAILED"
+    before=record.get("preserved_work_evidence",{}).get("diff_sha256")
+    preflight=subprocess.run([sys.executable,"scripts/preflight.py"],cwd=ws,text=True,capture_output=True,check=False)
+    if revalidate_preserved_work(ws,record)!="PRESERVED_WORK_EXACT":
+        return "PRESERVED_VALIDATION_MUTATED_WORKSPACE"
+    if preflight.returncode:
+        return "PRESERVED_VALIDATION_FAILED"
+    if not before:
+        return "PRESERVED_VALIDATION_EVIDENCE_INCOMPLETE"
+    return "PRESERVED_VALIDATION_PASSED"
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -592,6 +606,11 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
         outcomes[grant_id]=outcome
         record["preserved_work_revalidation"]=outcome
         record["preserved_work_revalidated_at"]=datetime.now(UTC).isoformat()
+        if outcome=="PRESERVED_WORK_EXACT":
+            validation=validate_preserved_work(ws,record)
+            record["preserved_work_validation"]=validation
+            record["preserved_work_validated_at"]=datetime.now(UTC).isoformat()
+            outcomes[grant_id]=validation
         changed=True
     if changed: atomic(path,payload)
     return outcomes
