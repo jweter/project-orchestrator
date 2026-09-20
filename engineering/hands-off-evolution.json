@@ -107,5 +107,25 @@
     "everward": [
       "jweter/Project-Everward"
     ]
+  },
+  "project_intake": {
+    "schema_version": 1,
+    "required_sections": [
+      "purpose",
+      "users",
+      "outcomes",
+      "scope",
+      "non_goals",
+      "capabilities",
+      "completion_criteria",
+      "roadmap",
+      "architecture",
+      "quality_gates",
+      "security_privacy",
+      "licensing_provenance",
+      "human_escalation"
+    ],
+    "readiness_rule": "Every required section must contain project-specific direction. Unknown, blank, placeholder, or contradictory answers require DIRECTION_REQUIRED before autonomous mutation.",
+    "template": "engineering/PROJECT_INTAKE_TEMPLATE.md"
   }
 }
