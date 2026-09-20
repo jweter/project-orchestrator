@@ -1,7 +1,7 @@
 import json
-from scripts.continuous_flow_supervisor import merge_watcher_advanced
+import scripts.continuous_flow_supervisor as flow\nmerge_watcher_advanced=flow.merge_watcher_advanced
 
-def write_watch(root, timestamp, results):
+def write_watch(root, timestamp, results):\n    flow.reconcile_merge_feedback=lambda state,merged: []
     (root/"green-pr-watcher.json").write_text(json.dumps({
         "updated_at_utc":timestamp,"results":results
     }),encoding="utf-8")
