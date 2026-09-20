@@ -430,6 +430,36 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         stage=record.get("execution_stage")
         durable_branch=record.get("branch")
         durable_head=record.get("head_sha")
+        durable_base=record.get("base_sha")
+        if stage in {"BASE_VERIFIED","BRANCH_CREATED"} and durable_base:
+            status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
+            head_now=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+            branch_now=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+            if status.returncode or head_now.returncode or branch_now.returncode:
+                outcomes[grant_id]="RECOVERY_EARLY_STAGE_WORKSPACE_UNREADABLE"
+            elif status.stdout.strip():
+                outcomes[grant_id]="RECOVERY_EARLY_STAGE_DIRTY_PRESERVED"
+                record["recovery_state"]="QUARANTINED"
+                record["recovery_quarantine_reason"]="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
+            elif head_now.stdout.strip()!=durable_base:
+                outcomes[grant_id]="RECOVERY_EARLY_STAGE_HEAD_DRIFT"
+                record["recovery_state"]="QUARANTINED"
+                record["recovery_quarantine_reason"]="UNRECORDED_COMMIT_REQUIRES_PRESERVATION"
+            elif stage=="BRANCH_CREATED" and durable_branch and branch_now.stdout.strip()!=durable_branch:
+                outcomes[grant_id]="RECOVERY_EARLY_STAGE_BRANCH_DRIFT"
+                record["recovery_state"]="QUARANTINED"
+                record["recovery_quarantine_reason"]="BRANCH_IDENTITY_MISMATCH"
+            else:
+                outcomes[grant_id]="RECOVERY_EARLY_STAGE_NO_PRODUCT_WORK"
+                record["recovery_state"]="RECOVERED"
+                record["recovered_at"]=current.isoformat()
+            record["recovery_result"]=outcomes[grant_id]
+            if record.get("recovery_state") in {"RECOVERED","QUARANTINED"}:
+                record.pop("recovery_next_attempt_at",None)
+            else:
+                delay=min(3600,60*(2**attempts))
+                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+            continue
         if stage in {"PUSHED","PR_OPEN"} and durable_branch and durable_head:
             remote=subprocess.run(["git","ls-remote","--heads","origin",durable_branch],cwd=ws,text=True,capture_output=True,check=False)
             remote_head=remote.stdout.split()[0] if remote.returncode==0 and remote.stdout.strip() else ""
