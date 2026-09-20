@@ -212,6 +212,56 @@ def grant_state_root(path:Path)->Path:
 def lifecycle_path_for_grant(path:Path)->Path:
     return grant_state_root(path)/"hands-off-grant-lifecycle.json"
 
+def _lifecycle_lock_path(lifecycle:Path)->Path:
+    return lifecycle.with_name(lifecycle.name+".lock")
+
+def _acquire_lifecycle_lock(lifecycle:Path):
+    """Kernel-owned cross-process lock for lifecycle read-modify-write transactions."""
+    lock_path=_lifecycle_lock_path(lifecycle)
+    handle=lock_path.open("a+b",buffering=0)
+    handle.seek(0,os.SEEK_END)
+    if handle.tell()==0:
+        handle.write(b"0")
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
+                break
+            except OSError:
+                time.sleep(0.01)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_EX)
+    return handle
+
+def _release_lifecycle_lock(handle)->None:
+    handle.seek(0)
+    if os.name=="nt":
+        import msvcrt
+        msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+    handle.close()
+
+def mutate_grant_lifecycle(lifecycle:Path,grant_id:str,mutator)->bool:
+    """Serialize one grant-record mutation without losing concurrent grant updates."""
+    handle=_acquire_lifecycle_lock(lifecycle)
+    try:
+        try:
+            state=json.loads(lifecycle.read_text(encoding="utf-8"))
+            record=state["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return False
+        if not mutator(record):
+            return False
+        atomic_json(lifecycle,state)
+        return True
+    finally:
+        _release_lifecycle_lock(handle)
+
 def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
@@ -219,19 +269,15 @@ def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return
     while not stop.wait(interval):
-        try:
-            payload=json.loads(lifecycle.read_text(encoding="utf-8"))
-            record=payload["grants"][grant_id]
-        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        def renew(record):
+            if record.get("state")!="CLAIMED":
+                return False
+            if record.get("worker") is not None and record.get("worker")!=worker:
+                return False
+            record["last_heartbeat_at"]=datetime.now(UTC).isoformat()
+            return True
+        if not mutate_grant_lifecycle(lifecycle,grant_id,renew):
             return
-        if record.get("state")!="CLAIMED":
-            return
-        # Legacy records without worker identity remain renewable during migration.
-        # Once identity exists, only that exact incarnation may renew it.
-        if record.get("worker") is not None and record.get("worker")!=worker:
-            return
-        record["last_heartbeat_at"]=datetime.now(UTC).isoformat()
-        atomic_json(lifecycle,payload)
 
 def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=None,
                          activation_path:Path|None=None,lifecycle_path:Path|None=None)->dict[str,str]:
@@ -253,7 +299,9 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         grants=lifecycle_state.get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
+    unique_grant=path.parent.name=="hands-off-execution-grants"
     if (payload.get("schema_version") != 4 or not isinstance(grant_id,str) or not grant_id
+            or (unique_grant and grant_id not in grants)
             or (grant_id in grants and (not isinstance(grants[grant_id],dict) or grants[grant_id].get("state")!="ISSUED"))
             or payload.get("contract_sha256") != contract_digest
             or payload.get("activation_sha256") != activation_digest):
@@ -330,51 +378,59 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
     try:
         grant=json.loads(path.read_text(encoding="utf-8"))
         grant_id=grant["grant_id"]
-        state=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
-        grants=state["grants"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return False
-    claimed=datetime.now(UTC).isoformat()
     authority=execution_slice_authority(path,repo,expected_sha)
     if authority is None:
         return False
-    if grant_id in grants:
-        record=grants[grant_id]
-        if (not isinstance(record,dict) or record.get("state")!="ISSUED"
-                or repo not in record.get("authorized_repositories",[])
-                or record.get("expected_sha")!=expected_sha
-                or record.get("execution_slice")!=authority):
+    unique_grant=path.parent.name=="hands-off-execution-grants"
+    handle=_acquire_lifecycle_lock(lifecycle)
+    try:
+        try:
+            state=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+            grants=state["grants"]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
             return False
-        record.update({"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
-                       "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
-                       "worker":worker or worker_incarnation()})
-    else:
-        grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
-                          "authorized_repositories":[repo],"expected_sha":expected_sha,
-                          "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
-                          "execution_slice":authority,
-                          "worker":worker or worker_incarnation()}
-    atomic_json(lifecycle,state)
-    return True
+        if unique_grant and grant_id not in grants:
+            return False
+        claimed=datetime.now(UTC).isoformat()
+        if grant_id in grants:
+            record=grants[grant_id]
+            if (not isinstance(record,dict) or record.get("state")!="ISSUED"
+                    or repo not in record.get("authorized_repositories",[])
+                    or record.get("expected_sha")!=expected_sha
+                    or record.get("execution_slice")!=authority):
+                return False
+            record.update({"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
+                           "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
+                           "worker":worker or worker_incarnation()})
+        else:
+            grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
+                              "authorized_repositories":[repo],"expected_sha":expected_sha,
+                              "capability_id":authority["capability_id"],"slice_id":authority["slice_id"],
+                              "execution_slice":authority,"worker":worker or worker_incarnation()}
+        atomic_json(lifecycle,state)
+        return True
+    finally:
+        _release_lifecycle_lock(handle)
 
 def advance_grant_stage(grant_path:Path,stage:str,**evidence:Any)->bool:
-    """Durably record execution progress so recovery need not infer completed stages."""
+    """Durably record execution progress without clobbering another grant."""
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
-        grant=json.loads(grant_path.read_text(encoding="utf-8"))
-        state=json.loads(lifecycle.read_text(encoding="utf-8"))
-        record=state["grants"][grant["grant_id"]]
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return False
-    if record.get("state")!="CLAIMED":
-        return False
-    record["execution_stage"]=stage
-    record["stage_updated_at"]=datetime.now(UTC).isoformat()
-    for key,value in evidence.items():
-        if value not in (None,""):
-            record[key]=value
-    atomic_json(lifecycle,state)
-    return True
+    def update(record):
+        if record.get("state")!="CLAIMED":
+            return False
+        record["execution_stage"]=stage
+        record["stage_updated_at"]=datetime.now(UTC).isoformat()
+        for key,value in evidence.items():
+            if value not in (None,""):
+                record[key]=value
+        return True
+    return mutate_grant_lifecycle(lifecycle,grant_id,update)
 
 def start_grant_heartbeat(grant_path:Path,worker:dict[str,Any])->tuple[threading.Event,threading.Thread]:
     stop=threading.Event()
@@ -764,26 +820,20 @@ def stop_grant_heartbeat(stop:threading.Event|None,thread:threading.Thread|None)
 def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
-        grant=json.loads(grant_path.read_text(encoding="utf-8"))
-        state=json.loads(lifecycle.read_text(encoding="utf-8"))
-        grant_id=grant["grant_id"]
-        record=state["grants"][grant_id]
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return
-    record["state"]="COMPLETED" if result.get("status") in {
-        "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
-    } else "FAILED"
-    record["finished_at"]=datetime.now(UTC).isoformat()
-    record["result_status"]=result.get("status","UNKNOWN")
-    if result.get("repository"):
-        record["repository"]=result["repository"]
-    if result.get("branch"):
-        record["branch"]=result["branch"]
-    if result.get("base_sha"):
-        record["base_sha"]=result["base_sha"]
-    if result.get("head_sha"):
-        record["head_sha"]=result["head_sha"]
-    atomic_json(lifecycle,state)
+    def update(record):
+        record["state"]="COMPLETED" if result.get("status") in {
+            "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
+        } else "FAILED"
+        record["finished_at"]=datetime.now(UTC).isoformat()
+        record["result_status"]=result.get("status","UNKNOWN")
+        for key in ("repository","branch","base_sha","head_sha"):
+            if result.get(key):
+                record[key]=result[key]
+        return True
+    mutate_grant_lifecycle(lifecycle,grant_id,update)
 
 def main()->int:
     parser=argparse.ArgumentParser()
