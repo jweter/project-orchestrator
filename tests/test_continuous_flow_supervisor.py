@@ -722,3 +722,27 @@ def test_validate_preserved_work_does_not_run_preflight_without_identity(tmp_pat
     monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:"PRESERVED_WORK_CHANGED")
     monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:(_ for _ in ()).throw(AssertionError("must not execute")))
     assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_IDENTITY_PRECHECK_FAILED"
+
+def test_recovery_capability_is_exact_bound_and_single_use(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"repository":"o/r","base_sha":"base","branch":"actor/x","preserved_work_validation":"PRESERVED_VALIDATION_PASSED",
+            "preserved_work_evidence":{"diff_sha256":"diff","head_sha":"base"}}
+    cap=supervisor.issue_preserved_recovery_capability(record)
+    assert cap and cap["state"]=="ISSUED" and cap["preserved_diff_sha256"]=="diff"
+    record["preserved_recovery_capability"]=cap
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:"PRESERVED_WORK_EXACT")
+    assert supervisor.consume_preserved_recovery_capability(tmp_path,record)=="RECOVERY_CAPABILITY_CONSUMED"
+    assert cap["state"]=="CONSUMED"
+    assert supervisor.consume_preserved_recovery_capability(tmp_path,record)=="RECOVERY_CAPABILITY_UNAVAILABLE"
+
+def test_recovery_capability_rejects_binding_or_identity_drift(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"repository":"o/r","base_sha":"base","branch":"actor/x","preserved_work_validation":"PRESERVED_VALIDATION_PASSED",
+            "preserved_work_evidence":{"diff_sha256":"diff","head_sha":"base"}}
+    record["preserved_recovery_capability"]=supervisor.issue_preserved_recovery_capability(record)
+    record["branch"]="actor/changed"
+    assert supervisor.consume_preserved_recovery_capability(tmp_path,record)=="RECOVERY_CAPABILITY_BINDING_MISMATCH"
+    record["branch"]="actor/x"
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:"PRESERVED_WORK_CHANGED")
+    assert supervisor.consume_preserved_recovery_capability(tmp_path,record)=="RECOVERY_CAPABILITY_IDENTITY_CHANGED"
+    assert record["preserved_recovery_capability"]["state"]=="ISSUED"
