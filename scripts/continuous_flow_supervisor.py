@@ -192,6 +192,40 @@ def merge_watcher_advanced(state_root:Path)->bool:
     atomic(cursor,event)
     return True
 
+def reconcile_verified_merge(state_root:Path,event:dict)->dict:
+    """Bind one exact merged PR/head to its durable execution slice and emit evidence once."""
+    repo=event.get("repository"); pr=event.get("pr"); head=event.get("head")
+    if not repo or not isinstance(pr,int) or not head:
+        return {"status":"MERGE_IDENTITY_INCOMPLETE"}
+    lifecycle=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(lifecycle.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {"status":"LIFECYCLE_UNAVAILABLE"}
+    matches=[(gid,r) for gid,r in grants.items() if isinstance(r,dict)
+             and r.get("repository")==repo and r.get("pr_number")==pr and r.get("head_sha")==head]
+    if len(matches)!=1:
+        return {"status":"MERGE_SLICE_IDENTITY_UNPROVEN","matches":len(matches)}
+    grant_id,record=matches[0]
+    capability_id=record.get("capability_id"); slice_id=record.get("slice_id")
+    if not capability_id or not slice_id:
+        return {"status":"MERGE_SLICE_IDENTITY_UNPROVEN","matches":1}
+    evidence={"schema_version":1,"status":"VERIFIED_COMPLETE","repository":repo,"pr_number":pr,
+              "head_sha":head,"grant_id":grant_id,"capability_id":capability_id,"slice_id":slice_id,
+              "acceptance":record.get("execution_slice",{}).get("acceptance",[])}
+    evidence_dir=state_root/"slice-completion-evidence"; evidence_dir.mkdir(parents=True,exist_ok=True)
+    path=evidence_dir/f"{repo.replace('/','__')}__{slice_id}.json"
+    if path.exists():
+        try:
+            prior=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError):
+            return {"status":"COMPLETION_EVIDENCE_CONFLICT"}
+        if prior==evidence:
+            return {"status":"ALREADY_RECONCILED","evidence":str(path)}
+        return {"status":"COMPLETION_EVIDENCE_CONFLICT"}
+    atomic(path,evidence)
+    return {"status":"SLICE_VERIFIED_COMPLETE","evidence":str(path),"capability_id":capability_id,"slice_id":slice_id}
+
 def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
     """Derive bounded mutation authority from the repository's machine-readable capability graph."""
     path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
