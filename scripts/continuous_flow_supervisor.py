@@ -1,6 +1,6 @@
 """Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
-import argparse, hashlib, json, os, socket, subprocess, sys, time, uuid
+import argparse, atexit, hashlib, json, os, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 try:
@@ -561,6 +561,40 @@ def _release_os_file_lock(handle)->None:
     else:
         import fcntl
         fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
+
+def acquire_supervisor_instance_lock(state_root:Path)->dict|None:
+    """Allow exactly one physical supervisor process per state root."""
+    state_root.mkdir(parents=True,exist_ok=True)
+    path=state_root/"supervisor-instance.lock"
+    handle=path.open("a+b",buffering=0)
+    if not _acquire_os_file_lock(handle):
+        handle.close()
+        return None
+    lock_id=str(uuid.uuid4())
+    worker={"host":socket.gethostname(),"pid":os.getpid(),
+            "process_start_fingerprint":process_start_fingerprint(),
+            "instance_id":uuid.uuid4().hex}
+    metadata=state_root/"supervisor-instance.lock.json"
+    atomic(metadata,{"schema_version":1,"lock_id":lock_id,"worker":worker,
+                     "acquired_at_utc":datetime.now(UTC).isoformat()})
+    return {"path":path,"metadata_path":metadata,"handle":handle,"lock_id":lock_id,"worker":worker}
+
+def release_supervisor_instance_lock(lock:dict)->None:
+    """Release this process's supervisor fence without deleting another owner's metadata."""
+    handle=lock["handle"]; metadata=lock["metadata_path"]
+    try:
+        if metadata.exists():
+            try:
+                current=json.loads(metadata.read_text(encoding="utf-8"))
+                if current.get("lock_id")==lock.get("lock_id"):
+                    metadata.unlink()
+            except (OSError,json.JSONDecodeError,TypeError):
+                pass
+    finally:
+        try:
+            _release_os_file_lock(handle)
+        finally:
+            handle.close()
 
 def acquire_grant_issue_lock(state_root:Path)->dict:
     """Acquire a crash-safe kernel-owned single-writer fence for grant issuance."""
@@ -1776,6 +1810,13 @@ def main()->int:
     p.add_argument("--merge-seconds",type=int,default=60); p.add_argument("--once",action="store_true")
     a=p.parse_args(); repo=Path(a.repo_root); workspace=Path(a.workspace_root); state=Path(a.state_root)
     state.mkdir(parents=True,exist_ok=True)
+    instance_lock=acquire_supervisor_instance_lock(state)
+    if instance_lock is None:
+        atomic(state/"supervisor-reentry.json",{"schema_version":1,
+            "status":"SUPERVISOR_INSTANCE_ALREADY_ACTIVE",
+            "observed_at_utc":datetime.now(UTC).isoformat()})
+        return 0
+    atexit.register(release_supervisor_instance_lock,instance_lock)
     merge=None
     burst=start_or_resume_burst(state)
     burst_id=burst["burst_id"]
