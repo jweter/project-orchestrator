@@ -236,6 +236,17 @@ def worker_liveness(worker:dict|None)->str:
         return "DEAD"
     except (PermissionError,OSError):
         return "UNKNOWN"
+    expected=worker.get("process_start_fingerprint")
+    if expected:
+        try:
+            from scripts.autonomous_slice_builder import process_start_fingerprint
+            actual=process_start_fingerprint(pid)
+        except (ImportError,OSError):
+            return "UNKNOWN"
+        if actual is None:
+            return "UNKNOWN"
+        if actual!=expected:
+            return "DEAD"
     return "ALIVE"
 
 def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
