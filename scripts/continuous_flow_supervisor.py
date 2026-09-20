@@ -205,10 +205,12 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
     return path
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
+    if not products:
+        (state_root/"builder-last-output.txt").write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
+        return 2
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
-        "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json")]
-    if products is not None:
-        cmd.extend(["--execution-grant",str(write_execution_grant(repo_root,state_root,products))])
+        "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json"),
+        "--execution-grant",str(write_execution_grant(repo_root,state_root,products))]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")

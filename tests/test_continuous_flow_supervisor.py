@@ -398,3 +398,16 @@ def test_recertify_unknown_product_fails_before_auditor(tmp_path, monkeypatch):
     monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:(_ for _ in ()).throw(AssertionError("must not audit")))
     assert supervisor.recertify_product(repo_root,tmp_path/"workspace",tmp_path/"state","unknown")==(
         False,"RECERTIFICATION_CONTRACT_UNREADABLE")
+
+def test_run_builder_refuses_dispatch_without_authorized_products(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    called=False
+    def run(*a,**k):
+        nonlocal called
+        called=True
+        raise AssertionError("builder must not run without grant scope")
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    state=tmp_path/"state"; state.mkdir()
+    assert supervisor.run_builder(tmp_path,tmp_path/"workspace",state,None)==2
+    assert called is False
+    assert "EXECUTION_GRANT_REQUIRED" in (state/"builder-last-output.txt").read_text()

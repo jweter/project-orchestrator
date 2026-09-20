@@ -529,13 +529,20 @@ def main()->int:
     parser.add_argument("--state",required=True)
     parser.add_argument("--dry-run",action="store_true")
     parser.add_argument("--eligible-products",default=None,
-                        help="Legacy manual/dev product filter")
+                        help="Manual/dev product filter; requires --unsafe-manual-all")
     parser.add_argument("--execution-grant",type=Path,
                         help="Exact-head autonomous execution grant")
+    parser.add_argument("--unsafe-manual-all",action="store_true",
+                        help="Explicit manual/dev escape hatch for running without an execution grant")
     args=parser.parse_args()
     state=Path(args.state)
     try:
         workspace=Path(args.workspace_root)
+        if not args.execution_grant and not args.unsafe_manual_all:
+            result={"status":"EXECUTION_GRANT_REQUIRED"}
+            atomic_json(state,result)
+            print(json.dumps(result,indent=2,sort_keys=True))
+            return 1
         if args.execution_grant:
             eligible_repos=granted_repositories(args.execution_grant,workspace)
             eligible=None
