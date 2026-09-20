@@ -650,23 +650,27 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         release_grant_issue_lock(lock)
 
 def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
-    """Terminalize an issued grant when the builder exits before claiming it."""
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
     if grant_path.parent.name=="hands-off-execution-grants":
         lifecycle=grant_path.parent.parent/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=_acquire_lifecycle_lock(lifecycle)
     try:
-        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
-        payload=json.loads(lifecycle.read_text(encoding="utf-8"))
-        record=payload["grants"][grant_id]
-    except (OSError,json.JSONDecodeError,KeyError,TypeError):
-        return False
-    if record.get("state")!="ISSUED":
-        return False
-    record["state"]="ABANDONED"
-    record["finished_at"]=datetime.now(UTC).isoformat()
-    record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}"
-    atomic(lifecycle,payload)
-    return True
+        """Terminalize an issued grant when the builder exits before claiming it."""
+        try:
+            grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
+            payload=json.loads(lifecycle.read_text(encoding="utf-8"))
+            record=payload["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return False
+        if record.get("state")!="ISSUED":
+            return False
+        record["state"]="ABANDONED"
+        record["finished_at"]=datetime.now(UTC).isoformat()
+        record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}"
+        atomic(lifecycle,payload)
+        return True
+    finally:
+        _release_lifecycle_lock(lifecycle_lock)
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->tuple[int,str|None]:
     if not products:
