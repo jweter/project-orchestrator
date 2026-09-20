@@ -2097,8 +2097,10 @@ def main()->int:
         "worker":instance_lock["worker"],"started_at_utc":datetime.now(UTC).isoformat()})
     burst_id=burst["burst_id"]
     burst_pass=burst["burst_pass"]
-    burst_proof=load_json(state/"autonomous-burst-proof.json")
-    product_proof=load_json(state/"portfolio-product-advancement-proof.json")
+    try: burst_proof=json.loads((state/"autonomous-burst-proof.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError): burst_proof={}
+    try: product_proof=json.loads((state/"portfolio-product-advancement-proof.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError): product_proof={}
     while True:
         burst_pass+=1
         if merge is None or merge.poll() is not None:
