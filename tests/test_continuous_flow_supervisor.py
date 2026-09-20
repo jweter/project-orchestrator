@@ -891,3 +891,38 @@ def test_reconcile_consumed_staged_work_refuses_unstaged_drift(tmp_path,monkeypa
     monkeypatch.setattr(supervisor.subprocess,"run",fake)
     assert supervisor.reconcile_consumed_staged_work(tmp_path,record)=="STAGED_RECOVERY_NOT_EXACTLY_STAGED"
     assert "recovery_result" not in record
+
+def test_staged_recovery_replacement_is_commit_only_and_parent_bound(tmp_path,monkeypatch):
+    import hashlib
+    import scripts.continuous_flow_supervisor as supervisor
+    diff="exact"; digest=hashlib.sha256(diff.encode()).hexdigest()
+    record={"repository":"o/r","base_sha":"base","branch":"actor/x","recovery_result":"CONSUMED_RECOVERY_EXACT_STAGED",
+            "preserved_work_evidence":{"diff_sha256":digest},
+            "preserved_recovery_capability":{"capability_id":"old","state":"CONSUMED","outcome":"EXACT_STAGED_RECONCILED"}}
+    cap=supervisor.issue_staged_commit_capability(record)
+    assert cap["scope"]=="COMMIT_ONLY" and cap["parent_capability_id"]=="old"
+    record["staged_commit_capability"]=cap
+    monkeypatch.setattr(supervisor,"reconcile_consumed_staged_work",lambda ws,r:"CONSUMED_RECOVERY_EXACT_STAGED")
+    class R:
+        returncode=0
+        def __init__(self,out=""): self.stdout=out; self.stderr=""
+    calls=[]
+    def fake(cmd,**kwargs):
+        calls.append(cmd)
+        if cmd[:3]==["git","rev-parse","HEAD"]: return R("new\n")
+        if cmd[:3]==["git","branch","--show-current"]: return R("actor/x\n")
+        if cmd[:2]==["git","diff"]: return R(diff)
+        return R()
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.commit_reconciled_staged_work(tmp_path,record)=="STAGED_COMMIT_RECOVERED"
+    assert not any(cmd[:2]==["git","add"] for cmd in calls)
+    assert record["execution_stage"]=="COMMITTED" and cap["state"]=="CONSUMED"
+
+def test_staged_commit_capability_refuses_parent_binding_drift(tmp_path):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"repository":"o/r","base_sha":"b","branch":"x","preserved_work_evidence":{"diff_sha256":"d"},
+            "preserved_recovery_capability":{"capability_id":"old","state":"CONSUMED"},
+            "staged_commit_capability":{"capability_id":"new","state":"ISSUED","scope":"COMMIT_ONLY","parent_capability_id":"other",
+                "repository":"o/r","base_sha":"b","branch":"x","preserved_diff_sha256":"d"}}
+    assert supervisor.commit_reconciled_staged_work(tmp_path,record)=="STAGED_COMMIT_CAPABILITY_BINDING_MISMATCH"
+    assert record["staged_commit_capability"]["state"]=="ISSUED"
