@@ -180,11 +180,12 @@ def test_legacy_stale_claim_without_worker_identity_fails_closed(tmp_path):
     old=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS+1)).isoformat()
     (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({
         "schema_version":1,"grants":{"g1":{"state":"CLAIMED","claimed_at":old}}}),encoding="utf-8")
-    assert supervisor.recover_stale_grant_claims(state,now)==["g1"]
+    assert supervisor.recover_stale_grant_claims(state,now)==[]
     record=json.loads((state/"hands-off-grant-lifecycle.json").read_text())["grants"]["g1"]
-    assert record["state"]=="ABANDONED"
-    assert record["result_status"]=="CLAIM_LEASE_EXPIRED"
-    assert record["finished_at"]==now.isoformat()
+    assert record["state"]=="CLAIMED"
+    assert record["worker_liveness"]=="UNKNOWN"
+    assert record["result_status"]=="CLAIM_LEASE_EXPIRED_WORKER_UNKNOWN"
+    assert record["last_liveness_check_at"]==now.isoformat()
 
 def test_recover_stale_grant_claims_preserves_live_claim(tmp_path):
     import json
