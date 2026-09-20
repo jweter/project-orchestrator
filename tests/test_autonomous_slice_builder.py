@@ -451,7 +451,7 @@ def test_claim_persists_concrete_worker_incarnation(tmp_path):
     grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
     grant.write_text(json.dumps({"grant_id":"g"}))
     worker={"host":"h","pid":7,"process_started_ns":11,"lease_token":"token"}
-    assert builder.claim_execution_grant(grant,"o/r","abc",worker,lifecycle)
+    assert builder.claim_execution_grant(grant,"o/r","abc",lifecycle,worker)
     record=json.loads(lifecycle.read_text())["grants"]["g"]
     assert record["worker"]==worker
     assert record["state"]=="CLAIMED"
