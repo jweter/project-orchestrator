@@ -1847,11 +1847,19 @@ def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,no
         prior=json.loads(path.read_text(encoding="utf-8"))
         updated=datetime.fromisoformat(str(prior.get("updated_at_utc","")).replace("Z","+00:00"))
         age=(now-updated).total_seconds()
-        if (prior.get("immediate_continuation") is True and prior.get("burst_id")
-                and 0 <= age <= resume_seconds):
-            return {"burst_id":prior["burst_id"],"burst_pass":int(prior.get("pass_count",0)),
+        schema=prior.get("schema_version")
+        burst_id=prior.get("burst_id")
+        pass_count=prior.get("pass_count")
+        prior_instance=prior.get("process_instance_id")
+        valid_schema=schema in {1,2}
+        valid_burst=isinstance(burst_id,str) and 1 <= len(burst_id) <= 128
+        valid_pass=isinstance(pass_count,int) and not isinstance(pass_count,bool) and 0 <= pass_count <= 1000000
+        valid_instance=(schema==1 or (isinstance(prior_instance,str) and 1 <= len(prior_instance) <= 128))
+        if (prior.get("immediate_continuation") is True and valid_schema and valid_burst
+                and valid_pass and valid_instance and 0 <= age <= resume_seconds):
+            return {"burst_id":burst_id,"burst_pass":pass_count,
                     "resumed":True,"resume_age_seconds":age,
-                    "previous_process_instance_id":prior.get("process_instance_id"),
+                    "previous_process_instance_id":prior_instance,
                     "process_instance_id":process_instance_id}
     except (OSError,json.JSONDecodeError,TypeError,ValueError):
         pass
