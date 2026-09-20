@@ -1221,6 +1221,24 @@ def verify_durable_pr(repo:str,ws:Path,pr_number:int,expected_head:str)->str:
         return "RECOVERY_DURABLE_PR_CLOSED_UNMERGED"
     return "RECOVERY_DURABLE_PR_STATE_UNKNOWN"
 
+def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->bool:
+    """CAS-style lifecycle commit: external recovery may not overwrite concurrent ownership changes."""
+    lock=_acquire_lifecycle_lock(path)
+    try:
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+            current=payload["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return False
+        fingerprint=("state","recovery_state","execution_stage","head_sha","branch","pr_number")
+        if any(current.get(k)!=expected.get(k) for k in fingerprint):
+            return False
+        payload["grants"][grant_id]=updated
+        atomic(path,payload)
+        return True
+    finally:
+        _release_lifecycle_lock(lock)
+
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
     """Revisit durable recovery obligations until recovered or explicitly quarantined."""
     path=state_root/"hands-off-grant-lifecycle.json"
