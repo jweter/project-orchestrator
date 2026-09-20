@@ -475,32 +475,78 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
                     "worker":record.get("worker"),"execution_slice":authority}
     return None
 
+def acquire_grant_issue_lock(state_root:Path)->dict:
+    """Acquire a crash-recoverable host-local single-writer fence for grant issuance."""
+    path=state_root/"grant-issuance.lock"
+    from scripts.autonomous_slice_builder import worker_incarnation
+    worker=worker_incarnation()
+    lock={"schema_version":1,"lock_id":str(uuid.uuid4()),"worker":worker,
+          "created_at_utc":datetime.now(UTC).isoformat()}
+    for _ in range(2):
+        try:
+            fd=os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+            try:
+                os.write(fd,(json.dumps(lock,sort_keys=True)+"\n").encode("utf-8"))
+            finally:
+                os.close(fd)
+            return {"path":path,**lock}
+        except FileExistsError:
+            try:
+                prior=json.loads(path.read_text(encoding="utf-8"))
+            except (OSError,json.JSONDecodeError,TypeError):
+                raise RuntimeError("GRANT_ISSUANCE_LOCK_UNREADABLE")
+            liveness=worker_liveness(prior.get("worker"))
+            if liveness!="DEAD":
+                raise RuntimeError(f"GRANT_ISSUANCE_BUSY:{liveness}")
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+    raise RuntimeError("GRANT_ISSUANCE_BUSY:RETRY_EXHAUSTED")
+
+def release_grant_issue_lock(lock:dict)->None:
+    """Release only the lock incarnation acquired by this issuer."""
+    path=lock["path"]
+    try:
+        current=json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except (OSError,json.JSONDecodeError,TypeError):
+        raise RuntimeError("GRANT_ISSUANCE_LOCK_UNREADABLE")
+    if current.get("lock_id")!=lock.get("lock_id"):
+        raise RuntimeError("GRANT_ISSUANCE_LOCK_OWNERSHIP_LOST")
+    path.unlink()
+
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
-    activation_path=state_root/"hands-off-activation.json"
-    activation_bytes=activation_path.read_bytes()
-    activation=json.loads(activation_bytes)
-    contract_path=repo_root/"engineering"/"hands-off-evolution.json"
-    contract_bytes=contract_path.read_bytes()
-    repo,exact_head=select_execution_target(state_root,activation,products)
-    selected_products={
-        name for name in products
-        if repo in activation["products"][name]["repositories"]
-    }
-    execution_slice=load_execution_slice(state_root,repo,exact_head)
-    conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
-    if conflict:
-        raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
-    grant={"schema_version":4,
-           "grant_id":str(uuid.uuid4()),
-           "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
-           "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
-           "products":{
-        name:{"repositories":{repo:exact_head}}
-        for name in selected_products},
-           "execution_slice":execution_slice}
-    path=state_root/"hands-off-execution-grant.json"
-    atomic(path,grant)
-    return path
+    lock=acquire_grant_issue_lock(state_root)
+    try:
+        activation_path=state_root/"hands-off-activation.json"
+        activation_bytes=activation_path.read_bytes()
+        activation=json.loads(activation_bytes)
+        contract_path=repo_root/"engineering"/"hands-off-evolution.json"
+        contract_bytes=contract_path.read_bytes()
+        repo,exact_head=select_execution_target(state_root,activation,products)
+        selected_products={
+            name for name in products
+            if repo in activation["products"][name]["repositories"]
+        }
+        execution_slice=load_execution_slice(state_root,repo,exact_head)
+        conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
+        if conflict:
+            raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
+        grant={"schema_version":4,
+               "grant_id":str(uuid.uuid4()),
+               "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
+               "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
+               "products":{
+            name:{"repositories":{repo:exact_head}}
+            for name in selected_products},
+               "execution_slice":execution_slice}
+        path=state_root/"hands-off-execution-grant.json"
+        atomic(path,grant)
+        return path
+    finally:
+        release_grant_issue_lock(lock)
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
     if not products:
@@ -509,6 +555,12 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     try:
         grant_path=write_execution_grant(repo_root,state_root,products)
     except RuntimeError as exc:
+        if str(exc).startswith("GRANT_ISSUANCE_BUSY:"):
+            atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+            return 0
+        if str(exc)=="GRANT_ISSUANCE_LOCK_UNREADABLE":
+            atomic(state_root/"builder.json",{"status":"OWNERSHIP_UNKNOWN","reason":str(exc)})
+            return 2
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
             atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
             (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
