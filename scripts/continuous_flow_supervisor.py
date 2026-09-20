@@ -1313,8 +1313,8 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
     """Choose the next supervisor pass without turning successful work into idle time."""
     if lifecycle_advanced or liveness_reacquire.get("requested"):
         return 1
-    terminal={"NO_WORK"}
-    if builder_ok and builder_status not in terminal:
+    productive={"PR_OPEN"}
+    if builder_ok and builder_status in productive:
         return 1
     return max(60,normal_seconds)
 
