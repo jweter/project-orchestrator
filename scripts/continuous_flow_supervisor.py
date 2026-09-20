@@ -1,7 +1,7 @@
 """Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
 import argparse, hashlib, json, subprocess, sys, time, uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 def atomic(path:Path,payload:dict)->None:
