@@ -277,6 +277,25 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
     atomic_json(lifecycle,{"schema_version":1,"grants":grants})
     return True
 
+def advance_grant_stage(grant_path:Path,stage:str,**evidence:Any)->bool:
+    """Durably record execution progress so recovery need not infer completed stages."""
+    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
+    try:
+        grant=json.loads(grant_path.read_text(encoding="utf-8"))
+        state=json.loads(lifecycle.read_text(encoding="utf-8"))
+        record=state["grants"][grant["grant_id"]]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return False
+    if record.get("state")!="CLAIMED":
+        return False
+    record["execution_stage"]=stage
+    record["stage_updated_at"]=datetime.now(UTC).isoformat()
+    for key,value in evidence.items():
+        if value not in (None,""):
+            record[key]=value
+    atomic_json(lifecycle,state)
+    return True
+
 def start_grant_heartbeat(grant_path:Path,worker:dict[str,Any])->tuple[threading.Event,threading.Thread]:
     stop=threading.Event()
     thread=threading.Thread(target=heartbeat_grant,args=(grant_path,stop),kwargs={"worker":worker},daemon=True)
@@ -494,12 +513,15 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         if not claim_execution_grant(execution_grant,repo,expected,worker=worker):
             return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
         heartbeat_stop,heartbeat_thread=start_grant_heartbeat(execution_grant,worker)
+        advance_grant_stage(execution_grant,"BASE_VERIFIED",repository=repo,base_sha=base)
     else:
         heartbeat_stop=heartbeat_thread=None
     stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
     if run(["git","checkout","-B",branch,base],ws).returncode:
         raise RuntimeError("branch creation failed")
+    if execution_grant is not None:
+        advance_grant_stage(execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch)
 
     aider=run_aider(ws,prompt_for(repo,state_path))
     cleanup_aider_artifacts(ws)
@@ -547,10 +569,14 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         result={"status":"COMMIT_FAILED","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    if execution_grant is not None:
+        advance_grant_stage(execution_grant,"COMMITTED",repository=repo,base_sha=base,branch=branch,head_sha=head)
     push=run(["git","push","-u","origin",branch],ws)
     if push.returncode:
         result={"status":"PUSH_FAILED","repository":repo,"head":head,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
+    if execution_grant is not None:
+        advance_grant_stage(execution_grant,"PUSHED",repository=repo,base_sha=base,branch=branch,head_sha=head,remote_head_sha=head)
     linear_id=os.environ.get("EXPONENTIAL_LINEAR_ID","").strip()
     linear_ref=f" Linear: {linear_id}." if linear_id else ""
     body=("Autonomous laptop-actor bounded slice. Local Ollama/Aider produced the change; "
@@ -560,6 +586,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                             "--title","AUTO: bounded autonomous engineering slice","--body",body],
                            cwd=ws,text=True,capture_output=True,check=False)
     status="PR_OPEN" if created.returncode==0 else "PR_CREATE_FAILED"
+    if execution_grant is not None and created.returncode==0:
+        advance_grant_stage(execution_grant,"PR_OPEN",repository=repo,base_sha=base,branch=branch,head_sha=head,remote_head_sha=head,pr_url=created.stdout.strip())
     result={"status":status,"repository":repo,"branch":branch,"base_sha":base,
             "head_sha":head,"changed_paths":paths,"pr_url":created.stdout.strip(),
             "last_repo_index":idx,"last_repository":repo}
