@@ -1794,13 +1794,13 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
 def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict,burst_id:str|None=None,process_instance_id:str|None=None)->dict:
     """Persist validated monotonic evidence that one wake produced another autonomous pass."""
     path=state_root/"continuation-pass-history.json"
-    passes=[]; total=0; immediate_total=0
+    passes=[]; total=0; immediate_total=0; chain_head=None
     try:
         history=json.loads(path.read_text(encoding="utf-8"))
         candidate=history.get("passes",[]) if isinstance(history,dict) else []
         candidate_total=history.get("pass_count") if isinstance(history,dict) else None
         candidate_immediate=history.get("immediate_continuation_count") if isinstance(history,dict) else None
-        valid=(history.get("schema_version") in {1,2}
+        valid=(history.get("schema_version") in {1,2,3}
                and isinstance(candidate,list)
                and isinstance(candidate_total,int) and not isinstance(candidate_total,bool)
                and 0 <= candidate_total <= 10000000
@@ -1809,22 +1809,43 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
         if valid and history.get("schema_version")==2 and candidate:
             tail=candidate[-1]
             valid=(isinstance(tail,dict) and tail.get("sequence")==candidate_total)
+        if valid and history.get("schema_version")==3:
+            expected=None
+            for item in candidate:
+                if not isinstance(item,dict):
+                    valid=False; break
+                stored=item.get("record_hash")
+                material={k:v for k,v in item.items() if k!="record_hash"}
+                if material.get("previous_hash")!=expected:
+                    valid=False; break
+                calculated=hashlib.sha256(json.dumps(material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+                if stored!=calculated:
+                    valid=False; break
+                expected=stored
+            if valid:
+                valid=(expected==history.get("chain_head") and (not candidate or candidate[-1].get("sequence")==candidate_total))
+                chain_head=expected
         if valid:
             passes=candidate
             total=candidate_total
             immediate_total=candidate_immediate
+            if history.get("schema_version")!=3:
+                chain_head=None
     except (OSError,json.JSONDecodeError,TypeError,ValueError,AttributeError):
         pass
     immediate=delay_seconds==1
     sequence=total+1
     record={"sequence":sequence,"recorded_at_utc":datetime.now(UTC).isoformat(),
+            "previous_hash":chain_head,
             "burst_id":burst_id,"process_instance_id":process_instance_id,"builder_status":builder_status,"delay_seconds":delay_seconds,
             "immediate_continuation":immediate,"lifecycle_advanced":lifecycle_advanced,
             "liveness_reacquire_requested":bool(liveness_reacquire.get("requested"))}
+    material=json.dumps(record,sort_keys=True,separators=(",",":")).encode()
+    record["record_hash"]=hashlib.sha256(material).hexdigest()
     passes.append(record)
-    payload={"schema_version":2,"pass_count":sequence,
+    payload={"schema_version":3,"pass_count":sequence,
              "immediate_continuation_count":immediate_total+(1 if immediate else 0),
-             "passes":passes[-100:]}
+             "chain_head":record["record_hash"],"passes":passes[-100:]}
     atomic(path,payload)
     return record
 
