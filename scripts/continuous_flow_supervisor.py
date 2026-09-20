@@ -1416,6 +1416,7 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
     outcomes={}; changed=False
+    expected_records={grant_id:dict(record) for grant_id,record in grants.items() if isinstance(record,dict)}
     for grant_id,record in grants.items():
         if not isinstance(record,dict) or record.get("recovery_state")!="QUARANTINED":
             continue
@@ -1462,7 +1463,12 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
             else:
                 outcomes[grant_id]=validation
         changed=True
-    if changed: atomic(path,payload)
+    if changed:
+        for grant_id in list(outcomes):
+            record=grants.get(grant_id)
+            if isinstance(record,dict) and record!=expected_records.get(grant_id):
+                if not commit_recovery_record(path,grant_id,expected_records.get(grant_id,{}),record):
+                    outcomes[grant_id]="PRESERVED_RECOVERY_CONCURRENT_STATE_CHANGE"
     return outcomes
 
 def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->dict[str,str]:
