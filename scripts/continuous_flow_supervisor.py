@@ -245,8 +245,8 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
            "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
            "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
            "products":{
-        name:{"repositories":activation["products"][name]["repositories"]}
-        for name in products},
+        name:{"repositories":{repo:exact_head}}
+        for name in selected_products},
            "execution_slice":load_execution_slice(state_root,repo,exact_head)}
     path=state_root/"hands-off-execution-grant.json"
     atomic(path,grant)
