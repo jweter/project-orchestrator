@@ -83,8 +83,9 @@ def test_main_writes_activation_state_for_green_report(tmp_path, monkeypatch):
     subprocess.run(["git","-C",str(repo),"remote","add","origin","https://github.com/jweter/test-repo.git"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.email","test@example.com"],check=True)
     subprocess.run(["git","-C",str(repo),"config","user.name","Test"],check=True)
+    (repo/"README.md").write_text("Purpose: test product",encoding="utf-8")
     (repo/"ROADMAP.md").write_text("roadmap",encoding="utf-8")
-    subprocess.run(["git","-C",str(repo),"add","ROADMAP.md"],check=True)
+    subprocess.run(["git","-C",str(repo),"add","README.md","ROADMAP.md"],check=True)
     subprocess.run(["git","-C",str(repo),"commit","-m","init"],check=True,capture_output=True)
     activation=tmp_path/"state"/"activation.json"
     monkeypatch.setattr(sys,"argv",["hands_off_readiness.py",str(repo),"--contract",str(contract),"--activation-state",str(activation)])
