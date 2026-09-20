@@ -450,7 +450,7 @@ def preserved_work_evidence(ws:Path,base_sha:str)->dict:
         return {"capture_status":"UNREADABLE"}
     untracked_records=[]
     for rel in untracked.stdout.split(chr(0)):
-        if not raw:
+        if not rel:
             continue
         path=ws/rel
         try:
