@@ -530,7 +530,10 @@ def slice_path_failure(paths:list[str],authority:dict[str,Any]|None)->str|None:
             return f"slice_path_outside_authority:{path}"
     return None
 
-def generated_change_failure(ws:Path,base:str,paths:list[str])->str|None:
+def generated_change_failure(ws:Path,base:str,paths:list[str],slice_authority:dict[str,Any]|None=None)->str|None:
+    bounded=slice_path_failure(paths,slice_authority)
+    if bounded:
+        return bounded
     blocked=protected_change(paths)
     if blocked:
         return f"protected_path:{blocked}"
