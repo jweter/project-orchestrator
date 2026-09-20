@@ -650,3 +650,26 @@ def test_early_stage_dirty_work_is_preserved_and_quarantined(tmp_path,monkeypatc
     saved=json.loads(path.read_text())["grants"]["g"]
     assert saved["recovery_state"]=="QUARANTINED"
     assert saved["recovery_quarantine_reason"]=="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
+
+def test_preserved_work_evidence_fingerprints_without_storing_diff(tmp_path,monkeypatch):
+    import hashlib
+    import scripts.continuous_flow_supervisor as supervisor
+    class R:
+        returncode=0; stderr=""
+        def __init__(self,out): self.stdout=out
+    def fake(cmd,**kwargs):
+        if cmd[1:3]==["status","--porcelain"]: return R(" M src/x.py\n")
+        if cmd[1:3]==["rev-parse","HEAD"]: return R("head\n")
+        if cmd[1:3]==["branch","--show-current"]: return R("actor/x\n")
+        if cmd[1:3]==["diff","--name-only"]: return R("src/x.py\n")
+        if cmd[1:3]==["diff","--binary"]: return R("SECRET-DIFF-CONTENT")
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    evidence=supervisor.preserved_work_evidence(tmp_path,"base")
+    assert evidence["capture_status"]=="CAPTURED"
+    assert evidence["branch"]=="actor/x"
+    assert evidence["head_sha"]=="head"
+    assert evidence["changed_paths"]==["src/x.py"]
+    assert evidence["diff_sha256"]==hashlib.sha256(b"SECRET-DIFF-CONTENT").hexdigest()
+    assert evidence["diff_bytes"]==len(b"SECRET-DIFF-CONTENT")
+    assert "SECRET-DIFF-CONTENT" not in str(evidence)
