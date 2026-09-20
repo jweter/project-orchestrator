@@ -772,7 +772,7 @@ def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_p
     try:
         """Abandon an expired claim only when its owning worker is proven dead."""
         path=state_root/"hands-off-grant-lifecycle.json"
-    lifecycle_lock=_acquire_lifecycle_lock(path)
+        lifecycle_lock=_acquire_lifecycle_lock(path)
         if not path.exists():
             return []
         try:
