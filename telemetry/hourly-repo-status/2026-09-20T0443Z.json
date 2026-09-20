@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-09-20T04:43:00Z",
+  "mode": "EXECUTION_BURST",
+  "products": {
+    "knowledge_engine": {"branch": "agent/bt2-unclassified-draft-funnel", "head": "0a9f0a5eb1757a2d4493bfbcedce55481a3eec26", "state": "PREFLIGHT_BLOCKED", "detail": "BT-2 preclassification dropoff metric implemented; canonical preflight reaches existing strict-type failures outside changed files"},
+    "rocksmith": {"branch": "agent/product-reality-build-identity-guard", "head": "e9d1447eee9ae72d377e85585fd6fd48fad6b959", "state": "PREFLIGHT_RUNNING", "detail": "Private Product Reality exact-build identity guard implemented; isolated dev environment verification running"},
+    "everward": {"branch": "agent/mobile-evidence-commit-identity", "head": "5881a3bc322cc448eebf0adb0e783a60c9ad7b2a", "state": "PR_OPEN", "pr": 303, "detail": "Exact mobile evidence commit identity enforced; full preflight green"}
+  },
+  "product_advancement_rate": "3/3 implementation lanes advanced"
+}
