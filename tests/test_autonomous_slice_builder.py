@@ -444,3 +444,27 @@ def test_legacy_numeric_rotation_state_remains_readable(tmp_path, monkeypatch):
     monkeypatch.setattr(builder,"lane_capacity",lambda repo:1)
     eligible={"a/repo":"1","b/repo":"2"}
     assert builder.select_repo(state,eligible_repos=eligible)=="b/repo"
+
+def test_claim_persists_concrete_worker_incarnation(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    grant.write_text(json.dumps({"grant_id":"g"}))
+    worker={"host":"h","pid":7,"process_started_ns":11,"lease_token":"token"}
+    assert builder.claim_execution_grant(grant,"o/r","abc",worker,lifecycle)
+    record=json.loads(lifecycle.read_text())["grants"]["g"]
+    assert record["worker"]==worker
+    assert record["state"]=="CLAIMED"
+
+def test_stale_worker_cannot_heartbeat_new_incarnation(tmp_path, monkeypatch):
+    import json, threading
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    grant.write_text(json.dumps({"grant_id":"g"}))
+    current={"host":"h","pid":7,"process_started_ns":22,"lease_token":"new"}
+    lifecycle.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED","worker":current,"last_heartbeat_at":"before"}}}))
+    stop=threading.Event()
+    monkeypatch.setattr(stop,"wait",lambda interval: False)
+    old={"host":"h","pid":7,"process_started_ns":11,"lease_token":"old"}
+    builder.heartbeat_grant(grant,stop,old,interval=0)
+    assert json.loads(lifecycle.read_text())["grants"]["g"]["last_heartbeat_at"]=="before"
