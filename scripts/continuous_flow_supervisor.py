@@ -445,6 +445,35 @@ def preserved_work_evidence(ws:Path,base_sha:str)->dict:
         return {"capture_status":"UNREADABLE"}
     import hashlib
     payload=diff.stdout.encode("utf-8",errors="replace")
+    untracked=subprocess.run(["git","ls-files","--others","--exclude-standard","-z"],cwd=ws,capture_output=True,check=False)
+    if untracked.returncode:
+        return {"capture_status":"UNREADABLE"}
+    untracked_records=[]
+    for raw in untracked.stdout.split(b"\\0"):
+        if not raw:
+            continue
+        try:
+            rel=raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return {"capture_status":"UNTRACKED_PATH_UNREADABLE"}
+        path=ws/rel
+        try:
+            if path.is_symlink():
+                target=os.readlink(path)
+                data=target.encode("utf-8",errors="surrogateescape")
+                kind="symlink"
+            elif path.is_file():
+                size=path.stat().st_size
+                if size>10*1024*1024:
+                    return {"capture_status":"UNTRACKED_FILE_TOO_LARGE","path":rel}
+                data=path.read_bytes()
+                kind="file"
+            else:
+                return {"capture_status":"UNTRACKED_SPECIAL_FILE","path":rel}
+        except OSError:
+            return {"capture_status":"UNTRACKED_FILE_UNREADABLE","path":rel}
+        untracked_records.append({"path":rel,"kind":kind,"bytes":len(data),
+                                  "sha256":hashlib.sha256(data).hexdigest()})
     return {
         "capture_status":"CAPTURED",
         "branch":branch.stdout.strip(),
@@ -453,6 +482,8 @@ def preserved_work_evidence(ws:Path,base_sha:str)->dict:
         "changed_paths":[p for p in names.stdout.splitlines() if p][:500],
         "diff_sha256":hashlib.sha256(payload).hexdigest(),
         "diff_bytes":len(payload),
+        "untracked":untracked_records,
+        "repair_eligible":not bool(untracked_records),
     }
 
 def revalidate_preserved_work(ws:Path,record:dict)->str:
@@ -464,7 +495,7 @@ def revalidate_preserved_work(ws:Path,record:dict)->str:
     current=preserved_work_evidence(ws,base)
     if current.get("capture_status")!="CAPTURED":
         return "PRESERVED_WORK_UNREADABLE"
-    identity=("branch","head_sha","status_porcelain","changed_paths","diff_sha256","diff_bytes")
+    identity=("branch","head_sha","status_porcelain","changed_paths","diff_sha256","diff_bytes","untracked","repair_eligible")
     if any(current.get(k)!=expected.get(k) for k in identity):
         return "PRESERVED_WORK_CHANGED"
     return "PRESERVED_WORK_EXACT"
