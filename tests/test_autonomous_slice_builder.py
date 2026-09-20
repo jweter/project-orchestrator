@@ -139,13 +139,13 @@ def test_grant_native_selection_needs_no_product_mapping(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
     monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
     repo="jweter/future-product-repo"
-    monkeypatch.setattr(builder,"PORTFOLIO_REPOS",(repo,))
+    monkeypatch.setattr(builder,"portfolio_repositories",lambda: (repo,))
     assert builder.select_repo(tmp_path/"state.json",eligible_repos={repo})==repo
 
 def test_grant_repo_universe_is_not_limited_by_static_portfolio(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
     monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
-    monkeypatch.setattr(builder,"PORTFOLIO_REPOS",("jweter/old-static-repo",))
+    monkeypatch.setattr(builder,"portfolio_repositories",lambda: ("jweter/old-static-repo",))
     granted={"jweter/new-contract-repo"}
     assert builder.select_repo(tmp_path/"state.json",eligible_repos=granted)=="jweter/new-contract-repo"
 
