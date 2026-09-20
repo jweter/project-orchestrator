@@ -222,6 +222,42 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
     request_path.unlink(missing_ok=True)
     return derived["slice"]
 
+def direction_request_outbox(state_root:Path)->list[dict]:
+    """Render unresolved machine direction requests into connector-neutral governance messages."""
+    root=state_root/"direction-requests"
+    messages=[]
+    if not root.is_dir():
+        return messages
+    for path in sorted(root.glob("*.json")):
+        try:
+            request=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError,TypeError):
+            continue
+        if request.get("status")!="DIRECTION_REQUIRED":
+            continue
+        repo=request.get("repository")
+        issues=request.get("issues",[])
+        codes=[str(i.get("code")) for i in issues if isinstance(i,dict) and i.get("code")]
+        detail=", ".join(codes) or str(request.get("reason","UNKNOWN"))
+        messages.append({
+            "kind":"PROJECT_DIRECTION_REQUIRED",
+            "repository":repo,
+            "exact_head":request.get("exact_head"),
+            "title":f"Direction required: {repo}",
+            "message":f"{repo} cannot safely select its next autonomous slice. Missing authority: {detail}. Supply authoritative project direction; do not invent requirements.",
+            "issues":issues,
+            "source":str(path),
+        })
+    return messages
+
+def publish_direction_outbox(state_root:Path)->None:
+    """Persist a transport-neutral escalation surface for Linear/ChatGPT/other governance connectors."""
+    atomic(state_root/"direction-outbox.json",{
+        "schema_version":1,
+        "updated_at_utc":datetime.now(UTC).isoformat(),
+        "messages":direction_request_outbox(state_root),
+    })
+
 def reserved_quarantine_repositories(state_root:Path)->set[str]:
     """Reserve only lanes whose ownership or preserved-work recovery remains quarantined."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -1081,6 +1117,7 @@ def main()->int:
         if newly_released:
             recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
         quarantines=quarantined_grants(state)
+        publish_direction_outbox(state)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
