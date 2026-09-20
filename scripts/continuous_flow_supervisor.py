@@ -1,6 +1,6 @@
 """Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
-import argparse, hashlib, json, subprocess, sys, time, uuid
+import argparse, hashlib, json, os, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -218,8 +218,28 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
 
 CLAIM_LEASE_SECONDS=1800
 
-def recover_stale_grant_claims(state_root:Path,now:datetime|None=None)->list[str]:
-    """Mark crash-stranded capability claims abandoned after their lease expires."""
+def worker_liveness(worker:dict|None)->str:
+    """Return ALIVE, DEAD, or UNKNOWN without guessing across hosts or legacy state."""
+    if not isinstance(worker,dict):
+        return "UNKNOWN"
+    if worker.get("host")!=socket.gethostname():
+        return "UNKNOWN"
+    try:
+        pid=int(worker["pid"])
+    except (KeyError,TypeError,ValueError):
+        return "UNKNOWN"
+    if pid<=0:
+        return "UNKNOWN"
+    try:
+        os.kill(pid,0)
+    except ProcessLookupError:
+        return "DEAD"
+    except (PermissionError,OSError):
+        return "UNKNOWN"
+    return "ALIVE"
+
+def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
+    """Abandon an expired claim only when its owning worker is proven dead."""
     path=state_root/"hands-off-grant-lifecycle.json"
     if not path.exists():
         return []
@@ -229,7 +249,7 @@ def recover_stale_grant_claims(state_root:Path,now:datetime|None=None)->list[str
     except (OSError,json.JSONDecodeError,TypeError):
         return []
     current=now or datetime.now(UTC)
-    abandoned=[]
+    abandoned=[]; changed=False
     for grant_id,record in grants.items():
         if not isinstance(record,dict) or record.get("state")!="CLAIMED":
             continue
@@ -240,12 +260,20 @@ def recover_stale_grant_claims(state_root:Path,now:datetime|None=None)->list[str
         except (KeyError,TypeError,ValueError):
             continue
         age=(current-heartbeat).total_seconds()
-        if age > CLAIM_LEASE_SECONDS:
+        if age <= CLAIM_LEASE_SECONDS:
+            continue
+        liveness=liveness_probe(record.get("worker"))
+        record["last_liveness_check_at"]=current.isoformat()
+        record["worker_liveness"]=liveness
+        changed=True
+        if liveness=="DEAD":
             record["state"]="ABANDONED"
             record["finished_at"]=current.isoformat()
-            record["result_status"]="CLAIM_LEASE_EXPIRED"
+            record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_DEAD"
             abandoned.append(grant_id)
-    if abandoned:
+        else:
+            record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_"+liveness
+    if changed:
         atomic(path,payload)
     return abandoned
 
