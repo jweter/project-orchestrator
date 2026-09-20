@@ -573,6 +573,8 @@ def issue_preserved_recovery_capability(record:dict)->dict|None:
     evidence=record.get("preserved_work_evidence",{})
     if record.get("preserved_work_validation")!="PRESERVED_VALIDATION_PASSED":
         return None
+    if evidence.get("repair_eligible") is not True:
+        return None
     required=("repository","base_sha","branch")
     if any(not record.get(k) for k in required) or not evidence.get("diff_sha256"):
         return None
@@ -596,6 +598,8 @@ def consume_preserved_recovery_capability(ws:Path,record:dict)->str:
     if record.get("preserved_work_validation")!="PRESERVED_VALIDATION_PASSED":
         return "RECOVERY_CAPABILITY_VALIDATION_STALE"
     evidence=record.get("preserved_work_evidence",{})
+    if evidence.get("repair_eligible") is not True:
+        return "RECOVERY_CAPABILITY_REPAIR_NOT_AUTHORIZED"
     bindings={
         "repository":record.get("repository"),"base_sha":record.get("base_sha"),
         "branch":record.get("branch"),"preserved_diff_sha256":evidence.get("diff_sha256"),
