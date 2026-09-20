@@ -502,7 +502,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     repo=select_repo(state_path,eligible_products,eligible_repos)
     if repo is None:
         return {"status":"NO_ELIGIBLE_REPOSITORY"}
-    idx=PORTFOLIO_REPOS.index(repo)
+    universe=portfolio_repositories()
+    idx=universe.index(repo) if repo in universe else -1
     if dry_run:
         result={"status":"DRY_RUN","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
