@@ -1791,8 +1791,48 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
         return 1
     return max(60,normal_seconds)
 
+def reconcile_continuation_journal(state_root:Path)->dict:
+    """Reconcile interrupted continuation commits before advancing sequence authority."""
+    journal_path=state_root/"continuation-pass-journal.json"
+    history_path=state_root/"continuation-pass-history.json"
+    try:
+        journal=json.loads(journal_path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        return {"status":"NO_JOURNAL"}
+    if not isinstance(journal,dict) or journal.get("schema_version")!=1:
+        raise RuntimeError("invalid continuation journal")
+    status=journal.get("status")
+    if status not in {"PREPARED","COMMITTED","ABORTED"}:
+        raise RuntimeError("invalid continuation journal status")
+    if status=="ABORTED":
+        return {"status":"ABORTED"}
+    try:
+        history=json.loads(history_path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        history=None
+    matches=(isinstance(history,dict)
+             and history.get("pass_count")==journal.get("sequence")
+             and history.get("chain_head")==journal.get("record_hash")
+             and history.get("anchor_hash")==journal.get("anchor_hash"))
+    if status=="PREPARED":
+        if matches:
+            committed=dict(journal)
+            committed["status"]="COMMITTED"
+            committed["reconciled_at_utc"]=datetime.now(UTC).isoformat()
+            atomic(journal_path,committed)
+            return {"status":"RECOVERED_COMMITTED","sequence":journal.get("sequence")}
+        aborted=dict(journal)
+        aborted["status"]="ABORTED"
+        aborted["aborted_at_utc"]=datetime.now(UTC).isoformat()
+        atomic(journal_path,aborted)
+        return {"status":"RECOVERED_ABORTED","sequence":journal.get("sequence")}
+    if not matches:
+        raise RuntimeError("committed continuation journal diverges from authoritative history")
+    return {"status":"COMMITTED","sequence":journal.get("sequence")}
+
 def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict,burst_id:str|None=None,process_instance_id:str|None=None)->dict:
     """Persist validated monotonic evidence that one wake produced another autonomous pass."""
+    reconcile_continuation_journal(state_root)
     path=state_root/"continuation-pass-history.json"
     passes=[]; total=0; immediate_total=0; chain_head=None
     try:
@@ -1857,7 +1897,14 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
              "retained_predecessor_hash":retained_predecessor_hash,"passes":retained}
     anchor_material={k:payload[k] for k in ("pass_count","immediate_continuation_count","retained_predecessor_hash","chain_head")}
     payload["anchor_hash"]=hashlib.sha256(json.dumps(anchor_material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+    journal=state_root/"continuation-pass-journal.json"
+    atomic(journal,{"schema_version":1,"status":"PREPARED","sequence":sequence,
+                    "record_hash":record["record_hash"],"anchor_hash":payload["anchor_hash"],
+                    "prepared_at_utc":datetime.now(UTC).isoformat()})
     atomic(path,payload)
+    atomic(journal,{"schema_version":1,"status":"COMMITTED","sequence":sequence,
+                    "record_hash":record["record_hash"],"anchor_hash":payload["anchor_hash"],
+                    "committed_at_utc":datetime.now(UTC).isoformat()})
     return record
 
 def prove_restart_takeover(state_root:Path,instance_lock:dict,burst:dict)->dict:

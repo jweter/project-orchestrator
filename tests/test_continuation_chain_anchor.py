@@ -19,11 +19,15 @@ def test_metadata_rewrite_invalidates_chain_anchor(tmp_path,field,value):
     history=json.loads(path.read_text())
     history[field]=value
     path.write_text(json.dumps(history))
-    fresh=_record(tmp_path)
-    assert fresh["sequence"]==1
-    rewritten=json.loads(path.read_text())
-    assert rewritten["pass_count"]==1
-    assert rewritten["anchor_hash"]
+    if field in {"pass_count","chain_head"}:
+        with pytest.raises(RuntimeError,match="diverges"):
+            _record(tmp_path)
+    else:
+        fresh=_record(tmp_path)
+        assert fresh["sequence"]==1
+        rewritten=json.loads(path.read_text())
+        assert rewritten["pass_count"]==1
+        assert rewritten["anchor_hash"]
 
 def test_chain_anchor_is_stable_for_untampered_history(tmp_path):
     _record(tmp_path); second=_record(tmp_path)
@@ -44,6 +48,7 @@ def test_pre_anchor_v3_history_migrates_without_sequence_loss(tmp_path):
     history["schema_version"]=3
     history.pop("anchor_hash",None)
     path.write_text(json.dumps(history))
+    (tmp_path/"continuation-pass-journal.json").unlink()
     third=_record(tmp_path)
     migrated=json.loads(path.read_text())
     assert third["sequence"]==3
