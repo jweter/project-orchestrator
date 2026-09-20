@@ -421,7 +421,9 @@ def test_run_builder_refuses_dispatch_without_authorized_products(tmp_path, monk
         raise AssertionError("builder must not run without grant scope")
     monkeypatch.setattr(supervisor.subprocess,"run",run)
     state=tmp_path/"state"; state.mkdir()
-    assert supervisor.run_builder(tmp_path,tmp_path/"workspace",state,None)==2
+    rc,invocation_id=supervisor.run_builder(tmp_path,tmp_path/"workspace",state,None)
+    assert rc==2
+    assert invocation_id is None
     assert called is False
     assert "EXECUTION_GRANT_REQUIRED" in (state/"builder-last-output.txt").read_text()
 
