@@ -152,7 +152,7 @@ def test_grant_repo_universe_is_not_limited_by_static_portfolio(tmp_path, monkey
 def test_empty_execution_grant_selects_nothing_even_with_static_portfolio(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
     monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
-    monkeypatch.setattr(builder,"PORTFOLIO_REPOS",("jweter/old-static-repo",))
+    monkeypatch.setattr(builder,"portfolio_repositories",lambda: ("jweter/old-static-repo",))
     assert builder.select_repo(tmp_path/"state.json",eligible_repos=set()) is None
 
 def test_execution_grant_rejects_contract_drift(tmp_path, monkeypatch):
