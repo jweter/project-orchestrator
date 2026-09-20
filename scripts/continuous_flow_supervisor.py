@@ -1791,7 +1791,7 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
         return 1
     return max(60,normal_seconds)
 
-def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict,burst_id:str|None=None)->dict:
+def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict,burst_id:str|None=None,process_instance_id:str|None=None)->dict:
     """Persist durable evidence that one wake produced another autonomous pass."""
     path=state_root/"continuation-pass-history.json"
     try:
@@ -1803,7 +1803,7 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
         passes=[]; total=0; immediate_total=0
     immediate=delay_seconds==1
     record={"sequence":total+1,"recorded_at_utc":datetime.now(UTC).isoformat(),
-            "burst_id":burst_id,"builder_status":builder_status,"delay_seconds":delay_seconds,
+            "burst_id":burst_id,"process_instance_id":process_instance_id,"builder_status":builder_status,"delay_seconds":delay_seconds,
             "immediate_continuation":immediate,"lifecycle_advanced":lifecycle_advanced,
             "liveness_reacquire_requested":bool(liveness_reacquire.get("requested"))}
     passes.append(record)
@@ -1813,7 +1813,7 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
     atomic(path,payload)
     return record
 
-def start_or_resume_burst(state_root:Path,*,now:datetime|None=None,resume_seconds:int=900)->dict:
+def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,now:datetime|None=None,resume_seconds:int=900)->dict:
     """Resume a recently interrupted immediate burst; otherwise create a new wake identity."""
     now=now or datetime.now(UTC)
     path=state_root/"continuation-current-burst.json"
@@ -1824,11 +1824,14 @@ def start_or_resume_burst(state_root:Path,*,now:datetime|None=None,resume_second
         if (prior.get("immediate_continuation") is True and prior.get("burst_id")
                 and 0 <= age <= resume_seconds):
             return {"burst_id":prior["burst_id"],"burst_pass":int(prior.get("pass_count",0)),
-                    "resumed":True,"resume_age_seconds":age}
+                    "resumed":True,"resume_age_seconds":age,
+                    "previous_process_instance_id":prior.get("process_instance_id"),
+                    "process_instance_id":process_instance_id}
     except (OSError,json.JSONDecodeError,TypeError,ValueError):
         pass
     return {"burst_id":now.strftime("%Y%m%dT%H%M%S.%fZ"),"burst_pass":0,
-            "resumed":False,"resume_age_seconds":None}
+            "resumed":False,"resume_age_seconds":None,"previous_process_instance_id":None,
+            "process_instance_id":process_instance_id}
 
 def main()->int:
     p=argparse.ArgumentParser()
@@ -1839,13 +1842,25 @@ def main()->int:
     state.mkdir(parents=True,exist_ok=True)
     instance_lock=acquire_supervisor_instance_lock(state)
     if instance_lock is None:
-        atomic(state/"supervisor-reentry.json",{"schema_version":1,
+        owner=None
+        try:
+            owner=json.loads((state/"supervisor-instance.lock.json").read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError,TypeError):
+            pass
+        atomic(state/"supervisor-reentry.json",{"schema_version":2,
             "status":"SUPERVISOR_INSTANCE_ALREADY_ACTIVE",
-            "observed_at_utc":datetime.now(UTC).isoformat()})
+            "observed_at_utc":datetime.now(UTC).isoformat(),
+            "active_process_instance_id":((owner or {}).get("worker") or {}).get("instance_id"),
+            "active_worker":(owner or {}).get("worker")})
         return 0
     atexit.register(release_supervisor_instance_lock,instance_lock)
     merge=None
-    burst=start_or_resume_burst(state)
+    process_instance_id=instance_lock["worker"]["instance_id"]
+    burst=start_or_resume_burst(state,process_instance_id=process_instance_id)
+    atomic(state/"supervisor-process-instance.json",{"schema_version":1,
+        "process_instance_id":process_instance_id,"burst_id":burst["burst_id"],
+        "resumed":burst["resumed"],"previous_process_instance_id":burst.get("previous_process_instance_id"),
+        "worker":instance_lock["worker"],"started_at_utc":datetime.now(UTC).isoformat()})
     burst_id=burst["burst_id"]
     burst_pass=burst["burst_pass"]
     while True:
@@ -1904,7 +1919,8 @@ def main()->int:
             "quarantined_grants":quarantines,
             "quarantine_count":len(quarantines),
             "pr_lifecycle_advanced":lifecycle_advanced,
-            "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None})
+            "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None,
+            "process_instance_id":process_instance_id,"burst_id":burst_id})
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
@@ -1913,10 +1929,13 @@ def main()->int:
             liveness_reacquire=liveness_reacquire,builder_ok=builder_ok,
             builder_status=builder_status,normal_seconds=a.builder_seconds)
         record=record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
-            lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id)
+            lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id,
+            process_instance_id=process_instance_id)
         record["burst_pass"]=burst_pass
-        atomic(state/"continuation-current-burst.json",{"schema_version":1,"burst_id":burst_id,
-            "pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
+        atomic(state/"continuation-current-burst.json",{"schema_version":2,"burst_id":burst_id,
+            "process_instance_id":process_instance_id,
+            "previous_process_instance_id":burst.get("previous_process_instance_id"),
+            "resumed":burst["resumed"],"pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
         time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
