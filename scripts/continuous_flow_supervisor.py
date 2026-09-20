@@ -3,6 +3,11 @@ from __future__ import annotations
 import argparse, hashlib, json, os, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+try:
+    from scripts.autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
+except ModuleNotFoundError:
+    from autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
+
 from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
 
@@ -626,36 +631,46 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
             grants=payload.setdefault("grants",{})
         except (OSError,json.JSONDecodeError,TypeError):
             raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
-        issued=datetime.now(UTC).isoformat()
-        grants[grant_id]={"state":"ISSUED","issued_at":issued,
+        lifecycle_lock=_acquire_lifecycle_lock(lifecycle)
+        try:
+            payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+            grants=payload.setdefault("grants",{})
+            issued=datetime.now(UTC).isoformat()
+            grants[grant_id]={"state":"ISSUED","issued_at":issued,
                           "authorized_repositories":[repo],"expected_sha":exact_head,
                           "capability_id":execution_slice["capability_id"],
                           "slice_id":execution_slice["slice_id"],
                           "execution_slice":execution_slice,
-                          "issuer":lock["worker"]}
-        atomic(lifecycle,payload)
+                              "issuer":lock["worker"]}
+            atomic(lifecycle,payload)
+        finally:
+            _release_lifecycle_lock(lifecycle_lock)
         return path
     finally:
         release_grant_issue_lock(lock)
 
 def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
-    """Terminalize an issued grant when the builder exits before claiming it."""
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
     if grant_path.parent.name=="hands-off-execution-grants":
         lifecycle=grant_path.parent.parent/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=_acquire_lifecycle_lock(lifecycle)
     try:
-        grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
-        payload=json.loads(lifecycle.read_text(encoding="utf-8"))
-        record=payload["grants"][grant_id]
-    except (OSError,json.JSONDecodeError,KeyError,TypeError):
-        return False
-    if record.get("state")!="ISSUED":
-        return False
-    record["state"]="ABANDONED"
-    record["finished_at"]=datetime.now(UTC).isoformat()
-    record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}"
-    atomic(lifecycle,payload)
-    return True
+        """Terminalize an issued grant when the builder exits before claiming it."""
+        try:
+            grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
+            payload=json.loads(lifecycle.read_text(encoding="utf-8"))
+            record=payload["grants"][grant_id]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return False
+        if record.get("state")!="ISSUED":
+            return False
+        record["state"]="ABANDONED"
+        record["finished_at"]=datetime.now(UTC).isoformat()
+        record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}"
+        atomic(lifecycle,payload)
+        return True
+    finally:
+        _release_lifecycle_lock(lifecycle_lock)
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->tuple[int,str|None]:
     if not products:
@@ -754,55 +769,60 @@ def worker_liveness(worker:dict|None)->str:
     return "ALIVE"
 
 def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
-    """Abandon an expired claim only when its owning worker is proven dead."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    if not path.exists():
-        return []
     try:
-        payload=json.loads(path.read_text(encoding="utf-8"))
-        grants=payload.get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        return []
-    current=now or datetime.now(UTC)
-    abandoned=[]; changed=False
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("state")!="CLAIMED":
-            continue
+        """Abandon an expired claim only when its owning worker is proven dead."""
+        path=state_root/"hands-off-grant-lifecycle.json"
+        lifecycle_lock=_acquire_lifecycle_lock(path)
+        if not path.exists():
+            return []
         try:
-            heartbeat=datetime.fromisoformat(record.get("last_heartbeat_at",record["claimed_at"]))
-            if heartbeat.tzinfo is None:
-                heartbeat=heartbeat.replace(tzinfo=UTC)
-        except (KeyError,TypeError,ValueError):
-            continue
-        age=(current-heartbeat).total_seconds()
-        if age <= CLAIM_LEASE_SECONDS:
-            continue
-        liveness=liveness_probe(record.get("worker"))
-        record["last_liveness_check_at"]=current.isoformat()
-        record["worker_liveness"]=liveness
-        changed=True
-        if liveness=="DEAD":
-            record["state"]="ABANDONED"
-            record["finished_at"]=current.isoformat()
-            record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_DEAD"
-            abandoned.append(grant_id)
-        elif liveness=="UNKNOWN":
-            checks=int(record.get("unknown_liveness_checks",0))+1
-            record["unknown_liveness_checks"]=checks
-            record.setdefault("unknown_liveness_first_seen_at",current.isoformat())
-            if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
-                record["state"]="QUARANTINED"
+            payload=json.loads(path.read_text(encoding="utf-8"))
+            grants=payload.get("grants",{})
+        except (OSError,json.JSONDecodeError,TypeError):
+            return []
+        current=now or datetime.now(UTC)
+        abandoned=[]; changed=False
+        for grant_id,record in grants.items():
+            if not isinstance(record,dict) or record.get("state")!="CLAIMED":
+                continue
+            try:
+                heartbeat=datetime.fromisoformat(record.get("last_heartbeat_at",record["claimed_at"]))
+                if heartbeat.tzinfo is None:
+                    heartbeat=heartbeat.replace(tzinfo=UTC)
+            except (KeyError,TypeError,ValueError):
+                continue
+            age=(current-heartbeat).total_seconds()
+            if age <= CLAIM_LEASE_SECONDS:
+                continue
+            liveness=liveness_probe(record.get("worker"))
+            record["last_liveness_check_at"]=current.isoformat()
+            record["worker_liveness"]=liveness
+            changed=True
+            if liveness=="DEAD":
+                record["state"]="ABANDONED"
                 record["finished_at"]=current.isoformat()
-                record["result_status"]="CLAIM_LEASE_UNKNOWN_QUARANTINED"
+                record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_DEAD"
+                abandoned.append(grant_id)
+            elif liveness=="UNKNOWN":
+                checks=int(record.get("unknown_liveness_checks",0))+1
+                record["unknown_liveness_checks"]=checks
+                record.setdefault("unknown_liveness_first_seen_at",current.isoformat())
+                if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
+                    record["state"]="QUARANTINED"
+                    record["finished_at"]=current.isoformat()
+                    record["result_status"]="CLAIM_LEASE_UNKNOWN_QUARANTINED"
+                else:
+                    record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_UNKNOWN"
             else:
-                record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_UNKNOWN"
-        else:
-            record["unknown_liveness_checks"]=0
-            record.pop("unknown_liveness_first_seen_at",None)
-            record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_ALIVE"
-    if changed:
-        atomic(path,payload)
-    return abandoned
+                record["unknown_liveness_checks"]=0
+                record.pop("unknown_liveness_first_seen_at",None)
+                record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_ALIVE"
+        if changed:
+            atomic(path,payload)
+        return abandoned
+
+    finally:
+        _release_lifecycle_lock(lifecycle_lock)
 
 def classify_orphan_branch(repo:str,ws:Path,branch:str)->tuple[str,dict]:
     """Classify clean autonomous branch state without mutating it."""
@@ -1140,36 +1160,41 @@ def commit_reconciled_staged_work(ws:Path,record:dict)->str:
     return "STAGED_COMMIT_RECOVERED"
 
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
-    """Return every durable abandoned claim that has not reached a terminal recovery state."""
-    path=state_root/"hands-off-grant-lifecycle.json"
     try:
-        payload=json.loads(path.read_text(encoding="utf-8"))
-        grants=payload.get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        return list(dict.fromkeys(newly_abandoned or []))
-    pending=list(newly_abandoned or [])
-    changed=False
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("state")!="ABANDONED":
-            continue
-        recovery_state=record.get("recovery_state")
-        if recovery_state not in {"RECOVERED","QUARANTINED"}:
-            pending.append(grant_id)
-        elif (recovery_state=="QUARANTINED" and record.get("execution_stage")=="COMMITTED"
-              and record.get("head_sha") and record.get("recovery_result") in {
-                  "PRESERVED_COMMIT_RECOVERED","CONSUMED_RECOVERY_COMMIT_ADOPTED","STAGED_COMMIT_RECOVERED"
-              }):
-            # Exact recovered commits must re-enter durable push/PR recovery.
-            record["recovery_state"]="RECOVERING"
-            changed=True
-            pending.append(grant_id)
-    if changed:
+        """Return every durable abandoned claim that has not reached a terminal recovery state."""
+        path=state_root/"hands-off-grant-lifecycle.json"
+        lifecycle_lock=_acquire_lifecycle_lock(path)
         try:
-            payload["grants"]=grants
-            atomic(path,payload)
-        except (OSError,TypeError):
+            payload=json.loads(path.read_text(encoding="utf-8"))
+            grants=payload.get("grants",{})
+        except (OSError,json.JSONDecodeError,TypeError):
             return list(dict.fromkeys(newly_abandoned or []))
-    return list(dict.fromkeys(pending))
+        pending=list(newly_abandoned or [])
+        changed=False
+        for grant_id,record in grants.items():
+            if not isinstance(record,dict) or record.get("state")!="ABANDONED":
+                continue
+            recovery_state=record.get("recovery_state")
+            if recovery_state not in {"RECOVERED","QUARANTINED"}:
+                pending.append(grant_id)
+            elif (recovery_state=="QUARANTINED" and record.get("execution_stage")=="COMMITTED"
+                  and record.get("head_sha") and record.get("recovery_result") in {
+                      "PRESERVED_COMMIT_RECOVERED","CONSUMED_RECOVERY_COMMIT_ADOPTED","STAGED_COMMIT_RECOVERED"
+                  }):
+                # Exact recovered commits must re-enter durable push/PR recovery.
+                record["recovery_state"]="RECOVERING"
+                changed=True
+                pending.append(grant_id)
+        if changed:
+            try:
+                payload["grants"]=grants
+                atomic(path,payload)
+            except (OSError,TypeError):
+                return list(dict.fromkeys(newly_abandoned or []))
+        return list(dict.fromkeys(pending))
+
+    finally:
+        _release_lifecycle_lock(lifecycle_lock)
 
 def verify_durable_pr(repo:str,ws:Path,pr_number:int,expected_head:str)->str:
     """Recover PR_OPEN only by exact durable PR number and exact recorded head."""
@@ -1193,261 +1218,276 @@ def verify_durable_pr(repo:str,ws:Path,pr_number:int,expected_head:str)->str:
     return "RECOVERY_DURABLE_PR_STATE_UNKNOWN"
 
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
-    """Revisit durable recovery obligations until recovered or explicitly quarantined."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    if not grant_ids or not path.exists():
-        return {}
     try:
-        payload=json.loads(path.read_text(encoding="utf-8"))
-        grants=payload["grants"]
-    except (OSError,json.JSONDecodeError,KeyError,TypeError):
-        return {grant_id:"LIFECYCLE_UNREADABLE" for grant_id in grant_ids}
-    outcomes={}
-    current=now or datetime.now(UTC)
-    for grant_id in grant_ids:
-        record=grants.get(grant_id,{})
-        attempts=int(record.get("recovery_attempts",0))
-        next_attempt=record.get("recovery_next_attempt_at")
-        if next_attempt:
-            try:
-                due=datetime.fromisoformat(next_attempt)
-                if due.tzinfo is None: due=due.replace(tzinfo=UTC)
-                if current<due:
-                    outcomes[grant_id]="RECOVERY_BACKOFF"
-                    continue
-            except (TypeError,ValueError):
-                pass
-        if attempts>=5:
-            record["recovery_state"]="QUARANTINED"
-            record["recovery_result"]="RECOVERY_RETRY_EXHAUSTED"
-            outcomes[grant_id]="RECOVERY_RETRY_EXHAUSTED"
-            continue
-        record["recovery_attempts"]=attempts+1
-        record["recovery_last_attempt_at"]=current.isoformat()
-        repos=record.get("authorized_repositories",[])
-        repo=record.get("repository")
-        candidates=[repo] if repo else repos
-        if len(candidates)!=1:
-            outcomes[grant_id]="RECOVERY_IDENTITY_AMBIGUOUS"
-        else:
-            repo=candidates[0]; ws=workspace_root/repo.split("/",1)[-1]
-            if not ws.is_dir():
-                outcomes[grant_id]="WORKSPACE_MISSING"
-            else:
-                outcomes[grant_id]=None
-        if outcomes.get(grant_id) is not None:
-            record["recovery_result"]=outcomes[grant_id]
-            delay=min(3600,60*(2**attempts))
-            record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
-            continue
-        stage=record.get("execution_stage")
-        durable_branch=record.get("branch")
-        durable_head=record.get("head_sha")
-        durable_base=record.get("base_sha")
-        if stage in {"BASE_VERIFIED","BRANCH_CREATED"} and durable_base:
-            status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
-            head_now=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
-            branch_now=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
-            if status.returncode or head_now.returncode or branch_now.returncode:
-                outcomes[grant_id]="RECOVERY_EARLY_STAGE_WORKSPACE_UNREADABLE"
-            elif status.stdout.strip():
-                outcomes[grant_id]="RECOVERY_EARLY_STAGE_DIRTY_PRESERVED"
+        """Revisit durable recovery obligations until recovered or explicitly quarantined."""
+        path=state_root/"hands-off-grant-lifecycle.json"
+        lifecycle_lock=_acquire_lifecycle_lock(path)
+        if not grant_ids or not path.exists():
+            return {}
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+            grants=payload["grants"]
+        except (OSError,json.JSONDecodeError,KeyError,TypeError):
+            return {grant_id:"LIFECYCLE_UNREADABLE" for grant_id in grant_ids}
+        outcomes={}
+        current=now or datetime.now(UTC)
+        for grant_id in grant_ids:
+            record=grants.get(grant_id,{})
+            attempts=int(record.get("recovery_attempts",0))
+            next_attempt=record.get("recovery_next_attempt_at")
+            if next_attempt:
+                try:
+                    due=datetime.fromisoformat(next_attempt)
+                    if due.tzinfo is None: due=due.replace(tzinfo=UTC)
+                    if current<due:
+                        outcomes[grant_id]="RECOVERY_BACKOFF"
+                        continue
+                except (TypeError,ValueError):
+                    pass
+            if attempts>=5:
                 record["recovery_state"]="QUARANTINED"
-                record["recovery_quarantine_reason"]="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
-                record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
-            elif head_now.stdout.strip()!=durable_base:
-                outcomes[grant_id]="RECOVERY_EARLY_STAGE_HEAD_DRIFT"
-                record["recovery_state"]="QUARANTINED"
-                record["recovery_quarantine_reason"]="UNRECORDED_COMMIT_REQUIRES_PRESERVATION"
-                record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
-            elif stage=="BRANCH_CREATED" and durable_branch and branch_now.stdout.strip()!=durable_branch:
-                outcomes[grant_id]="RECOVERY_EARLY_STAGE_BRANCH_DRIFT"
-                record["recovery_state"]="QUARANTINED"
-                record["recovery_quarantine_reason"]="BRANCH_IDENTITY_MISMATCH"
-                record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
+                record["recovery_result"]="RECOVERY_RETRY_EXHAUSTED"
+                outcomes[grant_id]="RECOVERY_RETRY_EXHAUSTED"
+                continue
+            record["recovery_attempts"]=attempts+1
+            record["recovery_last_attempt_at"]=current.isoformat()
+            repos=record.get("authorized_repositories",[])
+            repo=record.get("repository")
+            candidates=[repo] if repo else repos
+            if len(candidates)!=1:
+                outcomes[grant_id]="RECOVERY_IDENTITY_AMBIGUOUS"
             else:
-                outcomes[grant_id]="RECOVERY_EARLY_STAGE_NO_PRODUCT_WORK"
-                record["recovery_state"]="RECOVERED"
-                record["recovered_at"]=current.isoformat()
-            record["recovery_result"]=outcomes[grant_id]
-            if record.get("recovery_state") in {"RECOVERED","QUARANTINED"}:
-                record.pop("recovery_next_attempt_at",None)
-            else:
-                delay=min(3600,60*(2**attempts))
-                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
-            continue
-        if stage in {"PUSHED","PR_OPEN"} and durable_branch and durable_head:
-            remote=subprocess.run(["git","ls-remote","--heads","origin",durable_branch],cwd=ws,text=True,capture_output=True,check=False)
-            remote_head=remote.stdout.split()[0] if remote.returncode==0 and remote.stdout.strip() else ""
-            if remote_head!=durable_head:
-                outcomes[grant_id]="RECOVERY_DURABLE_REMOTE_HEAD_MISMATCH"
-            elif stage=="PR_OPEN":
-                pr_number=record.get("pr_number")
-                if not isinstance(pr_number,int) or pr_number<1:
-                    outcomes[grant_id]="RECOVERY_DURABLE_PR_IDENTITY_REQUIRED"
+                repo=candidates[0]; ws=workspace_root/repo.split("/",1)[-1]
+                if not ws.is_dir():
+                    outcomes[grant_id]="WORKSPACE_MISSING"
                 else:
-                    outcomes[grant_id]=verify_durable_pr(repo,ws,pr_number,durable_head)
-                if outcomes[grant_id] in {"RECOVERY_DURABLE_PR_HANDOFF","RECOVERY_DURABLE_PR_MERGED"}:
-                    record["recovery_state"]="RECOVERED"
-                    record["recovered_at"]=current.isoformat()
-                elif outcomes[grant_id]=="RECOVERY_DURABLE_PR_CLOSED_UNMERGED":
+                    outcomes[grant_id]=None
+            if outcomes.get(grant_id) is not None:
+                record["recovery_result"]=outcomes[grant_id]
+                delay=min(3600,60*(2**attempts))
+                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+                continue
+            stage=record.get("execution_stage")
+            durable_branch=record.get("branch")
+            durable_head=record.get("head_sha")
+            durable_base=record.get("base_sha")
+            if stage in {"BASE_VERIFIED","BRANCH_CREATED"} and durable_base:
+                status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
+                head_now=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+                branch_now=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+                if status.returncode or head_now.returncode or branch_now.returncode:
+                    outcomes[grant_id]="RECOVERY_EARLY_STAGE_WORKSPACE_UNREADABLE"
+                elif status.stdout.strip():
+                    outcomes[grant_id]="RECOVERY_EARLY_STAGE_DIRTY_PRESERVED"
                     record["recovery_state"]="QUARANTINED"
-                    record["recovery_quarantine_reason"]="PR_CLOSED_WITHOUT_MERGE"
-            else:
-                evidence={"head_sha":durable_head,"remote_head_sha":record.get("remote_head_sha") or durable_head}
-                outcomes[grant_id]=resume_orphan_branch(repo,ws,durable_branch,"ORPHAN_PUSHED_NO_PR",evidence)
-                if outcomes[grant_id]=="RECOVERY_PR_OPENED":
+                    record["recovery_quarantine_reason"]="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
+                    record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
+                elif head_now.stdout.strip()!=durable_base:
+                    outcomes[grant_id]="RECOVERY_EARLY_STAGE_HEAD_DRIFT"
+                    record["recovery_state"]="QUARANTINED"
+                    record["recovery_quarantine_reason"]="UNRECORDED_COMMIT_REQUIRES_PRESERVATION"
+                    record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
+                elif stage=="BRANCH_CREATED" and durable_branch and branch_now.stdout.strip()!=durable_branch:
+                    outcomes[grant_id]="RECOVERY_EARLY_STAGE_BRANCH_DRIFT"
+                    record["recovery_state"]="QUARANTINED"
+                    record["recovery_quarantine_reason"]="BRANCH_IDENTITY_MISMATCH"
+                    record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
+                else:
+                    outcomes[grant_id]="RECOVERY_EARLY_STAGE_NO_PRODUCT_WORK"
                     record["recovery_state"]="RECOVERED"
                     record["recovered_at"]=current.isoformat()
-            record["recovery_result"]=outcomes[grant_id]
-            if record.get("recovery_state")=="RECOVERED":
-                record.pop("recovery_next_attempt_at",None)
-            else:
-                delay=min(3600,60*(2**attempts))
-                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
-            continue
-        if stage=="COMMITTED" and durable_branch and durable_head:
-            branch_now=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
-            head_now=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
-            if branch_now.returncode or head_now.returncode or branch_now.stdout.strip()!=durable_branch or head_now.stdout.strip()!=durable_head:
-                outcomes[grant_id]="RECOVERY_DURABLE_LOCAL_HEAD_MISMATCH"
-            else:
-                evidence={"head_sha":durable_head}
-                outcomes[grant_id]=resume_orphan_branch(repo,ws,durable_branch,"ORPHAN_LOCAL_COMMIT_UNPUSHED",evidence)
-                if outcomes[grant_id]=="RECOVERY_PR_OPENED":
-                    record["recovery_state"]="RECOVERED"
-                    record["recovered_at"]=current.isoformat()
-            record["recovery_result"]=outcomes[grant_id]
-            if record.get("recovery_state")=="RECOVERED":
-                record.pop("recovery_next_attempt_at",None)
-            else:
-                delay=min(3600,60*(2**attempts))
-                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
-            continue
-        status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
-        branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
-        if status.returncode or branch.returncode:
-            outcomes[grant_id]="WORKSPACE_UNREADABLE"; continue
-        dirty=bool(status.stdout.strip())
-        current_branch=branch.stdout.strip()
-        if dirty:
-            outcomes[grant_id]="DIRTY_WORKSPACE_QUARANTINED"
-        elif current_branch.startswith("actor/autonomous-"):
-            classification,evidence=classify_orphan_branch(repo,ws,current_branch)
-            outcomes[grant_id]=classification
-            record["recovery_evidence"]=evidence
-            if classification in {"ORPHAN_LOCAL_COMMIT_UNPUSHED","ORPHAN_PUSHED_NO_PR"}:
-                classification=resume_orphan_branch(repo,ws,current_branch,classification,evidence)
+                record["recovery_result"]=outcomes[grant_id]
+                if record.get("recovery_state") in {"RECOVERED","QUARANTINED"}:
+                    record.pop("recovery_next_attempt_at",None)
+                else:
+                    delay=min(3600,60*(2**attempts))
+                    record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+                continue
+            if stage in {"PUSHED","PR_OPEN"} and durable_branch and durable_head:
+                remote=subprocess.run(["git","ls-remote","--heads","origin",durable_branch],cwd=ws,text=True,capture_output=True,check=False)
+                remote_head=remote.stdout.split()[0] if remote.returncode==0 and remote.stdout.strip() else ""
+                if remote_head!=durable_head:
+                    outcomes[grant_id]="RECOVERY_DURABLE_REMOTE_HEAD_MISMATCH"
+                elif stage=="PR_OPEN":
+                    pr_number=record.get("pr_number")
+                    if not isinstance(pr_number,int) or pr_number<1:
+                        outcomes[grant_id]="RECOVERY_DURABLE_PR_IDENTITY_REQUIRED"
+                    else:
+                        outcomes[grant_id]=verify_durable_pr(repo,ws,pr_number,durable_head)
+                    if outcomes[grant_id] in {"RECOVERY_DURABLE_PR_HANDOFF","RECOVERY_DURABLE_PR_MERGED"}:
+                        record["recovery_state"]="RECOVERED"
+                        record["recovered_at"]=current.isoformat()
+                    elif outcomes[grant_id]=="RECOVERY_DURABLE_PR_CLOSED_UNMERGED":
+                        record["recovery_state"]="QUARANTINED"
+                        record["recovery_quarantine_reason"]="PR_CLOSED_WITHOUT_MERGE"
+                else:
+                    evidence={"head_sha":durable_head,"remote_head_sha":record.get("remote_head_sha") or durable_head}
+                    outcomes[grant_id]=resume_orphan_branch(repo,ws,durable_branch,"ORPHAN_PUSHED_NO_PR",evidence)
+                    if outcomes[grant_id]=="RECOVERY_PR_OPENED":
+                        record["recovery_state"]="RECOVERED"
+                        record["recovered_at"]=current.isoformat()
+                record["recovery_result"]=outcomes[grant_id]
+                if record.get("recovery_state")=="RECOVERED":
+                    record.pop("recovery_next_attempt_at",None)
+                else:
+                    delay=min(3600,60*(2**attempts))
+                    record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+                continue
+            if stage=="COMMITTED" and durable_branch and durable_head:
+                branch_now=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+                head_now=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+                if branch_now.returncode or head_now.returncode or branch_now.stdout.strip()!=durable_branch or head_now.stdout.strip()!=durable_head:
+                    outcomes[grant_id]="RECOVERY_DURABLE_LOCAL_HEAD_MISMATCH"
+                else:
+                    evidence={"head_sha":durable_head}
+                    outcomes[grant_id]=resume_orphan_branch(repo,ws,durable_branch,"ORPHAN_LOCAL_COMMIT_UNPUSHED",evidence)
+                    if outcomes[grant_id]=="RECOVERY_PR_OPENED":
+                        record["recovery_state"]="RECOVERED"
+                        record["recovered_at"]=current.isoformat()
+                record["recovery_result"]=outcomes[grant_id]
+                if record.get("recovery_state")=="RECOVERED":
+                    record.pop("recovery_next_attempt_at",None)
+                else:
+                    delay=min(3600,60*(2**attempts))
+                    record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+                continue
+            status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
+            branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+            if status.returncode or branch.returncode:
+                outcomes[grant_id]="WORKSPACE_UNREADABLE"; continue
+            dirty=bool(status.stdout.strip())
+            current_branch=branch.stdout.strip()
+            if dirty:
+                outcomes[grant_id]="DIRTY_WORKSPACE_QUARANTINED"
+            elif current_branch.startswith("actor/autonomous-"):
+                classification,evidence=classify_orphan_branch(repo,ws,current_branch)
                 outcomes[grant_id]=classification
-            if classification in {"ORPHAN_NO_DIFF","ORPHAN_PR_RECOVERABLE","RECOVERY_PR_OPENED"}:
+                record["recovery_evidence"]=evidence
+                if classification in {"ORPHAN_LOCAL_COMMIT_UNPUSHED","ORPHAN_PUSHED_NO_PR"}:
+                    classification=resume_orphan_branch(repo,ws,current_branch,classification,evidence)
+                    outcomes[grant_id]=classification
+                if classification in {"ORPHAN_NO_DIFF","ORPHAN_PR_RECOVERABLE","RECOVERY_PR_OPENED"}:
+                    record["recovery_state"]="RECOVERED"
+                    record["recovered_at"]=datetime.now(UTC).isoformat()
+            else:
+                outcomes[grant_id]="CLEAN_WORKSPACE_RECOVERED"
                 record["recovery_state"]="RECOVERED"
                 record["recovered_at"]=datetime.now(UTC).isoformat()
-        else:
-            outcomes[grant_id]="CLEAN_WORKSPACE_RECOVERED"
-            record["recovery_state"]="RECOVERED"
-            record["recovered_at"]=datetime.now(UTC).isoformat()
-        record["recovery_result"]=outcomes[grant_id]
-        if record.get("recovery_state") not in {"RECOVERED","QUARANTINED"}:
-            delay=min(3600,60*(2**attempts))
-            record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
-        else:
-            record.pop("recovery_next_attempt_at",None)
-    atomic(path,payload)
-    return outcomes
+            record["recovery_result"]=outcomes[grant_id]
+            if record.get("recovery_state") not in {"RECOVERED","QUARANTINED"}:
+                delay=min(3600,60*(2**attempts))
+                record["recovery_next_attempt_at"]=(current+timedelta(seconds=delay)).isoformat()
+            else:
+                record.pop("recovery_next_attempt_at",None)
+        atomic(path,payload)
+        return outcomes
+
+    finally:
+        _release_lifecycle_lock(lifecycle_lock)
 
 def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dict[str,str]:
-    """Continuously revalidate preserved crash work without mutating it."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    if not path.exists(): return {}
     try:
-        payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        return {}
-    outcomes={}; changed=False
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("recovery_state")!="QUARANTINED":
-            continue
-        if record.get("recovery_quarantine_reason") not in {
-            "UNCOMMITTED_WORK_REQUIRES_PRESERVATION","UNRECORDED_COMMIT_REQUIRES_PRESERVATION","BRANCH_IDENTITY_MISMATCH"
-        }: continue
-        repo=record.get("repository")
-        if not repo:
-            outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"; continue
-        ws=workspace_root/repo.split("/",1)[-1]
-        if ws.is_dir() and record.get("preserved_recovery_capability",{}).get("state")=="CONSUMED":
-            reconciled=reconcile_consumed_recovery(ws,record)
-            if reconciled in {"CONSUMED_RECOVERY_COMMIT_ADOPTED","CONSUMED_RECOVERY_ALREADY_DURABLE"}:
-                outcomes[grant_id]=reconciled
-                changed=True
+        """Continuously revalidate preserved crash work without mutating it."""
+        path=state_root/"hands-off-grant-lifecycle.json"
+        lifecycle_lock=_acquire_lifecycle_lock(path)
+        if not path.exists(): return {}
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
+        except (OSError,json.JSONDecodeError,TypeError):
+            return {}
+        outcomes={}; changed=False
+        for grant_id,record in grants.items():
+            if not isinstance(record,dict) or record.get("recovery_state")!="QUARANTINED":
                 continue
-            if reconciled=="CONSUMED_RECOVERY_NO_COMMIT":
-                staged=reconcile_consumed_staged_work(ws,record)
-                if staged=="CONSUMED_RECOVERY_EXACT_STAGED":
-                    if not record.get("staged_commit_capability"):
-                        replacement=issue_staged_commit_capability(record)
-                        if replacement: record["staged_commit_capability"]=replacement
-                    if record.get("staged_commit_capability",{}).get("state")=="ISSUED":
-                        staged=commit_reconciled_staged_work(ws,record)
-                    outcomes[grant_id]=staged
+            if record.get("recovery_quarantine_reason") not in {
+                "UNCOMMITTED_WORK_REQUIRES_PRESERVATION","UNRECORDED_COMMIT_REQUIRES_PRESERVATION","BRANCH_IDENTITY_MISMATCH"
+            }: continue
+            repo=record.get("repository")
+            if not repo:
+                outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"; continue
+            ws=workspace_root/repo.split("/",1)[-1]
+            if ws.is_dir() and record.get("preserved_recovery_capability",{}).get("state")=="CONSUMED":
+                reconciled=reconcile_consumed_recovery(ws,record)
+                if reconciled in {"CONSUMED_RECOVERY_COMMIT_ADOPTED","CONSUMED_RECOVERY_ALREADY_DURABLE"}:
+                    outcomes[grant_id]=reconciled
                     changed=True
                     continue
-        outcome=revalidate_preserved_work(ws,record) if ws.is_dir() else "PRESERVED_WORKSPACE_MISSING"
-        outcomes[grant_id]=outcome
-        record["preserved_work_revalidation"]=outcome
-        record["preserved_work_revalidated_at"]=datetime.now(UTC).isoformat()
-        if outcome=="PRESERVED_WORK_EXACT":
-            validation=validate_preserved_work(ws,record)
-            record["preserved_work_validation"]=validation
-            record["preserved_work_validated_at"]=datetime.now(UTC).isoformat()
-            if validation=="PRESERVED_VALIDATION_PASSED" and not record.get("preserved_recovery_capability"):
-                capability=issue_preserved_recovery_capability(record)
-                if capability:
-                    record["preserved_recovery_capability"]=capability
-            if validation=="PRESERVED_VALIDATION_PASSED" and record.get("preserved_recovery_capability",{}).get("state")=="ISSUED":
-                commit_outcome=commit_preserved_work(ws,record)
-                record["preserved_work_commit_result"]=commit_outcome
-                outcomes[grant_id]=commit_outcome
-            else:
-                outcomes[grant_id]=validation
-        changed=True
-    if changed: atomic(path,payload)
-    return outcomes
+                if reconciled=="CONSUMED_RECOVERY_NO_COMMIT":
+                    staged=reconcile_consumed_staged_work(ws,record)
+                    if staged=="CONSUMED_RECOVERY_EXACT_STAGED":
+                        if not record.get("staged_commit_capability"):
+                            replacement=issue_staged_commit_capability(record)
+                            if replacement: record["staged_commit_capability"]=replacement
+                        if record.get("staged_commit_capability",{}).get("state")=="ISSUED":
+                            staged=commit_reconciled_staged_work(ws,record)
+                        outcomes[grant_id]=staged
+                        changed=True
+                        continue
+            outcome=revalidate_preserved_work(ws,record) if ws.is_dir() else "PRESERVED_WORKSPACE_MISSING"
+            outcomes[grant_id]=outcome
+            record["preserved_work_revalidation"]=outcome
+            record["preserved_work_revalidated_at"]=datetime.now(UTC).isoformat()
+            if outcome=="PRESERVED_WORK_EXACT":
+                validation=validate_preserved_work(ws,record)
+                record["preserved_work_validation"]=validation
+                record["preserved_work_validated_at"]=datetime.now(UTC).isoformat()
+                if validation=="PRESERVED_VALIDATION_PASSED" and not record.get("preserved_recovery_capability"):
+                    capability=issue_preserved_recovery_capability(record)
+                    if capability:
+                        record["preserved_recovery_capability"]=capability
+                if validation=="PRESERVED_VALIDATION_PASSED" and record.get("preserved_recovery_capability",{}).get("state")=="ISSUED":
+                    commit_outcome=commit_preserved_work(ws,record)
+                    record["preserved_work_commit_result"]=commit_outcome
+                    outcomes[grant_id]=commit_outcome
+                else:
+                    outcomes[grant_id]=validation
+            changed=True
+        if changed: atomic(path,payload)
+        return outcomes
+
+    finally:
+        _release_lifecycle_lock(lifecycle_lock)
 
 def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->dict[str,str]:
-    """Re-evaluate ownership quarantine; only proof of death authorizes recovery."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    if not path.exists():
-        return {}
     try:
-        payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        return {}
-    current=now or datetime.now(UTC); outcomes={}; changed=False
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("state")!="QUARANTINED":
-            continue
-        if record.get("result_status")!="CLAIM_LEASE_UNKNOWN_QUARANTINED":
-            continue
-        liveness=liveness_probe(record.get("worker"))
-        record["quarantine_last_recheck_at"]=current.isoformat()
-        record["quarantine_rechecks"]=int(record.get("quarantine_rechecks",0))+1
-        record["worker_liveness"]=liveness; changed=True
-        if liveness=="DEAD":
-            record["state"]="ABANDONED"
-            record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
-            record["finished_at"]=current.isoformat()
-            outcomes[grant_id]="RELEASED_TO_RECOVERY"
-        elif liveness=="ALIVE":
-            record["state"]="CLAIMED"
-            record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_ALIVE"
-            record["unknown_liveness_checks"]=0
-            record.pop("unknown_liveness_first_seen_at",None)
-            record.pop("finished_at",None)
-            outcomes[grant_id]="RESTORED_TO_CLAIMED"
-        else:
-            outcomes[grant_id]="STILL_UNKNOWN"
-    if changed: atomic(path,payload)
-    return outcomes
+        """Re-evaluate ownership quarantine; only proof of death authorizes recovery."""
+        path=state_root/"hands-off-grant-lifecycle.json"
+        lifecycle_lock=_acquire_lifecycle_lock(path)
+        if not path.exists():
+            return {}
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
+        except (OSError,json.JSONDecodeError,TypeError):
+            return {}
+        current=now or datetime.now(UTC); outcomes={}; changed=False
+        for grant_id,record in grants.items():
+            if not isinstance(record,dict) or record.get("state")!="QUARANTINED":
+                continue
+            if record.get("result_status")!="CLAIM_LEASE_UNKNOWN_QUARANTINED":
+                continue
+            liveness=liveness_probe(record.get("worker"))
+            record["quarantine_last_recheck_at"]=current.isoformat()
+            record["quarantine_rechecks"]=int(record.get("quarantine_rechecks",0))+1
+            record["worker_liveness"]=liveness; changed=True
+            if liveness=="DEAD":
+                record["state"]="ABANDONED"
+                record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
+                record["finished_at"]=current.isoformat()
+                outcomes[grant_id]="RELEASED_TO_RECOVERY"
+            elif liveness=="ALIVE":
+                record["state"]="CLAIMED"
+                record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_ALIVE"
+                record["unknown_liveness_checks"]=0
+                record.pop("unknown_liveness_first_seen_at",None)
+                record.pop("finished_at",None)
+                outcomes[grant_id]="RESTORED_TO_CLAIMED"
+            else:
+                outcomes[grant_id]="STILL_UNKNOWN"
+        if changed: atomic(path,payload)
+        return outcomes
+
+    finally:
+        _release_lifecycle_lock(lifecycle_lock)
 
 def quarantined_grants(state_root:Path)->dict[str,dict]:
     """Expose terminal ownership/recovery quarantines without leaking worker secrets."""
