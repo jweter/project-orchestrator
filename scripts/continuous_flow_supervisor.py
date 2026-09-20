@@ -458,6 +458,42 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
     atomic(path,payload)
     return outcomes
 
+def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->dict[str,str]:
+    """Re-evaluate ownership quarantine; only proof of death authorizes recovery."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists():
+        return {}
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    current=now or datetime.now(UTC); outcomes={}; changed=False
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("state")!="QUARANTINED":
+            continue
+        if record.get("result_status")!="CLAIM_LEASE_UNKNOWN_QUARANTINED":
+            continue
+        liveness=liveness_probe(record.get("worker"))
+        record["quarantine_last_recheck_at"]=current.isoformat()
+        record["quarantine_rechecks"]=int(record.get("quarantine_rechecks",0))+1
+        record["worker_liveness"]=liveness; changed=True
+        if liveness=="DEAD":
+            record["state"]="ABANDONED"
+            record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
+            record["finished_at"]=current.isoformat()
+            outcomes[grant_id]="RELEASED_TO_RECOVERY"
+        elif liveness=="ALIVE":
+            record["state"]="CLAIMED"
+            record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_ALIVE"
+            record["unknown_liveness_checks"]=0
+            record.pop("unknown_liveness_first_seen_at",None)
+            record.pop("finished_at",None)
+            outcomes[grant_id]="RESTORED_TO_CLAIMED"
+        else:
+            outcomes[grant_id]="STILL_UNKNOWN"
+    if changed: atomic(path,payload)
+    return outcomes
+
 def quarantined_grants(state_root:Path)->dict[str,dict]:
     """Expose terminal ownership/recovery quarantines without leaking worker secrets."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -500,6 +536,10 @@ def main()->int:
         abandoned_grants=recover_stale_grant_claims(state)
         recovery_queue=pending_recovery_grants(state,abandoned_grants)
         recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
+        quarantine_rechecks=recheck_quarantined_claims(state)
+        newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
+        if newly_released:
+            recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
         quarantines=quarantined_grants(state)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
@@ -528,6 +568,7 @@ def main()->int:
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,
             "abandoned_recovery":recovery_results,
+            "quarantine_rechecks":quarantine_rechecks,
             "quarantined_grants":quarantines,
             "quarantine_count":len(quarantines),
             "pr_lifecycle_advanced":lifecycle_advanced,
