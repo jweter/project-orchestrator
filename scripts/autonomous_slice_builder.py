@@ -1,6 +1,6 @@
 """Idle-gated autonomous bounded-slice builder using local Ollama + Aider."""
 from __future__ import annotations
-import argparse, ctypes, hashlib, json, os, shutil, subprocess, sys, threading, time
+import argparse, ctypes, hashlib, json, os, shutil, socket, subprocess, sys, threading, time, uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -156,7 +156,13 @@ def ensure_workspace(repo:str,root:Path)->Path:
 
 HEARTBEAT_SECONDS=60
 
-def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS)->None:
+def worker_incarnation()->dict[str,Any]:
+    """Identify this concrete worker process; PID alone is intentionally insufficient."""
+    return {"host":socket.gethostname(),"pid":os.getpid(),
+            "process_started_ns":int(time.time_ns()-time.monotonic_ns()),
+            "lease_token":uuid.uuid4().hex}
+
+def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
     try:
         grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
@@ -169,6 +175,10 @@ def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_
         except (OSError,json.JSONDecodeError,KeyError,TypeError):
             return
         if record.get("state")!="CLAIMED":
+            return
+        # Legacy records without worker identity remain renewable during migration.
+        # Once identity exists, only that exact incarnation may renew it.
+        if record.get("worker") is not None and record.get("worker")!=worker:
             return
         record["last_heartbeat_at"]=datetime.now(UTC).isoformat()
         atomic_json(lifecycle,payload)
@@ -215,7 +225,7 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
             allowed.update(repositories)
     return allowed
 
-def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Path|None=None)->bool:
+def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Path|None=None,worker:dict[str,Any]|None=None)->bool:
     """Atomically consume an exact-head capability immediately before mutation."""
     lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
     try:
@@ -229,9 +239,16 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
         return False
     claimed=datetime.now(UTC).isoformat()
     grants[grant_id]={"state":"CLAIMED","claimed_at":claimed,"last_heartbeat_at":claimed,
-                      "authorized_repositories":[repo],"expected_sha":expected_sha}
+                      "authorized_repositories":[repo],"expected_sha":expected_sha,
+                      "worker":worker or worker_incarnation()}
     atomic_json(lifecycle,{"schema_version":1,"grants":grants})
     return True
+
+def start_grant_heartbeat(grant_path:Path,worker:dict[str,Any])->tuple[threading.Event,threading.Thread]:
+    stop=threading.Event()
+    thread=threading.Thread(target=heartbeat_grant,args=(grant_path,stop),kwargs={"worker":worker},daemon=True)
+    thread.start()
+    return stop,thread
 
 def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None)->str|None:
     prior_repo=None
@@ -440,8 +457,12 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         expected=eligible_repos.get(repo)
         if not expected or base!=expected:
             return {"status":"EXECUTION_GRANT_HEAD_MISMATCH","repository":repo,"expected_sha":expected,"actual_sha":base}
-        if not claim_execution_grant(execution_grant,repo,expected):
+        worker=worker_incarnation()
+        if not claim_execution_grant(execution_grant,repo,expected,worker=worker):
             return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
+        heartbeat_stop,heartbeat_thread=start_grant_heartbeat(execution_grant,worker)
+    else:
+        heartbeat_stop=heartbeat_thread=None
     stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
     if run(["git","checkout","-B",branch,base],ws).returncode:
@@ -512,6 +533,12 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     atomic_json(state_path,result)
     return result
 
+def stop_grant_heartbeat(stop:threading.Event|None,thread:threading.Thread|None)->None:
+    if stop is not None:
+        stop.set()
+    if thread is not None:
+        thread.join(timeout=2)
+
 def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
     try:
@@ -562,17 +589,7 @@ def main()->int:
         else:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
-        stop_heartbeat=threading.Event()
-        heartbeat=None
-        if args.execution_grant and eligible_repos:
-            heartbeat=threading.Thread(target=heartbeat_grant,args=(args.execution_grant,stop_heartbeat),daemon=True)
-            heartbeat.start()
-        try:
-            result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant)
-        finally:
-            stop_heartbeat.set()
-            if heartbeat:
-                heartbeat.join(timeout=2)
+        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant)
         if args.execution_grant:
             finish_grant_lifecycle(args.execution_grant,result)
     except (OSError,RuntimeError,subprocess.TimeoutExpired,json.JSONDecodeError) as exc:
