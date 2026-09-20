@@ -29,7 +29,7 @@ def validate(text: str) -> dict:
     completion=section(text,"Product Completion Criteria") or ""
     criterion_lines=re.findall(r"(?im)^-\s*\[required\]\s+([a-z0-9][a-z0-9._-]*):\s*(.+?)\s*\|\s*verify=([a-z0-9_-]+)\s*$",completion)
     criterion_ids=[item[0] for item in criterion_lines]
-    duplicate_criteria=sorted({item for item in criterion_ids if criterion_ids.count(item)>1})
+    duplicate_criteria=sorted({item for item in criterion_ids if criterion_ids.count(item)>1})\n    unsupported_verification_kinds=sorted({\n        item[2] for item in criterion_lines if item[2] not in ALLOWED_VERIFICATION_KINDS\n    })
     # Intake must explicitly assert READY; unchecked template/default is not authority.
     activation=section(text,"Activation Checklist") or ""
     ready=bool(re.search(r"(?im)^\*\*Activation decision:\*\*\s*READY\s*$",activation))
