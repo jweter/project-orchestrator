@@ -27,14 +27,17 @@ def run_linear_reconciliation(repo_root:Path,state_root:Path)->int|None:
     (state_root/"linear-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     return p.returncode
 
-def builder_health(state_root:Path,returncode:int)->tuple[bool,str]:
+def builder_health(state_root:Path,returncode:int,expected_invocation_id:str|None=None)->tuple[bool,str]:
     path=state_root/"builder.json"
     if returncode != 0:
         return False,"PROCESS_FAILURE"
     try:
-        status=json.loads(path.read_text(encoding="utf-8")).get("status","UNKNOWN")
+        payload=json.loads(path.read_text(encoding="utf-8"))
+        status=payload.get("status","UNKNOWN")
     except (OSError,json.JSONDecodeError):
         return False,"STATE_UNREADABLE"
+    if expected_invocation_id is not None and payload.get("invocation_id")!=expected_invocation_id:
+        return False,"STALE_BUILDER_STATE"
     degraded={"P1_BUILDER_FAILURE","BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
     return status not in degraded,status
 
@@ -654,33 +657,34 @@ def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
     atomic(lifecycle,payload)
     return True
 
-def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->int:
+def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->tuple[int,str|None]:
     if not products:
         (state_root/"builder-last-output.txt").write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
-        return 2
+        return 2,None
     try:
         grant_path=write_execution_grant(repo_root,state_root,products)
     except RuntimeError as exc:
         if str(exc)=="GRANT_ISSUANCE_BUSY":
             atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
-            return 0
+            return 0,None
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
             atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
             (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
-            return 0
+            return 0,None
         if str(exc).startswith("EXECUTION_SLICE_ALREADY_OWNED:"):
             atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
             (state_root/"builder-last-output.txt").write_text(str(exc)+"\n",encoding="utf-8")
-            return 0
+            return 0,None
         raise
+    invocation_id=uuid.uuid4().hex
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json"),
-        "--execution-grant",str(grant_path)]
+        "--execution-grant",str(grant_path),"--invocation-id",invocation_id]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     finalize_unclaimed_grant(grant_path,p.returncode)
-    return p.returncode
+    return p.returncode,invocation_id
 
 CLAIM_LEASE_SECONDS=1800
 UNKNOWN_LIVENESS_MAX_CHECKS=5
