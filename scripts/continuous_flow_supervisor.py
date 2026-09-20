@@ -177,8 +177,12 @@ def merge_watcher_advanced(state_root:Path)->bool:
     merged=[item for item in payload.get("results",[]) if item.get("merged")]
     if not merged:
         return False
-    event={"updated_at_utc":payload.get("updated_at_utc"),"merged":[
-        {"repository":item.get("repository"),"pr":item.get("pr"),"head":item.get("head")} for item in merged]}
+    # A watcher timestamp is observation metadata, not merge identity. Stable
+    # repo/PR/head identity prevents the same merge from repeatedly re-triggering
+    # autonomous selection on every watcher poll.
+    event={"merged":sorted([
+        {"repository":item.get("repository"),"pr":item.get("pr"),"head":item.get("head")} for item in merged
+    ],key=lambda item:(str(item.get("repository")),str(item.get("pr")),str(item.get("head"))))}
     try:
         previous=json.loads(cursor.read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError):
