@@ -799,6 +799,8 @@ def recover_stale_recovery_generations(state_root:Path,now:datetime|None=None,li
             except (KeyError,TypeError,ValueError):
                 record["recovery_generation_liveness"]="UNKNOWN"
                 record["recovery_generation_result"]="RECOVERY_GENERATION_TIMESTAMP_INVALID"
+                record["recovery_state"]="QUARANTINED"
+                record["recovery_quarantine_reason"]="RECOVERY_GENERATION_TIMESTAMP_INVALID"
                 changed=True
                 continue
             if (current-started).total_seconds()<=RECOVERY_GENERATION_LEASE_SECONDS:
@@ -820,6 +822,9 @@ def recover_stale_recovery_generations(state_root:Path,now:datetime|None=None,li
                 checks=int(record.get("recovery_generation_unknown_checks",0))+1
                 record["recovery_generation_unknown_checks"]=checks
                 record["recovery_generation_result"]="RECOVERY_GENERATION_OWNER_UNKNOWN"
+                if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
+                    record["recovery_state"]="QUARANTINED"
+                    record["recovery_quarantine_reason"]="RECOVERY_GENERATION_OWNER_UNKNOWN"
         if changed:
             atomic(path,payload)
         return released
