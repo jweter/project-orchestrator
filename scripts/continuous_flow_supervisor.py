@@ -197,7 +197,21 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
         raise RuntimeError(f"CAPABILITY_GRAPH_REQUIRED:{repo}")
     derived=derive_slice(payload,repository=repo,exact_head=exact_head)
     if derived.get("status")!="READY" or not isinstance(derived.get("slice"),dict):
+        request={
+            "schema_version":1,
+            "status":"DIRECTION_REQUIRED",
+            "repository":repo,
+            "exact_head":exact_head,
+            "reason":derived.get("status","UNKNOWN"),
+            "issues":derived.get("issues",[]),
+            "requested_at_utc":datetime.now(UTC).isoformat(),
+        }
+        direction_dir=state_root/"direction-requests"
+        direction_dir.mkdir(parents=True,exist_ok=True)
+        atomic(direction_dir/f"{repo.replace('/','__')}.json",request)
         raise RuntimeError(f"EXECUTION_SLICE_NOT_READY:{repo}:{derived.get('status','UNKNOWN')}")
+    request_path=state_root/"direction-requests"/f"{repo.replace('/','__')}.json"
+    request_path.unlink(missing_ok=True)
     return derived["slice"]
 
 def reserved_quarantine_repositories(state_root:Path)->set[str]:
