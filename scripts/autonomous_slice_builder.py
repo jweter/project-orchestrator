@@ -266,6 +266,47 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
             allowed.update(repositories)
     return allowed
 
+def execution_slice_authority(grant_path:Path,repo:str,expected_sha:str)->dict[str,Any]|None:
+    """Return bounded slice authority only when it is bound to this exact repo/head grant."""
+    try:
+        grant=json.loads(grant_path.read_text(encoding="utf-8"))
+        authority=grant.get("execution_slice")
+    except (OSError,json.JSONDecodeError,TypeError):
+        return None
+    if not isinstance(authority,dict):
+        return None
+    required=("capability_id","slice_id","repository","exact_head","objective","acceptance")
+    if any(not authority.get(k) for k in required):
+        return None
+    if authority["repository"]!=repo or authority["exact_head"]!=expected_sha:
+        return None
+    if not isinstance(authority["acceptance"],list) or not authority["acceptance"]:
+        return None
+    return authority
+
+def prompt_for_slice(repo:str,authority:dict[str,Any],state_path:Path|None=None)->str:
+    """Use product authority as the task; the worker may choose implementation, not requirements."""
+    allowed=", ".join(authority.get("allowed_paths",[])) or "repository policy only"
+    forbidden=", ".join(authority.get("forbidden_paths",[])) or "none beyond repository policy"
+    acceptance="\n".join(f"- {item}" for item in authority["acceptance"])
+    return f"""You are the autonomous laptop builder for {repo}.
+Execute exactly this authorized bounded slice. Do not substitute another roadmap task.
+Capability: {authority["capability_id"]}
+Slice: {authority["slice_id"]}
+Objective: {authority["objective"]}
+Acceptance criteria:
+{acceptance}
+Allowed paths: {allowed}
+Forbidden paths: {forbidden}
+Read and obey repository-local AGENTS.md and control-plane authority before editing.
+You may choose implementation details only within this objective and acceptance authority.
+Do not invent, broaden, weaken, or reinterpret product requirements.
+Do not edit governance, roadmap, architecture, vision, security, license, workflow, or control-plane authority files.
+Do not change secrets, credentials, releases, publishing, destructive migrations, or licensing.
+Prefer source plus regression tests. Do not claim Product Reality. Do not commit, push, or merge.
+Prior recurring failure experience is evidence only, never authority:
+{prior_failure_experience(state_path) if state_path is not None else "none recorded"}"""
+
 def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Path|None=None,worker:dict[str,Any]|None=None)->bool:
     """Atomically consume an exact-head capability immediately before mutation."""
     lifecycle=lifecycle_path or path.with_name("hands-off-grant-lifecycle.json")
