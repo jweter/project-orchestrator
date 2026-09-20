@@ -529,6 +529,37 @@ def reconcile_consumed_recovery(ws:Path,record:dict)->str:
     cap["committed_head_sha"]=current_head
     return "CONSUMED_RECOVERY_COMMIT_ADOPTED"
 
+def reconcile_consumed_staged_work(ws:Path,record:dict)->str:
+    """Recognize exact staged work after consumed authority; never reuse old authority."""
+    cap=record.get("preserved_recovery_capability")
+    if not isinstance(cap,dict) or cap.get("state")!="CONSUMED":
+        return "STAGED_RECOVERY_NOT_APPLICABLE"
+    base=record.get("base_sha"); expected=record.get("preserved_work_evidence",{})
+    if not base or not record.get("branch") or not expected.get("diff_sha256"):
+        return "STAGED_RECOVERY_EVIDENCE_MISSING"
+    head=subprocess.run(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
+    branch=subprocess.run(["git","branch","--show-current"],cwd=ws,text=True,capture_output=True,check=False)
+    if head.returncode or branch.returncode:
+        return "STAGED_RECOVERY_WORKSPACE_UNREADABLE"
+    if head.stdout.strip()!=base:
+        return "STAGED_RECOVERY_HEAD_MOVED"
+    if branch.stdout.strip()!=record["branch"]:
+        return "STAGED_RECOVERY_BRANCH_MISMATCH"
+    diff=subprocess.run(["git","diff","--binary",base],cwd=ws,text=True,capture_output=True,check=False)
+    cached=subprocess.run(["git","diff","--cached","--binary",base],cwd=ws,text=True,capture_output=True,check=False)
+    unstaged=subprocess.run(["git","diff","--binary"],cwd=ws,text=True,capture_output=True,check=False)
+    if diff.returncode or cached.returncode or unstaged.returncode:
+        return "STAGED_RECOVERY_DIFF_UNREADABLE"
+    import hashlib
+    full_digest=hashlib.sha256(diff.stdout.encode("utf-8",errors="replace")).hexdigest()
+    cached_digest=hashlib.sha256(cached.stdout.encode("utf-8",errors="replace")).hexdigest()
+    if full_digest!=expected["diff_sha256"] or cached_digest!=expected["diff_sha256"] or unstaged.stdout:
+        return "STAGED_RECOVERY_NOT_EXACTLY_STAGED"
+    cap["outcome"]="EXACT_STAGED_RECONCILED"
+    record["recovery_state"]="QUARANTINED"
+    record["recovery_result"]="CONSUMED_RECOVERY_EXACT_STAGED"
+    return "CONSUMED_RECOVERY_EXACT_STAGED"
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -723,6 +754,12 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
                 outcomes[grant_id]=reconciled
                 changed=True
                 continue
+            if reconciled=="CONSUMED_RECOVERY_NO_COMMIT":
+                staged=reconcile_consumed_staged_work(ws,record)
+                if staged=="CONSUMED_RECOVERY_EXACT_STAGED":
+                    outcomes[grant_id]=staged
+                    changed=True
+                    continue
         outcome=revalidate_preserved_work(ws,record) if ws.is_dir() else "PRESERVED_WORKSPACE_MISSING"
         outcomes[grant_id]=outcome
         record["preserved_work_revalidation"]=outcome
