@@ -10,7 +10,7 @@ def test_hash_chain_links_consecutive_continuation_records(tmp_path):
     first=_record(tmp_path)
     second=_record(tmp_path)
     history=json.loads((tmp_path/"continuation-pass-history.json").read_text())
-    assert history["schema_version"]==3
+    assert history["schema_version"]==4
     assert history["passes"][0]["record_hash"]==first["record_hash"]
     assert history["passes"][1]["previous_hash"]==first["record_hash"]
     assert history["chain_head"]==second["record_hash"]
