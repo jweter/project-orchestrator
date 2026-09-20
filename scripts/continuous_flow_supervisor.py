@@ -637,8 +637,9 @@ def worker_liveness(worker:dict|None)->str:
     expected=worker.get("process_start_fingerprint")
     if expected:
         try:
-            actual=process_start_fingerprint(pid)
-        except OSError:
+            from scripts.autonomous_slice_builder import process_start_fingerprint as builder_process_start_fingerprint
+            actual=builder_process_start_fingerprint(pid)
+        except (ImportError,OSError):
             return "UNKNOWN"
         if actual is None:
             return "UNKNOWN"
