@@ -1813,6 +1813,32 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
     atomic(path,payload)
     return record
 
+def prove_restart_takeover(state_root:Path,instance_lock:dict,burst:dict)->dict:
+    """Record why this physical supervisor may continue a prior logical burst."""
+    current=instance_lock["worker"]
+    previous_id=burst.get("previous_process_instance_id")
+    proof={"schema_version":1,"burst_id":burst["burst_id"],
+           "process_instance_id":current["instance_id"],
+           "previous_process_instance_id":previous_id,
+           "resumed":bool(burst.get("resumed")),
+           "proven_at_utc":datetime.now(UTC).isoformat()}
+    if not burst.get("resumed"):
+        proof["status"]="NEW_BURST_NO_TAKEOVER"
+        return proof
+    if not previous_id:
+        proof["status"]="RESTART_PROVEN_BY_EXCLUSIVE_KERNEL_LOCK"
+        proof["previous_owner_evidence"]="LEGACY_IDENTITY_UNAVAILABLE"
+        return proof
+    if previous_id==current["instance_id"]:
+        proof["status"]="RESTART_IDENTITY_COLLISION"
+        return proof
+    # Acquiring the non-shareable kernel lock is the authoritative proof that
+    # no prior supervisor still owns this state root. Preserve the predecessor
+    # identity so restart provenance is explicit rather than inferred.
+    proof["status"]="RESTART_PROVEN_BY_EXCLUSIVE_KERNEL_LOCK"
+    proof["previous_owner_evidence"]="KERNEL_LOCK_RELEASED_OR_PROCESS_EXITED"
+    return proof
+
 def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,now:datetime|None=None,resume_seconds:int=900)->dict:
     """Resume a recently interrupted immediate burst; otherwise create a new wake identity."""
     now=now or datetime.now(UTC)
@@ -1857,9 +1883,15 @@ def main()->int:
     merge=None
     process_instance_id=instance_lock["worker"]["instance_id"]
     burst=start_or_resume_burst(state,process_instance_id=process_instance_id)
+    takeover_proof=prove_restart_takeover(state,instance_lock,burst)
+    if takeover_proof["status"]=="RESTART_IDENTITY_COLLISION":
+        release_supervisor_instance_lock(instance_lock)
+        return 2
+    atomic(state/"supervisor-restart-takeover.json",takeover_proof)
     atomic(state/"supervisor-process-instance.json",{"schema_version":1,
         "process_instance_id":process_instance_id,"burst_id":burst["burst_id"],
         "resumed":burst["resumed"],"previous_process_instance_id":burst.get("previous_process_instance_id"),
+        "takeover_status":takeover_proof["status"],
         "worker":instance_lock["worker"],"started_at_utc":datetime.now(UTC).isoformat()})
     burst_id=burst["burst_id"]
     burst_pass=burst["burst_pass"]
