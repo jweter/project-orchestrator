@@ -1,0 +1,13 @@
+{
+  "observed_at_local": "2026-09-19T19:27:58-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 1,
+  "product_advancement_rate": "1/3",
+  "open_product_prs_at_triage": 0,
+  "knowledge_engine": {"state": "IMPLEMENTING", "branch": "orchestrator/research-funnel-metrics", "repo": "jweter/knowledge-engine-ai", "next_gate": "implementation_then_exact_head_preflight"},
+  "rocksmith": {"state": "IMPLEMENTING", "branch": "orchestrator/dense-recognition-fail-closed", "repo": "jweter/rocksmith-cdlc-generator", "next_gate": "implementation_then_exact_head_preflight"},
+  "everward": {"state": "IMPLEMENTING", "branch": "repair/headless-smoke-startup-timeout", "repo": "jweter/Project-Everward", "head": "dffa179eec527096df35f7b2811076e31ce36fca", "next_gate": "exact_head_full_preflight_and_windows_headless_smoke"},
+  "throughput_floor": "PARTIAL",
+  "idle_eligible_lanes": ["knowledge_engine", "rocksmith"],
+  "notes": ["Everward deterministic unattended Product Reality timeout repair implemented with regression contract.", "Knowledge Engine and Rocksmith reserved from exact default heads; implementation remains required before advancement can be claimed."]
+}
