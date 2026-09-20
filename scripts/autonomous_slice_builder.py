@@ -11,16 +11,24 @@ except ModuleNotFoundError:
     from lane_leases import open_pr_paths
     from autonomous_contract_guard import contract_guard_failure
 
-PRODUCT_REPOS={
-    "knowledge-engine": ("jweter/knowledge-engine-core","jweter/knowledge-engine-web","jweter/knowledge-engine-ai"),
-    "rocksmith": ("jweter/rocksmith-cdlc-generator",),
-    "everward": ("jweter/Project-Everward",),
-}
-PORTFOLIO_REPOS=(
-    "jweter/knowledge-engine-core",
-    "jweter/knowledge-engine-web","jweter/knowledge-engine-ai",
-    "jweter/rocksmith-cdlc-generator","jweter/Project-Everward",
-)
+def contract_products(contract_path:Path|None=None)->dict[str,tuple[str,...]]:
+    """Load the product/repository universe from the portable machine contract."""
+    path=contract_path or (Path(__file__).resolve().parents[1]/"engineering"/"hands-off-evolution.json")
+    try:
+        raw=json.loads(path.read_text(encoding="utf-8")).get("products",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    products={}
+    for product,repositories in raw.items():
+        if not isinstance(product,str) or not isinstance(repositories,list) or not repositories:
+            continue
+        values=tuple(r for r in repositories if isinstance(r,str) and r.count("/")==1)
+        if len(values)==len(repositories):
+            products[product]=values
+    return products
+
+def portfolio_repositories(contract_path:Path|None=None)->tuple[str,...]:
+    return tuple(repo for repositories in contract_products(contract_path).values() for repo in repositories)
 MODEL=os.environ.get("EXPONENTIAL_BUILDER_MODEL","ollama/qwen2.5-coder:7b")
 PROTECTED_PARTS=("dowork.txt","agents.md","license","security",".github/workflows",
                  "engineering/control-plane.json","roadmap","architecture","vision","policy")
@@ -316,10 +324,11 @@ def select_repo(state_path:Path,eligible_products:set[str]|None=None,eligible_re
     if eligible_repos is not None:
         repo_universe=tuple(sorted(eligible_repos))
     elif eligible_products is None:
-        repo_universe=PORTFOLIO_REPOS
+        repo_universe=portfolio_repositories()
     else:
-        allowed={repo for product in eligible_products for repo in PRODUCT_REPOS.get(product,())}
-        repo_universe=tuple(repo for repo in PORTFOLIO_REPOS if repo in allowed)
+        products=contract_products()
+        allowed={repo for product in eligible_products for repo in products.get(product,())}
+        repo_universe=tuple(repo for repo in portfolio_repositories() if repo in allowed)
     if not repo_universe:
         return None
     if prior_repo in repo_universe:
@@ -493,7 +502,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     repo=select_repo(state_path,eligible_products,eligible_repos)
     if repo is None:
         return {"status":"NO_ELIGIBLE_REPOSITORY"}
-    idx=PORTFOLIO_REPOS.index(repo)
+    universe=portfolio_repositories()
+    idx=universe.index(repo) if repo in universe else -1
     if dry_run:
         result={"status":"DRY_RUN","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result

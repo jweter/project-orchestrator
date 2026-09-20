@@ -139,20 +139,20 @@ def test_grant_native_selection_needs_no_product_mapping(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
     monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
     repo="jweter/future-product-repo"
-    monkeypatch.setattr(builder,"PORTFOLIO_REPOS",(repo,))
+    monkeypatch.setattr(builder,"portfolio_repositories",lambda: (repo,))
     assert builder.select_repo(tmp_path/"state.json",eligible_repos={repo})==repo
 
 def test_grant_repo_universe_is_not_limited_by_static_portfolio(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
     monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
-    monkeypatch.setattr(builder,"PORTFOLIO_REPOS",("jweter/old-static-repo",))
+    monkeypatch.setattr(builder,"portfolio_repositories",lambda: ("jweter/old-static-repo",))
     granted={"jweter/new-contract-repo"}
     assert builder.select_repo(tmp_path/"state.json",eligible_repos=granted)=="jweter/new-contract-repo"
 
 def test_empty_execution_grant_selects_nothing_even_with_static_portfolio(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
     monkeypatch.setattr(builder,"lane_capacity",lambda repo: 1)
-    monkeypatch.setattr(builder,"PORTFOLIO_REPOS",("jweter/old-static-repo",))
+    monkeypatch.setattr(builder,"portfolio_repositories",lambda: ("jweter/old-static-repo",))
     assert builder.select_repo(tmp_path/"state.json",eligible_repos=set()) is None
 
 def test_execution_grant_rejects_contract_drift(tmp_path, monkeypatch):
@@ -493,3 +493,19 @@ def test_advance_grant_stage_refuses_terminal_claim(tmp_path):
     assert not builder.advance_grant_stage(grant,"PUSHED",head_sha="new")
     saved=json.loads(lifecycle.read_text())["grants"]["g"]
     assert "execution_stage" not in saved
+
+def test_contract_products_discovers_brand_new_project(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    contract=tmp_path/"hands-off.json"
+    contract.write_text(json.dumps({"products":{"brand-new":["example/new-project"]}}))
+    assert builder.contract_products(contract)=={"brand-new":("example/new-project",)}
+    assert builder.portfolio_repositories(contract)==("example/new-project",)
+
+def test_contract_products_fails_closed_on_malformed_repository(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    contract=tmp_path/"hands-off.json"
+    contract.write_text(json.dumps({"products":{"bad":["not-a-repository"]}}))
+    assert builder.contract_products(contract)=={}
+    assert builder.portfolio_repositories(contract)==()
