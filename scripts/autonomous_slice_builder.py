@@ -719,7 +719,7 @@ def pr_number_from_url(value:str)->int|None:
         marker="/pull/"
         if marker not in value:
             return None
-        number=value.rstrip("/").rsplit(marker,1)[1]
+        number=value.strip().rstrip("/").rsplit(marker,1)[1]
         return int(number) if number.isdigit() else None
     except (TypeError,ValueError):
         return None
