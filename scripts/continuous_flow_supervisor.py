@@ -613,6 +613,7 @@ def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)
     except (OSError,json.JSONDecodeError,TypeError):
         return list(dict.fromkeys(newly_abandoned or []))
     pending=list(newly_abandoned or [])
+    changed=False
     for grant_id,record in grants.items():
         if not isinstance(record,dict) or record.get("state")!="ABANDONED":
             continue
@@ -625,7 +626,14 @@ def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)
               }):
             # Exact recovered commits must re-enter durable push/PR recovery.
             record["recovery_state"]="RECOVERING"
+            changed=True
             pending.append(grant_id)
+    if changed:
+        try:
+            payload["grants"]=grants
+            atomic(path,payload)
+        except (OSError,TypeError):
+            return list(dict.fromkeys(newly_abandoned or []))
     return list(dict.fromkeys(pending))
 
 def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:list[str],now:datetime|None=None)->dict[str,str]:
