@@ -851,3 +851,43 @@ def test_reconcile_consumed_recovery_refuses_dirty_or_wrong_commit(tmp_path,monk
     monkeypatch.setattr(supervisor.subprocess,"run",dirty)
     assert supervisor.reconcile_consumed_recovery(tmp_path,record)=="CONSUMED_RECOVERY_DIRTY_AFTER_COMMIT"
     assert "execution_stage" not in record
+
+def test_reconcile_consumed_staged_work_requires_exact_index_and_clean_worktree(tmp_path,monkeypatch):
+    import hashlib
+    import scripts.continuous_flow_supervisor as supervisor
+    diff="exact"
+    record={"base_sha":"base","branch":"actor/x","preserved_work_evidence":{"diff_sha256":hashlib.sha256(diff.encode()).hexdigest()},
+            "preserved_recovery_capability":{"state":"CONSUMED","outcome":"MUTATION_STARTED"}}
+    class R:
+        def __init__(self,code=0,out=""): self.returncode=code; self.stdout=out; self.stderr=""
+    def fake(cmd,**kwargs):
+        if cmd[1:3]==["rev-parse","HEAD"]: return R(0,"base\n")
+        if cmd[1:3]==["branch","--show-current"]: return R(0,"actor/x\n")
+        if cmd[1:4]==["diff","--cached","--binary"]: return R(0,diff)
+        if cmd[1:3]==["diff","--binary"] and len(cmd)>3: return R(0,diff)
+        if cmd[1:3]==["diff","--binary"]: return R(0,"")
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.reconcile_consumed_staged_work(tmp_path,record)=="CONSUMED_RECOVERY_EXACT_STAGED"
+    assert record["recovery_state"]=="QUARANTINED"
+    assert record["preserved_recovery_capability"]["state"]=="CONSUMED"
+    assert record["preserved_recovery_capability"]["outcome"]=="EXACT_STAGED_RECONCILED"
+
+def test_reconcile_consumed_staged_work_refuses_unstaged_drift(tmp_path,monkeypatch):
+    import hashlib
+    import scripts.continuous_flow_supervisor as supervisor
+    diff="exact"
+    record={"base_sha":"base","branch":"actor/x","preserved_work_evidence":{"diff_sha256":hashlib.sha256(diff.encode()).hexdigest()},
+            "preserved_recovery_capability":{"state":"CONSUMED"}}
+    class R:
+        def __init__(self,out=""): self.returncode=0; self.stdout=out; self.stderr=""
+    def fake(cmd,**kwargs):
+        if cmd[1:3]==["rev-parse","HEAD"]: return R("base\n")
+        if cmd[1:3]==["branch","--show-current"]: return R("actor/x\n")
+        if cmd[1:4]==["diff","--cached","--binary"]: return R(diff)
+        if cmd[1:3]==["diff","--binary"] and len(cmd)>3: return R(diff)
+        if cmd[1:3]==["diff","--binary"]: return R("drift")
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.reconcile_consumed_staged_work(tmp_path,record)=="STAGED_RECOVERY_NOT_EXACTLY_STAGED"
+    assert "recovery_result" not in record
