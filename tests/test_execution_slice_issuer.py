@@ -6,7 +6,7 @@ def _activation(repo="jweter/example",head="abc"):
 
 def _graph():
     return {"capabilities":[
-        {"id":"C1","description":"parser","state":"PLANNED","completion_evidence":["tests"],
+        {"id":"C1","capability":"parser","state":"PLANNED","depends_on":[],"completion_evidence":["tests"],
          "slices":[{"id":"S1","state":"PLANNED","objective":"Implement parser",
                     "acceptance":["parser tests pass"],"allowed_paths":["src/"]}]}
     ],"roadmap":["C1"]}
