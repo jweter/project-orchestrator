@@ -2,7 +2,8 @@
 from __future__ import annotations
 import argparse, hashlib, json, os, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path\nfrom scripts.capability_slice_contract import derive_slice
+from pathlib import Path
+from scripts.capability_slice_contract import derive_slice
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
