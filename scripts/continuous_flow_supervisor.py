@@ -1324,7 +1324,7 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
         return 1
     return max(60,normal_seconds)
 
-def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict)->dict:
+def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:int,lifecycle_advanced:bool,liveness_reacquire:dict,burst_id:str|None=None)->dict:
     """Persist durable evidence that one wake produced another autonomous pass."""
     path=state_root/"continuation-pass-history.json"
     try:
@@ -1336,7 +1336,7 @@ def record_continuation_pass(state_root:Path,*,builder_status:str,delay_seconds:
         passes=[]; total=0; immediate_total=0
     immediate=delay_seconds==1
     record={"sequence":total+1,"recorded_at_utc":datetime.now(UTC).isoformat(),
-            "builder_status":builder_status,"delay_seconds":delay_seconds,
+            "burst_id":burst_id,"builder_status":builder_status,"delay_seconds":delay_seconds,
             "immediate_continuation":immediate,"lifecycle_advanced":lifecycle_advanced,
             "liveness_reacquire_requested":bool(liveness_reacquire.get("requested"))}
     passes.append(record)
@@ -1354,7 +1354,10 @@ def main()->int:
     a=p.parse_args(); repo=Path(a.repo_root); workspace=Path(a.workspace_root); state=Path(a.state_root)
     state.mkdir(parents=True,exist_ok=True)
     merge=None
+    burst_id=datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+    burst_pass=0
     while True:
+        burst_pass+=1
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
@@ -1413,7 +1416,11 @@ def main()->int:
         delay=continuation_delay(lifecycle_advanced=lifecycle_advanced,
             liveness_reacquire=liveness_reacquire,builder_ok=builder_ok,
             builder_status=builder_status,normal_seconds=a.builder_seconds)
-        record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
-            lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire)
+        record=record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
+            lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id)
+        record["burst_pass"]=burst_pass
+        atomic(state/"continuation-current-burst.json",{"schema_version":1,"burst_id":burst_id,
+            "pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
+            "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
         time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
