@@ -1116,7 +1116,8 @@ def main()->int:
         newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
         if newly_released:
             recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
-        quarantines=quarantined_grants(state)\n        publish_direction_outbox(state)
+        quarantines=quarantined_grants(state)
+        publish_direction_outbox(state)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
