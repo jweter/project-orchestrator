@@ -413,3 +413,34 @@ def test_repair_capability_identity_is_stable_and_idempotent(tmp_path):
     second=builder.promote_verified_repairs(state)
     assert first==second
     assert len(second["capabilities"])==1
+
+def test_repository_identity_keeps_rotation_stable_when_grant_universe_changes(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    state.write_text(json.dumps({"last_repository":"jweter/knowledge-engine-web","last_repo_index":99}))
+    monkeypatch.setattr(builder,"lane_capacity",lambda repo:1)
+    eligible={
+        "jweter/knowledge-engine-core":"sha1",
+        "jweter/knowledge-engine-web":"sha2",
+        "jweter/rocksmith-cdlc-generator":"sha3",
+    }
+    assert builder.select_repo(state,eligible_repos=eligible)=="jweter/rocksmith-cdlc-generator"
+
+def test_missing_prior_repository_restarts_deterministically_not_by_stale_index(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    state.write_text(json.dumps({"last_repository":"jweter/knowledge-engine-ai","last_repo_index":2}))
+    monkeypatch.setattr(builder,"lane_capacity",lambda repo:1)
+    eligible={"jweter/rocksmith-cdlc-generator":"sha","jweter/Project-Everward":"sha"}
+    assert builder.select_repo(state,eligible_repos=eligible)==sorted(eligible)[0]
+
+def test_legacy_numeric_rotation_state_remains_readable(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"state.json"
+    state.write_text(json.dumps({"last_repo_index":0}))
+    monkeypatch.setattr(builder,"lane_capacity",lambda repo:1)
+    eligible={"a/repo":"1","b/repo":"2"}
+    assert builder.select_repo(state,eligible_repos=eligible)=="b/repo"
