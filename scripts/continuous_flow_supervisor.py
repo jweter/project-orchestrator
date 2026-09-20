@@ -116,11 +116,15 @@ def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple
 
 def recertify_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str)->tuple[bool,str]:
     """Audit one stale product and merge only its new authority."""
-    repos=[
-        workspace_root/"knowledge-engine-core", workspace_root/"knowledge-engine-web",
-        workspace_root/"knowledge-engine-ai", workspace_root/"rocksmith-cdlc-generator",
-        workspace_root/"Project-Everward",
-    ]
+    contract_path=repo_root/"engineering"/"hands-off-evolution.json"
+    try:
+        contract=json.loads(contract_path.read_text(encoding="utf-8"))
+        declared=contract["products"][product]
+        if not isinstance(declared,list) or not declared:
+            raise TypeError
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return False,"RECERTIFICATION_CONTRACT_UNREADABLE"
+    repos=[workspace_root/repo.split("/",1)[-1] for repo in declared]
     partial=state_root/f"hands-off-recertify-{product}.json"
     report=state_root/f"hands-off-readiness-{product}.json"
     cmd=[sys.executable,str(repo_root/"scripts"/"hands_off_readiness.py"),
