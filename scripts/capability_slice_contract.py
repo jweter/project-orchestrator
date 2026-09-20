@@ -9,7 +9,15 @@ def derive_slice(payload: dict[str, Any], *, repository: str, exact_head: str) -
     graph=validate_graph(payload)
     if graph["status"]=="COMPLETE":
         completion=payload.get("product_completion")
-        if not isinstance(completion,dict) or not completion.get("verified"):
+        evidence=completion.get("evidence") if isinstance(completion,dict) else None
+        proof_head=completion.get("exact_head") if isinstance(completion,dict) else None
+        checks=completion.get("checks") if isinstance(completion,dict) else None
+        if (not isinstance(completion,dict) or completion.get("verified") is not True
+                or proof_head!=exact_head or not isinstance(evidence,list)
+                or not evidence or not all(isinstance(item,str) and item.strip() for item in evidence)
+                or not isinstance(checks,list) or not checks
+                or not all(isinstance(check,dict) and check.get("status")=="PASS"
+                           and isinstance(check.get("name"),str) and check["name"].strip() for check in checks)):
             return {"schema_version":1,"status":"DIRECTION_REQUIRED","slice":None,
                     "issues":[{"code":"PRODUCT_COMPLETION_EVIDENCE_REQUIRED"}]}
         return {"schema_version":1,"status":"NO_WORK","slice":None,"issues":[]}
