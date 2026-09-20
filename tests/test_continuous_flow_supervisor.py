@@ -443,3 +443,39 @@ def test_recovery_queue_uses_bounded_backoff_and_eventual_quarantine(tmp_path):
     final=supervisor.reconcile_abandoned_claims(workspace,state,["g"],now)
     assert final["g"]=="RECOVERY_RETRY_EXHAUSTED"
     assert json.loads(lifecycle.read_text())["grants"]["g"]["recovery_state"]=="QUARANTINED"
+
+def test_stale_claim_with_live_worker_is_not_abandoned(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    now=datetime(2026,1,1,tzinfo=UTC); old=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS+1)).isoformat()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED","claimed_at":old,"last_heartbeat_at":old,"worker":{"host":"h","pid":1}}}}))
+    assert supervisor.recover_stale_grant_claims(state,now,lambda worker:"ALIVE")==[]
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["state"]=="CLAIMED" and saved["worker_liveness"]=="ALIVE"
+
+def test_stale_claim_with_unknown_liveness_fails_closed(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    now=datetime(2026,1,1,tzinfo=UTC); old=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS+1)).isoformat()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED","claimed_at":old,"last_heartbeat_at":old,"worker":None}}}))
+    assert supervisor.recover_stale_grant_claims(state,now,lambda worker:"UNKNOWN")==[]
+    assert json.loads(path.read_text())["grants"]["g"]["state"]=="CLAIMED"
+
+def test_stale_claim_is_abandoned_only_when_worker_proven_dead(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    now=datetime(2026,1,1,tzinfo=UTC); old=(now-timedelta(seconds=supervisor.CLAIM_LEASE_SECONDS+1)).isoformat()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED","claimed_at":old,"last_heartbeat_at":old,"worker":{"host":"h","pid":9}}}}))
+    assert supervisor.recover_stale_grant_claims(state,now,lambda worker:"DEAD")==["g"]
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["state"]=="ABANDONED"
+    assert saved["result_status"]=="CLAIM_LEASE_EXPIRED_WORKER_DEAD"
