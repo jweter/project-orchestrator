@@ -386,6 +386,20 @@ def preserved_work_evidence(ws:Path,base_sha:str)->dict:
         "diff_bytes":len(payload),
     }
 
+def revalidate_preserved_work(ws:Path,record:dict)->str:
+    """Prove quarantined local work is byte-identical before any future repair."""
+    expected=record.get("preserved_work_evidence")
+    base=record.get("base_sha")
+    if not isinstance(expected,dict) or expected.get("capture_status")!="CAPTURED" or not base:
+        return "PRESERVED_EVIDENCE_MISSING"
+    current=preserved_work_evidence(ws,base)
+    if current.get("capture_status")!="CAPTURED":
+        return "PRESERVED_WORK_UNREADABLE"
+    identity=("branch","head_sha","status_porcelain","changed_paths","diff_sha256","diff_bytes")
+    if any(current.get(k)!=expected.get(k) for k in identity):
+        return "PRESERVED_WORK_CHANGED"
+    return "PRESERVED_WORK_EXACT"
+
 def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
     """Return every durable abandoned claim that has not reached a terminal recovery state."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -555,6 +569,33 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
     atomic(path,payload)
     return outcomes
 
+def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dict[str,str]:
+    """Continuously revalidate preserved crash work without mutating it."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    if not path.exists(): return {}
+    try:
+        payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    outcomes={}; changed=False
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("recovery_state")!="QUARANTINED":
+            continue
+        if record.get("recovery_quarantine_reason") not in {
+            "UNCOMMITTED_WORK_REQUIRES_PRESERVATION","UNRECORDED_COMMIT_REQUIRES_PRESERVATION","BRANCH_IDENTITY_MISMATCH"
+        }: continue
+        repo=record.get("repository")
+        if not repo:
+            outcomes[grant_id]="PRESERVED_REPOSITORY_MISSING"; continue
+        ws=workspace_root/repo.split("/",1)[-1]
+        outcome=revalidate_preserved_work(ws,record) if ws.is_dir() else "PRESERVED_WORKSPACE_MISSING"
+        outcomes[grant_id]=outcome
+        record["preserved_work_revalidation"]=outcome
+        record["preserved_work_revalidated_at"]=datetime.now(UTC).isoformat()
+        changed=True
+    if changed: atomic(path,payload)
+    return outcomes
+
 def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->dict[str,str]:
     """Re-evaluate ownership quarantine; only proof of death authorizes recovery."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -633,6 +674,7 @@ def main()->int:
         abandoned_grants=recover_stale_grant_claims(state)
         recovery_queue=pending_recovery_grants(state,abandoned_grants)
         recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
+        preserved_work_rechecks=recheck_preserved_work_quarantines(workspace,state)
         quarantine_rechecks=recheck_quarantined_claims(state)
         newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
         if newly_released:
@@ -665,6 +707,7 @@ def main()->int:
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,
             "abandoned_recovery":recovery_results,
+            "preserved_work_rechecks":preserved_work_rechecks,
             "quarantine_rechecks":quarantine_rechecks,
             "quarantined_grants":quarantines,
             "quarantine_count":len(quarantines),
