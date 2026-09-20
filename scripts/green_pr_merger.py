@@ -43,6 +43,13 @@ def gh_json(args:list[str])->Any:
     if p.returncode: raise RuntimeError(p.stderr.strip() or "gh failed")
     return json.loads(p.stdout)
 
+def gh_paginated(endpoint:str)->list[dict[str,Any]]:
+    p=subprocess.run(["gh","api","--paginate","--slurp",endpoint],text=True,capture_output=True,check=False)
+    if p.returncode: raise RuntimeError(p.stderr.strip() or "gh api pagination failed")
+    pages=json.loads(p.stdout)
+    if not isinstance(pages,list): raise RuntimeError("invalid paginated GitHub response")
+    return [item for page in pages if isinstance(page,list) for item in page if isinstance(item,dict)]
+
 def open_prs(repo:str)->list[dict[str,Any]]:
     fields="number,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"
     return gh_json(["pr","list","--repo",repo,"--state","open","--json",fields,"--limit","100"])
@@ -52,17 +59,22 @@ def _age_seconds(created_at:str)->float:
     return max(0.0,(datetime.now(UTC)-created).total_seconds())
 
 def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
-    """Require a quiet review window on the exact head before merge authority."""
+    """Require a quiet review window anchored to the current exact head."""
     created=datetime.fromisoformat(created_at.replace("Z","+00:00"))
-    latest=created
-    comments=gh_json(["api",f"repos/{repo}/pulls/{number}/comments"])
+    commit=gh_json(["api",f"repos/{repo}/commits/{head_sha}"])
+    committed_at=((commit.get("commit") or {}).get("committer") or {}).get("date")
+    if not committed_at:
+        return False
+    head_time=datetime.fromisoformat(str(committed_at).replace("Z","+00:00"))
+    latest=max(created,head_time)
+    comments=gh_paginated(f"repos/{repo}/pulls/{number}/comments")
     for comment in comments:
         if str(comment.get("commit_id") or "") != head_sha:
             continue
         stamp=comment.get("updated_at") or comment.get("created_at")
         if stamp:
             latest=max(latest,datetime.fromisoformat(str(stamp).replace("Z","+00:00")))
-    reviews=gh_json(["api",f"repos/{repo}/pulls/{number}/reviews"])
+    reviews=gh_paginated(f"repos/{repo}/pulls/{number}/reviews")
     for review in reviews:
         commit=str(review.get("commit_id") or "")
         if commit and commit != head_sha:
