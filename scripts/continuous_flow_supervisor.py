@@ -1848,6 +1848,19 @@ def record_product_identity_advancement(state_root:Path,*,repository:str|None,bu
            "all_three_products_proven":len(products)==3,"events":events[-100:]}
     atomic(path,proof); return proof
 
+def selected_builder_repository(state_root:Path,expected_invocation_id:str|None)->str|None:
+    """Return repository evidence only when bound to the current builder invocation."""
+    if not expected_invocation_id:
+        return None
+    try:
+        payload=json.loads((state_root/"builder.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        return None
+    if not isinstance(payload,dict) or payload.get("invocation_id")!=expected_invocation_id:
+        return None
+    repository=payload.get("repository")
+    return repository if repository in PRODUCT_BY_REPOSITORY else None
+
 def maybe_record_async_rotation(state_root:Path,*,previous_repository:str|None,previous_status:str|None,
                                 current_repository:str|None,burst_id:str|None,process_instance_id:str|None)->dict|None:
     async_states={"REVIEW_BLOCKED","CI_PENDING","PR_BLOCKED"}
@@ -2157,7 +2170,7 @@ def main()->int:
         else:
             rc,builder_invocation_id=3,None
         builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
-        current_repository=selected_builder_repository(state)
+        current_repository=selected_builder_repository(state,builder_invocation_id)
         rotation_evidence=maybe_record_async_rotation(state,previous_repository=previous_repository,
             previous_status=previous_builder_status,current_repository=current_repository,
             burst_id=burst_id,process_instance_id=process_instance_id)
@@ -2201,10 +2214,10 @@ def main()->int:
         record=record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
             lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id,
             process_instance_id=process_instance_id)
-        burst_proof=record_burst_repository_pass(state,repository=selected_builder_repository(state),
+        burst_proof=record_burst_repository_pass(state,repository=selected_builder_repository(state,builder_invocation_id),
             builder_status=builder_status,burst_id=burst_id,process_instance_id=process_instance_id,
             sequence=record["sequence"])
-        product_proof=record_product_identity_advancement(state,repository=selected_builder_repository(state),
+        product_proof=record_product_identity_advancement(state,repository=selected_builder_repository(state,builder_invocation_id),
             builder_status=builder_status,lifecycle_advanced=lifecycle_advanced,burst_id=burst_id,
             process_instance_id=process_instance_id,sequence=record["sequence"])
         record["burst_pass"]=burst_pass
