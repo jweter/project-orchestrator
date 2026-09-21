@@ -12,6 +12,7 @@ from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
 from scripts.agent_voice import manager_status, worker_status
+from scripts.blocker_buddy import diagnose as diagnose_blocker
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -2240,6 +2241,13 @@ def main()->int:
             pass
         (state/"worker-voice.txt").write_text(
             worker_status(builder_status,worker_detail)+"\n",encoding="utf-8")
+        try:
+            builder_payload=json.loads((state/"builder.json").read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError,TypeError):
+            builder_payload={"status":builder_status,"reason":worker_detail}
+        buddy=diagnose_blocker(builder_payload,liveness)
+        atomic(state/"blocker-buddy.json",buddy)
+        (state/"buddy-voice.txt").write_text(buddy["voice"]+"\n",encoding="utf-8")
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
