@@ -23,7 +23,7 @@ def run(args:list[str])->subprocess.CompletedProcess[str]:
 def install(repo:Path,workspace:Path,state:Path)->int:
     if sys.platform!="win32":
         print(json.dumps({"status":"UNSUPPORTED_PLATFORM","platform":sys.platform}));return 2
-    cmd=task_command(repo,workspace,state)
+    cmd=str(repo/"scripts"/"windows_hands_off_boot.bat")
     # ONLOGON avoids requiring a stored account password while still recovering
     # automatically after a real reboot when the engineering account signs in.
     result=run(["schtasks","/Create","/TN",TASK_NAME,"/SC","ONLOGON","/TR",cmd,
