@@ -18,6 +18,12 @@ def atomic(path:Path,payload:dict)->None:
     tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     tmp.replace(path)
 
+def supervisor_command(repo:Path,workspace_root:str,state:Path,builder_seconds:int,merge_seconds:int)->list[str]:
+    """Build a package-aware supervisor command so ``scripts.*`` imports resolve."""
+    return [sys.executable,"-m","scripts.continuous_flow_supervisor",
+            "--repo-root",str(repo),"--workspace-root",workspace_root,"--state-root",str(state),
+            "--builder-seconds",str(builder_seconds),"--merge-seconds",str(merge_seconds)]
+
 def verified_identity(state:Path,before_id:str|None)->dict|None:
     proc=load(state/"supervisor-process-instance.json")
     sup=load(state/"supervisor.json")
@@ -40,9 +46,7 @@ def main()->int:
     a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root);state.mkdir(parents=True,exist_ok=True)
     before=load(state/"supervisor-process-instance.json").get("process_instance_id")
     log=state/"persistent-supervisor.log"
-    cmd=[sys.executable,str(repo/"scripts"/"continuous_flow_supervisor.py"),
-         "--repo-root",str(repo),"--workspace-root",a.workspace_root,"--state-root",str(state),
-         "--builder-seconds",str(a.builder_seconds),"--merge-seconds",str(a.merge_seconds)]
+    cmd=supervisor_command(repo,a.workspace_root,state,a.builder_seconds,a.merge_seconds)
     flags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)|getattr(subprocess,"DETACHED_PROCESS",0)
     with log.open("ab") as out:
         child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,
