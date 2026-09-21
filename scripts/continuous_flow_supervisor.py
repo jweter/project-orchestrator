@@ -1875,13 +1875,16 @@ def continuation_delay(*,lifecycle_advanced:bool,liveness_reacquire:dict,builder
     if lifecycle_advanced:
         return 1
     productive={"PR_OPEN","REVIEW_BLOCKED","CI_PENDING","PR_BLOCKED"}
-    nonproductive={"NO_WORK","NO_OP","SELF_REPAIRED_TO_NO_OP","AUTONOMOUS_CHANGE_REJECTED",
-                   "COMMIT_FAILED","USER_ACTIVE","NO_ELIGIBLE_REPOSITORY"}
+    terminal_nonproductive={"NO_WORK","NO_OP","SELF_REPAIRED_TO_NO_OP","AUTONOMOUS_CHANGE_REJECTED",
+                            "COMMIT_FAILED","NO_ELIGIBLE_REPOSITORY"}
     if builder_ok and builder_status in productive:
         return 1
-    # Idle-liveness recovery must not override a current nonproductive outcome.
-    # Otherwise the recovery request itself converts bounded backoff into a hot loop.
-    if liveness_reacquire.get("requested") and builder_status not in nonproductive:
+    # USER_ACTIVE is transient, not terminal. A persistent supervisor must retry
+    # after a bounded delay so the idle transition can acquire work without an
+    # external continuation signal. Keep the delay long enough to avoid a hot loop.
+    if liveness_reacquire.get("requested") and builder_status=="USER_ACTIVE":
+        return max(60,min(normal_seconds,300))
+    if liveness_reacquire.get("requested") and builder_status not in terminal_nonproductive:
         return 1
     return max(60,normal_seconds)
 
