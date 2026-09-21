@@ -1,0 +1,20 @@
+{
+  "observed_at": "2026-09-20T22:36:00-05:00",
+  "open_product_prs": 0,
+  "eligible_products": ["knowledge-engine", "rocksmith", "everward"],
+  "execution": {
+    "knowledge-engine": "exact-head Core canonical preflight dispatched on current main c3db635",
+    "rocksmith": "unattended private Product Reality worker dispatched on current main",
+    "everward": "stale 2-day UnrealEditor-Cmd orphan terminated; repository-native unattended Product Reality worker redispatched"
+  },
+  "control_plane": {
+    "defect": "Windows green PR watcher decoded gh output with cp1252 and crashed on byte 0x8d",
+    "repair_pr": 330,
+    "repair_head": "636e7671c8929f1535ce6cf1a13d7998febe33ae",
+    "targeted_tests": "22 passed",
+    "live_watcher_smoke": "error_class null",
+    "canonical_preflight": "GREEN"
+  },
+  "product_advancement_rate": "3/3 dispatched",
+  "product_reality_verified": false
+}
