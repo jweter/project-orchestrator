@@ -57,8 +57,16 @@ def main()->int:
             receipt.update(identity);receipt["status"]="PASS";receipt["verified_at_utc"]=datetime.now(UTC).isoformat()
             atomic(state/"persistent-supervisor-launch.json",receipt);return 0
         reentry=load(state/"supervisor-reentry.json")
-        if reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and reentry.get("active_process_instance_id"):
-            receipt.update({"status":"EXISTING_ACTIVE","process_instance_id":reentry["active_process_instance_id"],
+        active_id=reentry.get("active_process_instance_id")
+        proc=load(state/"supervisor-process-instance.json")
+        sup=load(state/"supervisor.json")
+        if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
+                and proc.get("process_instance_id")==active_id
+                and sup.get("process_instance_id")==active_id
+                and proc.get("burst_id") and sup.get("burst_id")==proc.get("burst_id")
+                and sup.get("updated_at_utc")):
+            receipt.update({"status":"EXISTING_ACTIVE","process_instance_id":active_id,
+                            "burst_id":proc["burst_id"],
                             "verified_at_utc":datetime.now(UTC).isoformat()})
             atomic(state/"persistent-supervisor-launch.json",receipt);return 0
         if child.poll() is not None:
