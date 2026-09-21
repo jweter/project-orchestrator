@@ -555,3 +555,17 @@ def test_contract_products_fails_closed_on_malformed_repository(tmp_path):
     contract.write_text(json.dumps({"products":{"bad":["not-a-repository"]}}))
     assert builder.contract_products(contract)=={}
     assert builder.portfolio_repositories(contract)==()
+
+
+def test_finish_grant_lifecycle_records_user_active_as_deferred(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    grant=tmp_path/"hands-off-execution-grant.json"
+    grant.write_text(json.dumps({"grant_id":"cycle-user-active"}),encoding="utf-8")
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{
+        "cycle-user-active":{"state":"CLAIMED"}}}),encoding="utf-8")
+    builder.finish_grant_lifecycle(grant,{"status":"USER_ACTIVE","repository":"jweter/rock"})
+    record=json.loads(lifecycle.read_text())["grants"]["cycle-user-active"]
+    assert record["state"]=="DEFERRED"
+    assert record["result_status"]=="USER_ACTIVE"

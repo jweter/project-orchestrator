@@ -11,6 +11,8 @@ except ModuleNotFoundError:
 from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
+from scripts.agent_voice import manager_status, worker_status
+from scripts.blocker_buddy import diagnose as diagnose_blocker
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -2229,6 +2231,24 @@ def main()->int:
             "autonomous_burst_proof":burst_proof,
             "portfolio_product_advancement_proof":product_proof,
             "async_gate_rotation":rotation_evidence})
+        # Presentation-only persona output. Never feeds control decisions.
+        (state/"manager-voice.txt").write_text(
+            manager_status(healthy,liveness["status"],builder_status)+"\n",encoding="utf-8")
+        # Persona diagnostics must use the supervisor-validated status. Details
+        # from builder.json are accepted only for this exact invocation.
+        builder_payload={"status":builder_status,"reason":""}
+        try:
+            raw_builder=json.loads((state/"builder.json").read_text(encoding="utf-8"))
+            if raw_builder.get("invocation_id")==invocation_id:
+                builder_payload["reason"]=str(raw_builder.get("reason",""))
+        except (OSError,json.JSONDecodeError,TypeError):
+            pass
+        worker_detail=builder_payload["reason"]
+        (state/"worker-voice.txt").write_text(
+            worker_status(builder_status,worker_detail)+"\n",encoding="utf-8")
+        buddy=diagnose_blocker(builder_payload,liveness)
+        atomic(state/"blocker-buddy.json",buddy)
+        (state/"buddy-voice.txt").write_text(buddy["voice"]+"\n",encoding="utf-8")
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
