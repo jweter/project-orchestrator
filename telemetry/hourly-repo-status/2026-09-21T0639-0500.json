@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-09-21T06:39:00-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {"branch":"issue-433-provider-cache-reuse-status","head":"1035512","state":"PREFLIGHT_PENDING_EXACT_HEAD","change":"ProviderStatus cache_hit/reuse_hit metrics + regression coverage"},
+  "rocksmith": {"pr":722,"head":"ffa31e78516f56178182f4c0f614794935656c5e","state":"REVIEW_BLOCKED","change":"current arrangement review task strip","blocker":"P2 direct event selection can leave strip stale"},
+  "everward": {"pr":310,"head":"b0c3784","state":"PREFLIGHT_PENDING_AFTER_REPAIR","change":"unattended timeout process-tree cleanup","repair":"taskkill nonzero path now retries and fails closed"},
+  "control_plane": {"note":"DoWork contract read from default branch; product execution prioritized over control-plane PR work"},
+  "product_reality_debt": {"knowledge_engine":"none claimed","rocksmith":"private/subjective validation remains separate","everward":"headless Unreal Product Reality remains separate"}
+}
