@@ -1848,6 +1848,15 @@ def record_product_identity_advancement(state_root:Path,*,repository:str|None,bu
            "all_three_products_proven":len(products)==3,"events":events[-100:]}
     atomic(path,proof); return proof
 
+def selected_builder_repository(state_root:Path)->str|None:
+    """Return the real repository selected by the latest builder invocation, fail closed."""
+    try:
+        payload=json.loads((state_root/"builder.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        return None
+    repository=payload.get("repository") if isinstance(payload,dict) else None
+    return repository if isinstance(repository,str) and repository.strip() else None
+
 def maybe_record_async_rotation(state_root:Path,*,previous_repository:str|None,previous_status:str|None,
                                 current_repository:str|None,burst_id:str|None,process_instance_id:str|None)->dict|None:
     async_states={"REVIEW_BLOCKED","CI_PENDING","PR_BLOCKED"}
