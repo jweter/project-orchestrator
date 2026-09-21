@@ -1,5 +1,5 @@
 from pathlib import Path
-from scripts.windows_hands_off_autostart import TASK_NAME,task_command
+from scripts.windows_hands_off_autostart import BOOT_TASK_NAME,TASK_NAME,task_command
 
 def test_task_command_uses_fail_closed_launcher():
     cmd=task_command(Path(r"C:\repo"),Path(r"C:\workspace"),Path(r"C:\repo\.hands-off-state"))
@@ -11,3 +11,4 @@ def test_task_command_uses_fail_closed_launcher():
 
 def test_task_name_is_stable():
     assert TASK_NAME=="ProjectHandsOffSupervisor"
+    assert BOOT_TASK_NAME=="ProjectHandsOffSupervisorBoot"

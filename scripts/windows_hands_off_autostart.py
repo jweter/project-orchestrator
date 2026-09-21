@@ -10,6 +10,7 @@ import argparse,json,subprocess,sys
 from pathlib import Path
 
 TASK_NAME="ProjectHandsOffSupervisor"
+BOOT_TASK_NAME="ProjectHandsOffSupervisorBoot"
 
 def task_command(repo:Path,workspace:Path,state:Path)->str:
     launcher=repo/"scripts"/"launch_persistent_supervisor.py"
@@ -23,27 +24,41 @@ def run(args:list[str])->subprocess.CompletedProcess[str]:
 def install(repo:Path,workspace:Path,state:Path)->int:
     if sys.platform!="win32":
         print(json.dumps({"status":"UNSUPPORTED_PLATFORM","platform":sys.platform}));return 2
-    cmd=str(repo/"scripts"/"windows_hands_off_boot.bat")
-    # ONLOGON avoids requiring a stored account password while still recovering
-    # automatically after a real reboot when the engineering account signs in.
-    result=run(["schtasks","/Create","/TN",TASK_NAME,"/SC","ONLOGON","/TR",cmd,
-                "/RL","LIMITED","/F"])
-    if result.returncode:
-        print(json.dumps({"status":"INSTALL_FAILED","stderr":result.stderr.strip()}));return 2
-    verify=run(["schtasks","/Query","/TN",TASK_NAME,"/FO","LIST","/V"])
-    status="INSTALLED" if verify.returncode==0 and TASK_NAME in verify.stdout else "VERIFY_FAILED"
-    print(json.dumps({"status":status,"task":TASK_NAME,"command":cmd,
-                      "query_returncode":verify.returncode},indent=2))
-    return 0 if status=="INSTALLED" else 2
+    cmd=task_command(repo,workspace,state)
+    # Two triggers cover both cold boot and interactive recovery. ONSTART is the
+    # actual cold-boot authority; ONLOGON is a second idempotent wake. The
+    # supervisor kernel lock and launcher handshake fence duplicate execution.
+    created=[]
+    for name,schedule in ((BOOT_TASK_NAME,"ONSTART"),(TASK_NAME,"ONLOGON")):
+        args=["schtasks","/Create","/TN",name,"/SC",schedule,"/TR",cmd]
+        if schedule=="ONSTART":
+            args += ["/RU","SYSTEM","/RL","HIGHEST"]
+        else:
+            args += ["/RL","LIMITED"]
+        result=run(args+["/F"])
+        if result.returncode:
+            print(json.dumps({"status":"INSTALL_FAILED","task":name,
+                              "stderr":result.stderr.strip()}));return 2
+        verify=run(["schtasks","/Query","/TN",name,"/FO","LIST","/V"])
+        if verify.returncode or name not in verify.stdout:
+            print(json.dumps({"status":"VERIFY_FAILED","task":name}));return 2
+        created.append({"task":name,"schedule":schedule})
+    print(json.dumps({"status":"INSTALLED","tasks":created,"command":cmd},indent=2))
+    return 0
 
 def inspect()->int:
     if sys.platform!="win32":
         print(json.dumps({"status":"UNSUPPORTED_PLATFORM","platform":sys.platform}));return 2
-    result=run(["schtasks","/Query","/TN",TASK_NAME,"/FO","LIST","/V"])
-    print(json.dumps({"status":"PRESENT" if result.returncode==0 else "ABSENT",
-                      "task":TASK_NAME,"details":result.stdout.strip(),
-                      "stderr":result.stderr.strip()},indent=2))
-    return 0 if result.returncode==0 else 1
+    tasks=[]
+    ok=True
+    for name in (BOOT_TASK_NAME,TASK_NAME):
+        result=run(["schtasks","/Query","/TN",name,"/FO","LIST","/V"])
+        present=result.returncode==0
+        ok=ok and present
+        tasks.append({"task":name,"status":"PRESENT" if present else "ABSENT",
+                      "details":result.stdout.strip(),"stderr":result.stderr.strip()})
+    print(json.dumps({"status":"PRESENT" if ok else "INCOMPLETE","tasks":tasks},indent=2))
+    return 0 if ok else 1
 
 def main()->int:
     p=argparse.ArgumentParser()
