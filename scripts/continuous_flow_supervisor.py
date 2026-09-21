@@ -10,6 +10,7 @@ except ModuleNotFoundError:
 
 from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
+from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -2091,6 +2092,8 @@ def main()->int:
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
     p.add_argument("--state-root",required=True); p.add_argument("--builder-seconds",type=int,default=300)
     p.add_argument("--merge-seconds",type=int,default=60); p.add_argument("--once",action="store_true")
+    p.add_argument("--yield-on-interactive-session",action="store_true",
+                   help="SYSTEM cold-boot owner exits when an interactive user session appears")
     a=p.parse_args(); repo=Path(a.repo_root); workspace=Path(a.workspace_root); state=Path(a.state_root)
     state.mkdir(parents=True,exist_ok=True)
     instance_lock=acquire_supervisor_instance_lock(state)
@@ -2130,6 +2133,25 @@ def main()->int:
     previous_builder_status=None
     rotation_evidence=None
     while True:
+        if a.yield_on_interactive_session:
+            try:
+                sessions=active_interactive_sessions()
+                should_yield=boot_owner_should_yield(sessions)
+                session_status="INTERACTIVE_SESSION_PRESENT" if should_yield else "NO_INTERACTIVE_SESSION"
+            except OSError as exc:
+                # Fail closed: a SYSTEM owner that cannot prove session absence
+                # must not retain mutation authority.
+                sessions=[]
+                should_yield=True
+                session_status=f"SESSION_DETECTION_FAILED:{exc}"
+            atomic(state/"supervisor-session-handoff.json",{
+                "schema_version":1,"status":session_status,"sessions":sessions,
+                "process_instance_id":process_instance_id,
+                "observed_at_utc":datetime.now(UTC).isoformat()})
+            if should_yield:
+                if merge is not None and merge.poll() is None:
+                    merge.terminate()
+                return 0
         burst_pass+=1
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
