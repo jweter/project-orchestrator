@@ -1,0 +1,13 @@
+{
+  "timestamp_local": "2026-09-20T19:31:30-05:00",
+  "mode": "execution_burst",
+  "open_product_prs": 0,
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {"action": "canonical preflight dispatched on Windows worker", "known_posix_typing_defect": "resolved_on_current_main_by_dynamic_posix_termination_boundary"},
+  "rocksmith": {"action": "unattended private Product Reality worker dispatched from clean current clone", "issue": 612},
+  "everward": {"action": "unattended Windows Product Reality worker dispatched from clean current clone", "issue": 243},
+  "product_reality_claimed": false,
+  "needs_jeremy": false
+}
