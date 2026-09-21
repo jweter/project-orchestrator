@@ -9,6 +9,7 @@ def test_task_command_uses_fail_closed_launcher():
     assert "--builder-seconds 60" in cmd
     assert "--merge-seconds 60" in cmd
     assert "--yield-on-interactive-session" not in cmd
+    assert "--wait-for-takeover" in cmd
     boot=task_command(Path(r"C:\repo"),Path(r"C:\workspace"),Path(r"C:\repo\.hands-off-state"),boot_owner=True)
     assert "--yield-on-interactive-session" in boot
 

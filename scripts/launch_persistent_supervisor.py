@@ -48,6 +48,8 @@ def main()->int:
     p.add_argument("--state-root",required=True);p.add_argument("--timeout-seconds",type=int,default=30)
     p.add_argument("--builder-seconds",type=int,default=300);p.add_argument("--merge-seconds",type=int,default=60)
     p.add_argument("--yield-on-interactive-session",action="store_true")
+    p.add_argument("--wait-for-takeover",action="store_true",
+                   help="keep retrying until this launcher becomes authoritative")
     a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root);state.mkdir(parents=True,exist_ok=True)
     before=load(state/"supervisor-process-instance.json").get("process_instance_id")
     log=state/"persistent-supervisor.log"
@@ -75,11 +77,36 @@ def main()->int:
                 and sup.get("process_instance_id")==active_id
                 and proc.get("burst_id") and sup.get("burst_id")==proc.get("burst_id")
                 and sup.get("updated_at_utc")):
-            receipt.update({"status":"EXISTING_ACTIVE","process_instance_id":active_id,
-                            "burst_id":proc["burst_id"],
-                            "verified_at_utc":datetime.now(UTC).isoformat()})
-            atomic(state/"persistent-supervisor-launch.json",receipt);return 0
+            if not a.wait_for_takeover:
+                receipt.update({"status":"EXISTING_ACTIVE","process_instance_id":active_id,
+                                "burst_id":proc["burst_id"],
+                                "verified_at_utc":datetime.now(UTC).isoformat()})
+                atomic(state/"persistent-supervisor-launch.json",receipt);return 0
+            # The interactive ONLOGON launcher must survive the race with the
+            # SYSTEM boot owner. Wait for that child to yield, then spawn a new
+            # current-user candidate instead of leaving supervision ownerless.
+            if child.poll() is not None:
+                time.sleep(.5)
+                before=active_id
+                with log.open("ab") as out:
+                    child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,
+                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True)
+                deadline=time.monotonic()+max(1,a.timeout_seconds)
+                receipt["launcher_pid"]=child.pid
+                receipt["status"]="TAKEOVER_RETRY"
+                atomic(state/"persistent-supervisor-launch.json",receipt)
         if child.poll() is not None:
+            if a.wait_for_takeover:
+                time.sleep(.5)
+                before=load(state/"supervisor-process-instance.json").get("process_instance_id")
+                with log.open("ab") as out:
+                    child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,
+                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True)
+                deadline=time.monotonic()+max(1,a.timeout_seconds)
+                receipt["launcher_pid"]=child.pid
+                receipt["status"]="TAKEOVER_RETRY"
+                atomic(state/"persistent-supervisor-launch.json",receipt)
+                continue
             break
         time.sleep(.25)
     receipt.update({"status":"FAIL","reason":"NO_AUTHORITATIVE_SUPERVISOR_HEARTBEAT",

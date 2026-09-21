@@ -19,6 +19,10 @@ def task_command(repo:Path,workspace:Path,state:Path,*,boot_owner:bool=False)->s
              '--timeout-seconds 60 --builder-seconds 60 --merge-seconds 60')
     if boot_owner:
         command += ' --yield-on-interactive-session'
+    else:
+        # ONLOGON may race the SYSTEM boot owner. Keep the launcher alive until
+        # that owner yields its lock so supervision cannot fall into a gap.
+        command += ' --wait-for-takeover'
     return command
 
 def run(args:list[str])->subprocess.CompletedProcess[str]:
