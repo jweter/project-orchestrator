@@ -39,12 +39,12 @@ def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=
     return MergeDecision(True,"GREEN")
 
 def gh_json(args:list[str])->Any:
-    p=subprocess.run(["gh",*args],text=True,capture_output=True,check=False)
+    p=subprocess.run(["gh",*args],text=True,encoding="utf-8",errors="replace",capture_output=True,check=False)
     if p.returncode: raise RuntimeError(p.stderr.strip() or "gh failed")
     return json.loads(p.stdout)
 
 def gh_paginated(endpoint:str)->list[dict[str,Any]]:
-    p=subprocess.run(["gh","api","--paginate","--slurp",endpoint],text=True,capture_output=True,check=False)
+    p=subprocess.run(["gh","api","--paginate","--slurp",endpoint],text=True,encoding="utf-8",errors="replace",capture_output=True,check=False)
     if p.returncode: raise RuntimeError(p.stderr.strip() or "gh api pagination failed")
     pages=json.loads(p.stdout)
     if not isinstance(pages,list): raise RuntimeError("invalid paginated GitHub response")
@@ -103,7 +103,7 @@ def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
         result["decision"]="ALREADY_READY"
         return result
     if not decision.eligible or dry_run:return result
-    proc=subprocess.run(["gh","pr","ready",str(pr["number"]),"--repo",repo],text=True,capture_output=True,check=False)
+    proc=subprocess.run(["gh","pr","ready",str(pr["number"]),"--repo",repo],text=True,encoding="utf-8",errors="replace",capture_output=True,check=False)
     result["promoted"]=proc.returncode==0
     result["promotion_result"]="SUCCESS" if proc.returncode==0 else "FAILED"
     if proc.returncode: result["error_class"]="GH_PROMOTION_FAILED"
@@ -116,7 +116,7 @@ def merge(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     result={"repository":repo,"pr":pr["number"],"head":head,"decision":decision.reason,"merged":False}
     if not decision.eligible or dry_run:return result
     cmd=["gh","pr","merge",str(pr["number"]),"--repo",repo,"--squash","--delete-branch","--match-head-commit",head]
-    proc=subprocess.run(cmd,text=True,capture_output=True,check=False)
+    proc=subprocess.run(cmd,text=True,encoding="utf-8",errors="replace",capture_output=True,check=False)
     result["merged"]=proc.returncode==0
     result["merge_result"]="SUCCESS" if proc.returncode==0 else "FAILED"
     if proc.returncode:
