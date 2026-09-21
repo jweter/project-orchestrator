@@ -33,7 +33,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("PROVENANCE", re.compile(r"(provenance|license|copyright|private source|restricted material)", re.I)),
     ("PRODUCT_REALITY", re.compile(r"(product reality|playtest|packaged windows|unreal|real-game)", re.I)),
     ("ENVIRONMENT", re.compile(r"(command not found|no such file or directory|could not reach|runner|environment limitation)", re.I)),
-    ("TEST_FAILURE", re.compile(r"(pytest|ctest|assertionerror|\bFAILURES\b|\bFAILED\b)", re.I)),
+    ("TEST_FAILURE", re.compile(r"(pytest|ctest|assertionerror|syntaxerror|traceback|\bFAILURES\b|\bFAILED\b)", re.I)),
 ]
 
 

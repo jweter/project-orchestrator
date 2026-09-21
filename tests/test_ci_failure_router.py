@@ -4,7 +4,7 @@ from scripts.ci_failure_router import (
 
 def test_extracts_first_meaningful_failure():
     log="setup ok\nE   SyntaxError: unexpected character\nFAILED later"
-    assert first_meaningful_failure(log)=="E   SyntaxError: unexpected character"
+    assert "SyntaxError: unexpected character" in first_meaningful_failure(log)
 
 def test_classification_is_fail_closed_for_tests_and_unknown():
     assert classify("E SyntaxError: bad token")=="TEST_FAILURE"
@@ -20,3 +20,8 @@ def test_fingerprint_is_stable_across_line_numbers():
     a=fingerprint("o/r","abc","test","TEST_FAILURE","failed at line 13")
     b=fingerprint("o/r","abc","test","TEST_FAILURE","failed at line 99")
     assert a==b
+
+def test_canonical_format_and_import_signatures_are_not_filtered():
+    assert first_meaningful_failure("1 file would be reformatted")=="1 file would be reformatted"
+    assert classify("1 file would be reformatted")=="FORMAT"
+    assert classify("I001 import block is un-sorted")=="IMPORT_SORT"

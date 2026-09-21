@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse, hashlib, json, re, subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from project_orchestrator.repair import build_repair_plan, fingerprint_failure
 
 CLOSED_CLASSES={"TEST_FAILURE","SECURITY","DEPENDENCY","TYPE_CHECK","GOVERNANCE",
                 "PROVENANCE","PRODUCT_REALITY","ENVIRONMENT","UNKNOWN"}
@@ -15,27 +16,13 @@ def gh_json(args:list[str]):
     return json.loads(p.stdout or "null")
 
 def first_meaningful_failure(log:str)->str:
-    noise=("##[","post job cleanup","process completed with exit code")
-    for raw in log.splitlines():
-        line=re.sub(r"^\d{4}-\d\d-\d\dT[^ ]+Z\s*","",raw).strip()
-        low=line.lower()
-        if not line or any(n in low for n in noise): continue
-        if ("error" in low or "failed" in low or "failure" in low or
-            "syntaxerror" in low or "traceback" in low):
-            return line[:1200]
+    fp=fingerprint_failure(log)
+    if fp.evidence:
+        return fp.evidence[0][:1200]
     return "UNKNOWN: no meaningful failure line found"
-def classify(line:str)->str:
-    s=line.lower()
-    if "syntaxerror" in s or "pytest" in s or "assert" in s: return "TEST_FAILURE"
-    if "ruff format" in s or "black" in s or "formatting" in s: return "FORMAT"
-    if "isort" in s or "import sort" in s: return "IMPORT_SORT"
-    if "ruff" in s or "flake8" in s or "lint" in s: return "LINT_SAFE_FIX"
-    if "mypy" in s or "type check" in s: return "TYPE_CHECK"
-    if "dependenc" in s or "resolutionimpossible" in s: return "DEPENDENCY"
-    if "security" in s or "secret" in s: return "SECURITY"
-    if "provenance" in s or "license" in s: return "PROVENANCE"
-    if "environment" in s or "runner" in s or "no space left" in s: return "ENVIRONMENT"
-    return "UNKNOWN"
+
+def classify(log_or_line:str)->str:
+    return fingerprint_failure(log_or_line).failure_class
 
 def fingerprint(repo:str,head:str,job:str,classification:str,failure:str)->str:
     stable=re.sub(r"\d+","<n>",failure.lower())
@@ -56,15 +43,19 @@ def build_packet(repo:str,pr:int)->dict:
     lp=subprocess.run(["gh","run","view",str(run["databaseId"]),"--repo",repo,
                        "--job",str(job["databaseId"]),"--log"],text=True,capture_output=True,check=False)
     if lp.returncode: raise RuntimeError(lp.stderr.strip() or "job log unavailable")
-    failure=first_meaningful_failure(lp.stdout)
-    cls=classify(failure)
+    failure=first_meaning_failure=first_meaningful_failure(lp.stdout)
+    fp=fingerprint_failure(lp.stdout); cls=fp.failure_class
+    # Classification is evidence only. Mutation authority is repository-local
+    # and is checked by project_orchestrator.repair before any command executes.
     return {"schema_version":1,"status":"REPAIR_PACKET_READY","repository":repo,
             "pr_number":pr,"pr_url":data["url"],"head_sha":head,
             "workflow_run_id":run["databaseId"],"workflow_name":run["name"],
             "job_id":job["databaseId"],"job_name":job["name"],
             "first_meaningful_failure":failure,"classification":cls,
-            "deterministic_auto_repair_eligible":cls in SAFE_CLASSES,
-            "fail_closed":cls in CLOSED_CLASSES,
+            "deterministic_auto_repair_candidate":cls in SAFE_CLASSES,
+            "deterministic_auto_repair_eligible":False,
+            "repair_authority_status":"REQUIRES_REPOSITORY_POLICY_CHECK",
+            "fail_closed":True,
             "failure_fingerprint":fingerprint(repo,head,job["name"],cls,failure),
             "observed_at_utc":datetime.now(UTC).isoformat()}
 
