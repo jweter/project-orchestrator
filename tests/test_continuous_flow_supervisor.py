@@ -965,3 +965,19 @@ def test_pending_recovery_does_not_requeue_ambiguous_quarantine(tmp_path):
         "recovery_state":"QUARANTINED","execution_stage":"COMMITTED","head_sha":"abc",
         "recovery_result":"PRESERVED_COMMIT_FINGERPRINT_MISMATCH"}}}))
     assert supervisor.pending_recovery_grants(state)==[]
+
+
+def test_user_active_liveness_reacquire_retries_with_bounded_delay():
+    from scripts.continuous_flow_supervisor import continuation_delay
+    delay=continuation_delay(lifecycle_advanced=False,
+        liveness_reacquire={"requested":True,"reason":"ELIGIBLE_IDLE"},
+        builder_ok=True,builder_status="USER_ACTIVE",normal_seconds=300)
+    assert delay==300
+
+
+def test_user_active_liveness_reacquire_never_hot_loops():
+    from scripts.continuous_flow_supervisor import continuation_delay
+    delay=continuation_delay(lifecycle_advanced=False,
+        liveness_reacquire={"requested":True,"reason":"ELIGIBLE_IDLE"},
+        builder_ok=True,builder_status="USER_ACTIVE",normal_seconds=10)
+    assert delay==60
