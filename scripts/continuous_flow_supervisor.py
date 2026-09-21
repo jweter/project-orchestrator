@@ -2150,7 +2150,7 @@ def main()->int:
                     atomic(state/"builder.json",{
                         "status":"NO_READY_EXECUTION_SLICE",
                         "reason":str(exc),
-                        "updated_at_utc":now(),
+                        "updated_at_utc":datetime.now(UTC).isoformat(),
                     })
                 else:
                     raise
