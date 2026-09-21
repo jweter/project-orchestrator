@@ -7,9 +7,11 @@ from typing import Any
 try:
     from scripts.lane_leases import open_pr_paths
     from scripts.autonomous_contract_guard import contract_guard_failure
+    from scripts.agent_voice import WORKER_PROMPT_VOICE
 except ModuleNotFoundError:
     from lane_leases import open_pr_paths
     from autonomous_contract_guard import contract_guard_failure
+    from agent_voice import WORKER_PROMPT_VOICE
 
 def contract_products(contract_path:Path|None=None)->dict[str,tuple[str,...]]:
     """Load the product/repository universe from the portable machine contract."""
@@ -355,6 +357,7 @@ def prompt_for_slice(repo:str,authority:dict[str,Any],state_path:Path|None=None)
     forbidden=", ".join(authority.get("forbidden_paths",[])) or "none beyond repository policy"
     acceptance="\n".join(f"- {item}" for item in authority["acceptance"])
     return f"""You are the autonomous laptop builder for {repo}.
+{WORKER_PROMPT_VOICE}
 Execute exactly this authorized bounded slice. Do not substitute another roadmap task.
 Capability: {authority["capability_id"]}
 Slice: {authority["slice_id"]}
@@ -504,6 +507,7 @@ def prompt_for(repo:str,state_path:Path|None=None)->str:
     avoid=sorted({p for lease in owned for p in lease.paths})
     avoid_text=", ".join(avoid[:80]) if avoid else "none"
     return f"""You are the autonomous laptop builder for {repo}.
+{WORKER_PROMPT_VOICE}
 Read the repository's AGENTS.md, README, roadmap/milestone, architecture, and engineering/control-plane files before editing.
 Choose exactly ONE small, high-value, authorized P4/P5 slice that is independent of Product Reality and does not require a human decision.
 Open PRs already own these paths: {avoid_text}

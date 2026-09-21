@@ -11,6 +11,7 @@ except ModuleNotFoundError:
 from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
+from scripts.agent_voice import manager_status, worker_status
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -2229,6 +2230,16 @@ def main()->int:
             "autonomous_burst_proof":burst_proof,
             "portfolio_product_advancement_proof":product_proof,
             "async_gate_rotation":rotation_evidence})
+        # Presentation-only persona output. Never feeds control decisions.
+        (state/"manager-voice.txt").write_text(
+            manager_status(healthy,liveness["status"],builder_status)+"\n",encoding="utf-8")
+        worker_detail=""
+        try:
+            worker_detail=json.loads((state/"builder.json").read_text(encoding="utf-8")).get("reason","")
+        except (OSError,json.JSONDecodeError,TypeError):
+            pass
+        (state/"worker-voice.txt").write_text(
+            worker_status(builder_status,worker_detail)+"\n",encoding="utf-8")
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
         # A merge exposes new roadmap work. Do not impose the normal idle delay
