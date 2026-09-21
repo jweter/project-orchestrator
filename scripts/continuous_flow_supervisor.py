@@ -2142,7 +2142,18 @@ def main()->int:
                 activation_reason=refresh_reason
         products=products if authorized else []
         if products:
-            rc,builder_invocation_id=run_builder(repo,workspace,state,products)
+            try:
+                rc,builder_invocation_id=run_builder(repo,workspace,state,products)
+            except RuntimeError as exc:
+                if str(exc).startswith("NO_READY_EXECUTION_SLICE:"):
+                    rc,builder_invocation_id=3,None
+                    atomic(state/"builder.json",{
+                        "status":"NO_READY_EXECUTION_SLICE",
+                        "reason":str(exc),
+                        "updated_at_utc":datetime.now(UTC).isoformat(),
+                    })
+                else:
+                    raise
         else:
             rc,builder_invocation_id=3,None
         builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
