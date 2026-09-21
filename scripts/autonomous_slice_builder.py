@@ -828,11 +828,19 @@ def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return
     def update(record):
-        record["state"]="COMPLETED" if result.get("status") in {
+        result_status=result.get("status","UNKNOWN")
+        if result_status=="USER_ACTIVE":
+            # The idle gate intentionally deferred execution; no engineering
+            # failure occurred and a later grant may retry the same slice.
+            record["state"]="DEFERRED"
+        elif result_status in {
             "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
-        } else "FAILED"
+        }:
+            record["state"]="COMPLETED"
+        else:
+            record["state"]="FAILED"
         record["finished_at"]=datetime.now(UTC).isoformat()
-        record["result_status"]=result.get("status","UNKNOWN")
+        record["result_status"]=result_status
         for key in ("repository","branch","base_sha","head_sha"):
             if result.get(key):
                 record[key]=result[key]

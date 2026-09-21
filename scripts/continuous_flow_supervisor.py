@@ -2234,17 +2234,18 @@ def main()->int:
         # Presentation-only persona output. Never feeds control decisions.
         (state/"manager-voice.txt").write_text(
             manager_status(healthy,liveness["status"],builder_status)+"\n",encoding="utf-8")
-        worker_detail=""
+        # Persona diagnostics must use the supervisor-validated status. Details
+        # from builder.json are accepted only for this exact invocation.
+        builder_payload={"status":builder_status,"reason":""}
         try:
-            worker_detail=json.loads((state/"builder.json").read_text(encoding="utf-8")).get("reason","")
+            raw_builder=json.loads((state/"builder.json").read_text(encoding="utf-8"))
+            if raw_builder.get("invocation_id")==invocation_id:
+                builder_payload["reason"]=str(raw_builder.get("reason",""))
         except (OSError,json.JSONDecodeError,TypeError):
             pass
+        worker_detail=builder_payload["reason"]
         (state/"worker-voice.txt").write_text(
             worker_status(builder_status,worker_detail)+"\n",encoding="utf-8")
-        try:
-            builder_payload=json.loads((state/"builder.json").read_text(encoding="utf-8"))
-        except (OSError,json.JSONDecodeError,TypeError):
-            builder_payload={"status":builder_status,"reason":worker_detail}
         buddy=diagnose_blocker(builder_payload,liveness)
         atomic(state/"blocker-buddy.json",buddy)
         (state/"buddy-voice.txt").write_text(buddy["voice"]+"\n",encoding="utf-8")

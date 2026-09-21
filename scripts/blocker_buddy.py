@@ -30,7 +30,7 @@ def diagnose(builder: dict[str, Any], liveness: dict[str, Any]) -> dict[str, str
             "action": "Inspect the direction request and capability graph for a missing or blocked executable slice.",
             "voice": "There's work in the pit, but no safe face marked for the pick. I'll check the workings with thee.",
         }
-    if status in {"BUILDER_FAILED", "P1_BUILDER_FAILURE", "PROCESS_FAILURE"}:
+    if status in {"BUILDER_FAILED", "P1_BUILDER_FAILURE", "PROCESS_FAILURE", "PREFLIGHT_FAILED", "PUSH_FAILED", "PR_CREATE_FAILED", "STALE_BUILDER_STATE", "STATE_UNREADABLE"}:
         return {
             "status": "REPAIR_REQUIRED",
             "action": "Classify sanitized failure evidence, attempt only an authorized bounded repair, then independently verify.",
