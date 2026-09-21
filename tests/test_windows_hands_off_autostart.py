@@ -10,4 +10,5 @@ def test_task_command_uses_fail_closed_launcher():
     assert "--merge-seconds 60" in cmd
 
 def test_task_name_is_stable():
-    assert TASK_NAME=="ProjectHandsOffSupervisor"\n    assert BOOT_TASK_NAME=="ProjectHandsOffSupervisorBoot"
+    assert TASK_NAME=="ProjectHandsOffSupervisor"
+    assert BOOT_TASK_NAME=="ProjectHandsOffSupervisorBoot"

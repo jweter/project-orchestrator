@@ -9,7 +9,8 @@ from __future__ import annotations
 import argparse,json,subprocess,sys
 from pathlib import Path
 
-TASK_NAME="ProjectHandsOffSupervisor"\nBOOT_TASK_NAME="ProjectHandsOffSupervisorBoot"
+TASK_NAME="ProjectHandsOffSupervisor"
+BOOT_TASK_NAME="ProjectHandsOffSupervisorBoot"
 
 def task_command(repo:Path,workspace:Path,state:Path)->str:
     launcher=repo/"scripts"/"launch_persistent_supervisor.py"
@@ -29,9 +30,12 @@ def install(repo:Path,workspace:Path,state:Path)->int:
     # supervisor kernel lock and launcher handshake fence duplicate execution.
     created=[]
     for name,schedule in ((BOOT_TASK_NAME,"ONSTART"),(TASK_NAME,"ONLOGON")):
-        result=run(["schtasks","/Create","/TN",name,"/SC",schedule,"/TR",cmd,
-                    "/RU","SYSTEM" if schedule=="ONSTART" else "%USERNAME%",
-                    "/RL","HIGHEST" if schedule=="ONSTART" else "LIMITED","/F"])
+        args=["schtasks","/Create","/TN",name,"/SC",schedule,"/TR",cmd]
+        if schedule=="ONSTART":
+            args += ["/RU","SYSTEM","/RL","HIGHEST"]
+        else:
+            args += ["/RL","LIMITED"]
+        result=run(args+["/F"])
         if result.returncode:
             print(json.dumps({"status":"INSTALL_FAILED","task":name,
                               "stderr":result.stderr.strip()}));return 2
