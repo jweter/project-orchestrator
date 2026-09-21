@@ -1,0 +1,13 @@
+from pathlib import Path
+from scripts.windows_hands_off_autostart import TASK_NAME,task_command
+
+def test_task_command_uses_fail_closed_launcher():
+    cmd=task_command(Path(r"C:\repo"),Path(r"C:\workspace"),Path(r"C:\repo\.hands-off-state"))
+    assert "launch_persistent_supervisor.py" in cmd
+    assert "continuous_flow_supervisor.py" not in cmd
+    assert "--timeout-seconds 60" in cmd
+    assert "--builder-seconds 60" in cmd
+    assert "--merge-seconds 60" in cmd
+
+def test_task_name_is_stable():
+    assert TASK_NAME=="ProjectHandsOffSupervisor"
