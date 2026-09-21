@@ -12,11 +12,14 @@ from pathlib import Path
 TASK_NAME="ProjectHandsOffSupervisor"
 BOOT_TASK_NAME="ProjectHandsOffSupervisorBoot"
 
-def task_command(repo:Path,workspace:Path,state:Path)->str:
+def task_command(repo:Path,workspace:Path,state:Path,*,boot_owner:bool=False)->str:
     launcher=repo/"scripts"/"launch_persistent_supervisor.py"
-    return (f'"{sys.executable}" "{launcher}" --repo-root "{repo}" '
-            f'--workspace-root "{workspace}" --state-root "{state}" '
-            '--timeout-seconds 60 --builder-seconds 60 --merge-seconds 60')
+    command=(f'"{sys.executable}" "{launcher}" --repo-root "{repo}" '
+             f'--workspace-root "{workspace}" --state-root "{state}" '
+             '--timeout-seconds 60 --builder-seconds 60 --merge-seconds 60')
+    if boot_owner:
+        command += ' --yield-on-interactive-session'
+    return command
 
 def run(args:list[str])->subprocess.CompletedProcess[str]:
     return subprocess.run(args,text=True,capture_output=True,check=False)
@@ -24,12 +27,14 @@ def run(args:list[str])->subprocess.CompletedProcess[str]:
 def install(repo:Path,workspace:Path,state:Path)->int:
     if sys.platform!="win32":
         print(json.dumps({"status":"UNSUPPORTED_PLATFORM","platform":sys.platform}));return 2
-    cmd=task_command(repo,workspace,state)
+    logon_cmd=task_command(repo,workspace,state)
+    boot_cmd=task_command(repo,workspace,state,boot_owner=True)
     # Two triggers cover both cold boot and interactive recovery. ONSTART is the
     # actual cold-boot authority; ONLOGON is a second idempotent wake. The
     # supervisor kernel lock and launcher handshake fence duplicate execution.
     created=[]
     for name,schedule in ((BOOT_TASK_NAME,"ONSTART"),(TASK_NAME,"ONLOGON")):
+        cmd=boot_cmd if schedule=="ONSTART" else logon_cmd
         args=["schtasks","/Create","/TN",name,"/SC",schedule,"/TR",cmd]
         if schedule=="ONSTART":
             args += ["/RU","SYSTEM","/RL","HIGHEST"]
@@ -43,7 +48,8 @@ def install(repo:Path,workspace:Path,state:Path)->int:
         if verify.returncode or name not in verify.stdout:
             print(json.dumps({"status":"VERIFY_FAILED","task":name}));return 2
         created.append({"task":name,"schedule":schedule})
-    print(json.dumps({"status":"INSTALLED","tasks":created,"command":cmd},indent=2))
+    print(json.dumps({"status":"INSTALLED","tasks":created,
+                      "boot_command":boot_cmd,"logon_command":logon_cmd},indent=2))
     return 0
 
 def inspect()->int:

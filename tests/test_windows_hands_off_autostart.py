@@ -8,6 +8,9 @@ def test_task_command_uses_fail_closed_launcher():
     assert "--timeout-seconds 60" in cmd
     assert "--builder-seconds 60" in cmd
     assert "--merge-seconds 60" in cmd
+    assert "--yield-on-interactive-session" not in cmd
+    boot=task_command(Path(r"C:\repo"),Path(r"C:\workspace"),Path(r"C:\repo\.hands-off-state"),boot_owner=True)
+    assert "--yield-on-interactive-session" in boot
 
 def test_task_name_is_stable():
     assert TASK_NAME=="ProjectHandsOffSupervisor"
