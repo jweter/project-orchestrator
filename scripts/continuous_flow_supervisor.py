@@ -2134,7 +2134,7 @@ def main()->int:
             for product in stale_products:
                 recertify_product(repo,workspace,state,product)
             authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
-        if not authorized and activation_reason=="ACTIVATION_EVIDENCE_MISSING":
+        if not authorized and (activation_reason=="ACTIVATION_EVIDENCE_MISSING" or stale_products):
             refreshed,refresh_reason=refresh_readiness(repo,workspace,state)
             if refreshed:
                 authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
