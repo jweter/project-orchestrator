@@ -981,3 +981,11 @@ def test_user_active_liveness_reacquire_never_hot_loops():
         liveness_reacquire={"requested":True,"reason":"ELIGIBLE_IDLE"},
         builder_ok=True,builder_status="USER_ACTIVE",normal_seconds=10)
     assert delay==60
+
+
+def test_supervisor_registers_merge_watcher_cleanup():
+    from pathlib import Path
+    source = Path('scripts/continuous_flow_supervisor.py').read_text(encoding='utf-8')
+    assert 'atexit.register(cleanup_merge_watcher)' in source
+    assert 'merge.wait(timeout=5)' in source
+

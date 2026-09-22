@@ -1,6 +1,6 @@
 """Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
-import argparse, atexit, hashlib, json, os, socket, subprocess, sys, time, uuid
+import argparse, atexit, hashlib, json, os, shutil, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 try:
@@ -16,9 +16,23 @@ from scripts.blocker_buddy import diagnose as diagnose_blocker
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
-    tmp=path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
-    tmp.replace(path)
+    tmp=path.with_name(f"{path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
+    try:
+        tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+        for attempt in range(5):
+            try:
+                tmp.replace(path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    # Windows scanners/readers may deny rename-over-open-file while
+                    # still allowing a normal overwrite. Preserve the temp-first
+                    # write and degrade to copy-overwrite rather than killing flow.
+                    shutil.copyfile(tmp,path)
+                    break
+                time.sleep(0.1 * (attempt + 1))
+    finally:
+        tmp.unlink(missing_ok=True)
 
 def start_merge_watcher(repo_root:Path,state_root:Path,poll_seconds:int)->subprocess.Popen:
     return subprocess.Popen([sys.executable,str(repo_root/"scripts"/"green_pr_watch_loop.py"),
@@ -2113,6 +2127,14 @@ def main()->int:
         return 0
     atexit.register(release_supervisor_instance_lock,instance_lock)
     merge=None
+    def cleanup_merge_watcher()->None:
+        if merge is not None and merge.poll() is None:
+            merge.terminate()
+            try:
+                merge.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                merge.kill()
+    atexit.register(cleanup_merge_watcher)
     process_instance_id=instance_lock["worker"]["instance_id"]
     burst=start_or_resume_burst(state,process_instance_id=process_instance_id)
     takeover_proof=prove_restart_takeover(state,instance_lock,burst)
@@ -2239,7 +2261,7 @@ def main()->int:
         builder_payload={"status":builder_status,"reason":""}
         try:
             raw_builder=json.loads((state/"builder.json").read_text(encoding="utf-8"))
-            if raw_builder.get("invocation_id")==invocation_id:
+            if raw_builder.get("invocation_id")==builder_invocation_id:
                 builder_payload["reason"]=str(raw_builder.get("reason",""))
         except (OSError,json.JSONDecodeError,TypeError):
             pass
@@ -2273,3 +2295,4 @@ def main()->int:
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
         time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
+
