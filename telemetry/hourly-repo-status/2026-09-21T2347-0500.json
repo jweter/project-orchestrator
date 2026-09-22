@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-09-21T23:47:00-05:00",
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "repository": "jweter/knowledge-engine-core",
+    "branch": "orchestrator/issue-433-provider-concurrency",
+    "head": "10967b29830b1cae29c0479c09742965e88daf0a",
+    "pr": 520,
+    "state": "CI_PENDING",
+    "preflight": "GREEN",
+    "summary": "bounded concurrent federated-provider fanout with deterministic aggregation"
+  },
+  "rocksmith": {
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "branch": "repair/diagnosis-human-consistency",
+    "head": "f2b2824be36cdb91a5d9f831223a0e495dd77094",
+    "pr": 723,
+    "state": "CI_PENDING",
+    "preflight": "GREEN",
+    "summary": "fail-closed validation for contradictory unattended human-escalation diagnosis"
+  },
+  "everward": {
+    "repository": "jweter/Project-Everward",
+    "branch": "repair/headless-smoke-deterministic-exit",
+    "head": "3d9b927",
+    "pr": null,
+    "state": "PREFLIGHT_GREEN_PLATFORM_GATE_PENDING",
+    "preflight": "GREEN",
+    "summary": "headless smoke deterministic self-exit after evidence capture; Unreal build waits on competing Build.bat"
+  },
+  "control_plane": {
+    "capability_graphs_restored": ["knowledge-engine-core", "knowledge-engine-web", "knowledge-engine-ai", "rocksmith-cdlc-generator"],
+    "transient_builder_failure": "GitHub GraphQL API rate limit exceeded",
+    "persistent_supervisor_defect": "WinError 5 replacing flow-state/supervisor.json"
+  }
+}
