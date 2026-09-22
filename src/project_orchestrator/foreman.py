@@ -1,0 +1,275 @@
+from __future__ import annotations
+
+from collections import Counter
+from typing import Any
+
+from .specialist_lanes import build_lane_plan
+
+FOREMAN_NAME = "Foreman"
+PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward")
+TERMINAL_STATES = {
+    "PASS",
+    "FAIL",
+    "NO_OP",
+    "COMPLETED",
+    "MERGED",
+    "CANCELLED",
+    "ABANDONED",
+    "REJECTED",
+}
+ASYNC_STATES = {
+    "CI_PENDING",
+    "PREFLIGHT_RUNNING",
+    "PREFLIGHT_PENDING",
+    "PRODUCT_REALITY_PENDING",
+    "WINDOWS_PENDING",
+    "OLLAMA_PENDING",
+    "UNREAL_PENDING",
+    "REVIEW_BLOCKED",
+    "PR_BLOCKED",
+}
+
+
+def _repo_projects(inventory: dict[str, Any]) -> dict[str, str]:
+    return {
+        repo["name"]: project["id"]
+        for project in inventory.get("projects", [])
+        for repo in project.get("repositories", [])
+    }
+
+
+def _project_repositories(inventory: dict[str, Any]) -> dict[str, list[str]]:
+    return {
+        project["id"]: [repo["name"] for repo in project.get("repositories", [])]
+        for project in inventory.get("projects", [])
+    }
+
+
+def _state(record: dict[str, Any]) -> str:
+    raw = (
+        record.get("state") or record.get("status") or record.get("stage") or "UNKNOWN"
+    )
+    return str(raw).upper()
+
+
+def _sanitize_execution_record(
+    record: dict[str, Any], project_id: str
+) -> dict[str, Any]:
+    keys = (
+        "grant_id",
+        "task_key",
+        "repository",
+        "state",
+        "status",
+        "stage",
+        "branch",
+        "head_sha",
+        "base_sha",
+        "updated_at_utc",
+        "last_heartbeat_at",
+        "result_status",
+    )
+    return {
+        "project_id": project_id,
+        **{key: record.get(key) for key in keys if key in record},
+    }
+
+
+def compact_execution_records(
+    inventory: dict[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    archive_limit: int = 25,
+) -> dict[str, Any]:
+    """Separate scheduling-relevant execution state from bounded historical evidence."""
+    repo_projects = _repo_projects(inventory)
+    buckets: dict[str, dict[str, list[dict[str, Any]]]] = {
+        project: {
+            "active": [],
+            "waiting": [],
+            "quarantined_actionable": [],
+            "archived": [],
+        }
+        for project in PROJECT_IDS
+    }
+    unknown: list[dict[str, Any]] = []
+
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        project = record.get("project_id") or repo_projects.get(
+            record.get("repository")
+        )
+        if project not in buckets:
+            unknown.append(record)
+            continue
+        item = _sanitize_execution_record(record, str(project))
+        state = _state(record)
+        if state in ASYNC_STATES:
+            buckets[str(project)]["waiting"].append(item)
+        elif state == "QUARANTINED" and record.get("actionable") is True:
+            buckets[str(project)]["quarantined_actionable"].append(item)
+        elif state in TERMINAL_STATES or state == "QUARANTINED":
+            buckets[str(project)]["archived"].append(item)
+        else:
+            buckets[str(project)]["active"].append(item)
+    archive_summary: dict[str, Any] = {}
+    for project, values in buckets.items():
+        archived = values["archived"]
+        counts = Counter(_state(item) for item in archived)
+        values["archived"] = archived[-archive_limit:]
+        archive_summary[project] = {
+            "total": sum(counts.values()),
+            "by_state": dict(sorted(counts.items())),
+            "retained_recent": len(values["archived"]),
+        }
+
+    return {
+        "schema_version": 1,
+        "projects": buckets,
+        "archive_summary": archive_summary,
+        "unknown_record_count": len(unknown),
+        "scheduling_rule": (
+            "only active, asynchronous waits, and explicitly actionable quarantines "
+            "participate in scheduling"
+        ),
+    }
+
+
+def _live_ownership(
+    inventory: dict[str, Any], live_snapshot: dict[str, Any]
+) -> dict[str, list[dict[str, Any]]]:
+    repo_projects = _repo_projects(inventory)
+    result = {project: [] for project in PROJECT_IDS}
+    for repo in live_snapshot.get("repositories", []):
+        repository = repo.get("repository")
+        project = repo_projects.get(repository)
+        if project not in result:
+            continue
+        for work in repo.get("active_work", []):
+            if isinstance(work, dict):
+                result[project].append({"repository": repository, **work})
+    return result
+
+
+def build_foreman_plan(
+    inventory: dict[str, Any],
+    live_snapshot: dict[str, Any],
+    candidates: list[dict[str, Any]],
+    *,
+    execution_records: list[dict[str, Any]] | None = None,
+    events: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Project live evidence into exactly three work-conserving portfolio lanes."""
+    projects = _project_repositories(inventory)
+    if set(projects) != set(PROJECT_IDS):
+        raise ValueError(
+            "Foreman requires exactly Knowledge Engine, Rocksmith, and Everward"
+        )
+
+    compacted = compact_execution_records(inventory, execution_records or [])
+    live_ownership = _live_ownership(inventory, live_snapshot)
+    reservations = build_lane_plan(inventory, live_snapshot, candidates)
+    by_project = {project: [] for project in PROJECT_IDS}
+    for lane in reservations["lanes"]:
+        project = lane.get("project_id")
+        if project in by_project:
+            by_project[project].append(lane)
+
+    ledgers: list[dict[str, Any]] = []
+    dispatch_queue: list[dict[str, Any]] = []
+    rotated_waits: list[str] = []
+
+    for project in PROJECT_IDS:
+        projected = compacted["projects"][project]
+        lane_candidates = by_project[project]
+        selected = next(
+            (lane for lane in lane_candidates if lane["state"] == "RESERVED"), None
+        )
+        active = [*live_ownership[project], *projected["active"]]
+        waiting = projected["waiting"]
+        actionable = projected["quarantined_actionable"]
+
+        if selected is not None:
+            state = "DISPATCH_READY"
+            next_gate = "DISPATCH_BOUNDED_EXECUTION"
+            dispatch_queue.append(selected)
+            if waiting:
+                rotated_waits.append(project)
+        elif active:
+            state = "ACTIVE_EXISTING"
+            next_gate = "RECONCILE_OR_ADVANCE_EXISTING_WORK"
+        elif actionable:
+            state = "BLOCKED_REPAIR"
+            next_gate = "REPAIR_ACTIONABLE_QUARANTINE"
+        elif waiting:
+            state = "WAITING_ASYNC"
+            next_gate = "AWAIT_EVENT_WITHOUT_BLOCKING_OTHER_PRODUCTS"
+        elif lane_candidates:
+            state = "BLOCKED"
+            next_gate = "RECONCILE_BLOCKED_CANDIDATES"
+        else:
+            state = "NO_SAFE_ELIGIBLE_WORK"
+            next_gate = "REFRESH_AUTHORIZED_CANDIDATES"
+
+        ledgers.append(
+            {
+                "project_id": project,
+                "repositories": projects[project],
+                "state": state,
+                "next_gate": next_gate,
+                "selected_lane": selected,
+                "live_ownership": live_ownership[project],
+                "active_execution": projected["active"],
+                "asynchronous_waits": waiting,
+                "actionable_quarantines": actionable,
+                "candidate_states": [
+                    {
+                        "lane_id": lane["lane_id"],
+                        "repository": lane["repository"],
+                        "state": lane["state"],
+                        "reason": lane["reason"],
+                    }
+                    for lane in lane_candidates
+                ],
+            }
+        )
+    event_kinds = {
+        str(event.get("kind") or event.get("status") or "").upper()
+        for event in (events or [])
+        if isinstance(event, dict)
+    }
+    wake_events = {
+        "MERGED",
+        "PASS",
+        "FAIL",
+        "PREFLIGHT_GREEN",
+        "CI_GREEN",
+        "CI_FAILED",
+        "PRODUCT_REALITY_VERIFIED",
+    }
+    immediate = bool(dispatch_queue) or bool(event_kinds & wake_events)
+
+    return {
+        "schema_version": 1,
+        "controller": FOREMAN_NAME,
+        "authority": "EPHEMERAL_PROJECTION_OF_LIVE_EVIDENCE",
+        "projects": ledgers,
+        "dispatch_queue": dispatch_queue,
+        "dispatchable_product_projects": [
+            lane["project_id"] for lane in dispatch_queue
+        ],
+        "waiting_lanes_rotated_away_from": sorted(set(rotated_waits)),
+        "execution_compaction": compacted,
+        "immediate_continuation": immediate,
+        "product_advancement_rate": "UNKNOWN_UNTIL_VERIFIED_MUTATION",
+        "safety_boundaries": [
+            "GitHub and repository-local governing documents remain ownership authority",
+            "Foreman never creates a competing manual ownership database",
+            "exactly three independent product lanes are represented",
+            "one substantial new slice per independent product per run",
+            "waiting gates are asynchronous and never consume another product lane",
+            "Product Reality is never inferred",
+            "Foreman selects and dispatches but never merges",
+        ],
+    }

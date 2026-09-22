@@ -11,6 +11,7 @@ from .closed_loop import validate_closed_loop_run
 from .compatibility import load_contract, plan_change
 from .decision import next_actions
 from .evidence_collector import COLLECTIBLE_REPOSITORIES, collect_portfolio_windows
+from .foreman import build_foreman_plan
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .learning import add_lesson, load_memory, write_memory
@@ -211,6 +212,21 @@ def specialist_lane_result(result_path: Path, live_default_head: str | None) -> 
     result = json.loads(result_path.read_text(encoding="utf-8"))
     print(json.dumps(validate_lane_result(result, live_default_head=live_default_head), indent=2, sort_keys=True))
     return 0
+
+
+def foreman_plan(evidence_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    inventory = load_inventory(DEFAULT_INVENTORY)
+    result = build_foreman_plan(
+        inventory,
+        evidence["live_snapshot"],
+        evidence["candidates"],
+        execution_records=evidence.get("execution_records"),
+        events=evidence.get("events"),
+    )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
 
 def work_decompose(item_path: Path, snapshot_path: Path | None) -> int:
     item=json.loads(item_path.read_text(encoding="utf-8"))
@@ -482,6 +498,8 @@ def main() -> int:
     lane_result_parser = sub.add_parser("specialist-result")
     lane_result_parser.add_argument("result", type=Path)
     lane_result_parser.add_argument("--live-default-head", default=None)
+    foreman_parser = sub.add_parser("foreman-plan")
+    foreman_parser.add_argument("evidence", type=Path)
     throughput_parser=sub.add_parser("throughput-optimize")
     throughput_parser.add_argument("--since",default=None)
     throughput_parser.add_argument("--eligible-project",action="append",dest="eligible_projects")
@@ -583,6 +601,8 @@ def main() -> int:
         return specialist_lane_plan(args.snapshot, args.candidates)
     if args.command == "specialist-result":
         return specialist_lane_result(args.result, args.live_default_head)
+    if args.command == "foreman-plan":
+        return foreman_plan(args.evidence)
     if args.command == "throughput-optimize":
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
