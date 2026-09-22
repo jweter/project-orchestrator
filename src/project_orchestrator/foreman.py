@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Any
 
 from .specialist_lanes import build_lane_plan
+from .steward import assess_machine_health, govern_dispatch
 
 FOREMAN_NAME = "Foreman"
 PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward")
@@ -159,6 +160,8 @@ def build_foreman_plan(
     *,
     execution_records: list[dict[str, Any]] | None = None,
     events: list[dict[str, Any]] | None = None,
+    machine_health: dict[str, Any] | None = None,
+    steward_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project live evidence into exactly three work-conserving portfolio lanes."""
     projects = _project_repositories(inventory)
@@ -248,14 +251,49 @@ def build_foreman_plan(
         "CI_FAILED",
         "PRODUCT_REALITY_VERIFIED",
     }
-    immediate = bool(dispatch_queue) or bool(event_kinds & wake_events)
+    candidate_dispatch_queue = list(dispatch_queue)
+    if machine_health is None:
+        steward = {
+            "status": "NOT_EVALUATED",
+            "reason": "machine health snapshot not supplied",
+            "admitted": candidate_dispatch_queue,
+            "deferred": [],
+            "next_fairness_cursor": (steward_state or {}).get("last_admitted_project"),
+        }
+    else:
+        assessment = assess_machine_health(machine_health)
+        steward = govern_dispatch(
+            candidate_dispatch_queue,
+            assessment,
+            last_admitted_project=(steward_state or {}).get("last_admitted_project"),
+        )
+        dispatch_queue = steward["admitted"]
+        admitted_ids = {lane["lane_id"] for lane in dispatch_queue}
+        for row in ledgers:
+            selected_lane = row.get("selected_lane")
+            if not isinstance(selected_lane, dict):
+                continue
+            if selected_lane.get("lane_id") in admitted_ids:
+                row["steward_admission"] = "ADMITTED"
+            else:
+                row["steward_admission"] = "DEFERRED_MACHINE_HEALTH"
+                row["next_gate"] = "WAIT_STEWARD_MACHINE_CAPACITY"
+
+    red_health = machine_health is not None and steward.get("assessment", {}).get(
+        "band"
+    ) in {"RED", "CRITICAL"}
+    immediate = bool(dispatch_queue) or (
+        bool(event_kinds & wake_events) and not red_health
+    )
 
     return {
         "schema_version": 1,
         "controller": FOREMAN_NAME,
         "authority": "EPHEMERAL_PROJECTION_OF_LIVE_EVIDENCE",
         "projects": ledgers,
+        "candidate_dispatch_queue": candidate_dispatch_queue,
         "dispatch_queue": dispatch_queue,
+        "steward": steward,
         "dispatchable_product_projects": [
             lane["project_id"] for lane in dispatch_queue
         ],
@@ -271,5 +309,6 @@ def build_foreman_plan(
             "waiting gates are asynchronous and never consume another product lane",
             "Product Reality is never inferred",
             "Foreman selects and dispatches but never merges",
+            "Steward may throttle or defer execution for machine health without classifying the product as blocked",
         ],
     }

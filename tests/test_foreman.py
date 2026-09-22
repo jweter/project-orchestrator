@@ -211,3 +211,47 @@ def test_foreman_rejects_noncanonical_portfolio():
 
     with pytest.raises(ValueError, match="exactly Knowledge Engine"):
         build_foreman_plan(broken, snapshot(), candidates())
+
+
+def test_steward_red_health_defers_without_product_blocker():
+    health = {
+        "memory_percent": 93.0,
+        "memory_available_gb": 1.1,
+        "cpu_percent": 10.0,
+        "on_ac_power": True,
+        "disks": [{"name": "C:", "used_percent": 92.0, "free_gb": 35.0}],
+    }
+    plan = build_foreman_plan(
+        inventory(),
+        snapshot(),
+        candidates(),
+        machine_health=health,
+    )
+
+    assert plan["candidate_dispatch_queue"]
+    assert plan["dispatch_queue"] == []
+    assert plan["steward"]["assessment"]["band"] == "RED"
+    assert plan["steward"]["health_deferral_is_product_blocker"] is False
+    assert all(
+        row["steward_admission"] == "DEFERRED_MACHINE_HEALTH"
+        for row in plan["projects"]
+    )
+
+
+def test_steward_yellow_health_admits_two_with_fair_rotation():
+    health = {
+        "memory_percent": 80.0,
+        "cpu_percent": 10.0,
+        "on_ac_power": True,
+        "disks": [{"name": "C:", "used_percent": 70.0, "free_gb": 100.0}],
+    }
+    plan = build_foreman_plan(
+        inventory(),
+        snapshot(),
+        candidates(),
+        machine_health=health,
+        steward_state={"last_admitted_project": "knowledge-engine"},
+    )
+
+    assert plan["steward"]["assessment"]["band"] == "YELLOW"
+    assert plan["dispatchable_product_projects"] == ["rocksmith", "everward"]

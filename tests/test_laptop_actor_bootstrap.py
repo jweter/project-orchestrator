@@ -155,3 +155,29 @@ def test_resource_budget_blocks_low_disk():
 
 def test_resource_budget_allows_safe_capacity():
     assert bootstrap.resources_allow_execution({"memory_percent": 40.0, "disk_free_gb": 100.0}, max_memory_percent=85.0, min_disk_free_gb=10.0)
+
+
+def test_maintenance_marker_blocks_actor_before_checkout(monkeypatch, tmp_path):
+    local = tmp_path / "local"
+    marker = local / "ExponentialEngine" / "steward" / "maintenance.json"
+    marker.parent.mkdir(parents=True)
+    marker.write_text('{"status":"STARTUP_SANITY"}', encoding="utf-8")
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
+    monkeypatch.setattr(
+        bootstrap,
+        "update_actor_checkout",
+        lambda *_: pytest.fail("maintenance mode must block checkout/update"),
+    )
+
+    assert (
+        bootstrap.run_idle_session(
+            tmp_path,
+            tmp_path / "queue",
+            tmp_path / "workspace",
+            300,
+            60,
+            tmp_path / "state",
+        )
+        == 0
+    )

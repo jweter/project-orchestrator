@@ -85,6 +85,8 @@ def build_lane_plan(
             "lane_id":_id(identity),**identity,"state":state,"reason":reason,
             "priority":candidate.get("priority"),"paths":sorted(set(candidate.get("paths",[]))),
             "dependencies":sorted(set(candidate.get("dependencies",[]))),
+            "resource_class":str(candidate.get("resource_class","STANDARD")).upper(),
+            "exclusive_resources":sorted(set(candidate.get("exclusive_resources",[]))),
             "parent_lane":"knowledge-engine" if project=="knowledge-engine" else project,
             "merge_authority":False,
             "may_prepare_branch":state=="RESERVED",

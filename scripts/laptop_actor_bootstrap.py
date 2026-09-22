@@ -21,6 +21,16 @@ _DATADOG_MODULE = importlib.util.module_from_spec(_DATADOG_SPEC)
 _DATADOG_SPEC.loader.exec_module(_DATADOG_MODULE)
 emit_datadog_metrics = _DATADOG_MODULE.emit
 
+_STEWARD_SPEC = importlib.util.spec_from_file_location(
+    "project_orchestrator_steward",
+    Path(__file__).resolve().parents[1] / "src" / "project_orchestrator" / "steward.py",
+)
+if _STEWARD_SPEC is None or _STEWARD_SPEC.loader is None:
+    raise RuntimeError("unable to load Steward machine-health governor")
+_STEWARD_MODULE = importlib.util.module_from_spec(_STEWARD_SPEC)
+_STEWARD_SPEC.loader.exec_module(_STEWARD_MODULE)
+assess_machine_health = _STEWARD_MODULE.assess_machine_health
+
 
 def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=False)
@@ -127,34 +137,202 @@ def release_single_instance(state_dir: Path, fd: int | None) -> None:
         pass
 
 
-def system_resource_snapshot() -> dict[str, float | None]:
-    disk = shutil.disk_usage(Path.home())
+def _windows_cpu_percent(sample_seconds: float = 0.1) -> float | None:
+    if os.name != "nt":
+        return None
+
+    class FILETIME(ctypes.Structure):
+        _fields_ = [("low", ctypes.c_ulong), ("high", ctypes.c_ulong)]
+
+    def read_times() -> tuple[int, int, int] | None:
+        idle, kernel, user = FILETIME(), FILETIME(), FILETIME()
+        if not ctypes.windll.kernel32.GetSystemTimes(
+            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+        ):
+            return None
+
+        def ticks(value: FILETIME) -> int:
+            return (value.high << 32) | value.low
+
+        return ticks(idle), ticks(kernel), ticks(user)
+
+    first = read_times()
+    if first is None:
+        return None
+    ctypes.windll.kernel32.Sleep(max(10, int(sample_seconds * 1000)))
+    second = read_times()
+    if second is None:
+        return None
+    idle_delta = second[0] - first[0]
+    total_delta = (second[1] - first[1]) + (second[2] - first[2])
+    if total_delta <= 0:
+        return None
+    return round(max(0.0, min(100.0, 100.0 * (1.0 - idle_delta / total_delta))), 1)
+
+
+def _windows_fixed_disks() -> list[dict[str, object]]:
+    if os.name != "nt":
+        disk = shutil.disk_usage(Path.home())
+        return [
+            {
+                "name": str(Path.home().anchor or Path.home()),
+                "used_percent": round(100.0 * (1.0 - disk.free / disk.total), 1),
+                "free_gb": round(disk.free / (1024**3), 2),
+                "total_gb": round(disk.total / (1024**3), 2),
+            }
+        ]
+    kernel = ctypes.windll.kernel32
+    mask = int(kernel.GetLogicalDrives())
+    disks: list[dict[str, object]] = []
+    for index in range(26):
+        if not mask & (1 << index):
+            continue
+        root = f"{chr(65 + index)}:\\"
+        if int(kernel.GetDriveTypeW(root)) != 3:
+            continue
+        free = ctypes.c_ulonglong()
+        total = ctypes.c_ulonglong()
+        total_free = ctypes.c_ulonglong()
+        if not kernel.GetDiskFreeSpaceExW(
+            root, ctypes.byref(free), ctypes.byref(total), ctypes.byref(total_free)
+        ):
+            continue
+        if total.value <= 0:
+            continue
+        disks.append(
+            {
+                "name": root[:2],
+                "used_percent": round(100.0 * (1.0 - free.value / total.value), 1),
+                "free_gb": round(free.value / (1024**3), 2),
+                "total_gb": round(total.value / (1024**3), 2),
+            }
+        )
+    return disks
+
+
+def _windows_power_status() -> tuple[bool | None, float | None]:
+    if os.name != "nt":
+        return None, None
+
+    class SYSTEM_POWER_STATUS(ctypes.Structure):
+        _fields_ = [
+            ("ACLineStatus", ctypes.c_byte),
+            ("BatteryFlag", ctypes.c_byte),
+            ("BatteryLifePercent", ctypes.c_byte),
+            ("SystemStatusFlag", ctypes.c_byte),
+            ("BatteryLifeTime", ctypes.c_ulong),
+            ("BatteryFullLifeTime", ctypes.c_ulong),
+        ]
+
+    status = SYSTEM_POWER_STATUS()
+    if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+        return None, None
+    on_ac = None if status.ACLineStatus == 255 else status.ACLineStatus == 1
+    battery = (
+        None if status.BatteryLifePercent == 255 else float(status.BatteryLifePercent)
+    )
+    return on_ac, battery
+
+
+def _windows_heavy_processes() -> list[str]:
+    if os.name != "nt":
+        return []
+    proc = subprocess.run(
+        ["tasklist", "/FO", "CSV", "/NH"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return []
+    names: set[str] = set()
+    for line in proc.stdout.splitlines():
+        lowered = line.lower()
+        for needle in ("ollama", "llama", "unreal", "ue4", "ue5", "aider"):
+            if needle in lowered:
+                names.add(needle)
+    return sorted(names)
+
+
+def system_resource_snapshot() -> dict[str, object]:
     memory_percent: float | None = None
+    memory_available_gb: float | None = None
+    memory_total_gb: float | None = None
+    commit_used_percent: float | None = None
     if os.name == "nt":
+
         class MEMORYSTATUSEX(ctypes.Structure):
             _fields_ = [
-                ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
-                ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
-                ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
-                ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
                 ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
             ]
+
         status = MEMORYSTATUSEX()
         status.dwLength = ctypes.sizeof(status)
         if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
             memory_percent = float(status.dwMemoryLoad)
-    return {
+            memory_available_gb = round(status.ullAvailPhys / (1024**3), 2)
+            memory_total_gb = round(status.ullTotalPhys / (1024**3), 2)
+            if status.ullTotalPageFile:
+                commit_used_percent = round(
+                    100.0 * (1.0 - status.ullAvailPageFile / status.ullTotalPageFile), 1
+                )
+    on_ac_power, battery_percent = _windows_power_status()
+    disks = _windows_fixed_disks()
+    snapshot: dict[str, object] = {
         "memory_percent": memory_percent,
-        "disk_free_gb": round(disk.free / (1024 ** 3), 2),
+        "memory_available_gb": memory_available_gb,
+        "memory_total_gb": memory_total_gb,
+        "commit_used_percent": commit_used_percent,
+        "cpu_percent": _windows_cpu_percent(),
+        "temperature_c": None,
+        "temperature_source": "UNAVAILABLE",
+        "on_ac_power": on_ac_power,
+        "battery_percent": battery_percent,
+        "active_heavy_processes": _windows_heavy_processes(),
+        "disks": disks,
     }
+    if disks:
+        snapshot["disk_free_gb"] = min(float(item["free_gb"]) for item in disks)
+        snapshot["disk_used_percent"] = max(
+            float(item["used_percent"]) for item in disks
+        )
+    return snapshot
 
 
-def resources_allow_execution(snapshot: dict[str, float | None], *, max_memory_percent: float, min_disk_free_gb: float) -> bool:
+def steward_maintenance_active() -> tuple[bool, str | None]:
+    base = os.environ.get("LOCALAPPDATA")
+    if not base:
+        return False, None
+    marker = Path(base) / "ExponentialEngine" / "steward" / "maintenance.json"
+    if not marker.is_file():
+        return False, None
+    try:
+        payload = json.loads(marker.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return True, "MAINTENANCE_MARKER_UNREADABLE"
+    return True, str(payload.get("status") or "MAINTENANCE")
+
+
+def resources_allow_execution(
+    snapshot: dict[str, object],
+    *,
+    max_memory_percent: float = 85.0,
+    min_disk_free_gb: float = 10.0,
+) -> bool:
+    """Legacy hard-cap helper retained for compatibility; runtime uses Steward."""
     memory = snapshot.get("memory_percent")
     disk = snapshot.get("disk_free_gb")
-    if memory is not None and memory > max_memory_percent:
+    if isinstance(memory, (int, float)) and float(memory) > max_memory_percent:
         return False
-    return disk is not None and disk >= min_disk_free_gb
+    return isinstance(disk, (int, float)) and float(disk) >= min_disk_free_gb
 
 
 def run_idle_session(
@@ -188,36 +366,84 @@ def run_idle_session(
 
     failures = 0
     try:
+        maintenance, maintenance_status = steward_maintenance_active()
+        if maintenance:
+            emit_state(
+                state_dir,
+                "COOLDOWN",
+                reason="steward_maintenance",
+                maintenance_status=maintenance_status,
+            )
+            return 0
         emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
         update_actor_checkout(actor_repo)
         while True:
+            maintenance, maintenance_status = steward_maintenance_active()
+            if maintenance:
+                emit_state(
+                    state_dir,
+                    "COOLDOWN",
+                    reason="steward_maintenance",
+                    maintenance_status=maintenance_status,
+                )
+                return 0
             idle = windows_idle_seconds()
             if idle is not None and idle < threshold:
                 emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
                 return 0
             resources = system_resource_snapshot()
-            if not resources_allow_execution(resources, max_memory_percent=max_memory_percent, min_disk_free_gb=min_disk_free_gb):
-                emit_state(state_dir, "COOLDOWN", reason="resource_budget", **resources)
+            assessment = assess_machine_health(resources)
+            if not assessment["allow_new_engineering"]:
+                emit_state(
+                    state_dir,
+                    "COOLDOWN",
+                    reason="steward_machine_health",
+                    steward_band=assessment["band"],
+                    steward_reasons=assessment["reasons"],
+                    steward_recovery_actions=assessment["recovery_actions"],
+                    **resources,
+                )
                 time.sleep(cadence)
                 continue
             started = time.monotonic()
-            emit_state(state_dir, "EXECUTING", idle_seconds=idle, **resources)
+            emit_state(
+                state_dir,
+                "EXECUTING",
+                idle_seconds=idle,
+                steward_band=assessment["band"],
+                steward_max_parallel_lanes=assessment["max_parallel_lanes"],
+                **resources,
+            )
             rc = execute_bridge_once(actor_repo, queue, workspace_root)
             if rc == 0:
                 failures = 0
-                emit_state(state_dir, "IDLE_AVAILABLE", result="bridge_cycle_green", duration_seconds=round(time.monotonic() - started, 3))
+                emit_state(
+                    state_dir,
+                    "IDLE_AVAILABLE",
+                    result="bridge_cycle_green",
+                    duration_seconds=round(time.monotonic() - started, 3),
+                )
                 time.sleep(cadence)
                 continue
             failures += 1
             backoff = min(max_backoff_seconds, cadence * (2 ** min(failures - 1, 4)))
-            emit_state(state_dir, "COOLDOWN", returncode=rc, backoff_seconds=backoff, retry_count=failures, duration_seconds=round(time.monotonic() - started, 3))
+            emit_state(
+                state_dir,
+                "COOLDOWN",
+                returncode=rc,
+                backoff_seconds=backoff,
+                retry_count=failures,
+                duration_seconds=round(time.monotonic() - started, 3),
+            )
             time.sleep(backoff)
     finally:
         release_single_instance(state_dir, lock_fd)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Self-updating Exponential Engine laptop actor bootstrap")
+    parser = argparse.ArgumentParser(
+        description="Self-updating Exponential Engine laptop actor bootstrap"
+    )
     parser.add_argument("--actor-repo", required=True)
     parser.add_argument("--queue", required=True)
     parser.add_argument("--workspace-root", required=True)

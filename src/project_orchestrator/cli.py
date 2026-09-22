@@ -28,6 +28,7 @@ from .risk_predictor import build_pre_change_risk_profile
 from .self_improvement import build_self_improvement_proposals
 from .scheduler_report import build_scheduler_executive_report
 from .specialist_lanes import build_lane_plan, validate_lane_result
+from .steward import assess_machine_health
 from .work_decomposition import decompose_work_item
 from .required_checks import resolve_required_checks
 from .throughput_optimizer import optimize_throughput
@@ -223,8 +224,16 @@ def foreman_plan(evidence_path: Path) -> int:
         evidence["candidates"],
         execution_records=evidence.get("execution_records"),
         events=evidence.get("events"),
+        machine_health=evidence.get("machine_health"),
+        steward_state=evidence.get("steward_state"),
     )
     print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+def steward_assess(snapshot_path: Path) -> int:
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    print(json.dumps(assess_machine_health(snapshot), indent=2, sort_keys=True))
     return 0
 
 
@@ -500,6 +509,8 @@ def main() -> int:
     lane_result_parser.add_argument("--live-default-head", default=None)
     foreman_parser = sub.add_parser("foreman-plan")
     foreman_parser.add_argument("evidence", type=Path)
+    steward_parser = sub.add_parser("steward-assess")
+    steward_parser.add_argument("snapshot", type=Path)
     throughput_parser=sub.add_parser("throughput-optimize")
     throughput_parser.add_argument("--since",default=None)
     throughput_parser.add_argument("--eligible-project",action="append",dest="eligible_projects")
@@ -603,6 +614,8 @@ def main() -> int:
         return specialist_lane_result(args.result, args.live_default_head)
     if args.command == "foreman-plan":
         return foreman_plan(args.evidence)
+    if args.command == "steward-assess":
+        return steward_assess(args.snapshot)
     if args.command == "throughput-optimize":
         return throughput_optimize(args.since,args.eligible_projects)
     if args.command == "regression-prevention":
