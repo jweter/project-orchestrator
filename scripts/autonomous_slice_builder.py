@@ -217,13 +217,30 @@ def lifecycle_path_for_grant(path:Path)->Path:
 def _lifecycle_lock_path(lifecycle:Path)->Path:
     return lifecycle.with_name(lifecycle.name+".lock")
 
+def _ensure_lifecycle_lock_file(lock_path:Path)->None:
+    """Create the one-byte lock target exactly once across threads/processes."""
+    while True:
+        try:
+            fd=os.open(lock_path,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+        except FileExistsError:
+            try:
+                if lock_path.stat().st_size>=1:
+                    return
+            except FileNotFoundError:
+                continue
+            time.sleep(0.01)
+            continue
+        try:
+            os.write(fd,b"0")
+        finally:
+            os.close(fd)
+        return
+
 def _acquire_lifecycle_lock(lifecycle:Path):
     """Kernel-owned cross-process lock for lifecycle read-modify-write transactions."""
     lock_path=_lifecycle_lock_path(lifecycle)
-    handle=lock_path.open("a+b",buffering=0)
-    handle.seek(0,os.SEEK_END)
-    if handle.tell()==0:
-        handle.write(b"0")
+    _ensure_lifecycle_lock_file(lock_path)
+    handle=lock_path.open("r+b",buffering=0)
     handle.seek(0)
     if os.name=="nt":
         import msvcrt
