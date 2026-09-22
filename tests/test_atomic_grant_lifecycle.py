@@ -30,3 +30,21 @@ def test_stage_update_preserves_other_grant(tmp_path):
     state=json.loads(lifecycle.read_text())
     assert state["grants"]["a"]["execution_stage"]=="BUILDING"
     assert state["grants"]["b"]["marker"]=="keep"
+
+def test_concurrent_first_lock_initialization_is_atomic(tmp_path):
+    lock_path=tmp_path/"hands-off-grant-lifecycle.json.lock"
+    barrier=threading.Barrier(8)
+    errors=[]
+    def initialize():
+        barrier.wait()
+        try:
+            builder._ensure_lifecycle_lock_file(lock_path)
+        except Exception as exc:
+            errors.append(exc)
+    threads=[threading.Thread(target=initialize) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors==[]
+    assert lock_path.read_bytes()==b"0"
