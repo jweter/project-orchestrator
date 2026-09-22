@@ -2113,6 +2113,14 @@ def main()->int:
         return 0
     atexit.register(release_supervisor_instance_lock,instance_lock)
     merge=None
+    def cleanup_merge_watcher()->None:
+        if merge is not None and merge.poll() is None:
+            merge.terminate()
+            try:
+                merge.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                merge.kill()
+    atexit.register(cleanup_merge_watcher)
     process_instance_id=instance_lock["worker"]["instance_id"]
     burst=start_or_resume_burst(state,process_instance_id=process_instance_id)
     takeover_proof=prove_restart_takeover(state,instance_lock,burst)
