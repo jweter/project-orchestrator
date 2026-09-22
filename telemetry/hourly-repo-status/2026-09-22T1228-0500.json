@@ -1,0 +1,29 @@
+{
+  "observed_at": "2026-09-22T12:28:31-05:00",
+  "mode": "EXECUTION_BURST",
+  "open_product_prs": {
+    "knowledge-engine-core": 0,
+    "knowledge-engine-web": 0,
+    "knowledge-engine-ai": 0,
+    "rocksmith-cdlc-generator": 0,
+    "Project-Everward": 0
+  },
+  "automation_advancement": {
+    "p1_liveness_repair_branch": "repair/worker-liveness",
+    "p1_liveness_repair_head": "babc3a2",
+    "supervisor_instances_after_repair": 1,
+    "green_pr_watcher_instances_after_repair": 1,
+    "orphan_green_pr_watchers_removed": 371,
+    "supervisor_once_verification": "PASS",
+    "supervisor_targeted_tests": "71 passed",
+    "portfolio_worker_property_crash": "repaired locally; GraphQL rate limit remains transient"
+  },
+  "worker_state": {
+    "productive_liveness": "PRODUCTIVE",
+    "builder_status": "OWNERSHIP_HELD",
+    "builder_reason": "EXECUTION_SLICE_ALREADY_OWNED:ABANDONED",
+    "github_graphql_rate_limit": "EXCEEDED"
+  },
+  "product_advancement_rate": "UNKNOWN_PENDING_PRODUCT_MUTATION_EVIDENCE",
+  "needs_jeremy": false
+}
