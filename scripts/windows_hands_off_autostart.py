@@ -11,6 +11,8 @@ from pathlib import Path
 
 TASK_NAME="ProjectHandsOffSupervisor"
 BOOT_TASK_NAME="ProjectHandsOffSupervisorBoot"
+BOOT_WRAPPER_NAME="hands-off-supervisor-boot.cmd"
+LOGON_WRAPPER_NAME="hands-off-supervisor-logon.cmd"
 
 def task_command(repo:Path,workspace:Path,state:Path,*,boot_owner:bool=False)->str:
     launcher=repo/"scripts"/"launch_persistent_supervisor.py"
@@ -25,6 +27,13 @@ def task_command(repo:Path,workspace:Path,state:Path,*,boot_owner:bool=False)->s
         command += ' --wait-for-takeover'
     return command
 
+def write_task_wrapper(state:Path,name:str,command:str)->Path:
+    """Keep schtasks /TR below its hard command-length limit."""
+    state.mkdir(parents=True,exist_ok=True)
+    wrapper=state/name
+    wrapper.write_text("@echo off\r\n"+command+"\r\n",encoding="utf-8")
+    return wrapper
+
 def run(args:list[str])->subprocess.CompletedProcess[str]:
     return subprocess.run(args,text=True,capture_output=True,check=False)
 
@@ -33,13 +42,15 @@ def install(repo:Path,workspace:Path,state:Path)->int:
         print(json.dumps({"status":"UNSUPPORTED_PLATFORM","platform":sys.platform}));return 2
     logon_cmd=task_command(repo,workspace,state)
     boot_cmd=task_command(repo,workspace,state,boot_owner=True)
+    logon_wrapper=write_task_wrapper(state,LOGON_WRAPPER_NAME,logon_cmd)
+    boot_wrapper=write_task_wrapper(state,BOOT_WRAPPER_NAME,boot_cmd)
     # Two triggers cover both cold boot and interactive recovery. ONSTART is the
     # actual cold-boot authority; ONLOGON is a second idempotent wake. The
     # supervisor kernel lock and launcher handshake fence duplicate execution.
     created=[]
     for name,schedule in ((BOOT_TASK_NAME,"ONSTART"),(TASK_NAME,"ONLOGON")):
-        cmd=boot_cmd if schedule=="ONSTART" else logon_cmd
-        args=["schtasks","/Create","/TN",name,"/SC",schedule,"/TR",cmd]
+        wrapper=boot_wrapper if schedule=="ONSTART" else logon_wrapper
+        args=["schtasks","/Create","/TN",name,"/SC",schedule,"/TR",f'"{wrapper}"']
         if schedule=="ONSTART":
             args += ["/RU","SYSTEM","/RL","HIGHEST"]
         else:
