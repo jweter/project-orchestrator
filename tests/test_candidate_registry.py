@@ -76,26 +76,13 @@ def test_active_ownership_and_product_reality_are_preserved_for_dispatch_gate():
     assert item["product_reality_required"] is True
 
 
-def test_verified_learning_is_attached_by_existing_deterministic_retriever():
-    memory = {
-        "schema_version": 1,
-        "entries": [{
-            "project": "knowledge-engine",
-            "repository": "jweter/knowledge-engine-ai",
-            "source_type": "success_pattern",
-            "source_ref": "knowledge-engine-ai#162",
-            "symptom": "report parser evidence boundary gap",
-            "root_cause": "report parser omitted a direct evidence invariant",
-            "fix": "add deterministic report parser invariant",
-            "verification": "green exact-head verification",
-            "regression_protection": "report_parser.py must reject missing direct evidence",
-            "residual_risk": "readability remains Product Reality",
-            "evidence_state": "VERIFIED",
-        }],
-    }
+def test_learning_reuse_fails_closed_without_capability_index():
+    memory = {"schema_version": 1, "entries": []}
     attached = attach_verified_learning(candidate(paths=["report_parser.py"]), memory)
-    assert attached["learning_gate"] == "APPLY_RELEVANT_PREVENTION"
-    assert len(attached["capabilities_to_reuse"]) == 1
+    assert attached["learning_gate"] == "CAPABILITY_INDEX_REQUIRED"
+    assert attached["capabilities_to_reuse"] == []
+    assert attached["capability_reuse_refs"] == []
+    assert attached["product_reality_inferred"] is False
 
 
 def test_duplicate_authoritative_source_fails_closed():

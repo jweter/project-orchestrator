@@ -5,7 +5,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .area_learning import retrieve_learning
+from .capability_applicability import (
+    build_applicability_index,
+    match_applicable_capabilities,
+)
 
 PROJECTS = {"knowledge-engine", "rocksmith", "everward"}
 SOURCE_TYPES = {"issue", "pull_request", "decomposition", "verified_learning", "product_reality_debt"}
@@ -94,18 +97,43 @@ def refresh_registry(registry: dict[str, Any], authoritative: list[dict[str, Any
     return validate_registry({"schema_version": 1, "entries": merged})
 
 
-def attach_verified_learning(candidate: dict[str, Any], memory: dict[str, Any]) -> dict[str, Any]:
+def attach_verified_learning(
+    candidate: dict[str, Any],
+    memory: dict[str, Any],
+    skill_catalog: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Attach only explicitly applicable verified capability references.
+
+    Free-form learning similarity is not authority for packet reuse. When a
+    validated repository-skill catalog is unavailable, fail closed and attach
+    no capability.
+    """
     item = validate_candidate(candidate)
-    if not item["paths"]:
-        return {**item, "capabilities_to_reuse": [], "learning_gate": "PATHS_REQUIRED_FOR_DETERMINISTIC_REUSE"}
-    result = retrieve_learning(
-        memory,
+    if skill_catalog is None:
+        return {
+            **item,
+            "capabilities_to_reuse": [],
+            "capability_reuse_refs": [],
+            "learning_gate": "CAPABILITY_INDEX_REQUIRED",
+            "product_reality_inferred": False,
+        }
+
+    index = build_applicability_index(skill_catalog, memory)
+    result = match_applicable_capabilities(
+        index,
+        project=item["project"],
         repository=item["repository"],
         changed_paths=item["paths"],
-        change_summary=str(item.get("task") or item.get("title") or ""),
+        task_summary=str(item.get("task") or item.get("title") or ""),
     )
-    refs = [lesson["lesson_id"] for lesson in result["relevant_lessons"]]
-    return {**item, "capabilities_to_reuse": refs, "learning_gate": result["learning_gate"]}
+    matches = result["applicable_capabilities"]
+    return {
+        **item,
+        "capabilities_to_reuse": [match["capability_id"] for match in matches],
+        "capability_reuse_refs": matches,
+        "learning_gate": result["selection_state"],
+        "product_reality_inferred": False,
+    }
 
 
 def registry_snapshot(registry: dict[str, Any], *, capacity_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
