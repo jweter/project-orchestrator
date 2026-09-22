@@ -1,0 +1,26 @@
+{
+  "captured_at_utc": "2026-09-22T23:32:00Z",
+  "open_product_prs": 0,
+  "knowledge_engine": {
+    "core_main": "3d607d4f1bbb789f1c2bae2608e297d17161ed98",
+    "worker_feedback": "historical Windows POSIX typing failure resolved and regression-protected; current main advanced through PR 522",
+    "next_gate": "fresh exact-current coordinated local Core/Ollama/Web/AI acceptance"
+  },
+  "rocksmith": {
+    "main": "df963d44323da9ef584b15fe6522097a3cc0634b",
+    "worker_dispatch": "executed exact-current unattended worker",
+    "result": "REVIEW_REQUIRED",
+    "finding": "recent projects have fewer than four strong symbolic/audio events; local Ollama advisory output was rejected for contradictory human escalation"
+  },
+  "everward": {
+    "main": "198407711d05d5d544d950efd63604158cdf6a38",
+    "worker_dispatch": "exact-current unattended worker running",
+    "previous_public_failure": "unreal_build|exit=6 at stale 8512d916eb4b",
+    "recent_repairs": ["#310 process-tree reap", "#312 AutoSDK bypass", "#313 deterministic smoke exit", "#314/#315 completed-smoke evidence acceptance"]
+  },
+  "product_advancement": {
+    "eligible": 3,
+    "materially_advanced_or_gate_dispatched": 3,
+    "rate": "3/3"
+  }
+}
