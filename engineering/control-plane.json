@@ -17,6 +17,7 @@
     "docs/ROADMAP.md",
     "docs/project-status.yaml",
     "docs/LOCAL_AGENT_TOOLING.md",
+    "engineering/foreman.json",
     "engineering/specialist-lanes.json",
     "engineering/work-decomposition.json",
     "engineering/regression-prevention.json",
@@ -643,5 +644,17 @@
     "authority": "governed engineering only; experiments never self-merge or weaken gates",
     "keep_rule": "requires measured target improvement and preserved safety/quality invariants",
     "unknown_rule": "missing, UNKNOWN, or incomplete evidence resolves to INSUFFICIENT_DATA"
+  },
+  "foreman": {
+    "schema_version": 1,
+    "contract": "engineering/foreman.json",
+    "executable": "project-orchestrator foreman-plan",
+    "role": "single portfolio lane controller over exactly three independent products",
+    "ownership_source": "live GitHub PRs/issues/branches/commits plus terminal worker evidence",
+    "manual_ownership_database": false,
+    "history_policy": "terminal execution history is bounded archival evidence and does not participate in normal scheduling",
+    "dispatch_rule": "at most one substantial dispatch-ready slice per eligible independent product per run",
+    "asynchronous_wait_rule": "waiting gates do not consume another product lane",
+    "merge_authority": false
   }
 }

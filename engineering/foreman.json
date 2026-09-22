@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "name": "Foreman",
+  "role": "portfolio-lane-controller",
+  "scope": [
+    "knowledge-engine",
+    "rocksmith",
+    "everward"
+  ],
+  "authority": "ephemeral projection of live GitHub and repository-local evidence",
+  "manual_ownership_database": false,
+  "responsibilities": [
+    "maintain exactly one canonical portfolio lane view per independent product",
+    "compact terminal execution history out of scheduling state",
+    "preserve actionable quarantine evidence without letting historical quarantine dominate selection",
+    "select at most one substantial dispatch-ready slice per independent product per run",
+    "rotate away from asynchronous waits when conflict-free authorized work exists",
+    "emit a deterministic dispatch queue for existing governed executors"
+  ],
+  "lane_states": [
+    "DISPATCH_READY",
+    "ACTIVE_EXISTING",
+    "WAITING_ASYNC",
+    "BLOCKED_REPAIR",
+    "BLOCKED",
+    "NO_SAFE_ELIGIBLE_WORK"
+  ],
+  "never": [
+    "invent roadmap work",
+    "replace GitHub ownership authority",
+    "merge product work",
+    "infer Product Reality",
+    "weaken repository-local preflight or CI",
+    "turn UNKNOWN evidence into a positive assertion"
+  ],
+  "cli": "project-orchestrator foreman-plan <evidence.json>",
+  "implementation": "project_orchestrator.foreman"
+}
