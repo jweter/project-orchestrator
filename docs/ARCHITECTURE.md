@@ -140,6 +140,13 @@ A repair cycle is bounded to three deterministic iterations. Execution is local-
 The CLI surface is `project-orchestrator repair-plan --repository ... --log ... --control-plane ...`. Add `--execute --repo-root ...` only in an executable local checkout; planning remains side-effect free by default.
 
 
+## Foreman portfolio lane controller
+
+`project_orchestrator.foreman` is the single portfolio lane controller for the three independent products. It does not replace live ownership authority; it projects GitHub ownership, worker evidence, and already-authorized candidates into exactly three parent lanes: Knowledge Engine, Rocksmith, and Everward. Terminal execution history is compacted out of normal scheduling while explicitly actionable quarantines remain visible.
+
+Foreman emits at most one substantial dispatch-ready slice per independent product per run. Asynchronous waits remain lane-scoped and do not consume another product's execution opportunity. Selection and dispatch are not counted as product advancement; only verified mutation/promotion evidence can establish Product Advancement Rate. Foreman never merges and never infers Product Reality. The executable surface is `project-orchestrator foreman-plan` and the contract is `engineering/foreman.json`.
+
+
 ## Parallel Specialist Execution Lanes
 
 `project_orchestrator.specialist_lanes` converts live GitHub ownership plus candidate work into ephemeral specialist reservations. The three independent product lanes are Knowledge Engine, Rocksmith, and Everward. Knowledge Engine is one coordinated parent lane with Core/Web/AI sub-lanes; one substantial coordinated slice per project per run remains the hard cap.
