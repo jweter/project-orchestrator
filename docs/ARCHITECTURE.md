@@ -140,6 +140,15 @@ A repair cycle is bounded to three deterministic iterations. Execution is local-
 The CLI surface is `project-orchestrator repair-plan --repository ... --log ... --control-plane ...`. Add `--execute --repo-root ...` only in an executable local checkout; planning remains side-effect free by default.
 
 
+## Steward machine-health governor
+
+`project_orchestrator.steward` is the machine-health admission layer between Foreman and LaptopActor. Foreman determines eligible product work; Steward limits how much of that eligible work may execute based on measured machine capacity. Health deferral is never reclassified as a product defect.
+
+Steward combines RAM pressure, absolute free memory, CPU load, fixed-disk free/used capacity, AC/battery state, known heavy local tools, and temperature when reliable telemetry exists. Missing telemetry remains explicit evidence debt. Machine state is classified GREEN/YELLOW/ORANGE/RED/CRITICAL and maps to bounded lane capacity. Independent simultaneous resource pressures can escalate the aggregate band.
+
+The daily 02:00 reboot is treated as a maintenance boundary: bounded actor-owned log/temp cleanup before reboot, stale LaptopActor lock validation at startup, and a maintenance marker that prevents actor execution from racing startup sanity. Steward never deletes product workspaces, Git repositories, package caches without repository-specific authority, or unrecognized user files.
+
+
 ## Foreman portfolio lane controller
 
 `project_orchestrator.foreman` is the single portfolio lane controller for the three independent products. It does not replace live ownership authority; it projects GitHub ownership, worker evidence, and already-authorized candidates into exactly three parent lanes: Knowledge Engine, Rocksmith, and Everward. Terminal execution history is compacted out of normal scheduling while explicitly actionable quarantines remain visible.

@@ -34,5 +34,6 @@
     "turn UNKNOWN evidence into a positive assertion"
   ],
   "cli": "project-orchestrator foreman-plan <evidence.json>",
-  "implementation": "project_orchestrator.foreman"
+  "implementation": "project_orchestrator.foreman",
+  "dispatch_admission": "Steward machine-health governor when machine-health evidence is available"
 }

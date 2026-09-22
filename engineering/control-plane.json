@@ -18,6 +18,8 @@
     "docs/project-status.yaml",
     "docs/LOCAL_AGENT_TOOLING.md",
     "engineering/foreman.json",
+    "docs/STEWARD.md",
+    "engineering/steward.json",
     "engineering/specialist-lanes.json",
     "engineering/work-decomposition.json",
     "engineering/regression-prevention.json",
@@ -65,7 +67,10 @@
     "product_reality_debt_is_visible_sanitized_and_lane_scoped",
     "every_live_product_run_closes_the_evidence_learning_loop_or_fails_closed",
     "pre_change_risk_uses_verified_history_before_mutation_without_invented_probability",
-    "process_experiments_require_measured_baseline_post_change_evidence_and_preserved_safety_invariants"
+    "process_experiments_require_measured_baseline_post_change_evidence_and_preserved_safety_invariants",
+    "machine_health_throttling_never_becomes_product_failure",
+    "unknown_machine_telemetry_never_manufactures_health",
+    "automated_cleanup_is_limited_to_actor_owned_transient_artifacts"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -655,6 +660,18 @@
     "history_policy": "terminal execution history is bounded archival evidence and does not participate in normal scheduling",
     "dispatch_rule": "at most one substantial dispatch-ready slice per eligible independent product per run",
     "asynchronous_wait_rule": "waiting gates do not consume another product lane",
+    "merge_authority": false
+  },
+  "steward": {
+    "schema_version": 1,
+    "contract": "engineering/steward.json",
+    "executable": "project-orchestrator steward-assess",
+    "position": "Foreman -> Steward -> LaptopActor",
+    "role": "machine-health governor and dispatch admission controller",
+    "health_deferral_is_product_blocker": false,
+    "unknown_telemetry_rule": "preserve as evidence gap; never manufacture healthy state",
+    "cleanup_authority": "actor-owned logs/jsonl/stale tmp only",
+    "daily_reboot_boundary": "pre-reboot maintenance plus startup sanity around existing 02:00 local reboot",
     "merge_authority": false
   }
 }

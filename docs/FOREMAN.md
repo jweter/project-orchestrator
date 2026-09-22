@@ -60,8 +60,7 @@ Foreman never silently deletes source evidence.
 Foreman emits `dispatch_queue`, containing at most one substantial newly selected
 slice for each independent product in a run.
 
-The queue is intended for the existing governed executor. Foreman itself does not
-modify product code and never merges.
+The candidate queue is passed through Steward before LaptopActor execution when machine-health evidence is available. Foreman selects eligible work; Steward admits a sustainable subset. Machine-health deferral never becomes product failure. Foreman itself does not modify product code and never merges.
 
 A selected lane still requires:
 
