@@ -2261,7 +2261,7 @@ def main()->int:
         builder_payload={"status":builder_status,"reason":""}
         try:
             raw_builder=json.loads((state/"builder.json").read_text(encoding="utf-8"))
-            if raw_builder.get("invocation_id")==invocation_id:
+            if raw_builder.get("invocation_id")==builder_invocation_id:
                 builder_payload["reason"]=str(raw_builder.get("reason",""))
         except (OSError,json.JSONDecodeError,TypeError):
             pass
@@ -2295,3 +2295,4 @@ def main()->int:
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
         time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
+
