@@ -1,0 +1,22 @@
+﻿{
+    "generated_at":  "2026-09-21T20:31:45-05:00",
+    "knowledge_engine":  {
+                             "state":  "PREFLIGHT_RUNNING",
+                             "branch":  "repair/issue-433-ledger-cache-reuse",
+                             "head":  "9672269a7137039b45b8e0d8d5e9a951e0d89778"
+                         },
+    "rocksmith":  {
+                      "state":  "PRODUCT_REALITY_REVIEW_REQUIRED",
+                      "head":  "d2469b78f4f1b06d78adb9fa276614b595793057",
+                      "worker":  "fresh exact-checkout run; strong_audio remains 0"
+                  },
+    "everward":  {
+                     "state":  "PRODUCT_REALITY_WORKER_RUNNING",
+                     "origin_main":  "82a6361c1f7b52f3cf13e2ffd13b73eaf128168e",
+                     "last_failure":  "headless Unreal smoke timeout after 900s"
+                 },
+    "eligible_product_projects":  3,
+    "materially_advanced_product_projects":  3,
+    "product_advancement_rate":  "3/3",
+    "human_required":  false
+}
