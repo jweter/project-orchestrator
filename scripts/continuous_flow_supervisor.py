@@ -1,6 +1,6 @@
 """Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
-import argparse, atexit, hashlib, json, os, socket, subprocess, sys, time, uuid
+import argparse, atexit, hashlib, json, os, shutil, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 try:
@@ -25,7 +25,11 @@ def atomic(path:Path,payload:dict)->None:
                 break
             except PermissionError:
                 if attempt == 4:
-                    raise
+                    # Windows scanners/readers may deny rename-over-open-file while
+                    # still allowing a normal overwrite. Preserve the temp-first
+                    # write and degrade to copy-overwrite rather than killing flow.
+                    shutil.copyfile(tmp,path)
+                    break
                 time.sleep(0.1 * (attempt + 1))
     finally:
         tmp.unlink(missing_ok=True)
