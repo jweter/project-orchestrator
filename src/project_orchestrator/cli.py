@@ -14,6 +14,7 @@ from .evidence_collector import COLLECTIBLE_REPOSITORIES, collect_portfolio_wind
 from .foreman import build_foreman_plan
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
+from .jev_runtime import runtime_cycle
 from .learning import add_lesson, load_memory, write_memory
 from .learning_effectiveness import add_application, build_report, load_store as load_learning_effectiveness_store, write_store as write_learning_effectiveness_store
 from .operator_console import build_from_files as build_operator_console, render_html as render_operator_console_html
@@ -48,6 +49,7 @@ DEFAULT_LEARNING_EFFECTIVENESS = ROOT / "engineering" / "learning-effectiveness.
 DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "compounding-timeseries.json"
 DEFAULT_PROCESS_EXPERIMENTS = ROOT / "engineering" / "process-experiments.json"
 DEFAULT_RETAINED_LEARNING = ROOT / "engineering" / "retained-learning.json"
+DEFAULT_JEV_LEDGER = ROOT / "telemetry" / "jev-shadow" / "decisions.jsonl"
 
 
 def validate() -> int:
@@ -226,6 +228,19 @@ def foreman_plan(evidence_path: Path) -> int:
         events=evidence.get("events"),
         machine_health=evidence.get("machine_health"),
         steward_state=evidence.get("steward_state"),
+    )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+
+def jev_runtime_cycle(evidence_path: Path, ledger_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    result = runtime_cycle(
+        ledger_path,
+        run_id=str(evidence["run_id"]),
+        plan=evidence["foreman_plan"],
+        results=evidence.get("results", []),
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
@@ -451,6 +466,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate")
+    jev_runtime_parser = sub.add_parser("jev-runtime-cycle")
+    jev_runtime_parser.add_argument("evidence", type=Path)
+    jev_runtime_parser.add_argument("--ledger", type=Path, default=DEFAULT_JEV_LEDGER)
     plan_parser = sub.add_parser("plan")
     plan_parser.add_argument("snapshot", type=Path)
     compatibility_parser = sub.add_parser("compat-plan")
@@ -575,6 +593,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
+    if args.command == "jev-runtime-cycle":
+        return jev_runtime_cycle(args.evidence, args.ledger)
     if args.command == "plan":
         return plan(args.snapshot)
     if args.command == "compat-plan":
