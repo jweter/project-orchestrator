@@ -1,0 +1,31 @@
+{
+  "timestamp_utc": "2026-09-23T03:56:00Z",
+  "mode": "EXECUTION_BURST",
+  "knowledge_engine": {
+    "lane": "knowledge-engine-core",
+    "branch": "orchestrator/unattended-worker-posix-typing",
+    "state": "PREFLIGHT_RUNNING",
+    "work": "consume Windows strict-typing feedback for POSIX process-group termination; current branch dynamically resolves POSIX-only attributes",
+    "next_gate": "canonical exact-head preflight then PR/CI"
+  },
+  "rocksmith": {
+    "branch": "orchestrator/human-debt-categories",
+    "head": "b044e4cad5c4fc0e5a0388ff7688577fbc490c9c",
+    "pr": 726,
+    "state": "PR_OPEN",
+    "preflight": "GREEN",
+    "tests": "2153 passed, 3 skipped",
+    "product_reality": "unchanged; private runtime/subjective acceptance remains human-only"
+  },
+  "everward": {
+    "branch": "orchestrator/low-spec-memory-evidence",
+    "head": "6fcf0299f7eca4c1b4c10c1d1c39f919d22fbaa6",
+    "pr": 229,
+    "state": "PR_OPEN",
+    "preflight": "GREEN",
+    "product_reality": "pending real low-spec Unreal measurement",
+    "next_gate": "CI then measured low-spec Product Reality run"
+  },
+  "product_advancement_rate": "3/3 eligible independent products advanced",
+  "control_plane_only": true
+}
