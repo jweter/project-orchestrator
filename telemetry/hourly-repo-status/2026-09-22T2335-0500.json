@@ -1,0 +1,34 @@
+{
+  "observed_at": "2026-09-22T23:35:00-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "state": "PRODUCT_REALITY_BENCHMARK_RUNNING",
+    "repo": "jweter/knowledge-engine-ai",
+    "head": "e8d58ea64c76b345f9d8d4d51db53523b07e705a",
+    "action": "fresh-music-endurance research benchmark dispatched on Azathoth with local Core corpus and Ollama",
+    "next_gate": "benchmark completion and sanitized evidence inspection"
+  },
+  "rocksmith": {
+    "state": "CI_PENDING",
+    "repo": "jweter/rocksmith-cdlc-generator",
+    "branch": "orchestrator/eof-parity-matrix-contract",
+    "head": "af4ae91238270f598ccaa3927f96dacf053eeeef",
+    "pr": 727,
+    "preflight": "GREEN",
+    "capability_created": "EOF parity matrix governance regression contract",
+    "next_gate": "fresh PR CI"
+  },
+  "everward": {
+    "state": "PRODUCT_REALITY_PENDING",
+    "repo": "jweter/Project-Everward",
+    "head": "9484adb31de04d10d2b2af556ecbb1865cd006ef",
+    "action": "low-spec Unreal launch with measured startup memory dispatched on Azathoth",
+    "wait_reason": "existing Unreal Build.bat/build service owns build lane",
+    "next_gate": "measured low-spec observation artifact"
+  },
+  "waiting_lanes_rotated_away_from": ["Everward Unreal build", "Knowledge Engine benchmark"],
+  "reusable_capabilities_created_or_reused": ["EOF parity matrix governance regression test", "Knowledge Engine research benchmark harness", "Everward low-spec memory evidence harness"],
+  "idle_eligible_lanes": 0
+}
