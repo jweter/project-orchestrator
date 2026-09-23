@@ -1,20 +1,21 @@
 {
   "observed_at": "2026-09-23T00:27:06-05:00",
   "eligible_product_projects": 3,
-  "materially_advanced_product_projects": 3,
-  "product_advancement_rate": "3/3",
+  "materially_advanced_product_projects": 2,
+  "product_advancement_rate": "2/3",
   "knowledge_engine": {
-    "advancement": "exact-head preflight GREEN and PR #170 opened from existing repair branch",
+    "advancement": "exact-head preflight GREEN and PR #170 opened; fresh CI exposed a CI-only mypy dependency failure",
     "head": "418361dd0e6d7ccffcca713806d00a0c2abd73be",
-    "next_gate": "fresh PR CI"
+    "next_gate": "bounded repair of click.testing import-not-found then fresh exact-head verification"
   },
   "rocksmith": {
-    "advancement": "reserved new issue #612 stale-build Product Reality slice; implementation agent attempt hit transient expired OAuth before mutation",
+    "advancement": "issue #612 stale-build Product Reality slice reserved, but implementation agent failed authentication before mutation",
     "base": "3305ec85324691951f233bce774127b944eebcb7",
-    "next_gate": "retry implementation with authenticated worker"
+    "next_gate": "retry implementation with authenticated worker",
+    "materially_advanced": false
   },
   "everward": {
-    "advancement": "dispatched real LowSpec MeasureMemory Product Reality run on exact main",
+    "advancement": "real LowSpec MeasureMemory Product Reality run dispatched on exact main",
     "head": "9484adb31de04d10d2b2af556ecbb1865cd006ef",
     "next_gate": "existing Unreal build completes, then measured evidence collection"
   },
