@@ -51,3 +51,12 @@ def test_installer_has_non_admin_startup_and_reboot_fallbacks():
     assert "existing-reboot-preserved" in text
     assert "daily_hygiene_authority" in text
     assert "StartupCheck" in text
+
+
+def test_startup_queue_and_pid_regexes_preserve_backslashes():
+    text = MAINTENANCE.read_text(encoding="utf-8")
+    assert r'--queue\s+"([^"]+)"' in text
+    assert r'--queue\s+(\S+)' in text
+    assert r'^\d+$' in text
+    assert '--queues+' not in text
+    assert "'^d+$'" not in text

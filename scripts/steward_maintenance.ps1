@@ -47,8 +47,8 @@ function Get-LaptopActorQueue {
     $task = Get-ScheduledTask -TaskName "ExponentialEngine-LaptopActor" -ErrorAction SilentlyContinue
     if (-not $task) { return $null }
     $arguments = ($task.Actions | Select-Object -First 1).Arguments
-    if ($arguments -match '--queues+"([^"]+)"') { return $Matches[1] }
-    if ($arguments -match '--queues+(S+)') { return $Matches[1] }
+    if ($arguments -match '--queue\s+"([^"]+)"') { return $Matches[1] }
+    if ($arguments -match '--queue\s+(\S+)') { return $Matches[1] }
     return $null
 }
 
@@ -59,7 +59,7 @@ function Repair-StaleActorLock {
     if (-not (Test-Path $lock)) { return @{ status = "NO_LOCK"; path = $lock } }
     $rawPid = (Get-Content -Path $lock -Raw -ErrorAction SilentlyContinue).Trim()
     $process = $null
-    if ($rawPid -match '^d+$') {
+    if ($rawPid -match '^\d+$') {
         $process = Get-CimInstance Win32_Process -Filter "ProcessId = $rawPid" -ErrorAction SilentlyContinue
     }
     if ($process -and $process.CommandLine -like "*laptop_actor_bootstrap.py*") {
