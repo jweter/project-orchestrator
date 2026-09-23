@@ -1100,3 +1100,28 @@ def test_dispatch_decision_reason_codes_include_already_owned(tmp_path,monkeypat
         raise AssertionError("owned lane must not be selected twice")
     evidence=json.loads((state/"dispatch-decision.json").read_text())
     assert evidence["decisions"][0]["outcome"]=="ALREADY_OWNED"
+
+
+def test_product_convergence_rejects_stale_dispatch_invocation(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{}}))
+    decision={"invocation_id":"old","decisions":[{"repository":"jweter/Project-Everward","product":"everward","outcome":"NOT_READY","reason":"OLD"}]}
+    (state/"dispatch-decision.json").write_text(json.dumps(decision))
+    result=supervisor.product_convergence(state,["everward"],current_invocation_id="new")
+    assert result["status"]=="UNEXPLAINED_ELIGIBLE_IDLE"
+    assert result["dispatch_evidence_fresh"] is False
+    assert result["explained_nonexecuting_products"]=={}
+
+
+def test_product_convergence_accepts_matching_dispatch_invocation(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{}}))
+    decision={"invocation_id":"same","decisions":[{"repository":"jweter/Project-Everward","product":"everward","outcome":"NOT_READY","reason":"CURRENT"}]}
+    (state/"dispatch-decision.json").write_text(json.dumps(decision))
+    result=supervisor.product_convergence(state,["everward"],current_invocation_id="same")
+    assert result["status"]=="CONVERGED"
+    assert result["dispatch_evidence_fresh"] is True
