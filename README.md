@@ -56,3 +56,8 @@ To prepare the local runtime on Windows:
 ```
 
 This only creates a local `127.0.0.1` runtime and imports inactive workflows. GitHub webhook activation requires a user-approved HTTPS ingress and least-privilege runtime credential. See `n8n/README.md` and `docs/N8N_ORCHESTRATION.md`.
+
+
+## Jev shadow decision fabric
+
+The control plane includes an experimental, fail-closed Jev integration for bounded candidate judgment after deterministic eligibility has established the legal action set. It is shadow-only: it cannot execute work, merge, bypass gates, or infer Product Reality. With multiple legal candidates, `python -m project_orchestrator.jev_shadow decision.json` emits the sanitized shadow request without network activity. Real TypeSafe calls are double-gated by `--live`, `JEV_SHADOW_LIVE=1`, and an environment-only `TYPESAFE_API_KEY`. See `docs/JEV_SHADOW_DECISION_FABRIC.md`.
