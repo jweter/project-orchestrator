@@ -462,17 +462,39 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
         before=[item for item in candidates if item[0]<=previous]
         ordered=after+before
     blocked=[]
+    decisions=[]
     for repo,head in ordered:
+        product=product_for_repository(repo)
         try:
             execution=load_execution_slice(state_root,repo,head)
         except RuntimeError as exc:
-            blocked.append(f"{repo}={exc}")
+            reason=str(exc)
+            decisions.append({"repository":repo,"product":product,"head_sha":head,
+                              "outcome":"NOT_READY","reason":reason})
+            blocked.append(f"{repo}={reason}")
             continue
         if execution.get("status")=="NO_WORK":
+            decisions.append({"repository":repo,"product":product,"head_sha":head,
+                              "outcome":"NO_AUTHORIZED_SLICE","reason":"NO_WORK"})
             blocked.append(f"{repo}=NO_WORK")
             continue
+        conflict=conflicting_nonterminal_grant(state_root,repo,execution)
+        if conflict:
+            decisions.append({"repository":repo,"product":product,"head_sha":head,
+                              "outcome":"ALREADY_OWNED","reason":"NONTERMINAL_GRANT",
+                              "grant_id":conflict.get("grant_id"),"grant_state":conflict.get("state")})
+            blocked.append(f"{repo}=ALREADY_OWNED:{conflict.get('grant_id')}")
+            continue
+        decisions.append({"repository":repo,"product":product,"head_sha":head,
+                          "outcome":"SELECTED","reason":"READY_EXECUTION_SLICE"})
+        atomic(state_root/"dispatch-decision.json",{"schema_version":1,
+            "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":repo,
+            "selected_product":product,"decisions":decisions})
         atomic(cursor_path,{"repository":repo})
         return repo,head
+    atomic(state_root/"dispatch-decision.json",{"schema_version":1,
+        "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":None,
+        "selected_product":None,"decisions":decisions})
     if blocked and all(item.endswith("=NO_WORK") for item in blocked):
         raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
     detail=";".join(blocked) or "UNKNOWN"
@@ -1819,6 +1841,39 @@ def productive_liveness(state_root:Path,authorized_products:list[str],now:dateti
             "last_productive_mutation_at":latest.isoformat() if latest else None,
             "seconds_since_productive_mutation":age,"stale_after_seconds":stale_seconds}
 
+def product_convergence(state_root:Path,authorized_products:list[str])->dict:
+    """Prove every authorized product converges to active ownership or a machine-actionable reason."""
+    authorized={p for p in authorized_products if p in {"knowledge-engine","rocksmith","everward"}}
+    active={}
+    try:
+        grants=json.loads((state_root/"hands-off-grant-lifecycle.json").read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        grants={}
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","RUNNING"}:
+            continue
+        product=product_for_repository(record.get("repository"))
+        if product in authorized:
+            active[product]={"grant_id":grant_id,"repository":record.get("repository"),"state":record.get("state")}
+    reasons={}
+    try:
+        decision=json.loads((state_root/"dispatch-decision.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        decision={}
+    for item in decision.get("decisions",[]) if isinstance(decision,dict) else []:
+        if not isinstance(item,dict): continue
+        product=item.get("product"); outcome=item.get("outcome")
+        if product in authorized and product not in active and outcome not in {None,"SELECTED"}:
+            reasons.setdefault(product,[]).append({"outcome":outcome,"reason":item.get("reason"),
+                                                   "repository":item.get("repository")})
+    missing=sorted(authorized-set(active)-set(reasons))
+    status="CONVERGED" if not missing else "UNEXPLAINED_ELIGIBLE_IDLE"
+    payload={"schema_version":1,"status":status,"authorized_products":sorted(authorized),
+             "active_products":active,"explained_nonexecuting_products":reasons,
+             "unexplained_eligible_products":missing,"recorded_at_utc":datetime.now(UTC).isoformat()}
+    atomic(state_root/"product-convergence.json",payload)
+    return payload
+
 def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
     """Turn a proven idle/stale condition into a bounded immediate scheduler request."""
     status=liveness.get("status")
@@ -2271,8 +2326,16 @@ def main()->int:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
         atomic(state/"productive-liveness.json",liveness)
+        convergence=product_convergence(state,products)
         liveness_reacquire=request_liveness_reacquire(state,liveness)
-        healthy=builder_ok and linear_rc in (None,0) and not quarantines and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
+        if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
+            request_immediate_builder(state)
+            liveness_reacquire={"requested":True,"reason":"PRODUCT_CONVERGENCE_DEFECT",
+                "products":convergence["unexplained_eligible_products"],
+                "requested_at_utc":datetime.now(UTC).isoformat()}
+        healthy=(builder_ok and linear_rc in (None,0) and not quarantines
+                 and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
+                 and convergence["status"]=="CONVERGED")
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
@@ -2280,6 +2343,7 @@ def main()->int:
             "evolution_authorized":authorized,"activation_reason":activation_reason,
             "authorized_products":products,
             "productive_liveness":liveness,
+            "product_convergence":convergence,
             "liveness_reacquire":liveness_reacquire,
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,
