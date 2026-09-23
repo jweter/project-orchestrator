@@ -1011,3 +1011,28 @@ def test_supervisor_registers_merge_watcher_cleanup():
     assert 'atexit.register(cleanup_merge_watcher)' in source
     assert 'merge.wait(timeout=5)' in source
 
+
+def test_early_stage_aider_artifacts_do_not_quarantine_dead_worker(tmp_path,monkeypatch):
+    import json
+    from datetime import UTC,datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; ws=(wsroot/"r"); ws.mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
+    (ws/".aider.chat.history.md").write_text("transient")
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","repository":"o/r","execution_stage":"BRANCH_CREATED","base_sha":"base","branch":"actor/autonomous-r-x","recovery_attempts":0}}}))
+    class R:
+        returncode=0; stderr=""
+        def __init__(self,out): self.stdout=out
+    def fake(cmd,**kwargs):
+        if cmd[1:3]==["status","--porcelain"]: return R("?? .aider.chat.history.md\n")
+        if cmd[1:3]==["rev-parse","HEAD"]: return R("base\n")
+        if cmd[1:3]==["branch","--show-current"]: return R("actor/autonomous-r-x\n")
+        if cmd[1:3] in (["diff","--name-only"],["diff","--binary"]): return R("")
+        if cmd[1:3]==["ls-files","--others"]: return R(".aider.chat.history.md\0")
+        return R("")
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
+    assert out["g"]=="RECOVERY_EARLY_STAGE_BUILDER_ARTIFACTS_ONLY"
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["recovery_state"]=="RECOVERED"
+    assert saved["ignored_builder_artifacts"]==[".aider.chat.history.md"]

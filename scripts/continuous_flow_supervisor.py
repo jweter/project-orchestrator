@@ -1489,10 +1489,23 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
             if status.returncode or head_now.returncode or branch_now.returncode:
                 outcomes[grant_id]="RECOVERY_EARLY_STAGE_WORKSPACE_UNREADABLE"
             elif status.stdout.strip():
-                outcomes[grant_id]="RECOVERY_EARLY_STAGE_DIRTY_PRESERVED"
-                record["recovery_state"]="QUARANTINED"
-                record["recovery_quarantine_reason"]="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
-                record["preserved_work_evidence"]=preserved_work_evidence(ws,durable_base)
+                evidence=preserved_work_evidence(ws,durable_base)
+                builder_artifacts=(".aider.chat.history.md",".aider.input.history",".aider.tags.cache.v4/")
+                only_builder_artifacts=(evidence.get("capture_status")=="CAPTURED"
+                    and evidence.get("diff_bytes")==0 and not evidence.get("changed_paths")
+                    and bool(evidence.get("untracked"))
+                    and all(any(item.get("path","")==prefix or item.get("path","").startswith(prefix)
+                                for prefix in builder_artifacts) for item in evidence.get("untracked",[])))
+                if only_builder_artifacts:
+                    outcomes[grant_id]="RECOVERY_EARLY_STAGE_BUILDER_ARTIFACTS_ONLY"
+                    record["recovery_state"]="RECOVERED"
+                    record["recovered_at"]=current.isoformat()
+                    record["ignored_builder_artifacts"]=[item["path"] for item in evidence["untracked"]]
+                else:
+                    outcomes[grant_id]="RECOVERY_EARLY_STAGE_DIRTY_PRESERVED"
+                    record["recovery_state"]="QUARANTINED"
+                    record["recovery_quarantine_reason"]="UNCOMMITTED_WORK_REQUIRES_PRESERVATION"
+                    record["preserved_work_evidence"]=evidence
             elif head_now.stdout.strip()!=durable_base:
                 outcomes[grant_id]="RECOVERY_EARLY_STAGE_HEAD_DRIFT"
                 record["recovery_state"]="QUARANTINED"
