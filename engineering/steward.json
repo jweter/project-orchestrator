@@ -4,25 +4,96 @@
   "role": "machine-health-governor",
   "objective": "maximize sustained verified product advancement inside a safe laptop operating envelope",
   "position": "Foreman -> Steward -> LaptopActor",
-  "bands": ["GREEN", "YELLOW", "ORANGE", "RED", "CRITICAL"],
+  "bands": [
+    "GREEN",
+    "YELLOW",
+    "ORANGE",
+    "RED",
+    "CRITICAL"
+  ],
   "thresholds": {
-    "memory_percent": {"YELLOW": 70, "ORANGE": 85, "RED": 95, "CRITICAL": 98},
-    "memory_available_gb": {"YELLOW": 4.0, "ORANGE": 2.5, "RED": 1.5, "CRITICAL": 0.75},
-    "disk_used_percent": {"YELLOW": 80, "ORANGE": 90, "RED": 95, "CRITICAL": 98},
-    "disk_free_gb": {"YELLOW": 80, "ORANGE": 50, "RED": 20, "CRITICAL": 10},
-    "cpu_percent": {"YELLOW": 75, "ORANGE": 90, "RED": 97, "CRITICAL": 99.5},
-    "temperature_c": {"YELLOW": 78, "ORANGE": 85, "RED": 90, "CRITICAL": 95},
-    "battery_percent_when_not_on_ac": {"YELLOW": 50, "ORANGE": 30, "RED": 15, "CRITICAL": 5}
+    "memory_percent": {
+      "YELLOW": 70,
+      "ORANGE": 85,
+      "RED": 95,
+      "CRITICAL": 98
+    },
+    "memory_available_gb": {
+      "YELLOW": 4.0,
+      "ORANGE": 2.5,
+      "RED": 1.5,
+      "CRITICAL": 0.75
+    },
+    "disk_used_percent": {
+      "YELLOW": 80,
+      "ORANGE": 90,
+      "RED": 95,
+      "CRITICAL": 98
+    },
+    "disk_free_gb": {
+      "YELLOW": 80,
+      "ORANGE": 50,
+      "RED": 20,
+      "CRITICAL": 10
+    },
+    "cpu_percent": {
+      "YELLOW": 75,
+      "ORANGE": 90,
+      "RED": 97,
+      "CRITICAL": 99.5
+    },
+    "temperature_c": {
+      "YELLOW": 78,
+      "ORANGE": 85,
+      "RED": 90,
+      "CRITICAL": 95
+    },
+    "battery_percent_when_not_on_ac": {
+      "YELLOW": 50,
+      "ORANGE": 30,
+      "RED": 15,
+      "CRITICAL": 5
+    }
   },
   "multivariate_rule": "two or more ORANGE-or-worse independent pressure dimensions escalate the aggregate band by one level",
   "capacity": {
-    "GREEN": {"max_parallel_lanes": 3, "resource_classes": ["LIGHT", "STANDARD", "HEAVY"]},
-    "YELLOW": {"max_parallel_lanes": 2, "resource_classes": ["LIGHT", "STANDARD", "HEAVY"]},
-    "ORANGE": {"max_parallel_lanes": 1, "resource_classes": ["LIGHT", "STANDARD"]},
-    "RED": {"max_parallel_lanes": 0, "resource_classes": []},
-    "CRITICAL": {"max_parallel_lanes": 0, "resource_classes": []}
+    "GREEN": {
+      "max_parallel_lanes": 3,
+      "resource_classes": [
+        "LIGHT",
+        "STANDARD",
+        "HEAVY"
+      ]
+    },
+    "YELLOW": {
+      "max_parallel_lanes": 2,
+      "resource_classes": [
+        "LIGHT",
+        "STANDARD",
+        "HEAVY"
+      ]
+    },
+    "ORANGE": {
+      "max_parallel_lanes": 1,
+      "resource_classes": [
+        "LIGHT",
+        "STANDARD"
+      ]
+    },
+    "RED": {
+      "max_parallel_lanes": 0,
+      "resource_classes": []
+    },
+    "CRITICAL": {
+      "max_parallel_lanes": 0,
+      "resource_classes": []
+    }
   },
-  "exclusive_resources": ["ollama", "unreal", "aider"],
+  "exclusive_resources": [
+    "ollama",
+    "unreal",
+    "aider"
+  ],
   "health_deferral_is_product_blocker": false,
   "fairness": "when capacity is below three lanes, admission rotates by last admitted product so health throttling cannot starve one product indefinitely",
   "unknown_telemetry": "record as an evidence gap; never manufacture a healthy signal from missing telemetry",
@@ -42,18 +113,49 @@
       "clear maintenance marker",
       "allow scheduled execution to resume"
     ],
-    "retention_days_default": 5
+    "retention_days_default": 5,
+    "permission_fallback": {
+      "startup": "per-user Startup folder command when Task Scheduler registration is denied",
+      "pre_reboot": "preserve existing 02:00 reboot unchanged when task action mutation is denied"
+    }
   },
   "cleanup_boundaries": {
-    "allowed": ["actor-owned .log files", "actor-owned .jsonl logs", "actor-owned stale .tmp files"],
-    "forbidden": ["product workspaces", "Git repositories", "package caches without repository-specific authorization", "private/commercial product evidence", "unrecognized user files"]
+    "allowed": [
+      "actor-owned .log files",
+      "actor-owned .jsonl logs",
+      "actor-owned stale .tmp files"
+    ],
+    "forbidden": [
+      "product workspaces",
+      "Git repositories",
+      "package caches without repository-specific authorization",
+      "private/commercial product evidence",
+      "unrecognized user files"
+    ]
   },
   "thermal_guidance": {
     "desired_sustained_cpu_gpu_temperature_c": "<80 when measurable",
     "throttle_attention_c": 85,
     "hard_red_c": 90,
     "sensor_gap": "Windows standard interfaces may not expose reliable package temperature; missing sensor data remains explicit evidence debt",
-    "physical_controls": ["keep underside vents unobstructed and laptop elevated", "maintain cool ambient room temperature", "clean intake and exhaust vents periodically"]
+    "physical_controls": [
+      "keep underside vents unobstructed and laptop elevated",
+      "maintain cool ambient room temperature",
+      "clean intake and exhaust vents periodically"
+    ]
   },
-  "never": ["classify machine-health deferral as a product defect", "delete user or product data to recover capacity", "guess a temperature", "increase concurrency during resource pressure", "disable repository quality gates to reduce load"]
+  "never": [
+    "classify machine-health deferral as a product defect",
+    "delete user or product data to recover capacity",
+    "guess a temperature",
+    "increase concurrency during resource pressure",
+    "disable repository quality gates to reduce load"
+  ],
+  "daily_hygiene": {
+    "executor": "LaptopActor",
+    "minimum_interval_hours": 20,
+    "retention_days": 5,
+    "scope": "known automation-owned .log/.jsonl/.tmp files only",
+    "independent_of_reboot_task_mutation": true
+  }
 }

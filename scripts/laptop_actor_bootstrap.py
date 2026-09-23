@@ -9,7 +9,7 @@ import subprocess
 import sys
 import shutil
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _DATADOG_SPEC = importlib.util.spec_from_file_location(
@@ -321,6 +321,80 @@ def steward_maintenance_active() -> tuple[bool, str | None]:
     return True, str(payload.get("status") or "MAINTENANCE")
 
 
+def run_daily_hygiene(
+    state_dir: Path,
+    *,
+    retention_days: int = 5,
+    minimum_interval_hours: int = 20,
+    max_jsonl_bytes: int = 10 * 1024 * 1024,
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Perform bounded cleanup only inside known automation-owned state/log roots."""
+    current = now or datetime.now(timezone.utc)
+    report_path = state_dir / "steward-hygiene.json"
+    try:
+        previous = json.loads(report_path.read_text(encoding="utf-8"))
+        completed = datetime.fromisoformat(str(previous["completed_at_utc"]))
+        if completed.tzinfo is None:
+            completed = completed.replace(tzinfo=timezone.utc)
+        if current - completed < timedelta(hours=max(1, minimum_interval_hours)):
+            return {"status": "SKIPPED_RECENT", "completed_at_utc": completed.isoformat()}
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+
+    base = Path(os.environ.get("LOCALAPPDATA", state_dir.parent))
+    roots = [
+        base / "ExponentialEngine" / "logs",
+        base / "PortfolioIdleWorker" / "logs",
+        base / "ExponentialEngine" / "flow-state",
+        state_dir,
+    ]
+    cutoff = current - timedelta(days=max(1, retention_days))
+    removed: list[str] = []
+    errors: list[str] = []
+
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for item in root.rglob("*"):
+            if not item.is_file() or item.suffix.lower() not in {".log", ".jsonl", ".tmp"}:
+                continue
+            if item == state_dir / "actor-telemetry.jsonl":
+                continue
+            try:
+                modified = datetime.fromtimestamp(item.stat().st_mtime, tz=timezone.utc)
+                if modified >= cutoff:
+                    continue
+                item.unlink()
+                removed.append(str(item))
+            except OSError as exc:
+                errors.append(f"{item}:{type(exc).__name__}")
+
+    rotated: str | None = None
+    telemetry = state_dir / "actor-telemetry.jsonl"
+    try:
+        if telemetry.is_file() and telemetry.stat().st_size > max_jsonl_bytes:
+            stamp = current.strftime("%Y%m%dT%H%M%SZ")
+            destination = telemetry.with_name(f"actor-telemetry-{stamp}.jsonl")
+            telemetry.replace(destination)
+            rotated = str(destination)
+    except OSError as exc:
+        errors.append(f"{telemetry}:{type(exc).__name__}")
+
+    report = {
+        "status": "COMPLETED_WITH_ERRORS" if errors else "COMPLETED",
+        "completed_at_utc": current.isoformat(),
+        "retention_days": max(1, retention_days),
+        "removed_count": len(removed),
+        "removed_files": removed,
+        "rotated_telemetry": rotated,
+        "errors": errors,
+    }
+    state_dir.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return report
+
+
 def resources_allow_execution(
     snapshot: dict[str, object],
     *,
@@ -377,6 +451,7 @@ def run_idle_session(
             return 0
         emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
         update_actor_checkout(actor_repo)
+        run_daily_hygiene(state_dir)
         while True:
             maintenance, maintenance_status = steward_maintenance_active()
             if maintenance:

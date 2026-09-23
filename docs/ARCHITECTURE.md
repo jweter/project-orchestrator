@@ -146,7 +146,7 @@ The CLI surface is `project-orchestrator repair-plan --repository ... --log ... 
 
 Steward combines RAM pressure, absolute free memory, CPU load, fixed-disk free/used capacity, AC/battery state, known heavy local tools, and temperature when reliable telemetry exists. Missing telemetry remains explicit evidence debt. Machine state is classified GREEN/YELLOW/ORANGE/RED/CRITICAL and maps to bounded lane capacity. Independent simultaneous resource pressures can escalate the aggregate band.
 
-The daily 02:00 reboot is treated as a maintenance boundary: bounded actor-owned log/temp cleanup before reboot, stale LaptopActor lock validation at startup, and a maintenance marker that prevents actor execution from racing startup sanity. Steward never deletes product workspaces, Git repositories, package caches without repository-specific authority, or unrecognized user files.
+The daily 02:00 reboot remains the reset boundary. LaptopActor performs bounded daily hygiene independently of Task Scheduler mutation. When permissions allow, Steward wraps the existing reboot with pre-reboot maintenance; otherwise the existing reboot is preserved unchanged. Startup sanity uses a scheduled logon task when permitted and a per-user Startup-folder fallback otherwise. Steward never deletes product workspaces, Git repositories, package caches without repository-specific authority, or unrecognized user files.
 
 
 ## Foreman portfolio lane controller

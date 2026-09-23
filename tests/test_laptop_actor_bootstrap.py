@@ -1,4 +1,6 @@
 import importlib.util
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -181,3 +183,34 @@ def test_maintenance_marker_blocks_actor_before_checkout(monkeypatch, tmp_path):
         )
         == 0
     )
+
+
+def test_daily_hygiene_is_bounded_to_owned_transient_files(monkeypatch, tmp_path):
+    local = tmp_path / "local"
+    monkeypatch.setenv("LOCALAPPDATA", str(local))
+    state = local / "ExponentialEngine" / "queue" / "state"
+    logs = local / "PortfolioIdleWorker" / "logs"
+    logs.mkdir(parents=True)
+    state.mkdir(parents=True)
+
+    old_log = logs / "old.log"
+    old_log.write_text("old", encoding="utf-8")
+    protected = logs / "keep.txt"
+    protected.write_text("do not delete", encoding="utf-8")
+    recent_log = logs / "recent.log"
+    recent_log.write_text("recent", encoding="utf-8")
+    old_epoch = datetime(2026, 9, 1, tzinfo=timezone.utc).timestamp()
+    os.utime(old_log, (old_epoch, old_epoch))
+    os.utime(protected, (old_epoch, old_epoch))
+
+    now = datetime(2026, 9, 22, 18, 0, tzinfo=timezone.utc)
+    result = bootstrap.run_daily_hygiene(state, now=now)
+
+    assert result["status"] == "COMPLETED"
+    assert not old_log.exists()
+    assert protected.exists()
+    assert recent_log.exists()
+    assert (state / "steward-hygiene.json").exists()
+
+    second = bootstrap.run_daily_hygiene(state, now=now)
+    assert second["status"] == "SKIPPED_RECENT"
