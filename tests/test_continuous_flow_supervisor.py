@@ -580,6 +580,19 @@ def test_quarantine_recheck_releases_only_proven_dead_worker(tmp_path):
     assert saved["state"]=="ABANDONED"
     assert saved["result_status"]=="CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
 
+def test_quarantine_recheck_releases_proven_dead_issuer(tmp_path):
+    import json
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,1,1,tzinfo=UTC); path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"QUARANTINED","result_status":"ISSUE_LEASE_UNKNOWN_QUARANTINED","issuer":{"host":"h","pid":7}}}}))
+    seen=[]
+    assert supervisor.recheck_quarantined_claims(tmp_path,now,lambda owner:seen.append(owner) or "DEAD")=={"g":"RELEASED_TO_RECOVERY"}
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert seen==[{"host":"h","pid":7}]
+    assert saved["state"]=="ABANDONED"
+    assert saved["result_status"]=="ISSUE_LEASE_QUARANTINE_ISSUER_DEAD"
+
 def test_quarantine_recheck_restores_proven_live_worker(tmp_path):
     import json
     from datetime import UTC, datetime
