@@ -1012,6 +1012,26 @@ def test_supervisor_registers_merge_watcher_cleanup():
     assert 'merge.wait(timeout=5)' in source
 
 
+def test_existing_preserved_aider_artifact_quarantine_is_released(tmp_path,monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; (wsroot/"r").mkdir(parents=True); state=tmp_path/"state"; state.mkdir()
+    evidence={"capture_status":"CAPTURED","diff_bytes":0,"changed_paths":[],
+              "untracked":[{"path":".aider.chat.history.md","kind":"file"}]}
+    record={"state":"ABANDONED","repository":"o/r","execution_stage":"BRANCH_CREATED",
+            "recovery_state":"QUARANTINED","recovery_quarantine_reason":"UNCOMMITTED_WORK_REQUIRES_PRESERVATION",
+            "preserved_work_evidence":evidence}
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":record}}))
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,record:"PRESERVED_WORK_EXACT")
+    monkeypatch.setattr(supervisor,"validate_preserved_work",lambda *args: (_ for _ in ()).throw(AssertionError("must not validate transient artifacts")))
+    out=supervisor.recheck_preserved_work_quarantines(wsroot,state)
+    assert out=={"g":"PRESERVED_BUILDER_ARTIFACTS_RELEASED"}
+    saved=json.loads(path.read_text())["grants"]["g"]
+    assert saved["recovery_state"]=="RECOVERED"
+    assert saved["ignored_builder_artifacts"]==[".aider.chat.history.md"]
+
+
 def test_early_stage_aider_artifacts_do_not_quarantine_dead_worker(tmp_path,monkeypatch):
     import json
     from datetime import UTC,datetime
