@@ -47,10 +47,39 @@ def test_run_aider_uses_argument_vector_and_local_ollama(monkeypatch,tmp_path):
     def fake_run(argv,cwd,**kwargs):
         seen["argv"]=argv; seen["cwd"]=cwd; seen["env"]=kwargs["env"]; return R()
     monkeypatch.setattr(b,"run",fake_run)
+    lock=tmp_path/"ollama-lock"
+    monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR",str(lock))
     b.run_aider(tmp_path,"one bounded slice")
     assert seen["argv"][0]=="aider"
     assert seen["argv"][seen["argv"].index("--message")+1]=="one bounded slice"
     assert seen["env"]["OLLAMA_API_BASE"]=="http://127.0.0.1:11434"
+    assert not lock.exists()
+
+
+def test_run_aider_serializes_local_ollama_builders(monkeypatch,tmp_path):
+    lock=tmp_path/"ollama-lock"
+    monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR",str(lock))
+    active=0
+    peak=0
+    guard=b.threading.Lock()
+    class R:
+        returncode=0
+    def fake_run(argv,cwd,**kwargs):
+        nonlocal active,peak
+        with guard:
+            active+=1
+            peak=max(peak,active)
+        b.time.sleep(1.2)
+        with guard:
+            active-=1
+        return R()
+    monkeypatch.setattr(b,"run",fake_run)
+    threads=[b.threading.Thread(target=b.run_aider,args=(tmp_path,f"slice-{i}")) for i in range(2)]
+    for thread in threads: thread.start()
+    for thread in threads: thread.join(timeout=5)
+    assert peak==1
+    assert all(not thread.is_alive() for thread in threads)
+    assert not lock.exists()
 
 
 def test_installer_uses_current_user_startup_supervisor():
