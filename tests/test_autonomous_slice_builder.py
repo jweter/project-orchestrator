@@ -82,6 +82,20 @@ def test_run_aider_serializes_local_ollama_builders(monkeypatch,tmp_path):
     assert not lock.exists()
 
 
+def test_ollama_lock_does_not_steal_fresh_unpublished_owner(monkeypatch,tmp_path):
+    lock=tmp_path/"ollama-lock"
+    lock.mkdir()
+    monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR",str(lock))
+    monkeypatch.setattr(b,"MAX_AIDER_SECONDS",0)
+    try:
+        b._acquire_ollama_lock()
+    except TimeoutError:
+        pass
+    else:
+        raise AssertionError("fresh owner-publication window was stolen")
+    assert lock.exists()
+
+
 def test_installer_uses_current_user_startup_supervisor():
     installer=(Path(__file__).resolve().parents[1]/"scripts"/"install_continuous_flow.ps1").read_text(encoding="utf-8")
     assert '[Environment]::GetFolderPath("Startup")' in installer

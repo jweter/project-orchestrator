@@ -559,11 +559,19 @@ def _acquire_ollama_lock()->Path:
             try:
                 owner_pid=int((lock/"owner").read_text(encoding="utf-8").splitlines()[0])
                 os.kill(owner_pid,0)
-            except FileNotFoundError:
-                if time.time()-lock.stat().st_mtime>5:
+            except (FileNotFoundError,ValueError,IndexError):
+                # mkdir() publishes the lease before its owner metadata can be written.
+                # A contender must not steal a freshly-created lease while that tiny
+                # publication window is still open. Only metadata that remains
+                # unreadable past the stale-publication grace period is recoverable.
+                try:
+                    stale=time.time()-lock.stat().st_mtime>5
+                except FileNotFoundError:
+                    stale=False
+                if stale:
                     shutil.rmtree(lock,ignore_errors=True)
                     continue
-            except (ValueError,IndexError,ProcessLookupError):
+            except ProcessLookupError:
                 shutil.rmtree(lock,ignore_errors=True)
                 continue
             except PermissionError:
