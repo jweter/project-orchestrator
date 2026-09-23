@@ -90,5 +90,18 @@
     "dispatch_source": "Foreman/Steward only",
     "jev_dispatch_authority": false,
     "duplicate_scheduler_created": false
+  },
+  "experiment_baseline": {
+    "implementation": "project_orchestrator.jev_experiment",
+    "cli": "project-orchestrator jev-experiment-report",
+    "states": [
+      "NO_LIVE_JEV_OBSERVATIONS",
+      "LIVE_OBSERVATION_PENDING",
+      "MEASURED_LIVE_BASELINE"
+    ],
+    "neural_evidence_requirement": "neural_call_made=true",
+    "completed_baseline_requirement": "neural_call_made=true plus explicit terminal outcome",
+    "pending_request_is_performance_evidence": false,
+    "promotion_authority": false
   }
 }
