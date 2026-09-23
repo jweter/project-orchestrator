@@ -4,6 +4,7 @@ from collections import Counter
 from typing import Any
 
 from .specialist_lanes import build_lane_plan
+from .jev_shadow import evaluate_shadow
 from .steward import assess_machine_health, govern_dispatch
 
 FOREMAN_NAME = "Foreman"
@@ -174,6 +175,39 @@ def build_foreman_plan(
     live_ownership = _live_ownership(inventory, live_snapshot)
     reservations = build_lane_plan(inventory, live_snapshot, candidates)
     by_project = {project: [] for project in PROJECT_IDS}
+    shadow_candidates = {project: [] for project in PROJECT_IDS}
+    for candidate in candidates:
+        project = candidate.get("project_id")
+        if project not in shadow_candidates:
+            continue
+        isolated = build_lane_plan(inventory, live_snapshot, [candidate])["lanes"]
+        if not isolated or isolated[0]["state"] != "RESERVED":
+            continue
+        lane = isolated[0]
+        shadow_candidates[project].append(
+            {
+                "candidate_id": lane["lane_id"],
+                "project_id": project,
+                "repository": lane["repository"],
+                "title": lane["title"],
+                "priority": lane["priority"],
+                "eligibility_state": "ELIGIBLE",
+                "resource_class": lane["resource_class"],
+                "continuation_kind": "BOUNDED_EXECUTION",
+            }
+        )
+    jev_shadow = {
+        project: evaluate_shadow(
+            state={
+                "decision_id": f"foreman:{project}:candidate-ordering",
+                "project_id": project,
+                "current_gate": "FOREMAN_CANDIDATE_ORDERING",
+            },
+            candidates=shadow_candidates[project],
+            live=False,
+        )
+        for project in PROJECT_IDS
+    }
     for lane in reservations["lanes"]:
         project = lane.get("project_id")
         if project in by_project:
@@ -299,6 +333,7 @@ def build_foreman_plan(
         ],
         "waiting_lanes_rotated_away_from": sorted(set(rotated_waits)),
         "execution_compaction": compacted,
+        "jev_shadow": jev_shadow,
         "immediate_continuation": immediate,
         "product_advancement_rate": "UNKNOWN_UNTIL_VERIFIED_MUTATION",
         "safety_boundaries": [
@@ -310,5 +345,6 @@ def build_foreman_plan(
             "Product Reality is never inferred",
             "Foreman selects and dispatches but never merges",
             "Steward may throttle or defer execution for machine health without classifying the product as blocked",
+            "Jev shadow observes independently eligible candidates but cannot alter Foreman selection or dispatch",
         ],
     }

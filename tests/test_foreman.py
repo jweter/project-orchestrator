@@ -255,3 +255,31 @@ def test_steward_yellow_health_admits_two_with_fair_rotation():
 
     assert plan["steward"]["assessment"]["band"] == "YELLOW"
     assert plan["dispatchable_product_projects"] == ["rocksmith", "everward"]
+
+
+def test_foreman_records_jev_shadow_without_changing_authoritative_selection():
+    work = candidates()
+    work.append(
+        {
+            "project_id": "everward",
+            "repository": "jweter/Project-Everward",
+            "base_sha": "ever-head",
+            "branch": "feature/ever-alt",
+            "title": "Everward alternate legal slice",
+            "priority": 2,
+            "paths": ["Source/Alt.cpp"],
+        }
+    )
+
+    plan = build_foreman_plan(inventory(), snapshot(), work)
+
+    everward = next(
+        row for row in plan["projects"] if row["project_id"] == "everward"
+    )
+    assert everward["selected_lane"]["branch"] == "feature/ever"
+    shadow = plan["jev_shadow"]["everward"]
+    assert shadow["mode"] == "SHADOW_ONLY"
+    assert shadow["decision"]["state"] == "SHADOW_PENDING"
+    assert shadow["decision"]["execution_authority"] is False
+    assert len(shadow["deterministic_legal_candidate_ids"]) == 2
+    assert "request" in shadow

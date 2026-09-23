@@ -15,7 +15,8 @@
     "preserve actionable quarantine evidence without letting historical quarantine dominate selection",
     "select at most one substantial dispatch-ready slice per independent product per run",
     "rotate away from asynchronous waits when conflict-free authorized work exists",
-    "emit a deterministic dispatch queue for existing governed executors"
+    "emit a deterministic dispatch queue for existing governed executors",
+    "emit Jev shadow observations for independently legal candidate sets without changing authoritative selection"
   ],
   "lane_states": [
     "DISPATCH_READY",
@@ -35,5 +36,12 @@
   ],
   "cli": "project-orchestrator foreman-plan <evidence.json>",
   "implementation": "project_orchestrator.foreman",
-  "dispatch_admission": "Steward machine-health governor when machine-health evidence is available"
+  "dispatch_admission": "Steward machine-health governor when machine-health evidence is available",
+  "neural_decision_shadow": {
+    "implementation": "project_orchestrator.jev_shadow",
+    "mode": "SHADOW_ONLY",
+    "authority": "ADVISORY_ONLY",
+    "selection_effect": "none",
+    "live_provider_calls": "separately gated and not performed by Foreman planning"
+  }
 }
