@@ -1017,6 +1017,16 @@ def resume_orphan_branch(repo:str,ws:Path,branch:str,classification:str,evidence
         return "RECOVERY_PR_OPENED" if created.returncode==0 else "RECOVERY_PR_CREATE_FAILED"
     return classification
 
+def builder_artifacts_only(evidence:dict)->bool:
+    """True only for captured zero-diff Aider bookkeeping, never product work."""
+    prefixes=(".aider.chat.history.md",".aider.input.history",".aider.tags.cache.v4/")
+    untracked=evidence.get("untracked",[])
+    return (evidence.get("capture_status")=="CAPTURED"
+        and evidence.get("diff_bytes")==0 and not evidence.get("changed_paths")
+        and bool(untracked)
+        and all(any(item.get("path","")==prefix or item.get("path","").startswith(prefix)
+                    for prefix in prefixes) for item in untracked))
+
 def preserved_work_evidence(ws:Path,base_sha:str)->dict:
     """Capture bounded, non-destructive identity for uncertain local work."""
     status=subprocess.run(["git","status","--porcelain"],cwd=ws,text=True,capture_output=True,check=False)
@@ -1490,13 +1500,7 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
                 outcomes[grant_id]="RECOVERY_EARLY_STAGE_WORKSPACE_UNREADABLE"
             elif status.stdout.strip():
                 evidence=preserved_work_evidence(ws,durable_base)
-                builder_artifacts=(".aider.chat.history.md",".aider.input.history",".aider.tags.cache.v4/")
-                only_builder_artifacts=(evidence.get("capture_status")=="CAPTURED"
-                    and evidence.get("diff_bytes")==0 and not evidence.get("changed_paths")
-                    and bool(evidence.get("untracked"))
-                    and all(any(item.get("path","")==prefix or item.get("path","").startswith(prefix)
-                                for prefix in builder_artifacts) for item in evidence.get("untracked",[])))
-                if only_builder_artifacts:
+                if builder_artifacts_only(evidence):
                     outcomes[grant_id]="RECOVERY_EARLY_STAGE_BUILDER_ARTIFACTS_ONLY"
                     record["recovery_state"]="RECOVERED"
                     record["recovered_at"]=current.isoformat()
@@ -1663,6 +1667,15 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
         record["preserved_work_revalidation"]=outcome
         record["preserved_work_revalidated_at"]=datetime.now(UTC).isoformat()
         if outcome=="PRESERVED_WORK_EXACT":
+            evidence=record.get("preserved_work_evidence",{})
+            if builder_artifacts_only(evidence):
+                outcomes[grant_id]="PRESERVED_BUILDER_ARTIFACTS_RELEASED"
+                record["preserved_work_revalidation"]=outcomes[grant_id]
+                record["recovery_state"]="RECOVERED"
+                record["recovered_at"]=datetime.now(UTC).isoformat()
+                record["ignored_builder_artifacts"]=[item["path"] for item in evidence["untracked"]]
+                changed=True
+                continue
             validation=validate_preserved_work(ws,record)
             record["preserved_work_validation"]=validation
             record["preserved_work_validated_at"]=datetime.now(UTC).isoformat()
