@@ -112,5 +112,18 @@
     "unknown_free_credit_state": "DENY_PROVIDER_CALL",
     "identical_decision_cache": true,
     "fallback": "DETERMINISTIC_FOREMAN"
+  },
+  "free_live_adapter": {
+    "implementation": "project_orchestrator.jev_live_free",
+    "endpoint": "POST /v1/systemone",
+    "requirements": [
+      "multiple deterministic legal candidates",
+      "positive free-credit evidence",
+      "JEV_SHADOW_LIVE=1",
+      "environment TYPESAFE_API_KEY"
+    ],
+    "cache_identical_requests": true,
+    "paid_spend_authorized": false,
+    "fallback": "DETERMINISTIC_FOREMAN"
   }
 }
