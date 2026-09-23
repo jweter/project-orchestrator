@@ -671,7 +671,7 @@
     "health_deferral_is_product_blocker": false,
     "unknown_telemetry_rule": "preserve as evidence gap; never manufacture healthy state",
     "cleanup_authority": "actor-owned logs/jsonl/stale tmp only",
-    "daily_reboot_boundary": "pre-reboot maintenance plus startup sanity around existing 02:00 local reboot",
+    "daily_reboot_boundary": "daily LaptopActor hygiene plus optional pre-reboot wrapper; existing 02:00 reboot is preserved when Task Scheduler mutation is denied",
     "merge_authority": false
   }
 }

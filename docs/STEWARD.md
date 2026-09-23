@@ -30,11 +30,11 @@ Steward does not automatically purge product workspaces, Git repositories, npm/p
 
 ## Daily reboot boundary
 
-The existing 02:00 local reboot becomes a controlled maintenance boundary.
+The existing 02:00 local reboot remains the reset boundary. Steward does not require elevated Task Scheduler access to protect the machine: LaptopActor performs bounded actor-owned hygiene at most once per 20 hours, so log/temp control continues even when the reboot task cannot be edited.
 
-Before reboot, Steward enters maintenance mode, prevents new LaptopActor/Portfolio Idle Worker launches, rotates bounded actor-owned logs/temp state, writes a maintenance report, and then invokes the existing forced reboot.
+When the current session is permitted to update the existing reboot task, Steward wraps it with pre-reboot maintenance before invoking the same forced reboot. When Windows denies that mutation, the installer preserves the existing 02:00 reboot unchanged and records the limitation instead of failing installation.
 
-At logon, Steward validates LaptopActor lock ownership, removes only a proven-stale actor lock, performs bounded log/temp rotation, clears the maintenance marker, and allows the scheduled workers to resume. The maintenance marker makes LaptopActor fail closed if startup ordering races.
+At logon, Steward validates LaptopActor lock ownership, removes only a proven-stale actor lock, performs bounded log/temp rotation, clears the maintenance marker, and allows the scheduled workers to resume. If Task Scheduler registration is denied, startup sanity falls back to a normal per-user Startup-folder command. The maintenance marker makes LaptopActor fail closed if startup ordering races.
 ## Fairness
 
 When health reduces available capacity below three lanes, Steward rotates admission using the last admitted product. Machine pressure therefore cannot permanently starve Knowledge Engine, Rocksmith, or Everward.

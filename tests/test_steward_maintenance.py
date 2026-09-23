@@ -37,8 +37,17 @@ def test_installer_updates_existing_daily_reboot_and_adds_startup_sanity():
     text = INSTALLER.read_text(encoding="utf-8")
     assert "Azathoth-Daily-Reboot" in text
     assert "Azathoth-Steward-Startup" in text
-    assert (
-        "Set-ScheduledTask -TaskName $DailyRebootTask -Action $preRebootAction" in text
-    )
+    assert "Set-ScheduledTask" in text
+    assert "-TaskName $DailyRebootTask" in text
+    assert "-Action $preRebootAction" in text
     assert "New-ScheduledTaskTrigger -AtLogOn" in text
     assert "MultipleInstances IgnoreNew" in text
+
+
+def test_installer_has_non_admin_startup_and_reboot_fallbacks():
+    text = INSTALLER.read_text(encoding="utf-8")
+    assert "startup-folder-fallback" in text
+    assert "Azathoth-Steward-Startup.cmd" in text
+    assert "existing-reboot-preserved" in text
+    assert "daily_hygiene_authority" in text
+    assert "StartupCheck" in text
