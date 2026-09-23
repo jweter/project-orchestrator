@@ -1056,3 +1056,47 @@ def test_early_stage_aider_artifacts_do_not_quarantine_dead_worker(tmp_path,monk
     saved=json.loads(path.read_text())["grants"]["g"]
     assert saved["recovery_state"]=="RECOVERED"
     assert saved["ignored_builder_artifacts"]==[".aider.chat.history.md"]
+
+
+def test_product_convergence_flags_unexplained_authorized_product(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{}}))
+    (state/"dispatch-decision.json").write_text(json.dumps({"decisions":[]}))
+    result=supervisor.product_convergence(state,["knowledge-engine","rocksmith","everward"])
+    assert result["status"]=="UNEXPLAINED_ELIGIBLE_IDLE"
+    assert result["unexplained_eligible_products"]==["everward","knowledge-engine","rocksmith"]
+
+
+def test_product_convergence_accepts_active_or_explicit_reason(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    grants={"g1":{"state":"CLAIMED","repository":"jweter/rocksmith-cdlc-generator"},
+            "g2":{"state":"RUNNING","repository":"jweter/Project-Everward"}}
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":grants}))
+    decisions=[{"repository":"jweter/knowledge-engine-core","product":"knowledge-engine",
+                "outcome":"NOT_READY","reason":"EXECUTION_SLICE_NOT_READY"}]
+    (state/"dispatch-decision.json").write_text(json.dumps({"decisions":decisions}))
+    result=supervisor.product_convergence(state,["knowledge-engine","rocksmith","everward"])
+    assert result["status"]=="CONVERGED"
+    assert sorted(result["active_products"])==["everward","rocksmith"]
+    assert result["explained_nonexecuting_products"]["knowledge-engine"][0]["outcome"]=="NOT_READY"
+
+
+def test_dispatch_decision_reason_codes_include_already_owned(tmp_path,monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    activation={"products":{"knowledge-engine":{"repositories":{"jweter/knowledge-engine-core":"abc"}}}}
+    monkeypatch.setattr(supervisor,"load_execution_slice",lambda *args:{"slice_id":"s","repository":"jweter/knowledge-engine-core","exact_head":"abc"})
+    monkeypatch.setattr(supervisor,"conflicting_nonterminal_grant",lambda *args:{"grant_id":"g","state":"CLAIMED"})
+    try:
+        supervisor.select_execution_target(state,activation,["knowledge-engine"])
+    except RuntimeError as exc:
+        assert "ALREADY_OWNED:g" in str(exc)
+    else:
+        raise AssertionError("owned lane must not be selected twice")
+    evidence=json.loads((state/"dispatch-decision.json").read_text())
+    assert evidence["decisions"][0]["outcome"]=="ALREADY_OWNED"
