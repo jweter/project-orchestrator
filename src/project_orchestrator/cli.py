@@ -15,6 +15,7 @@ from .foreman import build_foreman_plan
 from .github_evidence import UrllibGitHubTransport, collect_portfolio
 from .inventory import load_inventory
 from .jev_runtime import runtime_cycle
+from .jev_experiment import report_from_ledger
 from .learning import add_lesson, load_memory, write_memory
 from .learning_effectiveness import add_application, build_report, load_store as load_learning_effectiveness_store, write_store as write_learning_effectiveness_store
 from .operator_console import build_from_files as build_operator_console, render_html as render_operator_console_html
@@ -266,6 +267,12 @@ def unattended_cycle(evidence_path: Path, ledger_path: Path) -> int:
     return 0
 
 
+
+def jev_experiment_report(ledger_path: Path) -> int:
+    print(json.dumps(report_from_ledger(ledger_path), indent=2, sort_keys=True))
+    return 0
+
+
 def steward_assess(snapshot_path: Path) -> int:
     snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
     print(json.dumps(assess_machine_health(snapshot), indent=2, sort_keys=True))
@@ -489,6 +496,8 @@ def main() -> int:
     unattended_parser = sub.add_parser("unattended-cycle")
     unattended_parser.add_argument("evidence", type=Path)
     unattended_parser.add_argument("--jev-ledger", type=Path, default=DEFAULT_JEV_LEDGER)
+    jev_experiment_parser = sub.add_parser("jev-experiment-report")
+    jev_experiment_parser.add_argument("--ledger", type=Path, default=DEFAULT_JEV_LEDGER)
     jev_runtime_parser = sub.add_parser("jev-runtime-cycle")
     jev_runtime_parser.add_argument("evidence", type=Path)
     jev_runtime_parser.add_argument("--ledger", type=Path, default=DEFAULT_JEV_LEDGER)
@@ -618,6 +627,8 @@ def main() -> int:
         return validate()
     if args.command == "unattended-cycle":
         return unattended_cycle(args.evidence, args.jev_ledger)
+    if args.command == "jev-experiment-report":
+        return jev_experiment_report(args.ledger)
     if args.command == "jev-runtime-cycle":
         return jev_runtime_cycle(args.evidence, args.ledger)
     if args.command == "plan":
