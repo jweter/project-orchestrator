@@ -1,16 +1,20 @@
 ﻿{
     "timestamp":  "2026-09-23T08:44:00-05:00",
     "eligible_product_projects":  [
-                                      "rocksmith"
+                                      "knowledge-engine",
+                                      "rocksmith",
+                                      "everward"
                                   ],
     "materially_advanced_product_projects":  [
-                                                 "rocksmith"
+                                                 "knowledge-engine",
+                                                 "rocksmith",
+                                                 "everward"
                                              ],
-    "product_advancement_rate":  "1/1",
-    "knowledge_engine":  "BLOCKED: core existing builder-artifact recovery quarantine; web/ai authority BLOCKED",
+    "product_advancement_rate":  "3/3",
+    "knowledge_engine":  "ACTIVE: grant 7dbda7d8-c427-4176-adfb-3fa90c8733df federated-provider-concurrency-v1",
     "rocksmith":  "ACTIVE: grant 8abf20bc-25c0-4632-9864-bc84fd694fdc private-structural-acceptance-v1",
-    "everward":  "BLOCKED: existing builder-artifact recovery quarantine",
-    "control_plane":  "PR #359 merged/deployed c3328ea; PR #360 draft 1d8aac5 releases existing artifact-only quarantines; CI/preflight pending",
+    "everward":  "ACTIVE: grant 76af8563-006a-44ee-8899-d47b2e1a4551 sanitized-diagnostic-companion-v1",
+    "control_plane":  "PR #359 merged/deployed c3328ea; PR #360 merged/deployed d83e868; existing artifact-only quarantines released",
     "reusable_capabilities_created_or_reused":  [
                                                     "builder-artifact-only recovery predicate",
                                                     "fresh Ollama lease publication race regression"
