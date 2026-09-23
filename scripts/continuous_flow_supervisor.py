@@ -1687,27 +1687,36 @@ def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_p
         for grant_id,record in grants.items():
             if not isinstance(record,dict) or record.get("state")!="QUARANTINED":
                 continue
-            if record.get("result_status")!="CLAIM_LEASE_UNKNOWN_QUARANTINED":
+            result_status=record.get("result_status")
+            if result_status not in {"CLAIM_LEASE_UNKNOWN_QUARANTINED","ISSUE_LEASE_UNKNOWN_QUARANTINED"}:
                 continue
             if record.get("recovery_generation"):
                 outcomes[grant_id]="RECOVERY_GENERATION_ACTIVE"
                 continue
-            liveness=liveness_probe(record.get("worker"))
+            owner_field="issuer" if result_status=="ISSUE_LEASE_UNKNOWN_QUARANTINED" else "worker"
+            liveness=liveness_probe(record.get(owner_field))
             record["quarantine_last_recheck_at"]=current.isoformat()
             record["quarantine_rechecks"]=int(record.get("quarantine_rechecks",0))+1
             record["worker_liveness"]=liveness; changed=True
             if liveness=="DEAD":
                 record["state"]="ABANDONED"
-                record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
+                record["result_status"]=(
+                    "ISSUE_LEASE_QUARANTINE_ISSUER_DEAD"
+                    if owner_field=="issuer" else "CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
+                )
                 record["finished_at"]=current.isoformat()
                 outcomes[grant_id]="RELEASED_TO_RECOVERY"
             elif liveness=="ALIVE":
-                record["state"]="CLAIMED"
-                record["result_status"]="CLAIM_LEASE_QUARANTINE_WORKER_ALIVE"
-                record["unknown_liveness_checks"]=0
+                record["state"]="ISSUED" if owner_field=="issuer" else "CLAIMED"
+                record["result_status"]=(
+                    "ISSUE_LEASE_QUARANTINE_ISSUER_ALIVE"
+                    if owner_field=="issuer" else "CLAIM_LEASE_QUARANTINE_WORKER_ALIVE"
+                )
+                counter="issue_unknown_liveness_checks" if owner_field=="issuer" else "unknown_liveness_checks"
+                record[counter]=0
                 record.pop("unknown_liveness_first_seen_at",None)
                 record.pop("finished_at",None)
-                outcomes[grant_id]="RESTORED_TO_CLAIMED"
+                outcomes[grant_id]="RESTORED_TO_ISSUED" if owner_field=="issuer" else "RESTORED_TO_CLAIMED"
             else:
                 outcomes[grant_id]="STILL_UNKNOWN"
         if changed: atomic(path,payload)
