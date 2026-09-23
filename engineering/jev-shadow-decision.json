@@ -42,5 +42,18 @@
     "returned legal-set probabilities when available",
     "whether a neural call was made"
   ],
-  "promotion_policy": "remain shadow-only until comparable replay/live evidence demonstrates better liveness or routing without quality, policy, cost, or human-boundary regression"
+  "promotion_policy": "remain shadow-only until comparable replay/live evidence demonstrates better liveness or routing without quality, policy, cost, or human-boundary regression",
+  "evidence_ledger": {
+    "implementation": "project_orchestrator.jev_evidence",
+    "storage_class": "append-only telemetry JSONL",
+    "outcome_binding": "only candidates from the recorded deterministic legal set",
+    "replay_metrics": [
+      "disagreement rate",
+      "shadow matched verified advancement",
+      "deterministic matched verified advancement",
+      "ties or inconclusive",
+      "per-project sample count"
+    ],
+    "self_promotion": false
+  }
 }
