@@ -67,5 +67,15 @@
     ],
     "pending_results_close_record": false,
     "inferred_success_forbidden": true
+  },
+  "runtime_evidence": {
+    "implementation": "project_orchestrator.jev_runtime",
+    "cli": "project-orchestrator jev-runtime-cycle",
+    "default_path": "telemetry/jev-shadow/decisions.jsonl",
+    "idempotency": "run_id + project_id",
+    "persistence": "atomic JSONL rewrite after capture/reconciliation",
+    "pending_result_rewrite": false,
+    "execution_authority": false,
+    "promotion_authority": false
   }
 }
