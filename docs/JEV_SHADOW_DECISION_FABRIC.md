@@ -133,3 +133,8 @@ No single successful decision promotes authority.
 Promotion beyond shadow mode requires comparable repeated evidence showing a useful improvement with no quality, policy, security/privacy, licensing/provenance, Product Reality, cost-boundary, or human-boundary regression.
 
 Even after promotion, deterministic software continues to define the legal action space and validate the result. Jev never receives merge authority.
+
+
+## Verification state
+
+This integration must pass repository-native exact-head full preflight before an ordinary Ready PR is opened. Shadow-mode unit tests never contact the provider.
