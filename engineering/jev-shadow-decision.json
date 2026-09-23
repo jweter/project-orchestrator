@@ -144,4 +144,12 @@
     "persist_credentials": false,
     "paid_spend_authorized": false
   }
+,
+  "account_evidence_contract": {
+    "checked_date": "2026-09-22",
+    "documented_public_api": ["POST /v1/systemone", "GET /v1/models"],
+    "public_api_discovery_authoritative_for_free_readiness": false,
+    "inference_probe_for_credit_discovery": false,
+    "paid_spend_authorized": false
+  }
 }
