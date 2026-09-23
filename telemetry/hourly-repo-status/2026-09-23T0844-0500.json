@@ -1,0 +1,22 @@
+﻿{
+    "timestamp":  "2026-09-23T08:44:00-05:00",
+    "eligible_product_projects":  [
+                                      "rocksmith"
+                                  ],
+    "materially_advanced_product_projects":  [
+                                                 "rocksmith"
+                                             ],
+    "product_advancement_rate":  "1/1",
+    "knowledge_engine":  "BLOCKED: core existing builder-artifact recovery quarantine; web/ai authority BLOCKED",
+    "rocksmith":  "ACTIVE: grant 8abf20bc-25c0-4632-9864-bc84fd694fdc private-structural-acceptance-v1",
+    "everward":  "BLOCKED: existing builder-artifact recovery quarantine",
+    "control_plane":  "PR #359 merged/deployed c3328ea; PR #360 draft 1d8aac5 releases existing artifact-only quarantines; CI/preflight pending",
+    "reusable_capabilities_created_or_reused":  [
+                                                    "builder-artifact-only recovery predicate",
+                                                    "fresh Ollama lease publication race regression"
+                                                ],
+    "waiting_lanes_rotated_away_from":  [
+                                            "PR #360 preflight/CI"
+                                        ],
+    "needs_jeremy":  false
+}
