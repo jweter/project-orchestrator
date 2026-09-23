@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "mode": "SHADOW_ONLY",
+  "provider": "TypeSafe Jev System One",
+  "model_default": "jev-latest",
+  "endpoint_default": "https://api.typesafe.ai/v1/systemone",
+  "purpose": "rank or select only among candidates already admitted by deterministic repository and portfolio policy",
+  "authority": "ADVISORY_ONLY",
+  "deterministic_preconditions": [
+    "P0-P4 priority and repair obligations already resolved for the decision point",
+    "repository-local authority and roadmap permit every candidate",
+    "ownership and conflict checks clear every candidate",
+    "Product Reality dependency gates clear every candidate",
+    "security privacy licensing provenance and architecture boundaries clear every candidate",
+    "candidate action space is explicit and bounded"
+  ],
+  "short_circuit_rule": "zero legal candidates means no neural call; one legal candidate means deterministic selection with no neural call",
+  "live_call_guard": {
+    "required_environment": [
+      "JEV_SHADOW_LIVE=1",
+      "TYPESAFE_API_KEY"
+    ],
+    "credentials_may_be_committed": false,
+    "automatic_paid_calls": false
+  },
+  "forbidden_authority": [
+    "create legality",
+    "override deterministic priority",
+    "override branch ownership",
+    "bypass preflight or CI",
+    "merge",
+    "infer Product Reality",
+    "change security or privacy boundaries",
+    "change licensing or provenance policy",
+    "authorize destructive or irreversible actions",
+    "authorize release or publishing"
+  ],
+  "telemetry": [
+    "decision state",
+    "deterministic legal candidate ids",
+    "selected candidate id when valid",
+    "returned legal-set probabilities when available",
+    "whether a neural call was made"
+  ],
+  "promotion_policy": "remain shadow-only until comparable replay/live evidence demonstrates better liveness or routing without quality, policy, cost, or human-boundary regression"
+}
