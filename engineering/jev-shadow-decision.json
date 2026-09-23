@@ -55,5 +55,17 @@
       "per-project sample count"
     ],
     "self_promotion": false
+  },
+  "automatic_reconciliation": {
+    "implementation": "project_orchestrator.jev_reconciliation",
+    "decision_source": "Foreman multi-candidate shadow observations",
+    "identity_key": "specialist lane_id / candidate_id",
+    "terminal_success_states": [
+      "MERGED",
+      "PRODUCT_REALITY_VERIFIED",
+      "VERIFIED_ADVANCEMENT"
+    ],
+    "pending_results_close_record": false,
+    "inferred_success_forbidden": true
   }
 }
