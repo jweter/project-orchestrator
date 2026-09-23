@@ -740,10 +740,27 @@ def run_preflight(ws:Path)->subprocess.CompletedProcess[str]:
     return run([sys.executable,str(script)],ws,env=env,timeout=MAX_PREFLIGHT_SECONDS)
 
 def atomic_json(path:Path,payload:dict[str,Any])->None:
+    """Persist JSON without sharing one predictable temp path across workers.
+
+    Windows can transiently deny rename-over-open-file. Use a per-writer temp
+    file, bounded retry, then copy-overwrite as a compatibility fallback. The
+    lifecycle lock still serializes lifecycle read-modify-write transactions.
+    """
     path.parent.mkdir(parents=True,exist_ok=True)
-    tmp=path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
-    tmp.replace(path)
+    tmp=path.with_name(f"{path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
+    try:
+        tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+        for attempt in range(5):
+            try:
+                tmp.replace(path)
+                return
+            except PermissionError:
+                if attempt == 4:
+                    shutil.copyfile(tmp,path)
+                    return
+                time.sleep(0.1 * (attempt + 1))
+    finally:
+        tmp.unlink(missing_ok=True)
 def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
                execution_grant:Path|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
