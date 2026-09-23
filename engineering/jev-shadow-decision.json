@@ -125,5 +125,23 @@
     "cache_identical_requests": true,
     "paid_spend_authorized": false,
     "fallback": "DETERMINISTIC_FOREMAN"
+  },
+  "free_readiness": {
+    "implementation": "project_orchestrator.jev_readiness",
+    "authoritative_sources": [
+      "TYPESAFE_ACCOUNT_API",
+      "TYPESAFE_ACCOUNT_EXPORT"
+    ],
+    "required": [
+      "credential present",
+      "live flag enabled",
+      "promotional credit confirmed",
+      "purchased credit not required",
+      "automatic refill disabled"
+    ],
+    "unknown_state": "NOT_READY",
+    "persist_raw_account_evidence": false,
+    "persist_credentials": false,
+    "paid_spend_authorized": false
   }
 }
