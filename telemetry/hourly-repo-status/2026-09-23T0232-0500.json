@@ -1,0 +1,26 @@
+{
+  "captured_at": "2026-09-23T02:32:51-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "action": "repaired CI-only mypy dependency on PR 170, exact-head preflight green, fresh CI green, merged",
+    "head": "f6479837cd9ad752369c3e1b730b1d79bf12336b",
+    "merge": "5c68687a10f1bcf2b60ac5e1ad20ea311b73e2ce"
+  },
+  "rocksmith": {
+    "action": "reserved next #612 deterministic GUI/package smoke lane",
+    "branch": "orchestrator/private-reality-gui-smoke",
+    "state": "IMPLEMENTING_DISPATCH_FAILED_TRANSIENT",
+    "detail": "local codex executable not on PATH; branch safely reserved from current main"
+  },
+  "everward": {
+    "action": "dispatched real low-spec measured-memory Product Reality harness",
+    "head": "9484adb31de04d10d2b2af556ecbb1865cd006ef",
+    "state": "ASYNC_BUILD_WAIT",
+    "detail": "Build.bat already owned by another Unreal build; harness waiting"
+  },
+  "waiting_lanes_rotated_away_from": ["Everward Unreal build"],
+  "reusable_capabilities_created_or_reused": ["Knowledge Engine strict typing regression/preflight", "Everward measured-memory harness"],
+  "needs_jeremy": []
+}
