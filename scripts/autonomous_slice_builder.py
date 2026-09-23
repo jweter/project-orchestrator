@@ -540,6 +540,38 @@ Do not edit governance, roadmap, architecture, vision, security, license, workfl
 Do not change secrets, credentials, releases, publishing, destructive migrations, or licensing.
 Prefer source + regression test changes. Do not claim Product Reality. Do not commit, push, or merge.
 Make the smallest coherent implementation that can pass the repository's canonical preflight."""
+def _ollama_lock_dir()->Path:
+    return Path(os.environ.get(
+        "EXPONENTIAL_OLLAMA_LOCK_DIR",
+        str(Path.home()/".exponential-engine"/"locks"/"ollama-aider"),
+    ))
+
+def _acquire_ollama_lock()->Path:
+    lock=_ollama_lock_dir()
+    lock.parent.mkdir(parents=True,exist_ok=True)
+    deadline=time.monotonic()+MAX_AIDER_SECONDS
+    while True:
+        try:
+            lock.mkdir()
+            (lock/"owner").write_text(f"{os.getpid()}\n{time.time()}\n",encoding="utf-8")
+            return lock
+        except FileExistsError:
+            try:
+                owner_pid=int((lock/"owner").read_text(encoding="utf-8").splitlines()[0])
+                os.kill(owner_pid,0)
+            except FileNotFoundError:
+                if time.time()-lock.stat().st_mtime>5:
+                    shutil.rmtree(lock,ignore_errors=True)
+                    continue
+            except (ValueError,IndexError,ProcessLookupError):
+                shutil.rmtree(lock,ignore_errors=True)
+                continue
+            except PermissionError:
+                pass
+            if time.monotonic()>=deadline:
+                raise TimeoutError("timed out waiting for exclusive local Ollama builder slot")
+            time.sleep(1)
+
 def run_aider(ws:Path,message:str)->subprocess.CompletedProcess[str]:
     env=os.environ.copy()
     env.setdefault("OLLAMA_API_BASE","http://127.0.0.1:11434")
@@ -547,7 +579,11 @@ def run_aider(ws:Path,message:str)->subprocess.CompletedProcess[str]:
           "--no-auto-commits","--no-gitignore","--no-pretty","--no-stream",
           "--analytics-disable","--no-check-update","--no-show-model-warnings",
           "--no-suggest-shell-commands","--yes-always"]
-    return run(argv,ws,env=env,timeout=MAX_AIDER_SECONDS)
+    lock=_acquire_ollama_lock()
+    try:
+        return run(argv,ws,env=env,timeout=MAX_AIDER_SECONDS)
+    finally:
+        shutil.rmtree(lock,ignore_errors=True)
 
 def cleanup_aider_artifacts(ws:Path)->None:
     for path in ws.glob(".aider*"):
