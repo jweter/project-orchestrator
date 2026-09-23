@@ -889,6 +889,12 @@ def main()->int:
             return 1
         if args.execution_grant:
             eligible_repos=granted_repositories(args.execution_grant,workspace)
+            try:
+                granted_slice=json.loads(args.execution_grant.read_text(encoding="utf-8")).get("execution_slice",{})
+                target_repo=granted_slice.get("repository") if isinstance(granted_slice,dict) else None
+            except (OSError,json.JSONDecodeError,TypeError):
+                target_repo=None
+            eligible_repos={target_repo:eligible_repos[target_repo]} if target_repo in eligible_repos else {}
             eligible=None
         else:
             eligible_repos=None

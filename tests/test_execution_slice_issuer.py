@@ -48,7 +48,7 @@ def test_multi_repository_product_grant_selects_only_ready_lane(tmp_path):
     graphs=state/"capability-graphs"; graphs.mkdir()
     (graphs/"jweter__b.json").write_text(json.dumps(_graph()))
     grant=json.loads(supervisor.write_execution_grant(repo_root,state,["example"]).read_text())
-    assert grant["products"]=={"example":{"repositories":{"jweter/b":"b"}}}
+    assert grant["products"]=={"example":{"repositories":{"jweter/a":"a","jweter/b":"b"}}}
     assert grant["execution_slice"]["repository"]=="jweter/b"
     assert grant["execution_slice"]["exact_head"]=="b"
 

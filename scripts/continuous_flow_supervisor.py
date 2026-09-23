@@ -678,7 +678,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
                "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
                "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
                "products":{
-            name:{"repositories":{repo:exact_head}}
+            name:{"repositories":activation["products"][name]["repositories"]}
             for name in selected_products},
                "execution_slice":execution_slice}
         path=state_root/"hands-off-execution-grants"/f"{grant_id}.json"
@@ -703,8 +703,13 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
                 if owns and repo in existing_repos:
                     raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{existing_id}:{existing.get('state')}")
             issued=datetime.now(UTC).isoformat()
+            authorized_repositories=sorted({
+                granted_repo
+                for value in grant["products"].values()
+                for granted_repo in value["repositories"]
+            })
             grants[grant_id]={"state":"ISSUED","issued_at":issued,
-                          "authorized_repositories":[repo],"expected_sha":exact_head,
+                          "authorized_repositories":authorized_repositories,"expected_sha":exact_head,
                           "capability_id":execution_slice["capability_id"],
                           "slice_id":execution_slice["slice_id"],
                           "execution_slice":execution_slice,
