@@ -33,6 +33,7 @@ from .steward import assess_machine_health
 from .work_decomposition import decompose_work_item
 from .required_checks import resolve_required_checks
 from .throughput_optimizer import optimize_throughput
+from .unattended_cycle import run_unattended_cycle
 from .timeseries import (
     append_window,
     build_reinvestment_snapshot,
@@ -241,6 +242,25 @@ def jev_runtime_cycle(evidence_path: Path, ledger_path: Path) -> int:
         run_id=str(evidence["run_id"]),
         plan=evidence["foreman_plan"],
         results=evidence.get("results", []),
+    )
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
+
+def unattended_cycle(evidence_path: Path, ledger_path: Path) -> int:
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    inventory = load_inventory(DEFAULT_INVENTORY)
+    result = run_unattended_cycle(
+        inventory,
+        evidence["live_snapshot"],
+        evidence["candidates"],
+        run_id=str(evidence["run_id"]),
+        ledger_path=ledger_path,
+        execution_records=evidence.get("execution_records"),
+        events=evidence.get("events"),
+        machine_health=evidence.get("machine_health"),
+        steward_state=evidence.get("steward_state"),
     )
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
@@ -466,6 +486,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="project-orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate")
+    unattended_parser = sub.add_parser("unattended-cycle")
+    unattended_parser.add_argument("evidence", type=Path)
+    unattended_parser.add_argument("--jev-ledger", type=Path, default=DEFAULT_JEV_LEDGER)
     jev_runtime_parser = sub.add_parser("jev-runtime-cycle")
     jev_runtime_parser.add_argument("evidence", type=Path)
     jev_runtime_parser.add_argument("--ledger", type=Path, default=DEFAULT_JEV_LEDGER)
@@ -593,6 +616,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "validate":
         return validate()
+    if args.command == "unattended-cycle":
+        return unattended_cycle(args.evidence, args.jev_ledger)
     if args.command == "jev-runtime-cycle":
         return jev_runtime_cycle(args.evidence, args.ledger)
     if args.command == "plan":

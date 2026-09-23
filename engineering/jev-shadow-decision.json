@@ -77,5 +77,18 @@
     "pending_result_rewrite": false,
     "execution_authority": false,
     "promotion_authority": false
+  },
+  "unattended_integration": {
+    "implementation": "project_orchestrator.unattended_cycle",
+    "cli": "project-orchestrator unattended-cycle",
+    "sequence": [
+      "build deterministic Foreman plan",
+      "persist Jev shadow evidence",
+      "reconcile terminal execution evidence",
+      "expose unchanged Foreman dispatch queue"
+    ],
+    "dispatch_source": "Foreman/Steward only",
+    "jev_dispatch_authority": false,
+    "duplicate_scheduler_created": false
   }
 }
