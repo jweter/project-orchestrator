@@ -504,6 +504,15 @@ def test_worker_liveness_rejects_pid_reuse(monkeypatch):
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"linux:boot:old"}
     assert supervisor.worker_liveness(worker)=="DEAD"
 
+def test_worker_liveness_treats_missing_fingerprinted_pid_as_dead(monkeypatch):
+    import socket
+    import scripts.continuous_flow_supervisor as supervisor
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:None)
+    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(OSError("Windows invalid parameter")))
+    worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
+    assert supervisor.worker_liveness(worker)=="DEAD"
+
 def test_worker_liveness_accepts_matching_process_fingerprint(monkeypatch):
     import socket
     import scripts.continuous_flow_supervisor as supervisor
