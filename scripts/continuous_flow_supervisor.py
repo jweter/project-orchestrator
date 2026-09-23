@@ -489,12 +489,12 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
                           "outcome":"SELECTED","reason":"READY_EXECUTION_SLICE"})
         atomic(state_root/"dispatch-decision.json",{"schema_version":1,
             "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":repo,
-            "selected_product":product,"decisions":decisions})
+            "selected_product":product,"invocation_id":os.environ.get("ORCHESTRATOR_BUILDER_INVOCATION_ID"),"decisions":decisions})
         atomic(cursor_path,{"repository":repo})
         return repo,head
     atomic(state_root/"dispatch-decision.json",{"schema_version":1,
         "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":None,
-        "selected_product":None,"decisions":decisions})
+        "selected_product":None,"invocation_id":os.environ.get("ORCHESTRATOR_BUILDER_INVOCATION_ID"),"decisions":decisions})
     if blocked and all(item.endswith("=NO_WORK") for item in blocked):
         raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
     detail=";".join(blocked) or "UNKNOWN"
@@ -1841,8 +1841,8 @@ def productive_liveness(state_root:Path,authorized_products:list[str],now:dateti
             "last_productive_mutation_at":latest.isoformat() if latest else None,
             "seconds_since_productive_mutation":age,"stale_after_seconds":stale_seconds}
 
-def product_convergence(state_root:Path,authorized_products:list[str])->dict:
-    """Prove every authorized product converges to active ownership or a machine-actionable reason."""
+def product_convergence(state_root:Path,authorized_products:list[str],*,current_invocation_id:str|None=None)->dict:
+    """Prove each authorized product is owned or has fresh, explicit non-execution evidence."""
     authorized={p for p in authorized_products if p in {"knowledge-engine","rocksmith","everward"}}
     active={}
     try:
@@ -1860,7 +1860,9 @@ def product_convergence(state_root:Path,authorized_products:list[str])->dict:
         decision=json.loads((state_root/"dispatch-decision.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
         decision={}
-    for item in decision.get("decisions",[]) if isinstance(decision,dict) else []:
+    decision_is_fresh=(isinstance(decision,dict)
+        and (current_invocation_id is None or decision.get("invocation_id")==current_invocation_id))
+    for item in decision.get("decisions",[]) if decision_is_fresh else []:
         if not isinstance(item,dict): continue
         product=item.get("product"); outcome=item.get("outcome")
         if product in authorized and product not in active and outcome not in {None,"SELECTED"}:
@@ -1870,6 +1872,8 @@ def product_convergence(state_root:Path,authorized_products:list[str])->dict:
     status="CONVERGED" if not missing else "UNEXPLAINED_ELIGIBLE_IDLE"
     payload={"schema_version":1,"status":status,"authorized_products":sorted(authorized),
              "active_products":active,"explained_nonexecuting_products":reasons,
+             "dispatch_evidence_fresh":decision_is_fresh,
+             "dispatch_invocation_id":decision.get("invocation_id") if isinstance(decision,dict) else None,
              "unexplained_eligible_products":missing,"recorded_at_utc":datetime.now(UTC).isoformat()}
     atomic(state_root/"product-convergence.json",payload)
     return payload
@@ -2326,7 +2330,7 @@ def main()->int:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
         atomic(state/"productive-liveness.json",liveness)
-        convergence=product_convergence(state,products)
+        convergence=product_convergence(state,products,current_invocation_id=builder_invocation_id)
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
