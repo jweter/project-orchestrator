@@ -612,3 +612,38 @@ def test_finish_grant_lifecycle_records_user_active_as_deferred(tmp_path):
     record=json.loads(lifecycle.read_text())["grants"]["cycle-user-active"]
     assert record["state"]=="DEFERRED"
     assert record["result_status"]=="USER_ACTIVE"
+
+
+def test_atomic_json_retries_windows_permission_error_then_succeeds(tmp_path,monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    original=builder.Path.replace
+    calls={"n":0}
+    def flaky(self,target):
+        if self.name.startswith(path.name+".tmp.") and calls["n"]<2:
+            calls["n"]+=1
+            raise PermissionError(5,"Access is denied")
+        return original(self,target)
+    monkeypatch.setattr(builder.Path,"replace",flaky)
+    monkeypatch.setattr(builder.time,"sleep",lambda *_:None)
+    builder.atomic_json(path,{"grants":{"g":{"state":"CLAIMED"}}})
+    assert json.loads(path.read_text())["grants"]["g"]["state"]=="CLAIMED"
+    assert calls["n"]==2
+    assert list(tmp_path.glob("*.tmp.*"))==[]
+
+
+def test_atomic_json_falls_back_to_copy_after_windows_rename_denied(tmp_path,monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text('{"grants":{}}')
+    def denied(self,target):
+        if self.name.startswith(path.name+".tmp."):
+            raise PermissionError(5,"Access is denied")
+        raise AssertionError("unexpected replace")
+    monkeypatch.setattr(builder.Path,"replace",denied)
+    monkeypatch.setattr(builder.time,"sleep",lambda *_:None)
+    builder.atomic_json(path,{"grants":{"g":{"state":"RUNNING"}}})
+    assert json.loads(path.read_text())["grants"]["g"]["state"]=="RUNNING"
+    assert list(tmp_path.glob("*.tmp.*"))==[]
