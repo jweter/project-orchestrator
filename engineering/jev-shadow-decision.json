@@ -103,5 +103,14 @@
     "completed_baseline_requirement": "neural_call_made=true plus explicit terminal outcome",
     "pending_request_is_performance_evidence": false,
     "promotion_authority": false
+  },
+  "cost_governor": {
+    "implementation": "project_orchestrator.jev_cost_governor",
+    "policy": "ZERO_DOLLAR_ONLY",
+    "paid_spend_authorized": false,
+    "automatic_refill": false,
+    "unknown_free_credit_state": "DENY_PROVIDER_CALL",
+    "identical_decision_cache": true,
+    "fallback": "DETERMINISTIC_FOREMAN"
   }
 }
