@@ -489,12 +489,12 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
                           "outcome":"SELECTED","reason":"READY_EXECUTION_SLICE"})
         atomic(state_root/"dispatch-decision.json",{"schema_version":1,
             "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":repo,
-            "selected_product":product,"invocation_id":os.environ.get("ORCHESTRATOR_BUILDER_INVOCATION_ID"),"decisions":decisions})
+            "selected_product":product,"decisions":decisions})
         atomic(cursor_path,{"repository":repo})
         return repo,head
     atomic(state_root/"dispatch-decision.json",{"schema_version":1,
         "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":None,
-        "selected_product":None,"invocation_id":os.environ.get("ORCHESTRATOR_BUILDER_INVOCATION_ID"),"decisions":decisions})
+        "selected_product":None,"decisions":decisions})
     if blocked and all(item.endswith("=NO_WORK") for item in blocked):
         raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
     detail=";".join(blocked) or "UNKNOWN"
@@ -786,6 +786,15 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
             return 0,None
         raise
     invocation_id=uuid.uuid4().hex
+    decision_path=state_root/"dispatch-decision.json"
+    try:
+        decision=json.loads(decision_path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        decision={}
+    if isinstance(decision,dict):
+        decision["invocation_id"]=invocation_id
+        decision["grant_path"]=str(grant_path)
+        atomic(decision_path,decision)
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json"),
         "--execution-grant",str(grant_path),"--invocation-id",invocation_id]
