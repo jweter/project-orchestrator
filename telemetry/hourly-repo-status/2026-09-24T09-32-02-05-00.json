@@ -1,0 +1,41 @@
+{
+  "captured_at": "2026-09-24T09:32:02-05:00",
+  "eligible_product_projects": ["knowledge-engine", "rocksmith", "everward"],
+  "materially_advanced_product_projects": ["knowledge-engine", "rocksmith", "everward"],
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "repository": "jweter/knowledge-engine-core",
+    "pr": 525,
+    "head": "d60f83fc287c43fdec44c322cad0e7b41179c127",
+    "state": "PARKED_FOR_RETRY",
+    "failure_class": "TYPE_CHECK",
+    "first_meaningful_error": "tests/test_general_question_extraction_promotion.py imports removed private _evidence_store_revision",
+    "next_gate": "bounded compatibility repair then fresh exact-head Quality/CI",
+    "windows_killpg_feedback": "resolved_on_current_main"
+  },
+  "rocksmith": {
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "pr": 729,
+    "verified_head": "b0a660b3c71e04cbb90627234f89ffb2d3dad725",
+    "merged_commit": "e9ba475278020b4e3e2dbc25ac47ef1040e1357d",
+    "state": "MERGED",
+    "reusable_capability": "realized measure occurrence resolver plus regression tests",
+    "product_reality": "separate and pending where applicable"
+  },
+  "everward": {
+    "repository": "jweter/Project-Everward",
+    "pr": 318,
+    "head": "74e75b229c7142f30fe4b8a14db77ecd08933329",
+    "state": "GREEN_NOT_MERGED",
+    "ci": "all observed required repository-native checks green",
+    "merge_attempt": "blocked by connector safety layer; no retry in this burst",
+    "product_reality": "Unreal/visual Product Reality remains separate"
+  },
+  "worker": {
+    "azathoth": "offline",
+    "last_seen": "2026-09-24T08:28:06.988+00:00"
+  },
+  "waiting_lanes_rotated_away_from": 2,
+  "reusable_capabilities_created_or_reused": 2,
+  "needs_jeremy": false
+}
