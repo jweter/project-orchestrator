@@ -27,6 +27,22 @@ def records_from_foreman_plan(plan: dict[str, Any], *, run_id: str) -> list[dict
             deterministic_choice=deterministic,
             shadow=shadow,
         ))
+    harvest = plan.get("jev_decision_harvest", {})
+    for key, shadow in harvest.items():
+        if not isinstance(shadow, dict):
+            continue
+        legal = shadow.get("deterministic_legal_candidate_ids", [])
+        if len(legal) < 2:
+            continue
+        decision_class = key.split(":", 1)[1] if ":" in key else key
+        project_id = key.split(":", 1)[0]
+        deterministic = legal[0] if legal else None
+        out.append(decision_record(
+            run_id=run_id, project_id=project_id,
+            deterministic_choice=deterministic, shadow=shadow,
+            decision_class=decision_class,
+            decision_id=f"{run_id}:{key}",
+        ))
     return out
 
 
