@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "name": "DevelopmentTeamRuntime",
+  "controller": "Foreman",
+  "objective": "maximize verified product advancement per hour without weakening repository authority or verification gates",
+  "projects": ["knowledge-engine", "rocksmith", "everward"],
+  "roles": {
+    "team_director": "Foreman",
+    "implementation_workers_per_product_initial_cap": 2,
+    "independent_qa_reviewers": 1,
+    "failure_repair": "existing deterministic repair engine and Pit Crew path",
+    "release_authority": "existing central merge authority"
+  },
+  "work_contracts": {
+    "exact_base_required": true,
+    "authorized_paths_required": true,
+    "acceptance_criteria_supported": true,
+    "verification_plan_supported": true,
+    "workers_may_merge": false
+  },
+  "leases": {
+    "persistent": false,
+    "authority": "ephemeral projection of live GitHub ownership",
+    "path_overlap_blocks_parallel_dispatch": true,
+    "same_branch_continuation_allowed": true
+  },
+  "qa": {
+    "independent_from_implementation": true,
+    "objective": "find reproducible counterexamples or regressions before promotion",
+    "may_reject_to_repair": true,
+    "may_merge": false,
+    "may_infer_product_reality": false
+  },
+  "adaptive_concurrency": {
+    "mode": "measured_advisory_v1",
+    "increase_requires_measured_idle_ready_capacity": true,
+    "reduce_on_observed_collision_or_rework_pressure": true,
+    "unknown_metrics_remain_unknown": true
+  },
+  "metrics": [
+    "verified_advancement_events",
+    "first_pass_green",
+    "repair_events",
+    "collision_events",
+    "idle_capacity_events",
+    "qa_rejections"
+  ],
+  "safety": [
+    "repository-local architecture and control planes remain authoritative",
+    "GitHub remains ownership authority",
+    "no worker self-approval or merge authority",
+    "no preflight or CI bypass",
+    "no Product Reality inference",
+    "no persistent competing ownership database"
+  ]
+}
