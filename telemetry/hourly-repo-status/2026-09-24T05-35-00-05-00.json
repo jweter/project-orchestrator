@@ -1,0 +1,56 @@
+{
+  "timestamp_local": "2026-09-24T05:35:00-05:00",
+  "mode": "EXECUTION_BURST",
+  "laptop_status": "OFFLINE",
+  "eligible_product_projects": [
+    "Knowledge Engine",
+    "Rocksmith",
+    "Everward"
+  ],
+  "materially_advanced_product_projects": [
+    "Knowledge Engine",
+    "Rocksmith",
+    "Everward"
+  ],
+  "product_advancement_rate": "3/3",
+  "lanes": {
+    "knowledge_engine": {
+      "repo": "jweter/knowledge-engine-core",
+      "branch": "feature/evidence-store-revision-id",
+      "head": "3f0ca486c5ce5f27510c46fa4e08d7606eac09fd",
+      "state": "PREFLIGHT_UNVERIFIED"
+    },
+    "rocksmith": {
+      "repo": "jweter/rocksmith-cdlc-generator",
+      "branch": "feature/eof-section-validation-gap-contract",
+      "head": "67659f1dbf171669adc628720701172d52fe64b2",
+      "state": "PREFLIGHT_UNVERIFIED"
+    },
+    "everward": {
+      "repo": "jweter/Project-Everward",
+      "branch": "feature/passive-science-observation-boundary",
+      "head": "b0c69b22373611739e071c999572a75e553055fa",
+      "state": "PREFLIGHT_UNVERIFIED"
+    }
+  },
+  "control_plane": {
+    "pr": 369,
+    "branch": "feature/offline-repo-continuation",
+    "head": "7707ebe4356cbbf63881cf9807836be05fce45be"
+  },
+  "reusable_capabilities_created_or_reused": [
+    "deterministic evidence-store content revision",
+    "EOF section-authority fail-closed contract",
+    "passive science observation authority boundary"
+  ],
+  "waiting_lanes_rotated_away_from": [
+    "Azathoth/local exact-head preflight"
+  ],
+  "blockers": [
+    "Azathoth offline; laptop-dependent verification unavailable"
+  ],
+  "product_reality_debt": [
+    "Rocksmith private/subjective Product Reality unchanged",
+    "Everward Unreal Product Reality unchanged"
+  ]
+}

@@ -117,6 +117,9 @@ Ask Jeremy only for fundamental product direction, major unauthorized architectu
 LAPTOP CONTINUATION AUTHORITY
 The ExponentialEngine-AutonomousBuilder laptop actor is authorized to continue ordinary bounded P4/P5 engineering without Jeremy issuing a manual Continue prompt. It must remain idle-gated, create governed feature branches, avoid active/open-PR ownership conflicts, preserve repository-local authority, refuse protected governance/security/workflow/roadmap/architecture changes, require exact-head canonical preflight GREEN before opening a PR, and never merge its own work. Failed generation or failed preflight does not become a PR.
 
+LAPTOP-OFFLINE REPOSITORY CONTINUATION
+Laptop unavailability is lane-scoped, never portfolio-scoped. If Azathoth, Remote Desktop Commander, ExponentialEngine-LaptopActor, Windows/Ollama/Unreal, or another local execution facility is unavailable, preserve and park only work or verification that specifically requires that environment. Immediately continue connector-safe repository development through GitHub for every eligible independent product: select the highest-value authorized P1-P5 work that can be implemented remotely, create/reuse governed feature or repair branches, mutate code/tests/docs, perform all available repository-native verification, and advance each lane as far through the promotion lifecycle as its remaining gates permit. Never classify the whole portfolio blocked merely because the laptop is unavailable. Never fabricate laptop-dependent preflight or Product Reality evidence. When the laptop returns, resume queued local verification and reconcile its exact-head results with repository work completed during the outage. A run that stops safe GitHub development solely because the laptop is offline is an orchestration/liveness defect.
+
 SCHEDULER PERSISTENCE
 NEVER disable, pause, suspend, or delete DoWork Hourly unless Jeremy explicitly instructs it.
 
