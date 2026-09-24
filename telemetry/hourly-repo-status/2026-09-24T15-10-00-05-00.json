@@ -1,0 +1,51 @@
+{
+  "captured_at_local": "2026-09-24T15:10:00-05:00",
+  "eligible_product_projects": [
+    "knowledge-engine",
+    "rocksmith",
+    "everward"
+  ],
+  "materially_advanced_product_projects": [
+    "knowledge-engine",
+    "rocksmith",
+    "everward"
+  ],
+  "waiting_lanes_rotated_away_from": [
+    "knowledge-engine exact-head local preflight",
+    "rocksmith exact-head local preflight",
+    "everward exact-head local preflight"
+  ],
+  "knowledge_engine": {
+    "repository": "jweter/knowledge-engine-core",
+    "branch": "feature/evidence-revision-order-stability",
+    "head_sha": "4ec767eac55cbd2740ea1ffec090257a9806418c",
+    "pr": 526,
+    "state": "CI_PENDING/PREFLIGHT_UNVERIFIED",
+    "change": "evidence-store revision now ignores harmless record ordering while preserving canonical content and usable-evidence invalidation",
+    "next_gate": "fresh PR CI, then exact-head canonical preflight"
+  },
+  "rocksmith": {
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "branch": "feature/eof-realized-marker-bridge",
+    "head_sha": "5959988df23ca5e362177741fb2e2657d14e68cf",
+    "pr": 730,
+    "state": "CI_PENDING/PREFLIGHT_UNVERIFIED",
+    "change": "direct EOF marker-to-realized occurrence resolver with repeat-occurrence regression protection",
+    "next_gate": "fresh PR CI completion, then exact-head canonical preflight"
+  },
+  "everward": {
+    "repository": "jweter/Project-Everward",
+    "branch": "feature/science-composition-estimate-model",
+    "head_sha": "c2a103ea957071b2819b39ea053d3ad75d8ddf01",
+    "pr": 319,
+    "state": "CI_PENDING/PREFLIGHT_UNVERIFIED",
+    "change": "composition estimate identity now fails closed for blank IDs; regression protection includes blank and non-finite values",
+    "next_gate": "fresh PR CI completion, then exact-head canonical preflight/Unreal Product Reality as required"
+  },
+  "laptop_worker": {
+    "device": "Azathoth",
+    "status": "offline",
+    "last_seen_utc": "2026-09-24T08:28:06.988Z"
+  },
+  "product_advancement_rate": "3/3"
+}
