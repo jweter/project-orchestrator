@@ -1,0 +1,38 @@
+{
+  "captured_at": "2026-09-24T08:30:00-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "waiting_lanes_rotated_away_from": 2,
+  "lanes": {
+    "knowledge_engine": {
+      "state": "P1_REPAIR_REQUIRED",
+      "repo": "jweter/knowledge-engine-core",
+      "pr": 525,
+      "head": "d60f83fc287c43fdec44c322cad0e7b41179c127",
+      "failure_class": "TYPE_CHECK",
+      "first_meaningful_error": "tests/test_general_question_extraction_promotion.py imports removed _evidence_store_revision",
+      "next_gate": "bounded compatibility repair then fresh exact-head Quality/CI"
+    },
+    "rocksmith": {
+      "state": "CI_PENDING_PREFLIGHT_UNVERIFIED",
+      "repo": "jweter/rocksmith-cdlc-generator",
+      "pr": 729,
+      "head": "b0a660b3c71e04cbb90627234f89ffb2d3dad725",
+      "next_gate": "fresh CI plus exact-head full preflight when authorized laptop executor returns"
+    },
+    "everward": {
+      "state": "CI_PENDING_PREFLIGHT_UNVERIFIED",
+      "repo": "jweter/Project-Everward",
+      "pr": 318,
+      "head": "74e75b229c7142f30fe4b8a14db77ecd08933329",
+      "next_gate": "fresh CI plus exact-head full preflight; Unreal Product Reality remains separate"
+    }
+  },
+  "reusable_capabilities_created_or_reused": [
+    "evidence-store revision regression coverage",
+    "realized measure occurrence regression coverage",
+    "passive observation authority contract"
+  ],
+  "needs_jeremy": []
+}
