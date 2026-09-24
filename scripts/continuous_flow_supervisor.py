@@ -16,6 +16,7 @@ from scripts.blocker_buddy import diagnose as diagnose_blocker
 from project_orchestrator.decision_outcome import attribute as attribute_decision_outcome
 from project_orchestrator.decision_learning import compile_decision_learning, planning_hint
 from project_orchestrator.jev_evidence import load_jsonl
+from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -947,6 +948,49 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     finalize_unclaimed_grant(grant_path,p.returncode)
     return p.returncode,invocation_id
+
+def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str)->tuple[int,str|None]:
+    """Run one product-scoped builder using the existing grant/lease authority."""
+    return run_builder(repo_root,workspace_root,state_root,[product])
+
+
+def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
+    """Persist completed worker outcomes without blocking other product lanes."""
+    completed=pool.harvest()
+    rows={}
+    for worker_id,result in completed.items():
+        if isinstance(result,BaseException):
+            rows[worker_id]={"status":"WORKER_EXCEPTION","error_class":type(result).__name__}
+        else:
+            rc,invocation_id=result
+            ok,status=builder_health(state_root,rc,invocation_id)
+            rows[worker_id]={"status":status,"returncode":rc,"healthy":ok,
+                             "invocation_id":invocation_id}
+    if rows:
+        atomic(state_root/"parallel-worker-results.json",{
+            "schema_version":1,"completed":rows,
+            "recorded_at_utc":datetime.now(UTC).isoformat(),
+        })
+    return rows
+
+
+def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
+                               state_root:Path,products:list[str])->list[str]:
+    """Keep product workers saturated; repository grants remain the mutation authority."""
+    dispatched=[]
+    for slot in pool.available_slots(products):
+        try:
+            worker_id=pool.submit(slot,run_builder_for_product,
+                                  repo_root,workspace_root,state_root,slot.product)
+        except RuntimeError:
+            continue
+        dispatched.append(worker_id)
+    atomic(state_root/"parallel-worker-pool.json",{
+        "schema_version":1,"pool":pool.snapshot(),"dispatched":dispatched,
+        "recorded_at_utc":datetime.now(UTC).isoformat(),
+    })
+    return dispatched
+
 
 CLAIM_LEASE_SECONDS=1800
 UNKNOWN_LIVENESS_MAX_CHECKS=5
