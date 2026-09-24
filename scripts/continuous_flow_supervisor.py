@@ -13,6 +13,9 @@ from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
 from scripts.agent_voice import manager_status, worker_status
 from scripts.blocker_buddy import diagnose as diagnose_blocker
+from project_orchestrator.decision_outcome import attribute as attribute_decision_outcome
+from project_orchestrator.decision_learning import compile_decision_learning, planning_hint
+from project_orchestrator.jev_evidence import load_jsonl
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -540,6 +543,40 @@ def reserved_quarantine_repositories(state_root:Path)->set[str]:
                 reserved.add(repo)
     return reserved
 
+def refresh_decision_learning(state_root:Path)->dict:
+    """Reconcile terminal worker evidence into advisory decision-learning state."""
+    ledger=state_root/"telemetry"/"jev-shadow"/"decisions.jsonl"
+    records=load_jsonl(ledger)
+    try:
+        lifecycle=json.loads((state_root/"hands-off-grant-lifecycle.json").read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        lifecycle={}
+    rows=[]
+    for record in records:
+        for grant_id,result in lifecycle.items():
+            if not isinstance(result,dict):
+                continue
+            enriched=dict(result)
+            enriched.setdefault("candidate_id",result.get("lane_id") or result.get("slice_id") or grant_id)
+            row=attribute_decision_outcome(record,enriched)
+            if row:
+                rows.append(row)
+    learning=compile_decision_learning(rows)
+    payload={"schema_version":1,"attributed_outcomes":len(rows),"learning":learning,
+             "updated_at_utc":datetime.now(UTC).isoformat()}
+    atomic(state_root/"decision-learning.json",payload)
+    return payload
+
+
+def decision_learning_hint(state_root:Path,decision_class:str)->dict:
+    try:
+        payload=json.loads((state_root/"decision-learning.json").read_text(encoding="utf-8"))
+        learning=payload.get("learning",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        learning={"policies":[]}
+    return planning_hint(learning,decision_class)
+
+
 def select_execution_target(state_root:Path,activation:dict,products:list[str])->tuple[str,str]:
     """Select one READY repository deterministically; unavailable authority isolates only that lane."""
     reserved=reserved_quarantine_repositories(state_root)
@@ -557,6 +594,13 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
     except (OSError,json.JSONDecodeError,TypeError):
         previous=None
     ordered=candidates
+    learning_hint=decision_learning_hint(state_root,"portfolio:allocation")
+    # Learning remains advisory. Record it beside the deterministic selection
+    # so later evidence can prove whether following it would have helped.
+    atomic(state_root/"decision-learning-hint.json",{
+        "schema_version":1,"decision_class":"portfolio:allocation",
+        "hint":learning_hint,"recorded_at_utc":datetime.now(UTC).isoformat(),
+    })
     if previous:
         after=[item for item in candidates if item[0]>previous]
         before=[item for item in candidates if item[0]<=previous]
@@ -2435,6 +2479,7 @@ def main()->int:
         previous_repository=current_repository
         previous_builder_status=builder_status
         lifecycle_advanced=merge_watcher_advanced(state)
+        decision_learning=refresh_decision_learning(state)
         if lifecycle_advanced:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
@@ -2470,7 +2515,8 @@ def main()->int:
             "process_instance_id":process_instance_id,"burst_id":burst_id,
             "autonomous_burst_proof":burst_proof,
             "portfolio_product_advancement_proof":product_proof,
-            "async_gate_rotation":rotation_evidence})
+            "async_gate_rotation":rotation_evidence,
+            "decision_learning":decision_learning})
         # Presentation-only persona output. Never feeds control decisions.
         (state/"manager-voice.txt").write_text(
             manager_status(healthy,liveness["status"],builder_status)+"\n",encoding="utf-8")

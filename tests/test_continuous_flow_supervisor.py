@@ -1,4 +1,5 @@
 from scripts.continuous_flow_supervisor import atomic
+import scripts.continuous_flow_supervisor as supervisor
 def test_atomic_supervisor_state(tmp_path):
     path=tmp_path/"state.json"; atomic(path,{"status":"HEALTHY"})
     assert path.read_text(encoding="utf-8").endswith("\n")
@@ -1125,3 +1126,34 @@ def test_product_convergence_accepts_matching_dispatch_invocation(tmp_path):
     result=supervisor.product_convergence(state,["everward"],current_invocation_id="same")
     assert result["status"]=="CONVERGED"
     assert result["dispatch_evidence_fresh"] is True
+
+
+def test_decision_learning_hint_is_advisory(tmp_path):
+    supervisor.atomic(tmp_path / "decision-learning.json", {
+        "schema_version": 1,
+        "learning": {
+            "policies": [{
+                "decision_class": "portfolio:allocation",
+                "state": "VERIFIED_ADVISORY_EVIDENCE",
+                "verified_samples": 3,
+                "preferred_selector": "JEV_SHADOW",
+            }]
+        },
+    })
+    hint = supervisor.decision_learning_hint(tmp_path, "portfolio:allocation")
+    assert hint["preferred_selector"] == "JEV_SHADOW"
+    assert hint["authority"] == "ADVISORY_ONLY"
+    assert hint["may_change_legal_candidate_set"] is False
+    assert hint["may_bypass_gates"] is False
+
+
+def test_refresh_decision_learning_writes_empty_safe_state(tmp_path):
+    payload = supervisor.refresh_decision_learning(tmp_path)
+    assert payload["attributed_outcomes"] == 0
+    assert payload["learning"]["authority"] == "ADVISORY_ONLY"
+    assert payload["learning"]["automatic_promotion"] is False
+    assert (tmp_path / "decision-learning.json").exists()
+
+
+# Decision-learning supervisor integration uses the module namespace explicitly.
+import scripts.continuous_flow_supervisor as supervisor
