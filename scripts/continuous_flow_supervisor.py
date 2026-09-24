@@ -2453,6 +2453,8 @@ def main()->int:
     previous_repository=None
     previous_builder_status=None
     rotation_evidence=None
+    worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6)
+    atexit.register(worker_pool.shutdown,wait=False)
     while True:
         if a.yield_on_interactive_session:
             try:
@@ -2500,22 +2502,23 @@ def main()->int:
             else:
                 activation_reason=refresh_reason
         products=products if authorized else []
-        if products:
-            try:
-                rc,builder_invocation_id=run_builder(repo,workspace,state,products)
-            except RuntimeError as exc:
-                if str(exc).startswith("NO_READY_EXECUTION_SLICE:"):
-                    rc,builder_invocation_id=3,None
-                    atomic(state/"builder.json",{
-                        "status":"NO_READY_EXECUTION_SLICE",
-                        "reason":str(exc),
-                        "updated_at_utc":datetime.now(UTC).isoformat(),
-                    })
-                else:
-                    raise
+        parallel_results=harvest_parallel_builders(worker_pool,state)
+        dispatched_workers=dispatch_parallel_builders(worker_pool,repo,workspace,state,products) if products else []
+        pool_snapshot=worker_pool.snapshot()
+        # The supervisor no longer blocks on implementation. A worker holding a
+        # repository grant is active work; other product slots remain schedulable.
+        rc=0 if (dispatched_workers or pool_snapshot["running_total"] or parallel_results) else 3
+        builder_invocation_id=None
+        if parallel_results:
+            statuses=[row["status"] for row in parallel_results.values()]
+            builder_status=statuses[-1]
+            builder_ok=all(row.get("healthy",False) for row in parallel_results.values())
+        elif pool_snapshot["running_total"]:
+            builder_status="PARALLEL_WORKERS_ACTIVE"
+            builder_ok=True
         else:
-            rc,builder_invocation_id=3,None
-        builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
+            builder_status="NO_READY_EXECUTION_SLICE"
+            builder_ok=False
         current_repository=selected_builder_repository(state,builder_invocation_id)
         rotation_evidence=maybe_record_async_rotation(state,previous_repository=previous_repository,
             previous_status=previous_builder_status,current_repository=current_repository,
@@ -2544,6 +2547,9 @@ def main()->int:
             "linear_reconciliation_returncode":linear_rc,
             "evolution_authorized":authorized,"activation_reason":activation_reason,
             "authorized_products":products,
+            "parallel_worker_pool":pool_snapshot,
+            "parallel_workers_dispatched":dispatched_workers,
+            "parallel_worker_results":parallel_results,
             "productive_liveness":liveness,
             "product_convergence":convergence,
             "liveness_reacquire":liveness_reacquire,
