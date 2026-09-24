@@ -4,6 +4,7 @@ from typing import Any
 
 from .area_learning import retrieve_learning
 from .exponential_engine import capacity_decision, extract_learning_candidate
+from .decision_learning import compile_decision_learning, planning_hint
 
 
 def close_learning_loop(
@@ -33,6 +34,22 @@ def close_learning_loop(
         "reuse_before_mutation": retrieval,
         "raw_worker_payload_persisted": False,
         "authority_preserved": True,
+    }
+
+
+def decision_feedback(attributions: list[dict[str, Any]], *,
+                      next_decision_class: str,
+                      minimum_verified_samples: int = 3) -> dict[str, Any]:
+    """Compile verified outcome evidence and query it before the next decision."""
+    learning = compile_decision_learning(
+        attributions, minimum_verified_samples=minimum_verified_samples
+    )
+    return {
+        "schema_version": 1,
+        "decision_learning": learning,
+        "reuse_before_decision": planning_hint(learning, next_decision_class),
+        "authority_preserved": True,
+        "automatic_policy_mutation": False,
     }
 
 
