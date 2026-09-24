@@ -1,0 +1,42 @@
+{
+  "captured_at": "2026-09-24T07:30:20-05:00",
+  "eligible_product_projects": 3,
+  "materially_advanced_product_projects": 3,
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "state": "P1_REPAIR_CI_PENDING",
+    "repository": "jweter/knowledge-engine-core",
+    "pr": 525,
+    "head": "d60f83fc287c43fdec44c322cad0e7b41179c127",
+    "latest_failure": "TYPE_CHECK: stale test import references removed private _evidence_store_revision helper",
+    "repair_this_run": "fixed Ruff UP035/I001 import diagnostics; fresh CI reached mypy before failing on stale test import",
+    "next_gate": "repair stale test import/compatibility surface, then exact-head Quality and full PR CI"
+  },
+  "rocksmith": {
+    "state": "IMPLEMENTING",
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "branch": "feature/eof-realized-measure-position",
+    "head": "b0a660b3c71e04cbb90627234f89ffb2d3dad725",
+    "advancement": "added fail-closed EOF realized-measure occurrence resolver plus regression tests for repeat positions",
+    "next_gate": "repository-native exact-head preflight before PR"
+  },
+  "everward": {
+    "state": "IMPLEMENTING",
+    "repository": "jweter/Project-Everward",
+    "branch": "feature/passive-observation-runtime-forwarding",
+    "head": "74e75b229c7142f30fe4b8a14db77ecd08933329",
+    "advancement": "added executable source-contract guard preserving the single SimulationCore passive-observation authority and preventing wrapper layers from inventing competing passive evidence semantics",
+    "next_gate": "repository-native exact-head preflight; Product Reality remains pending for Unreal-facing science surfaces"
+  },
+  "waiting_lanes_rotated_away_from": [
+    "knowledge-engine-core PR #525 CI repair",
+    "Rocksmith local/full preflight",
+    "Everward local/full preflight and Unreal Product Reality"
+  ],
+  "reusable_capabilities_created_or_reused": [
+    "Knowledge Engine CI first-error forensic loop",
+    "Rocksmith realized-measure resolver regression fixture",
+    "Everward passive-observation authority source-contract test"
+  ],
+  "needs_jeremy": []
+}
