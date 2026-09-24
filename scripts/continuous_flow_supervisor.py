@@ -346,6 +346,99 @@ def reconcile_product_completion(state_root:Path,repo:str,exact_head:str,payload
     atomic(graph_path,payload)
     return {"status":"PRODUCT_COMPLETION_VERIFIED","product_completion":proof["product_completion"]}
 
+NO_OP_EXHAUSTION_THRESHOLD=2
+NO_OP_TERMINAL_STATUSES={"NO_OP","SELF_REPAIRED_TO_NO_OP"}
+
+def execution_slice_authority_digest(execution_slice:dict)->str:
+    """Fingerprint bounded mutation authority so materially changed direction gets a clean retry budget."""
+    material={key:execution_slice.get(key) for key in (
+        "capability_id","slice_id","repository","objective","acceptance","allowed_paths","forbidden_paths"
+    )}
+    return hashlib.sha256(json.dumps(material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+
+def repeated_noop_slice_evidence(state_root:Path,repo:str,execution_slice:dict,
+                                 threshold:int=NO_OP_EXHAUSTION_THRESHOLD)->dict:
+    """Detect repeated terminal no-op results for exactly the same bounded authority.
+
+    Two consecutive no-op outcomes mean the current graph is no longer producing
+    executable engineering. Fail closed and require a re-plan instead of
+    redispatching the same stale slice forever. A materially changed slice
+    authority has a different digest and therefore receives a fresh attempt.
+    """
+    digest=execution_slice_authority_digest(execution_slice)
+    lifecycle=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(lifecycle.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        grants={}
+    history=[]
+    for grant_id,record in grants.items():
+        if not isinstance(record,dict):
+            continue
+        authority=record.get("execution_slice")
+        if not isinstance(authority,dict):
+            continue
+        if authority.get("repository")!=repo:
+            continue
+        if execution_slice_authority_digest(authority)!=digest:
+            continue
+        history.append({
+            "grant_id":grant_id,
+            "issued_at":record.get("issued_at") or "",
+            "finished_at":record.get("finished_at") or "",
+            "state":record.get("state"),
+            "result_status":record.get("result_status"),
+        })
+    history.sort(key=lambda item:(item["issued_at"],item["finished_at"],item["grant_id"]))
+    recent=history[-threshold:] if threshold>0 else []
+    exhausted=(len(recent)>=threshold and all(
+        item.get("state")=="COMPLETED" and item.get("result_status") in NO_OP_TERMINAL_STATUSES
+        for item in recent
+    ))
+    return {
+        "exhausted":exhausted,
+        "threshold":threshold,
+        "authority_digest":digest,
+        "attempt_count":len(history),
+        "recent_attempts":recent,
+    }
+
+def record_exhausted_slice_direction(state_root:Path,repo:str,exact_head:str,
+                                     execution_slice:dict,evidence:dict)->None:
+    """Persist machine-actionable re-plan evidence without converting no-op into completion."""
+    issue={
+        "code":"REPEATED_NO_OP_SLICE_EXHAUSTED",
+        "capability_id":execution_slice.get("capability_id"),
+        "slice_id":execution_slice.get("slice_id"),
+        "authority_digest":evidence.get("authority_digest"),
+        "threshold":evidence.get("threshold"),
+        "recent_attempts":evidence.get("recent_attempts",[]),
+        "next_action":"RECOMPILE_CAPABILITY_GRAPH_FROM_CURRENT_REPOSITORY_AUTHORITY",
+    }
+    request={
+        "schema_version":1,
+        "status":"DIRECTION_REQUIRED",
+        "repository":repo,
+        "exact_head":exact_head,
+        "reason":"REPEATED_NO_OP_SLICE_EXHAUSTED",
+        "issues":[issue],
+        "requested_at_utc":datetime.now(UTC).isoformat(),
+    }
+    direction_dir=state_root/"direction-requests"
+    direction_dir.mkdir(parents=True,exist_ok=True)
+    atomic(direction_dir/f"{repo.replace('/','__')}.json",request)
+    exhausted_dir=state_root/"slice-exhaustion-evidence"
+    exhausted_dir.mkdir(parents=True,exist_ok=True)
+    atomic(exhausted_dir/f"{repo.replace('/','__')}__{execution_slice.get('slice_id','unknown')}.json",{
+        "schema_version":1,
+        "repository":repo,
+        "exact_head":exact_head,
+        "capability_id":execution_slice.get("capability_id"),
+        "slice_id":execution_slice.get("slice_id"),
+        **evidence,
+        "recorded_at_utc":datetime.now(UTC).isoformat(),
+    })
+
 def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
     """Derive bounded mutation authority from the repository's machine-readable capability graph."""
     path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
@@ -384,8 +477,15 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str)->dict:
         direction_dir.mkdir(parents=True,exist_ok=True)
         atomic(direction_dir/f"{repo.replace('/','__')}.json",request)
         raise RuntimeError(f"EXECUTION_SLICE_NOT_READY:{repo}:{derived.get('status','UNKNOWN')}")
+    execution_slice=derived["slice"]
+    exhaustion=repeated_noop_slice_evidence(state_root,repo,execution_slice)
+    if exhaustion["exhausted"]:
+        record_exhausted_slice_direction(state_root,repo,exact_head,execution_slice,exhaustion)
+        raise RuntimeError(
+            f"EXECUTION_SLICE_EXHAUSTED:{repo}:{execution_slice.get('slice_id','UNKNOWN')}"
+        )
     request_path.unlink(missing_ok=True)
-    return derived["slice"]
+    return execution_slice
 
 def direction_request_outbox(state_root:Path)->list[dict]:
     """Render unresolved machine direction requests into connector-neutral governance messages."""
