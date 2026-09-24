@@ -18,6 +18,7 @@
     "docs/project-status.yaml",
     "docs/LOCAL_AGENT_TOOLING.md",
     "engineering/foreman.json",
+    "engineering/development-team-runtime.json",
     "docs/STEWARD.md",
     "engineering/steward.json",
     "engineering/specialist-lanes.json",
@@ -70,7 +71,8 @@
     "process_experiments_require_measured_baseline_post_change_evidence_and_preserved_safety_invariants",
     "machine_health_throttling_never_becomes_product_failure",
     "unknown_machine_telemetry_never_manufactures_health",
-    "automated_cleanup_is_limited_to_actor_owned_transient_artifacts"
+    "automated_cleanup_is_limited_to_actor_owned_transient_artifacts",
+    "development_team_runtime_uses_ephemeral_leases_independent_qa_and_never_delegates_merge_authority"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -672,6 +674,16 @@
     "unknown_telemetry_rule": "preserve as evidence gap; never manufacture healthy state",
     "cleanup_authority": "actor-owned logs/jsonl/stale tmp only",
     "daily_reboot_boundary": "daily LaptopActor hygiene plus optional pre-reboot wrapper; existing 02:00 reboot is preserved when Task Scheduler mutation is denied",
+    "merge_authority": false
+  },
+  "development_team_runtime": {
+    "module": "project_orchestrator.team_runtime",
+    "policy": "engineering/development-team-runtime.json",
+    "controller": "Foreman",
+    "initial_implementation_worker_cap_per_product": 2,
+    "independent_qa": true,
+    "ownership_model": "ephemeral_projection_of_live_GitHub_evidence",
+    "adaptive_concurrency": "measured_advisory",
     "merge_authority": false
   }
 }
