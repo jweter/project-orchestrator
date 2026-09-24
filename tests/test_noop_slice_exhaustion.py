@@ -15,6 +15,7 @@ def _write_graph(root, *, objective="do bounded work"):
                 "capability": "bounded capability",
                 "state": "PLANNED",
                 "depends_on": [],
+                "completion_evidence": ["merged verified implementation"],
                 "slices": [
                     {
                         "id": "slice-v1",
