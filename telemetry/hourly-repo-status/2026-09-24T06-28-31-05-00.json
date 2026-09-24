@@ -1,0 +1,12 @@
+{
+  "timestamp_local": "2026-09-24T06:28:31-05:00",
+  "mode": "EXECUTION_BURST",
+  "eligible_product_projects": ["Knowledge Engine", "Rocksmith", "Everward"],
+  "materially_advanced_product_projects": ["Knowledge Engine"],
+  "product_advancement_rate": "1/3",
+  "knowledge_engine": {"state":"CI_PENDING","pr":525,"branch":"repair/evidence-store-revision-ci","head":"ad23cf12d704a81adfb474434a310d85d8b615ef"},
+  "rocksmith": {"state":"MERGED_PREVIOUS_LANE","main":"c2e67de1a9df59c4d155a43b1c5e022ab9bbe424","latest_merge":728},
+  "everward": {"state":"MERGED_PREVIOUS_LANE","main":"33537ff0812700bcda1823eae852104118e24843","latest_merge":317},
+  "blockers": ["Knowledge Engine exact-head PR CI pending", "Rocksmith and Everward next substantial slices not completed in this burst"],
+  "product_reality_debt": ["Rocksmith subjective/private playback validation remains separate", "Everward Unreal Product Reality remains separate"]
+}
