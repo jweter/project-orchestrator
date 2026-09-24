@@ -1,0 +1,36 @@
+{
+  "captured_at": "2026-09-24T10:30:18-05:00",
+  "eligible_product_projects": ["knowledge-engine", "rocksmith", "everward"],
+  "materially_advanced_product_projects": ["knowledge-engine", "rocksmith", "everward"],
+  "product_advancement_rate": "3/3",
+  "knowledge_engine": {
+    "repository": "jweter/knowledge-engine-core",
+    "pr": 525,
+    "head": "dce105187b1c808a5719956beb4d45f91b460e77",
+    "state": "CI_PENDING",
+    "repair": "replaced stale private _evidence_store_revision test dependency with public evidence_store_revision helper",
+    "failure_class": "TYPE_CHECK",
+    "next_gate": "fresh exact-head Quality/Golden/Execution Director completion",
+    "security_checks": "Bandit, TruffleHog, pip-audit green at exact head"
+  },
+  "rocksmith": {
+    "repository": "jweter/rocksmith-cdlc-generator",
+    "branch": "feature/eof-realized-marker-bridge",
+    "head": "6dc30437e5ac0f94101d6e18ffb45eee35bf9757",
+    "state": "PREFLIGHT_UNVERIFIED",
+    "advancement": "composed audited EOF repeat/navigation unfolding with realized occurrence identity and regression protection",
+    "next_gate": "exact-head repository preflight before PR"
+  },
+  "everward": {
+    "repository": "jweter/Project-Everward",
+    "pr": 318,
+    "head": "74e75b229c7142f30fe4b8a14db77ecd08933329",
+    "state": "GREEN_NOT_MERGED",
+    "ci": "Foundation, Golden, Control Plane, Execution Director, TruffleHog green",
+    "merge_attempt": "blocked by connector safety layer",
+    "product_reality": "Unreal/visual Product Reality remains separate"
+  },
+  "waiting_lanes_rotated_away_from": 2,
+  "reusable_capabilities_created_or_reused": 2,
+  "needs_jeremy": false
+}
