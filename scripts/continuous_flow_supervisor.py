@@ -16,6 +16,7 @@ from scripts.blocker_buddy import diagnose as diagnose_blocker
 from project_orchestrator.decision_outcome import attribute as attribute_decision_outcome
 from project_orchestrator.decision_learning import compile_decision_learning, planning_hint
 from project_orchestrator.jev_evidence import load_jsonl
+from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -947,6 +948,49 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     finalize_unclaimed_grant(grant_path,p.returncode)
     return p.returncode,invocation_id
+
+def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str)->tuple[int,str|None]:
+    """Run one product-scoped builder using the existing grant/lease authority."""
+    return run_builder(repo_root,workspace_root,state_root,[product])
+
+
+def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
+    """Persist completed worker outcomes without blocking other product lanes."""
+    completed=pool.harvest()
+    rows={}
+    for worker_id,result in completed.items():
+        if isinstance(result,BaseException):
+            rows[worker_id]={"status":"WORKER_EXCEPTION","error_class":type(result).__name__}
+        else:
+            rc,invocation_id=result
+            ok,status=builder_health(state_root,rc,invocation_id)
+            rows[worker_id]={"status":status,"returncode":rc,"healthy":ok,
+                             "invocation_id":invocation_id}
+    if rows:
+        atomic(state_root/"parallel-worker-results.json",{
+            "schema_version":1,"completed":rows,
+            "recorded_at_utc":datetime.now(UTC).isoformat(),
+        })
+    return rows
+
+
+def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
+                               state_root:Path,products:list[str])->list[str]:
+    """Keep product workers saturated; repository grants remain the mutation authority."""
+    dispatched=[]
+    for slot in pool.available_slots(products):
+        try:
+            worker_id=pool.submit(slot,run_builder_for_product,
+                                  repo_root,workspace_root,state_root,slot.product)
+        except RuntimeError:
+            continue
+        dispatched.append(worker_id)
+    atomic(state_root/"parallel-worker-pool.json",{
+        "schema_version":1,"pool":pool.snapshot(),"dispatched":dispatched,
+        "recorded_at_utc":datetime.now(UTC).isoformat(),
+    })
+    return dispatched
+
 
 CLAIM_LEASE_SECONDS=1800
 UNKNOWN_LIVENESS_MAX_CHECKS=5
@@ -2409,6 +2453,8 @@ def main()->int:
     previous_repository=None
     previous_builder_status=None
     rotation_evidence=None
+    worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6)
+    atexit.register(worker_pool.shutdown,wait=False)
     while True:
         if a.yield_on_interactive_session:
             try:
@@ -2456,22 +2502,23 @@ def main()->int:
             else:
                 activation_reason=refresh_reason
         products=products if authorized else []
-        if products:
-            try:
-                rc,builder_invocation_id=run_builder(repo,workspace,state,products)
-            except RuntimeError as exc:
-                if str(exc).startswith("NO_READY_EXECUTION_SLICE:"):
-                    rc,builder_invocation_id=3,None
-                    atomic(state/"builder.json",{
-                        "status":"NO_READY_EXECUTION_SLICE",
-                        "reason":str(exc),
-                        "updated_at_utc":datetime.now(UTC).isoformat(),
-                    })
-                else:
-                    raise
+        parallel_results=harvest_parallel_builders(worker_pool,state)
+        dispatched_workers=dispatch_parallel_builders(worker_pool,repo,workspace,state,products) if products else []
+        pool_snapshot=worker_pool.snapshot()
+        # The supervisor no longer blocks on implementation. A worker holding a
+        # repository grant is active work; other product slots remain schedulable.
+        rc=0 if (dispatched_workers or pool_snapshot["running_total"] or parallel_results) else 3
+        builder_invocation_id=None
+        if parallel_results:
+            statuses=[row["status"] for row in parallel_results.values()]
+            builder_status=statuses[-1]
+            builder_ok=all(row.get("healthy",False) for row in parallel_results.values())
+        elif pool_snapshot["running_total"]:
+            builder_status="PARALLEL_WORKERS_ACTIVE"
+            builder_ok=True
         else:
-            rc,builder_invocation_id=3,None
-        builder_ok,builder_status=builder_health(state,rc,builder_invocation_id)
+            builder_status="NO_READY_EXECUTION_SLICE"
+            builder_ok=False
         current_repository=selected_builder_repository(state,builder_invocation_id)
         rotation_evidence=maybe_record_async_rotation(state,previous_repository=previous_repository,
             previous_status=previous_builder_status,current_repository=current_repository,
@@ -2500,6 +2547,9 @@ def main()->int:
             "linear_reconciliation_returncode":linear_rc,
             "evolution_authorized":authorized,"activation_reason":activation_reason,
             "authorized_products":products,
+            "parallel_worker_pool":pool_snapshot,
+            "parallel_workers_dispatched":dispatched_workers,
+            "parallel_worker_results":parallel_results,
             "productive_liveness":liveness,
             "product_convergence":convergence,
             "liveness_reacquire":liveness_reacquire,
