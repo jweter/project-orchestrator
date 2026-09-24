@@ -283,3 +283,35 @@ def test_foreman_records_jev_shadow_without_changing_authoritative_selection():
     assert shadow["decision"]["execution_authority"] is False
     assert len(shadow["deterministic_legal_candidate_ids"]) == 2
     assert "request" in shadow
+
+
+def test_jev_v2_harvests_cross_repo_allocation():
+    plan = build_foreman_plan(inventory(), snapshot(), candidates())
+    harvest = plan["jev_decision_harvest"]
+    assert "portfolio:allocation" in harvest
+    assert harvest["portfolio:allocation"]["decision"]["state"] == "SHADOW_PENDING"
+    assert len(harvest["portfolio:allocation"]["deterministic_legal_candidate_ids"]) == 3
+    assert plan["jev_decision_harvest_count"] == 1
+
+
+def test_jev_v2_harvests_next_slice_and_repair_selection():
+    work = candidates()
+    work.append({
+        "project_id": "everward", "repository": "jweter/Project-Everward",
+        "base_sha": "ever-head", "branch": "feature/ever-second",
+        "title": "Second legal Everward slice", "priority": 2,
+        "paths": ["Source/Second.cpp"],
+    })
+    records = [
+        {"project_id": "rocksmith", "repository": "jweter/rocksmith-cdlc-generator",
+         "state": "QUARANTINED", "actionable": True, "grant_id": "repair-a"},
+        {"project_id": "rocksmith", "repository": "jweter/rocksmith-cdlc-generator",
+         "state": "QUARANTINED", "actionable": True, "grant_id": "repair-b"},
+    ]
+    plan = build_foreman_plan(inventory(), snapshot(), work, execution_records=records)
+    harvest = plan["jev_decision_harvest"]
+    assert "everward:next-slice" in harvest
+    assert "rocksmith:repair-selection" in harvest
+    assert "portfolio:allocation" in harvest
+    assert plan["jev_decision_harvest_count"] == 3
+    assert all(v["decision"]["execution_authority"] is False for v in harvest.values())

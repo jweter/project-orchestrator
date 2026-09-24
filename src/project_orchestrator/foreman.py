@@ -154,6 +154,51 @@ def _live_ownership(
     return result
 
 
+def _shadow_candidate(lane: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "candidate_id": lane["lane_id"], "project_id": lane["project_id"],
+        "repository": lane["repository"], "title": lane["title"],
+        "priority": lane["priority"], "eligibility_state": "ELIGIBLE",
+        "resource_class": lane["resource_class"],
+        "continuation_kind": "BOUNDED_EXECUTION",
+    }
+
+
+def _harvest_jev_decisions(*, shadow_candidates: dict[str, list[dict[str, Any]]],
+                           candidate_dispatch_queue: list[dict[str, Any]],
+                           compacted: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Harvest bounded multi-option choices for shadow evaluation only."""
+    harvested: dict[str, dict[str, Any]] = {}
+    for project in PROJECT_IDS:
+        options = shadow_candidates[project]
+        if len(options) >= 2:
+            harvested[f"{project}:next-slice"] = evaluate_shadow(
+                state={"decision_id": f"foreman:{project}:next-slice",
+                       "project_id": project, "current_gate": "NEXT_SLICE_SELECTION"},
+                candidates=options, live=False)
+        actionable = compacted["projects"][project]["quarantined_actionable"]
+        if len(actionable) >= 2:
+            repairs = [{
+                "candidate_id": str(x.get("grant_id") or x.get("task_key") or f"{project}:repair:{i}"),
+                "project_id": project, "repository": str(x.get("repository") or "unknown"),
+                "title": f"Repair actionable quarantine {x.get('grant_id') or x.get('task_key') or i}",
+                "priority": 1, "eligibility_state": "ELIGIBLE",
+                "continuation_kind": "REPAIR_EXISTING",
+            } for i, x in enumerate(actionable)]
+            harvested[f"{project}:repair-selection"] = evaluate_shadow(
+                state={"decision_id": f"foreman:{project}:repair-selection",
+                       "project_id": project, "current_gate": "REPAIR_SELECTION",
+                       "worker_result_class": "QUARANTINED_ACTIONABLE"},
+                candidates=repairs, live=False)
+    portfolio = [_shadow_candidate(lane) for lane in candidate_dispatch_queue]
+    if len(portfolio) >= 2:
+        harvested["portfolio:allocation"] = evaluate_shadow(
+            state={"decision_id": "foreman:portfolio:allocation",
+                   "project_id": "portfolio", "current_gate": "CROSS_REPO_ALLOCATION"},
+            candidates=portfolio, live=False)
+    return harvested
+
+
 def build_foreman_plan(
     inventory: dict[str, Any],
     live_snapshot: dict[str, Any],
@@ -184,18 +229,7 @@ def build_foreman_plan(
         if not isolated or isolated[0]["state"] != "RESERVED":
             continue
         lane = isolated[0]
-        shadow_candidates[project].append(
-            {
-                "candidate_id": lane["lane_id"],
-                "project_id": project,
-                "repository": lane["repository"],
-                "title": lane["title"],
-                "priority": lane["priority"],
-                "eligibility_state": "ELIGIBLE",
-                "resource_class": lane["resource_class"],
-                "continuation_kind": "BOUNDED_EXECUTION",
-            }
-        )
+        shadow_candidates[project].append(_shadow_candidate(lane))
     jev_shadow = {
         project: evaluate_shadow(
             state={
@@ -286,6 +320,11 @@ def build_foreman_plan(
         "PRODUCT_REALITY_VERIFIED",
     }
     candidate_dispatch_queue = list(dispatch_queue)
+    jev_decision_harvest = _harvest_jev_decisions(
+        shadow_candidates=shadow_candidates,
+        candidate_dispatch_queue=candidate_dispatch_queue,
+        compacted=compacted,
+    )
     if machine_health is None:
         steward = {
             "status": "NOT_EVALUATED",
@@ -334,6 +373,8 @@ def build_foreman_plan(
         "waiting_lanes_rotated_away_from": sorted(set(rotated_waits)),
         "execution_compaction": compacted,
         "jev_shadow": jev_shadow,
+        "jev_decision_harvest": jev_decision_harvest,
+        "jev_decision_harvest_count": len(jev_decision_harvest),
         "immediate_continuation": immediate,
         "product_advancement_rate": "UNKNOWN_UNTIL_VERIFIED_MUTATION",
         "safety_boundaries": [
