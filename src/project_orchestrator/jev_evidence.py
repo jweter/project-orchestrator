@@ -15,7 +15,8 @@ def _now() -> str:
 
 
 def decision_record(*, run_id: str, project_id: str, deterministic_choice: str | None,
-                    shadow: dict[str, Any]) -> dict[str, Any]:
+                    shadow: dict[str, Any], decision_class: str = "candidate-ordering",
+                    decision_id: str | None = None) -> dict[str, Any]:
     decision = shadow.get("decision", {})
     legal = shadow.get("deterministic_legal_candidate_ids", [])
     if not isinstance(legal, list) or any(not isinstance(x, str) for x in legal):
@@ -29,6 +30,8 @@ def decision_record(*, run_id: str, project_id: str, deterministic_choice: str |
         "schema_version": SCHEMA_VERSION,
         "recorded_at_utc": _now(),
         "run_id": run_id,
+        "decision_id": decision_id or f"{run_id}:{decision_class}:{project_id}",
+        "decision_class": decision_class,
         "project_id": project_id,
         "legal_candidate_ids": list(legal),
         "deterministic_choice": deterministic_choice,
