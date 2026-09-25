@@ -4,6 +4,7 @@ import argparse, ctypes, hashlib, json, os, shutil, socket, subprocess, sys, thr
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from project_orchestrator.execution_runtime import DEFAULT_EXECUTION_RUNTIMES, RuntimeRequest
 try:
     from scripts.lane_leases import open_pr_paths
     from scripts.autonomous_contract_guard import contract_guard_failure
@@ -43,7 +44,15 @@ MAX_AUTONOMOUS_DELETIONS=80
 MAX_AUTONOMOUS_CHANGED_LINES=400
 
 def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
-    return subprocess.run(argv,cwd=cwd,text=True,capture_output=True,check=False,**kwargs)
+    """Execute through Foundry's runtime boundary while preserving legacy result shape."""
+    runtime_id=kwargs.pop("runtime_id","native-windows")
+    env=kwargs.pop("env",None)
+    timeout=kwargs.pop("timeout",None)
+    if kwargs:
+        raise TypeError(f"unsupported runtime options: {sorted(kwargs)}")
+    result=DEFAULT_EXECUTION_RUNTIMES.require(runtime_id).execute(
+        RuntimeRequest(tuple(argv),cwd,env,timeout))
+    return subprocess.CompletedProcess(argv,result.returncode,result.stdout,result.stderr)
 
 def gh_json(args:list[str])->Any:
     p=subprocess.run(["gh",*args],text=True,capture_output=True,check=False)
