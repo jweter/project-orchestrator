@@ -76,6 +76,31 @@ class ExecutionRuntimeRegistry:
         except KeyError as exc:
             raise RuntimeError(f"EXECUTION_RUNTIME_UNAVAILABLE:{runtime_id}") from exc
 
+@dataclass(frozen=True)
+class RuntimeHealth:
+    runtime_id: str
+    status: str
+    running: int = 0
+    capacity: int = 1
+
+    @property
+    def available(self)->bool:
+        return self.status=="HEALTHY" and self.running < self.capacity
+
+def runtime_health(runtime_id:str,running:int=0,capacity:int=1,
+                   registry:ExecutionRuntimeRegistry|None=None)->RuntimeHealth:
+    registry=registry or DEFAULT_EXECUTION_RUNTIMES
+    try:
+        runtime=registry.require(runtime_id)
+        attest=getattr(runtime,"attest",None)
+        if callable(attest):
+            attest()
+    except Exception:
+        return RuntimeHealth(runtime_id,"UNAVAILABLE",running,capacity)
+    if running >= capacity:
+        return RuntimeHealth(runtime_id,"SATURATED",running,capacity)
+    return RuntimeHealth(runtime_id,"HEALTHY",running,capacity)
+
 def require_runtime_capabilities(runtime_id:str,requirements:Sequence[str],
                                  registry:ExecutionRuntimeRegistry|None=None):
     registry=registry or DEFAULT_EXECUTION_RUNTIMES
