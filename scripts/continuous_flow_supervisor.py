@@ -1133,17 +1133,27 @@ def resource_leases_for_task(task:dict,runtime_id:str)->tuple[str,...]:
     if "unreal" in raw: resources.append("resource:unreal")
     return tuple(resources)
 
-def durable_runner_occupancy(state_root:Path)->dict[str,int]:
-    """Reconstruct runner capacity from durable live grant ownership after restart."""
+def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,int]:
+    """Reconstruct capacity from durable ownership, excluding provably stale claims."""
     path=state_root/"hands-off-grant-lifecycle.json"
     try:
         grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
     running:dict[str,int]={}
+    current=now or datetime.now(UTC)
     for record in grants.values():
         if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","RUNNING"}:
             continue
+        if record.get("state") in {"CLAIMED","RUNNING"}:
+            stamp=record.get("last_heartbeat_at") or record.get("claimed_at")
+            try:
+                heartbeat=datetime.fromisoformat(stamp)
+                if heartbeat.tzinfo is None: heartbeat=heartbeat.replace(tzinfo=UTC)
+            except (TypeError,ValueError):
+                continue
+            if (current-heartbeat).total_seconds()>CLAIM_LEASE_SECONDS and worker_liveness(record.get("worker"))=="DEAD":
+                continue
         runner_id=record.get("runner_id") or (record.get("execution_slice") or {}).get("runner_id")
         if isinstance(runner_id,str) and runner_id:
             running[runner_id]=running.get(runner_id,0)+1
