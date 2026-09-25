@@ -17,6 +17,13 @@ def test_ready_task_batch_allows_two_disjoint_tasks_same_repo(tmp_path):
     (d/"jweter__repo.json").write_text(json.dumps(graph()))
     batch=supervisor.ready_task_batch(tmp_path,activation,"rocksmith",4)
     assert [x[2]["slice_id"] for x in batch]==["A","B"]
+    ledger=json.loads((tmp_path/"planner-decisions"/"rocksmith.json").read_text())
+    assert ledger["candidate_count"]==3
+    assert ledger["selected_count"]==2
+    selected={row["slice_id"] for row in ledger["candidates"] if row["selected"]}
+    rejected={row["slice_id"] for row in ledger["candidates"] if not row["selected"]}
+    assert selected=={"A","B"}
+    assert rejected=={"C"}
 
 def test_dispatch_assigns_distinct_tasks_to_same_repo_workers(tmp_path,monkeypatch):
     activation={"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}

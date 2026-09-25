@@ -779,6 +779,18 @@ def task_outcome_priority(state_root:Path,task:dict)->tuple[float,int,str]:
     exploration=0.20*max(0.0,(4.0-samples)/4.0)
     return (-(outcome+exploration),int(samples),task_class)
 
+def persist_planner_decision(state_root:Path,product:str,candidates:list,selected:list)->None:
+    rows=[]
+    selected_ids={(repo,task.get("slice_id")) for repo,_,task in selected}
+    for repo,head,task in candidates:
+        priority=task_outcome_priority(state_root,task)
+        rows.append({"repository":repo,"head_sha":head,"slice_id":task.get("slice_id"),
+                     "task_class":priority[2],"priority_score":priority[0],"samples":priority[1],
+                     "selected":(repo,task.get("slice_id")) in selected_ids})
+    atomic(state_root/"planner-decisions"/f"{product}.json",
+           {"schema_version":1,"product":product,"recorded_at":datetime.now(UTC).isoformat(),
+            "candidate_count":len(rows),"selected_count":len(selected),"candidates":rows})
+
 def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->list[tuple[str,str,dict]]:
     """Plan a bounded conflict-free task batch from exact-head capability graphs."""
     candidates=[]
@@ -806,6 +818,7 @@ def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->lis
         selected.append(candidate)
         if len(selected)>=limit:
             break
+    persist_planner_decision(state_root,product,candidates,selected)
     return selected
 
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
