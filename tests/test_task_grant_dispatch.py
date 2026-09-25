@@ -70,3 +70,24 @@ def test_planned_grant_rejects_stale_exact_head(tmp_path,monkeypatch):
         assert str(exc)=="PLANNED_SLICE_HEAD_STALE"
     else:
         raise AssertionError("stale planned task must fail closed")
+
+def test_grant_persists_runner_and_runtime_as_execution_authority(tmp_path,monkeypatch):
+    repo_root=tmp_path/"control"; (repo_root/"engineering").mkdir(parents=True)
+    (repo_root/"engineering"/"hands-off-evolution.json").write_text(json.dumps({"products":{"rocksmith":["jweter/repo"]}}))
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-activation.json").write_text(json.dumps({"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}))
+    lock={"path":state/"fake.lock","worker":{"host":"h","pid":1},"lock_id":"lock"}
+    monkeypatch.setattr(supervisor,"acquire_grant_issue_lock",lambda *_:lock)
+    monkeypatch.setattr(supervisor,"release_grant_issue_lock",lambda *_:None)
+    task={"capability_id":"C","slice_id":"A","repository":"jweter/repo","exact_head":"abc",
+          "objective":"A","acceptance":["pass"],"allowed_paths":["src/a/"],
+          "runner_id":"aider-ollama","execution_runtime":"laptop-actor"}
+    path=supervisor.write_execution_grant(repo_root,state,["rocksmith"],("jweter/repo","abc",task))
+    grant=json.loads(path.read_text())
+    assert grant["schema_version"]==5
+    authority=grant["execution_slice"]
+    assert authority["runner_id"]=="aider-ollama"
+    assert authority["execution_runtime"]=="laptop-actor"
+    lifecycle=json.loads((state/"hands-off-grant-lifecycle.json").read_text())["grants"][grant["grant_id"]]
+    assert lifecycle["runner_id"]=="aider-ollama"
+    assert lifecycle["execution_runtime"]=="laptop-actor"

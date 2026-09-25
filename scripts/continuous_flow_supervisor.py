@@ -905,7 +905,10 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
         if conflict:
             raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
         grant_id=str(uuid.uuid4())
-        grant={"schema_version":4,
+        runner_id=execution_slice.get("runner_id") or select_task_runner(execution_slice)
+        runtime_id=execution_slice.get("execution_runtime") or runtime_for_task(execution_slice)
+        execution_slice={**execution_slice,"runner_id":runner_id,"execution_runtime":runtime_id}
+        grant={"schema_version":5,
                "grant_id":grant_id,
                "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
                "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
@@ -943,6 +946,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
                           "authorized_repositories":authorized_repositories,"expected_sha":exact_head,
                           "capability_id":execution_slice["capability_id"],
                           "slice_id":execution_slice["slice_id"],
+                          "runner_id":runner_id,"execution_runtime":runtime_id,
                           "execution_slice":execution_slice,
                               "issuer":lock["worker"]}
             atomic(lifecycle,payload)
