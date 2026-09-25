@@ -19,6 +19,10 @@ from project_orchestrator.jev_evidence import load_jsonl
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
+from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
+
+RUNTIME_LEASES=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,
+    Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json")
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -1124,14 +1128,24 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             continue
         assigned[slot.product]=index+1
         try:
-            worker_id=pool.submit(slot,run_builder_for_product,
+            RUNTIME_LEASES.acquire(runtime_id,slot.worker_id)
+        except RuntimeError:
+            continue
+        def leased_builder(*args,_worker_id=slot.worker_id,**kwargs):
+            try:
+                return run_builder_for_product(*args,**kwargs)
+            finally:
+                RUNTIME_LEASES.release(_worker_id)
+        try:
+            worker_id=pool.submit(slot,leased_builder,
                                   repo_root,workspace_root,state_root,slot.product,slot.worker_id,
                                   planned_target)
         except RuntimeError:
+            RUNTIME_LEASES.release(slot.worker_id)
             continue
         dispatched.append(worker_id)
     atomic(state_root/"parallel-worker-pool.json",{
-        "schema_version":1,"pool":pool.snapshot(),"dispatched":dispatched,
+        "schema_version":2,"pool":pool.snapshot(),"runtime_leases":RUNTIME_LEASES.snapshot(),"dispatched":dispatched,
         "recorded_at_utc":datetime.now(UTC).isoformat(),
     })
     return dispatched
