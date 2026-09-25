@@ -66,7 +66,7 @@ def default_runner_registry(*,probe_external:bool=True)->RunnerRegistry:
     return RunnerRegistry([
         RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30),
         RunnerManifest("codex",frozenset({"code","review"}),2,10,False),
-        RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),2,20,claude_enabled),
+        RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20,claude_enabled),
     ])
 
 DEFAULT_RUNNERS=default_runner_registry()

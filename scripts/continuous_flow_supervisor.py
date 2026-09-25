@@ -1147,6 +1147,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
     }
     assigned={product:0 for product in products}
     runner_running:dict[str,int]={}
+    legacy_lane_cursor=0
     for slot in pool.available_slots(products):
         batch=task_batches.get(slot.product,[])
         index=assigned.get(slot.product,0)
@@ -1156,8 +1157,18 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         try:
             runner_task=planned_target[2]
             if "runner_requirements" not in runner_task:
-                runner_task={**runner_task,"runner_requirements":["code","local","windows"]}
-            runner_id=select_task_runner(runner_task,running=runner_running)
+                legacy_lanes=("aider-ollama","claude-code")
+                runner_id=legacy_lanes[legacy_lane_cursor % len(legacy_lanes)]
+                try:
+                    manifest=next(item for item in DEFAULT_RUNNERS.eligible(runner_requirements_for_task(runner_task),runner_running) if item.runner_id==runner_id)
+                except StopIteration:
+                    runner_id=select_task_runner(runner_task,running=runner_running)
+                else:
+                    if not manifest.enabled or runner_running.get(runner_id,0)>=manifest.max_concurrency:
+                        runner_id=select_task_runner(runner_task,running=runner_running)
+                legacy_lane_cursor+=1
+            else:
+                runner_id=select_task_runner(runner_task,running=runner_running)
             runtime_id=runtime_for_task(planned_target[2])
         except (RuntimeError,ValueError):
             continue
