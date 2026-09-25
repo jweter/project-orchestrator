@@ -21,7 +21,9 @@ def test_write_execution_grant_reserves_issued_before_return(tmp_path,monkeypatc
     grant=json.loads(path.read_text())
     record=json.loads((state/"hands-off-grant-lifecycle.json").read_text())["grants"][grant["grant_id"]]
     assert record["state"]=="ISSUED"
-    assert record["execution_slice"]==SLICE
+    assert {k:record["execution_slice"][k] for k in SLICE}==SLICE
+    assert record["execution_slice"]["runner_id"]=="aider-ollama"
+    assert record["execution_slice"]["execution_runtime"]=="native-windows"
 
 def test_issued_reservation_transitions_to_claimed(tmp_path):
     grant_dir=tmp_path/"hands-off-execution-grants"; grant_dir.mkdir()

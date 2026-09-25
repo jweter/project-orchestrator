@@ -29,3 +29,14 @@ def test_verified_slice_advances_to_next_slice():
     ]),repository="o/r",exact_head="def")
     assert r["status"]=="READY"
     assert r["slice"]["slice_id"]=="S2"
+
+
+def test_derives_all_dependency_ready_slices_for_parallel_scheduler():
+    from scripts.capability_slice_contract import derive_slices
+    r=derive_slices(payload([
+        {"id":"S1","objective":"Parser","acceptance":["green"],"state":"PLANNED","allowed_paths":["src/parser/"]},
+        {"id":"S2","objective":"UI","acceptance":["green"],"state":"PLANNED","allowed_paths":["src/ui/"]},
+        {"id":"S3","objective":"Integration","acceptance":["green"],"state":"PLANNED","depends_on":["S1","S2"],"allowed_paths":["tests/integration/"]},
+    ]),repository="o/r",exact_head="abc")
+    assert r["status"]=="READY"
+    assert [s["slice_id"] for s in r["slices"]]==["S1","S2"]

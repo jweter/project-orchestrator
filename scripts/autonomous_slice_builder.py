@@ -4,6 +4,7 @@ import argparse, ctypes, hashlib, json, os, shutil, socket, subprocess, sys, thr
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from project_orchestrator.execution_runtime import DEFAULT_EXECUTION_RUNTIMES, RuntimeRequest
 try:
     from scripts.lane_leases import open_pr_paths
     from scripts.autonomous_contract_guard import contract_guard_failure
@@ -43,7 +44,15 @@ MAX_AUTONOMOUS_DELETIONS=80
 MAX_AUTONOMOUS_CHANGED_LINES=400
 
 def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
-    return subprocess.run(argv,cwd=cwd,text=True,capture_output=True,check=False,**kwargs)
+    """Execute through Foundry's runtime boundary while preserving legacy result shape."""
+    runtime_id=kwargs.pop("runtime_id","native-windows")
+    env=kwargs.pop("env",None)
+    timeout=kwargs.pop("timeout",None)
+    if kwargs:
+        raise TypeError(f"unsupported runtime options: {sorted(kwargs)}")
+    result=DEFAULT_EXECUTION_RUNTIMES.require(runtime_id).execute(
+        RuntimeRequest(tuple(argv),cwd,env,timeout))
+    return subprocess.CompletedProcess(argv,result.returncode,result.stdout,result.stderr)
 
 def gh_json(args:list[str])->Any:
     p=subprocess.run(["gh",*args],text=True,capture_output=True,check=False)
@@ -145,9 +154,20 @@ def clean_generated_workspace_artifacts(ws:Path)->None:
         else:
             evidence.unlink()
 
-def ensure_workspace(repo:str,root:Path)->Path:
+def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
     name=repo.split("/",1)[1]
-    ws=root/name
+    canonical=root/name
+    ws=canonical
+    if worker_id and canonical.exists():
+        isolated=root/".worker-worktrees"/worker_id/name
+        isolated.parent.mkdir(parents=True,exist_ok=True)
+        if not isolated.exists():
+            # A detached worktree gives each worker an independent index and
+            # working tree while sharing Git objects with the canonical clone.
+            proc=run(["git","worktree","add","--detach",str(isolated),"origin/main"],canonical)
+            if proc.returncode:
+                raise RuntimeError("worker worktree creation failed")
+        ws=isolated
     if not ws.exists():
         root.mkdir(parents=True,exist_ok=True)
         proc=subprocess.run(["gh","repo","clone",repo,str(ws),"--","--filter=blob:none"],
@@ -762,7 +782,7 @@ def atomic_json(path:Path,payload:dict[str,Any])->None:
     finally:
         tmp.unlink(missing_ok=True)
 def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
-               execution_grant:Path|None=None)->dict[str,Any]:
+               execution_grant:Path|None=None,worker_id:str|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
     if idle is not None and idle<MIN_IDLE_SECONDS:
         return {"status":"USER_ACTIVE","idle_seconds":idle}
@@ -775,7 +795,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         result={"status":"DRY_RUN","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
 
-    ws=ensure_workspace(repo,workspace_root)
+    ws=ensure_workspace(repo,workspace_root,worker_id)
     main="main"
     reset=run(["git","checkout","-B","actor-staging",f"origin/{main}"],ws)
     if reset.returncode: raise RuntimeError("base checkout failed")
@@ -960,7 +980,7 @@ def main()->int:
         else:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
-        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant)
+        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant,invocation_id)
         result={**result,"invocation_id":invocation_id}
         atomic_json(state,result)
         if args.execution_grant:

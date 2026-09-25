@@ -1164,6 +1164,10 @@ def test_parallel_dispatch_assigns_independent_product_slots(tmp_path, monkeypat
     from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
     from tests.test_parallel_worker_pool import ManualExecutor
     pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=3,executor_factory=ManualExecutor)
+    monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,activation,product,limit:[
+        (f"jweter/{product}",product,{"repository":f"jweter/{product}","exact_head":product,
+         "slice_id":f"{product}-task","allowed_paths":[f"{product}/"]})
+    ])
     workers=supervisor.dispatch_parallel_builders(
         pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","everward"])
     assert workers==[

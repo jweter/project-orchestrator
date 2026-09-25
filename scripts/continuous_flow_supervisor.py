@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
 
-from scripts.capability_slice_contract import derive_slice
+from scripts.capability_slice_contract import derive_slice, derive_slices
 from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
 from scripts.agent_voice import manager_status, worker_status
@@ -17,6 +17,7 @@ from project_orchestrator.decision_outcome import attribute as attribute_decisio
 from project_orchestrator.decision_learning import compile_decision_learning, planning_hint
 from project_orchestrator.jev_evidence import load_jsonl
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -65,7 +66,8 @@ def builder_health(state_root:Path,returncode:int,expected_invocation_id:str|Non
     if expected_invocation_id is not None and payload.get("invocation_id")!=expected_invocation_id:
         return False,"STALE_BUILDER_STATE"
     degraded={"P1_BUILDER_FAILURE","BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
-    return status not in degraded,status
+    productive={"USER_ACTIVE","IMPLEMENTING","PREFLIGHT_GREEN","PR_OPEN","CI_PENDING","GREEN","MERGED","PRODUCT_REALITY_PENDING","PRODUCT_REALITY_VERIFIED"}
+    return status in productive and status not in degraded,status
 
 def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str]:
     """Snapshot contract-declared workspace identity and HEAD independently of readiness certificates."""
@@ -698,8 +700,60 @@ def recover_stale_issued_grants(state_root:Path,now:datetime|None=None)->list[st
     finally:
         _release_lifecycle_lock(lifecycle_lock)
 
+def slice_paths_conflict(left:dict,right:dict)->bool:
+    """Fail closed unless two slices prove disjoint mutation authority."""
+    a=left.get("allowed_paths"); b=right.get("allowed_paths")
+    if not isinstance(a,list) or not isinstance(b,list) or not a or not b:
+        return True
+    def norm(path):
+        return str(path).replace("\\","/").strip("/")
+    for x in map(norm,a):
+        for y in map(norm,b):
+            if not x or not y or x==y or x.startswith(y+"/") or y.startswith(x+"/"):
+                return True
+    return False
+
+def select_conflict_free_slices(slices:list[dict],limit:int|None=None)->list[dict]:
+    """Greedily select a deterministic maximal set of pairwise-disjoint slices."""
+    selected=[]
+    for candidate in slices:
+        if any(slice_paths_conflict(candidate,owned) for owned in selected):
+            continue
+        selected.append(candidate)
+        if limit is not None and len(selected)>=limit:
+            break
+    return selected
+
+def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->list[tuple[str,str,dict]]:
+    """Plan a bounded conflict-free task batch from exact-head capability graphs."""
+    candidates=[]
+    repositories=activation.get("products",{}).get(product,{}).get("repositories",{})
+    for repo,head in sorted(repositories.items()):
+        if not head:
+            continue
+        path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError):
+            continue
+        derived=derive_slices(payload,repository=repo,exact_head=head)
+        if derived.get("status")!="READY":
+            continue
+        for task in derived.get("slices",[]):
+            if conflicting_nonterminal_grant(state_root,repo,task) is None:
+                candidates.append((repo,head,task))
+    selected=[]
+    for candidate in candidates:
+        repo,head,task=candidate
+        if any(repo==r and slice_paths_conflict(task,other) for r,_,other in selected):
+            continue
+        selected.append(candidate)
+        if len(selected)>=limit:
+            break
+    return selected
+
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
-    """Return existing nonterminal repository ownership; ambiguity fails closed."""
+    """Return only ownership whose bounded path authority conflicts."""
     path=state_root/"hands-off-grant-lifecycle.json"
     if not path.exists():
         return None
@@ -715,7 +769,7 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
         if record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"} and not record.get("recovery_generation"):
             continue
         authority=record.get("execution_slice") or {}
-        if repo in record.get("authorized_repositories",[]):
+        if repo in record.get("authorized_repositories",[]) and slice_paths_conflict(execution_slice,authority):
             return {"grant_id":grant_id,"state":record.get("state"),
                     "worker":record.get("worker"),"execution_slice":authority}
     return None
@@ -821,7 +875,9 @@ def release_grant_issue_lock(lock:dict)->None:
     if error is not None:
         raise error
 
-def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
+def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
+                          planned_target:tuple[str,str,dict]|None=None)->Path:
+    """Issue one exact-head task grant, optionally from a preplanned task batch."""
     lock=acquire_grant_issue_lock(state_root)
     try:
         activation_path=state_root/"hands-off-activation.json"
@@ -830,17 +886,29 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         contract_path=repo_root/"engineering"/"hands-off-evolution.json"
         contract_bytes=contract_path.read_bytes()
         recover_stale_issued_grants(state_root)
-        repo,exact_head=select_execution_target(state_root,activation,products)
+        if planned_target is None:
+            repo,exact_head=select_execution_target(state_root,activation,products)
+            execution_slice=load_execution_slice(state_root,repo,exact_head)
+        else:
+            repo,exact_head,execution_slice=planned_target
+            if execution_slice.get("repository")!=repo or execution_slice.get("exact_head")!=exact_head:
+                raise RuntimeError("PLANNED_SLICE_IDENTITY_MISMATCH")
+            if not any(repo in activation["products"][name]["repositories"] and
+                       activation["products"][name]["repositories"][repo]==exact_head
+                       for name in products if name in activation.get("products",{})):
+                raise RuntimeError("PLANNED_SLICE_HEAD_STALE")
         selected_products={
             name for name in products
             if repo in activation["products"][name]["repositories"]
         }
-        execution_slice=load_execution_slice(state_root,repo,exact_head)
         conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
         if conflict:
             raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
         grant_id=str(uuid.uuid4())
-        grant={"schema_version":4,
+        runner_id=execution_slice.get("runner_id") or select_task_runner(execution_slice)
+        runtime_id=execution_slice.get("execution_runtime") or runtime_for_task(execution_slice)
+        execution_slice={**execution_slice,"runner_id":runner_id,"execution_runtime":runtime_id}
+        grant={"schema_version":5,
                "grant_id":grant_id,
                "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
                "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
@@ -865,7 +933,8 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
                 existing_repos=set(existing.get("authorized_repositories",[]))
                 if existing.get("repository"):
                     existing_repos.add(existing["repository"])
-                if owns and repo in existing_repos:
+                existing_slice=existing.get("execution_slice") or {}
+                if owns and repo in existing_repos and slice_paths_conflict(execution_slice,existing_slice):
                     raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{existing_id}:{existing.get('state')}")
             issued=datetime.now(UTC).isoformat()
             authorized_repositories=sorted({
@@ -877,6 +946,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
                           "authorized_repositories":authorized_repositories,"expected_sha":exact_head,
                           "capability_id":execution_slice["capability_id"],
                           "slice_id":execution_slice["slice_id"],
+                          "runner_id":runner_id,"execution_runtime":runtime_id,
                           "execution_slice":execution_slice,
                               "issuer":lock["worker"]}
             atomic(lifecycle,payload)
@@ -909,32 +979,37 @@ def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
     finally:
         _release_lifecycle_lock(lifecycle_lock)
 
-def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->tuple[int,str|None]:
+def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None,
+                worker_id:str|None=None,planned_target:tuple[str,str,dict]|None=None)->tuple[int,str|None]:
+    worker_dir=state_root/"worker-state"/worker_id if worker_id else state_root
+    worker_dir.mkdir(parents=True,exist_ok=True)
+    builder_state=worker_dir/"builder.json"
+    builder_output=worker_dir/"builder-last-output.txt"
     if not products:
-        (state_root/"builder-last-output.txt").write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
+        builder_output.write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
         return 2,None
     try:
         grant_path=None
         for attempt in range(3):
             try:
-                grant_path=write_execution_grant(repo_root,state_root,products)
+                grant_path=write_execution_grant(repo_root,state_root,products,planned_target=planned_target)
                 break
             except RuntimeError as exc:
                 if str(exc)!="GRANT_ISSUANCE_BUSY":
                     raise
                 if attempt==2:
-                    atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+                    atomic(builder_state,{"status":"OWNERSHIP_HELD","reason":str(exc)})
                     return 0,None
                 time.sleep(0.05*(attempt+1))
         assert grant_path is not None
     except RuntimeError as exc:
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
-            atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
-            (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
+            atomic(builder_state,{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
+            builder_output.write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
             return 0,None
         if str(exc).startswith("EXECUTION_SLICE_ALREADY_OWNED:"):
-            atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
-            (state_root/"builder-last-output.txt").write_text(str(exc)+"\n",encoding="utf-8")
+            atomic(builder_state,{"status":"OWNERSHIP_HELD","reason":str(exc)})
+            builder_output.write_text(str(exc)+"\n",encoding="utf-8")
             return 0,None
         raise
     invocation_id=uuid.uuid4().hex
@@ -948,17 +1023,19 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         decision["grant_path"]=str(grant_path)
         atomic(decision_path,decision)
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
-        "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json"),
+        "--workspace-root",str(workspace_root),"--state",str(builder_state),
         "--execution-grant",str(grant_path),"--invocation-id",invocation_id]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
-    (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    builder_output.write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     finalize_unclaimed_grant(grant_path,p.returncode)
     return p.returncode,invocation_id
 
-def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str)->tuple[int,str|None]:
-    """Run one product-scoped builder using the existing grant/lease authority."""
-    return run_builder(repo_root,workspace_root,state_root,[product])
+def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str,
+                            worker_id:str|None=None,planned_target:tuple[str,str,dict]|None=None)->tuple[int,str|None]:
+    """Run one task-scoped builder with worker-isolated result state."""
+    return run_builder(repo_root,workspace_root,state_root,[product],worker_id=worker_id,
+                       planned_target=planned_target)
 
 
 def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
@@ -970,7 +1047,8 @@ def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
             rows[worker_id]={"status":"WORKER_EXCEPTION","error_class":type(result).__name__}
         else:
             rc,invocation_id=result
-            ok,status=builder_health(state_root,rc,invocation_id)
+            worker_state=state_root/"worker-state"/worker_id
+            ok,status=builder_health(worker_state,rc,invocation_id)
             rows[worker_id]={"status":status,"returncode":rc,"healthy":ok,
                              "invocation_id":invocation_id}
     if rows:
@@ -981,14 +1059,64 @@ def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
     return rows
 
 
+def runner_requirements_for_task(task:dict)->set[str]:
+    """Read explicit runner requirements; legacy slices use the proven local code runner."""
+    raw=task.get("runner_requirements",["code","local","windows","offline"])
+    if not isinstance(raw,list) or not raw or any(not isinstance(x,str) or not x.strip() for x in raw):
+        raise RuntimeError("INVALID_RUNNER_REQUIREMENTS")
+    return set(raw)
+
+def select_task_runner(task:dict,registry:RunnerRegistry=DEFAULT_RUNNERS,
+                       running:dict[str,int]|None=None)->str:
+    return registry.select(runner_requirements_for_task(task),running).runner_id
+
+def runtime_for_task(task:dict)->str:
+    """Choose execution environment independently from the reasoning runner."""
+    raw=task.get("runtime_requirements",[])
+    if raw is None:
+        raw=[]
+    if not isinstance(raw,list) or any(not isinstance(x,str) or not x.strip() for x in raw):
+        raise RuntimeError("INVALID_RUNTIME_REQUIREMENTS")
+    requirements=set(raw)
+    machine_specific={"unreal","ollama","laptop-actor"}
+    if requirements & machine_specific:
+        return "laptop-actor"
+    return "native-windows"
+
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str])->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
     dispatched=[]
+    try:
+        activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        activation={}
+    task_batches={
+        product:ready_task_batch(state_root,activation,product,pool.max_workers_per_product)
+        for product in products
+    }
+    assigned={product:0 for product in products}
     for slot in pool.available_slots(products):
+        batch=task_batches.get(slot.product,[])
+        index=assigned.get(slot.product,0)
+        if index>=len(batch):
+            continue
+        planned_target=batch[index]
+        try:
+            runner_id=select_task_runner(planned_target[2])
+            runtime_id=runtime_for_task(planned_target[2])
+        except (RuntimeError,ValueError):
+            continue
+        planned_target[2]["execution_runtime"]=runtime_id
+        # Current execution adapter is the local Aider/Ollama builder. Other
+        # registered runners remain ineligible until their adapters are enabled.
+        if runner_id!="aider-ollama":
+            continue
+        assigned[slot.product]=index+1
         try:
             worker_id=pool.submit(slot,run_builder_for_product,
-                                  repo_root,workspace_root,state_root,slot.product)
+                                  repo_root,workspace_root,state_root,slot.product,slot.worker_id,
+                                  planned_target)
         except RuntimeError:
             continue
         dispatched.append(worker_id)
@@ -2511,6 +2639,13 @@ def main()->int:
         products=products if authorized else []
         parallel_results=harvest_parallel_builders(worker_pool,state)
         dispatched_workers=dispatch_parallel_builders(worker_pool,repo,workspace,state,products) if products else []
+        # A completed nonproductive worker has already released its slot. Refill
+        # immediately in the same burst pass instead of waiting for the next loop.
+        # This turns ownership/no-work/exception outcomes into routing feedback.
+        if products and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
+            dispatched_workers.extend(
+                dispatch_parallel_builders(worker_pool,repo,workspace,state,products)
+            )
         pool_snapshot=worker_pool.snapshot()
         # The supervisor no longer blocks on implementation. A worker holding a
         # repository grant is active work; other product slots remain schedulable.
