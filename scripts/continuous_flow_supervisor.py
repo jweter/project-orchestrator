@@ -374,6 +374,21 @@ def reconcile_product_completion(state_root:Path,repo:str,exact_head:str,payload
     payload["product_completion"]=proof["product_completion"]
     graph_path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
     atomic(graph_path,payload)
+    lifecycle=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(lifecycle.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        grants={}
+    matches=[gid for gid,item in grants.items() if isinstance(item,dict)
+             and item.get("repository")==repo and item.get("head_sha")==exact_head]
+    if len(matches)==1:
+        def mark_product_reality(item):
+            if item.get("repository")!=repo or item.get("head_sha")!=exact_head:
+                return False
+            item["outcome_quality"]="PRODUCT_REALITY_VERIFIED"
+            item["product_reality_verified_at"]=datetime.now(UTC).isoformat()
+            return True
+        mutate_grant_lifecycle(lifecycle,matches[0],mark_product_reality)
     return {"status":"PRODUCT_COMPLETION_VERIFIED","product_completion":proof["product_completion"]}
 
 NO_OP_EXHAUSTION_THRESHOLD=2
@@ -1235,7 +1250,7 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
                 seconds=max((finished-started).total_seconds(),1.0)
         except (TypeError,ValueError):
             continue
-        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0,"repair_attempts":0.0,"merged_verified":0.0})
+        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0})
         status=str(record.get("result_status") or "")
         success=record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
         row["verified_advancement"]+=1.0 if success else 0.0
@@ -1246,8 +1261,11 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
             row["repair_attempts"]+=max(float(record.get("repair_attempts",0)),0.0)
         except (TypeError,ValueError):
             pass
-        if record.get("outcome_quality")=="MERGED_VERIFIED":
+        quality=record.get("outcome_quality")
+        if quality in {"MERGED_VERIFIED","PRODUCT_REALITY_VERIFIED"}:
             row["merged_verified"]+=1.0
+        if quality=="PRODUCT_REALITY_VERIFIED":
+            row["product_reality_verified"]+=1.0
     return stats
 
 def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
@@ -1258,10 +1276,12 @@ def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
     failure_rate=row["failures"]/row["samples"]
     repair_rate=row.get("repair_attempts",0.0)/row["samples"]
     merge_rate=row.get("merged_verified",0.0)/row["samples"]
-    # Bounded contribution: reward exact-head verified merges, not merely PR creation.
+    reality_rate=row.get("product_reality_verified",0.0)/row["samples"]
+    # Bounded contribution: product-reality proof is stronger evidence than merge alone.
     throughput_penalty=1.0/(1.0+advancement_per_hour)
-    quality_penalty=1.0-merge_rate
-    return min(0.5,0.15*throughput_penalty+0.15*failure_rate+0.10*min(repair_rate,1.0)+0.10*quality_penalty)
+    merge_penalty=1.0-merge_rate
+    reality_penalty=1.0-reality_rate
+    return min(0.5,0.15*throughput_penalty+0.15*failure_rate+0.10*min(repair_rate,1.0)+0.05*merge_penalty+0.05*reality_penalty)
 
 def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[str,int],
                           affinity:dict[str,dict[str,int]]|None=None,

@@ -15,8 +15,12 @@ def test_load_execution_slice_reconciles_final_evidence_to_no_work(tmp_path):
     root=tmp_path/"product-completion-evidence"
     write(root/"o__r__acceptance.json",[{"name":"final","status":"PASS","exact_head":HEAD,"evidence_ref":"artifact://accept"}])
     write(root/"o__r__product-reality.json",[{"kind":"packaged_app","state":"VERIFIED","exact_head":HEAD,"source_ref":"artifact://reality"}])
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    write(lifecycle,{"grants":{"g1":{"repository":REPO,"head_sha":HEAD}}})
     result=flow.load_execution_slice(tmp_path,REPO,HEAD)
     assert result["status"]=="NO_WORK"
+    grant=json.loads(lifecycle.read_text())["grants"]["g1"]
+    assert grant["outcome_quality"]=="PRODUCT_REALITY_VERIFIED"
     persisted=json.loads(graph_path.read_text())
     assert persisted["product_completion"]["exact_head"]==HEAD
     assert persisted["product_completion"]["verified"] is True
