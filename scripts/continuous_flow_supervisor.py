@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
 
-from scripts.capability_slice_contract import derive_slice
+from scripts.capability_slice_contract import derive_slice, derive_slices
 from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
 from scripts.agent_voice import manager_status, worker_status
@@ -711,6 +711,17 @@ def slice_paths_conflict(left:dict,right:dict)->bool:
             if not x or not y or x==y or x.startswith(y+"/") or y.startswith(x+"/"):
                 return True
     return False
+
+def select_conflict_free_slices(slices:list[dict],limit:int|None=None)->list[dict]:
+    """Greedily select a deterministic maximal set of pairwise-disjoint slices."""
+    selected=[]
+    for candidate in slices:
+        if any(slice_paths_conflict(candidate,owned) for owned in selected):
+            continue
+        selected.append(candidate)
+        if limit is not None and len(selected)>=limit:
+            break
+    return selected
 
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
     """Return only ownership whose bounded path authority conflicts."""
