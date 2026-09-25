@@ -9,7 +9,7 @@ def test_selector_reports_all_complete_distinct_from_blocked(tmp_path,monkeypatc
     with pytest.raises(RuntimeError,match="ALL_EXECUTION_LANES_COMPLETE"):
         flow.select_execution_target(tmp_path,activation,["p"])
 
-def test_run_builder_treats_all_complete_as_healthy_no_work(tmp_path,monkeypatch):
+def test_run_builder_records_all_complete_as_nonproductive_no_work(tmp_path,monkeypatch):
     monkeypatch.setattr(flow,"write_execution_grant",
         lambda *args,**kwargs: (_ for _ in ()).throw(RuntimeError("ALL_EXECUTION_LANES_COMPLETE")))
     rc,invocation_id=flow.run_builder(tmp_path,tmp_path,tmp_path,["p"])
@@ -17,7 +17,9 @@ def test_run_builder_treats_all_complete_as_healthy_no_work(tmp_path,monkeypatch
     assert invocation_id is None
     state=json.loads((tmp_path/"builder.json").read_text())
     assert state=={"reason":"ALL_EXECUTION_LANES_COMPLETE","status":"NO_WORK"}
-    assert flow.builder_health(tmp_path,rc)==(True,"NO_WORK")
+    # NO_WORK is a successful process outcome but not productive worker health;
+    # the scheduler must see the free capacity and seek another task.
+    assert flow.builder_health(tmp_path,rc)==(False,"NO_WORK")
 
 def test_mixed_complete_and_direction_required_is_not_terminal(tmp_path,monkeypatch):
     activation={"products":{"p":{"repositories":{"o/done":"a","o/blocked":"b"}}}}
