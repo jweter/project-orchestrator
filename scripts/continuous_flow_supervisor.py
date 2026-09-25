@@ -986,7 +986,19 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
                                state_root:Path,products:list[str])->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
     dispatched=[]
+    try:
+        activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        activation={}
+    product_caps={
+        product:max(1,len(activation.get("products",{}).get(product,{}).get("repositories",{})))
+        for product in products
+    }
     for slot in pool.available_slots(products):
+        # Parallelism cannot exceed independently ownable repositories. A second
+        # worker for a single-repository product can only contend with worker 1.
+        if slot.index>product_caps.get(slot.product,1):
+            continue
         try:
             worker_id=pool.submit(slot,run_builder_for_product,
                                   repo_root,workspace_root,state_root,slot.product)
@@ -2512,6 +2524,13 @@ def main()->int:
         products=products if authorized else []
         parallel_results=harvest_parallel_builders(worker_pool,state)
         dispatched_workers=dispatch_parallel_builders(worker_pool,repo,workspace,state,products) if products else []
+        # A completed nonproductive worker has already released its slot. Refill
+        # immediately in the same burst pass instead of waiting for the next loop.
+        # This turns ownership/no-work/exception outcomes into routing feedback.
+        if products and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
+            dispatched_workers.extend(
+                dispatch_parallel_builders(worker_pool,repo,workspace,state,products)
+            )
         pool_snapshot=worker_pool.snapshot()
         # The supervisor no longer blocks on implementation. A worker holding a
         # repository grant is active work; other product slots remain schedulable.
