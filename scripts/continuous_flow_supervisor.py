@@ -18,6 +18,7 @@ from project_orchestrator.decision_learning import compile_decision_learning, pl
 from project_orchestrator.jev_evidence import load_jsonl
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
+from project_orchestrator.execution_runtime import require_runtime_capabilities
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -1087,7 +1088,9 @@ def runtime_for_task(task:dict)->str:
     requirements=set(raw)
     machine_specific={"unreal","ollama","laptop-actor"}
     if requirements & machine_specific:
-        return "laptop-actor"
+        runtime_id="laptop-actor"
+        require_runtime_capabilities(runtime_id,sorted(requirements & machine_specific))
+        return runtime_id
     return "native-windows"
 
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,

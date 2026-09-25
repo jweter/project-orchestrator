@@ -40,9 +40,24 @@ class NativeWindowsRuntime:
         return RuntimeResult(self.runtime_id,completed.returncode,completed.stdout,completed.stderr)
 
 class LaptopActorRuntime(NativeWindowsRuntime):
-    """Machine-local actor runtime. Commands still execute argv-direct, but the
-    distinct identity lets the scheduler require machine-specific capability."""
+    """Machine-local actor runtime with explicit, probeable capabilities."""
     runtime_id="laptop-actor"
+    capabilities=frozenset({"windows","local","offline"})
+
+    def attest(self)->frozenset[str]:
+        """Return only capabilities proven on this host at selection time."""
+        proven=set(self.capabilities)
+        import shutil
+        if shutil.which("ollama"):
+            proven.add("ollama")
+        # Unreal is intentionally not inferred from Windows alone. It becomes
+        # eligible only when an Unreal executable is actually discoverable.
+        if shutil.which("UnrealEditor") or shutil.which("UnrealEditor.exe"):
+            proven.add("unreal")
+        return frozenset(proven)
+
+    def satisfies(self,requirements:Sequence[str])->bool:
+        return set(requirements) <= set(self.attest())
 
 class ExecutionRuntimeRegistry:
     def __init__(self,runtimes:Sequence[object]):
@@ -60,6 +75,16 @@ class ExecutionRuntimeRegistry:
             return self._runtimes[runtime_id]
         except KeyError as exc:
             raise RuntimeError(f"EXECUTION_RUNTIME_UNAVAILABLE:{runtime_id}") from exc
+
+def require_runtime_capabilities(runtime_id:str,requirements:Sequence[str],
+                                 registry:ExecutionRuntimeRegistry|None=None):
+    registry=registry or DEFAULT_EXECUTION_RUNTIMES
+    runtime=registry.require(runtime_id)
+    if requirements:
+        satisfies=getattr(runtime,"satisfies",None)
+        if not callable(satisfies) or not satisfies(requirements):
+            raise RuntimeError(f"EXECUTION_RUNTIME_CAPABILITY_MISMATCH:{runtime_id}")
+    return runtime
 
 DEFAULT_EXECUTION_RUNTIMES=ExecutionRuntimeRegistry([
     NativeWindowsRuntime(),
