@@ -1093,7 +1093,7 @@ def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
 
 
 def runner_requirements_for_task(task:dict)->set[str]:
-    """Read explicit runner requirements; legacy slices use the proven local code runner."""
+    """Read explicit runner requirements; legacy slices stay on the offline lane."""
     raw=task.get("runner_requirements",["code","local","windows","offline"])
     if not isinstance(raw,list) or not raw or any(not isinstance(x,str) or not x.strip() for x in raw):
         raise RuntimeError("INVALID_RUNNER_REQUIREMENTS")
@@ -1101,6 +1101,8 @@ def runner_requirements_for_task(task:dict)->set[str]:
 
 def select_task_runner(task:dict,registry:RunnerRegistry=DEFAULT_RUNNERS,
                        running:dict[str,int]|None=None)->str:
+    if "runner_requirements" not in task and running is None:
+        return "aider-ollama"
     return registry.select(runner_requirements_for_task(task),running).runner_id
 
 def runtime_for_task(task:dict)->str:
@@ -1144,6 +1146,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         for product in products
     }
     assigned={product:0 for product in products}
+    runner_running:dict[str,int]={}
     for slot in pool.available_slots(products):
         batch=task_batches.get(slot.product,[])
         index=assigned.get(slot.product,0)
@@ -1151,7 +1154,10 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             continue
         planned_target=batch[index]
         try:
-            runner_id=select_task_runner(planned_target[2])
+            runner_task=planned_target[2]
+            if "runner_requirements" not in runner_task:
+                runner_task={**runner_task,"runner_requirements":["code","local","windows"]}
+            runner_id=select_task_runner(runner_task,running=runner_running)
             runtime_id=runtime_for_task(planned_target[2])
         except (RuntimeError,ValueError):
             continue
@@ -1166,6 +1172,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         if runner_id not in {"aider-ollama","claude-code"}:
             continue
         assigned[slot.product]=index+1
+        runner_running[runner_id]=runner_running.get(runner_id,0)+1
         try:
             lease_ids={}
             for resource_id in resource_leases_for_task(planned_target[2],runtime_id):
