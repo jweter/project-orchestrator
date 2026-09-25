@@ -723,6 +723,34 @@ def select_conflict_free_slices(slices:list[dict],limit:int|None=None)->list[dic
             break
     return selected
 
+def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->list[tuple[str,str,dict]]:
+    """Plan a bounded conflict-free task batch from exact-head capability graphs."""
+    candidates=[]
+    repositories=activation.get("products",{}).get(product,{}).get("repositories",{})
+    for repo,head in sorted(repositories.items()):
+        if not head:
+            continue
+        path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError):
+            continue
+        derived=derive_slices(payload,repository=repo,exact_head=head)
+        if derived.get("status")!="READY":
+            continue
+        for task in derived.get("slices",[]):
+            if conflicting_nonterminal_grant(state_root,repo,task) is None:
+                candidates.append((repo,head,task))
+    selected=[]
+    for candidate in candidates:
+        repo,head,task=candidate
+        if any(repo==r and slice_paths_conflict(task,other) for r,_,other in selected):
+            continue
+        selected.append(candidate)
+        if len(selected)>=limit:
+            break
+    return selected
+
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
     """Return only ownership whose bounded path authority conflicts."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -846,7 +874,9 @@ def release_grant_issue_lock(lock:dict)->None:
     if error is not None:
         raise error
 
-def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Path:
+def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
+                          planned_target:tuple[str,str,dict]|None=None)->Path:
+    """Issue one exact-head task grant, optionally from a preplanned task batch."""
     lock=acquire_grant_issue_lock(state_root)
     try:
         activation_path=state_root/"hands-off-activation.json"
@@ -855,12 +885,21 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         contract_path=repo_root/"engineering"/"hands-off-evolution.json"
         contract_bytes=contract_path.read_bytes()
         recover_stale_issued_grants(state_root)
-        repo,exact_head=select_execution_target(state_root,activation,products)
+        if planned_target is None:
+            repo,exact_head=select_execution_target(state_root,activation,products)
+            execution_slice=load_execution_slice(state_root,repo,exact_head)
+        else:
+            repo,exact_head,execution_slice=planned_target
+            if execution_slice.get("repository")!=repo or execution_slice.get("exact_head")!=exact_head:
+                raise RuntimeError("PLANNED_SLICE_IDENTITY_MISMATCH")
+            if not any(repo in activation["products"][name]["repositories"] and
+                       activation["products"][name]["repositories"][repo]==exact_head
+                       for name in products if name in activation.get("products",{})):
+                raise RuntimeError("PLANNED_SLICE_HEAD_STALE")
         selected_products={
             name for name in products
             if repo in activation["products"][name]["repositories"]
         }
-        execution_slice=load_execution_slice(state_root,repo,exact_head)
         conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
         if conflict:
             raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
@@ -890,7 +929,8 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
                 existing_repos=set(existing.get("authorized_repositories",[]))
                 if existing.get("repository"):
                     existing_repos.add(existing["repository"])
-                if owns and repo in existing_repos:
+                existing_slice=existing.get("execution_slice") or {}
+                if owns and repo in existing_repos and slice_paths_conflict(execution_slice,existing_slice):
                     raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{existing_id}:{existing.get('state')}")
             issued=datetime.now(UTC).isoformat()
             authorized_repositories=sorted({
@@ -935,7 +975,7 @@ def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
         _release_lifecycle_lock(lifecycle_lock)
 
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None,
-                worker_id:str|None=None)->tuple[int,str|None]:
+                worker_id:str|None=None,planned_target:tuple[str,str,dict]|None=None)->tuple[int,str|None]:
     worker_dir=state_root/"worker-state"/worker_id if worker_id else state_root
     worker_dir.mkdir(parents=True,exist_ok=True)
     builder_state=worker_dir/"builder.json"
@@ -947,7 +987,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         grant_path=None
         for attempt in range(3):
             try:
-                grant_path=write_execution_grant(repo_root,state_root,products)
+                grant_path=write_execution_grant(repo_root,state_root,products,planned_target=planned_target)
                 break
             except RuntimeError as exc:
                 if str(exc)!="GRANT_ISSUANCE_BUSY":
@@ -987,9 +1027,10 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     return p.returncode,invocation_id
 
 def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str,
-                            worker_id:str|None=None)->tuple[int,str|None]:
-    """Run one product-scoped builder with worker-isolated result state."""
-    return run_builder(repo_root,workspace_root,state_root,[product],worker_id=worker_id)
+                            worker_id:str|None=None,planned_target:tuple[str,str,dict]|None=None)->tuple[int,str|None]:
+    """Run one task-scoped builder with worker-isolated result state."""
+    return run_builder(repo_root,workspace_root,state_root,[product],worker_id=worker_id,
+                       planned_target=planned_target)
 
 
 def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
@@ -1021,18 +1062,22 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
         activation={}
-    product_caps={
-        product:max(1,len(activation.get("products",{}).get(product,{}).get("repositories",{})))
+    task_batches={
+        product:ready_task_batch(state_root,activation,product,pool.max_workers_per_product)
         for product in products
     }
+    assigned={product:0 for product in products}
     for slot in pool.available_slots(products):
-        # Parallelism cannot exceed independently ownable repositories. A second
-        # worker for a single-repository product can only contend with worker 1.
-        if slot.index>product_caps.get(slot.product,1):
+        batch=task_batches.get(slot.product,[])
+        index=assigned.get(slot.product,0)
+        if index>=len(batch):
             continue
+        planned_target=batch[index]
+        assigned[slot.product]=index+1
         try:
             worker_id=pool.submit(slot,run_builder_for_product,
-                                  repo_root,workspace_root,state_root,slot.product,slot.worker_id)
+                                  repo_root,workspace_root,state_root,slot.product,slot.worker_id,
+                                  planned_target)
         except RuntimeError:
             continue
         dispatched.append(worker_id)
