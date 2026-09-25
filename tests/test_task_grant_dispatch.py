@@ -30,7 +30,12 @@ def test_dispatch_assigns_distinct_tasks_to_same_repo_workers(tmp_path,monkeypat
         return (0,None)
     monkeypatch.setattr(supervisor,"run_builder_for_product",worker)
     pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=2,executor_factory=ManualExecutor)
-    ids=supervisor.dispatch_parallel_builders(pool,tmp_path,tmp_path,tmp_path,["rocksmith"])
+    from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+    runners=RunnerRegistry([
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30),
+        RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20),
+    ])
+    ids=supervisor.dispatch_parallel_builders(pool,tmp_path,tmp_path,tmp_path,["rocksmith"],runners)
     assert ids==["rocksmith-worker-1","rocksmith-worker-2"]
     submissions=pool._executor.submissions
     assert submissions[0][2][-1][2]["slice_id"]=="A"

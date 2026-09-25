@@ -1168,8 +1168,13 @@ def test_parallel_dispatch_assigns_independent_product_slots(tmp_path, monkeypat
         (f"jweter/{product}",product,{"repository":f"jweter/{product}","exact_head":product,
          "slice_id":f"{product}-task","allowed_paths":[f"{product}/"]})
     ])
+    from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+    runners=RunnerRegistry([
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30),
+        RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20),
+    ])
     workers=supervisor.dispatch_parallel_builders(
-        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","everward"])
+        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","everward"],runners)
     assert workers==[
         "knowledge-engine-worker-1","rocksmith-worker-1","everward-worker-1"]
     snapshot=pool.snapshot()

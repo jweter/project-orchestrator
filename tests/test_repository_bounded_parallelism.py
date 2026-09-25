@@ -20,8 +20,13 @@ def test_dispatch_capacity_is_driven_by_ready_tasks_not_repository_count(tmp_pat
     monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,act,product,limit:batches[product][:limit])
     monkeypatch.setattr(supervisor,"RUNTIME_LEASES",supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
     pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6,executor_factory=ManualExecutor)
+    from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+    runners=RunnerRegistry([
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30),
+        RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20),
+    ])
     workers=supervisor.dispatch_parallel_builders(
-        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","everward"])
+        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","everward"],runners)
     assert workers==[
         "knowledge-engine-worker-1","rocksmith-worker-1","everward-worker-1",
         "knowledge-engine-worker-2",

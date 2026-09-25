@@ -1093,7 +1093,7 @@ def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
 
 
 def runner_requirements_for_task(task:dict)->set[str]:
-    """Read explicit runner requirements; legacy slices use the proven local code runner."""
+    """Read explicit runner requirements; legacy slices stay on the offline lane."""
     raw=task.get("runner_requirements",["code","local","windows","offline"])
     if not isinstance(raw,list) or not raw or any(not isinstance(x,str) or not x.strip() for x in raw):
         raise RuntimeError("INVALID_RUNNER_REQUIREMENTS")
@@ -1101,6 +1101,8 @@ def runner_requirements_for_task(task:dict)->set[str]:
 
 def select_task_runner(task:dict,registry:RunnerRegistry=DEFAULT_RUNNERS,
                        running:dict[str,int]|None=None)->str:
+    if "runner_requirements" not in task and running is None:
+        return "aider-ollama"
     return registry.select(runner_requirements_for_task(task),running).runner_id
 
 def runtime_for_task(task:dict)->str:
@@ -1131,8 +1133,35 @@ def resource_leases_for_task(task:dict,runtime_id:str)->tuple[str,...]:
     if "unreal" in raw: resources.append("resource:unreal")
     return tuple(resources)
 
+def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,int]:
+    """Reconstruct capacity from durable ownership, excluding provably stale claims."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    running:dict[str,int]={}
+    current=now or datetime.now(UTC)
+    for record in grants.values():
+        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","RUNNING"}:
+            continue
+        if record.get("state") in {"CLAIMED","RUNNING"}:
+            stamp=record.get("last_heartbeat_at") or record.get("claimed_at")
+            try:
+                heartbeat=datetime.fromisoformat(stamp)
+                if heartbeat.tzinfo is None: heartbeat=heartbeat.replace(tzinfo=UTC)
+            except (TypeError,ValueError):
+                continue
+            if (current-heartbeat).total_seconds()>CLAIM_LEASE_SECONDS and worker_liveness(record.get("worker"))=="DEAD":
+                continue
+        runner_id=record.get("runner_id") or (record.get("execution_slice") or {}).get("runner_id")
+        if isinstance(runner_id,str) and runner_id:
+            running[runner_id]=running.get(runner_id,0)+1
+    return running
+
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
-                               state_root:Path,products:list[str])->list[str]:
+                               state_root:Path,products:list[str],
+                               runner_registry:RunnerRegistry|None=None)->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
     dispatched=[]
     try:
@@ -1144,6 +1173,9 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         for product in products
     }
     assigned={product:0 for product in products}
+    runners=runner_registry or DEFAULT_RUNNERS
+    runner_running=durable_runner_occupancy(state_root)
+    legacy_lane_cursor=sum(runner_running.values())
     for slot in pool.available_slots(products):
         batch=task_batches.get(slot.product,[])
         index=assigned.get(slot.product,0)
@@ -1151,7 +1183,20 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             continue
         planned_target=batch[index]
         try:
-            runner_id=select_task_runner(planned_target[2])
+            runner_task=planned_target[2]
+            if "runner_requirements" not in runner_task:
+                legacy_lanes=("aider-ollama","claude-code")
+                runner_id=legacy_lanes[legacy_lane_cursor % len(legacy_lanes)]
+                try:
+                    manifest=next(item for item in runners.eligible(runner_requirements_for_task(runner_task),runner_running) if item.runner_id==runner_id)
+                except StopIteration:
+                    runner_id=select_task_runner(runner_task,runners,runner_running)
+                else:
+                    if not manifest.enabled or runner_running.get(runner_id,0)>=manifest.max_concurrency:
+                        runner_id=select_task_runner(runner_task,runners,runner_running)
+                legacy_lane_cursor+=1
+            else:
+                runner_id=select_task_runner(runner_task,runners,runner_running)
             runtime_id=runtime_for_task(planned_target[2])
         except (RuntimeError,ValueError):
             continue
@@ -1162,11 +1207,11 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             planned_target[2]["runtime_provenance"]=provenance()
         else:
             planned_target[2]["runtime_provenance"]={"runtime_id":runtime_id}
-        # Current execution adapter is the local Aider/Ollama builder. Other
-        # registered runners remain ineligible until their adapters are enabled.
-        if runner_id!="aider-ollama":
+        # Only runners with implemented builder adapters may receive mutation grants.
+        if runner_id not in {"aider-ollama","claude-code"}:
             continue
         assigned[slot.product]=index+1
+        runner_running[runner_id]=runner_running.get(runner_id,0)+1
         try:
             lease_ids={}
             for resource_id in resource_leases_for_task(planned_target[2],runtime_id):
