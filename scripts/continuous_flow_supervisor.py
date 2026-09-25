@@ -851,15 +851,13 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str])->Pa
         path=state_root/"hands-off-execution-grants"/f"{grant_id}.json"
         atomic(path,grant)
         lifecycle=state_root/"hands-off-grant-lifecycle.json"
-        try:
-            payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
-            grants=payload.setdefault("grants",{})
-        except (OSError,json.JSONDecodeError,TypeError):
-            raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
         lifecycle_lock=_acquire_lifecycle_lock(lifecycle)
         try:
-            payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
-            grants=payload.setdefault("grants",{})
+            try:
+                payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
+                grants=payload.setdefault("grants",{})
+            except (OSError,json.JSONDecodeError,TypeError):
+                raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
             for existing_id,existing in grants.items():
                 if not isinstance(existing,dict):
                     continue
