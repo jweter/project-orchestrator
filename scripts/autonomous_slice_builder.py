@@ -654,6 +654,18 @@ def run_aider(ws:Path,message:str)->subprocess.CompletedProcess[str]:
     finally:
         shutil.rmtree(lock,ignore_errors=True)
 
+def run_claude_code(ws:Path,message:str)->subprocess.CompletedProcess[str]:
+    """Independent authenticated coding lane; worktree and grant remain the sandbox boundary."""
+    argv=["claude","-p","--output-format","text","--permission-mode","acceptEdits",message]
+    return run(argv,ws,timeout=MAX_AIDER_SECONDS)
+
+def run_builder(ws:Path,message:str,runner_id:str|None)->subprocess.CompletedProcess[str]:
+    if runner_id=="claude-code":
+        return run_claude_code(ws,message)
+    if runner_id in {None,"aider-ollama"}:
+        return run_aider(ws,message)
+    raise RuntimeError(f"UNSUPPORTED_RUNNER:{runner_id}")
+
 def cleanup_aider_artifacts(ws:Path)->None:
     for path in ws.glob(".aider*"):
         if path.is_dir(): shutil.rmtree(path,ignore_errors=True)
@@ -867,20 +879,20 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         advance_grant_stage(execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch)
 
     task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)
-    aider=run_aider(ws,task_prompt)
+    builder=run_builder(ws,task_prompt,runner_id)
     cleanup_aider_artifacts(ws)
     paths=changed_paths(ws,base)
-    if aider.returncode!=0:
+    if builder.returncode!=0:
         reset_workspace(ws,base)
-        lesson=retain_failure_lesson(state_path,"aider_execution",aider.stderr or aider.stdout or f"returncode={aider.returncode}","BUILDER_FAILED")
-        result={"status":"BUILDER_FAILED","repository":repo,"returncode":aider.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
+        lesson=retain_failure_lesson(state_path,f"{runner_id or 'aider-ollama'}_execution",builder.stderr or builder.stdout or f"returncode={builder.returncode}","BUILDER_FAILED")
+        result={"status":"BUILDER_FAILED","repository":repo,"returncode":builder.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     if not paths:
         result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     initial_failure=generated_change_failure(ws,base,paths,slice_authority)
     if initial_failure:
-        repair=run_aider(ws,repair_prompt(repo,initial_failure,paths))
+        repair=run_builder(ws,repair_prompt(repo,initial_failure,paths),runner_id)
         cleanup_aider_artifacts(ws)
         paths=changed_paths(ws,base)
         if repair.returncode!=0:

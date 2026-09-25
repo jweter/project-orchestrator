@@ -1162,9 +1162,8 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             planned_target[2]["runtime_provenance"]=provenance()
         else:
             planned_target[2]["runtime_provenance"]={"runtime_id":runtime_id}
-        # Current execution adapter is the local Aider/Ollama builder. Other
-        # registered runners remain ineligible until their adapters are enabled.
-        if runner_id!="aider-ollama":
+        # Only runners with implemented builder adapters may receive mutation grants.
+        if runner_id not in {"aider-ollama","claude-code"}:
             continue
         assigned[slot.product]=index+1
         try:
