@@ -699,8 +699,21 @@ def recover_stale_issued_grants(state_root:Path,now:datetime|None=None)->list[st
     finally:
         _release_lifecycle_lock(lifecycle_lock)
 
+def slice_paths_conflict(left:dict,right:dict)->bool:
+    """Fail closed unless two slices prove disjoint mutation authority."""
+    a=left.get("allowed_paths"); b=right.get("allowed_paths")
+    if not isinstance(a,list) or not isinstance(b,list) or not a or not b:
+        return True
+    def norm(path):
+        return str(path).replace("\\","/").strip("/")
+    for x in map(norm,a):
+        for y in map(norm,b):
+            if not x or not y or x==y or x.startswith(y+"/") or y.startswith(x+"/"):
+                return True
+    return False
+
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
-    """Return existing nonterminal repository ownership; ambiguity fails closed."""
+    """Return only ownership whose bounded path authority conflicts."""
     path=state_root/"hands-off-grant-lifecycle.json"
     if not path.exists():
         return None
@@ -716,7 +729,7 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
         if record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"} and not record.get("recovery_generation"):
             continue
         authority=record.get("execution_slice") or {}
-        if repo in record.get("authorized_repositories",[]):
+        if repo in record.get("authorized_repositories",[]) and slice_paths_conflict(execution_slice,authority):
             return {"grant_id":grant_id,"state":record.get("state"),
                     "worker":record.get("worker"),"execution_slice":authority}
     return None
