@@ -910,9 +910,14 @@ def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
     finally:
         _release_lifecycle_lock(lifecycle_lock)
 
-def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None)->tuple[int,str|None]:
+def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None,
+                worker_id:str|None=None)->tuple[int,str|None]:
+    worker_dir=state_root/"worker-state"/worker_id if worker_id else state_root
+    worker_dir.mkdir(parents=True,exist_ok=True)
+    builder_state=worker_dir/"builder.json"
+    builder_output=worker_dir/"builder-last-output.txt"
     if not products:
-        (state_root/"builder-last-output.txt").write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
+        builder_output.write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
         return 2,None
     try:
         grant_path=None
@@ -930,12 +935,12 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         assert grant_path is not None
     except RuntimeError as exc:
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
-            atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
-            (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
+            atomic(builder_state,{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
+            builder_output.write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
             return 0,None
         if str(exc).startswith("EXECUTION_SLICE_ALREADY_OWNED:"):
             atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
-            (state_root/"builder-last-output.txt").write_text(str(exc)+"\n",encoding="utf-8")
+            builder_output.write_text(str(exc)+"\n",encoding="utf-8")
             return 0,None
         raise
     invocation_id=uuid.uuid4().hex
@@ -949,17 +954,18 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         decision["grant_path"]=str(grant_path)
         atomic(decision_path,decision)
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
-        "--workspace-root",str(workspace_root),"--state",str(state_root/"builder.json"),
+        "--workspace-root",str(workspace_root),"--state",str(builder_state),
         "--execution-grant",str(grant_path),"--invocation-id",invocation_id]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
-    (state_root/"builder-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
+    builder_output.write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     finalize_unclaimed_grant(grant_path,p.returncode)
     return p.returncode,invocation_id
 
-def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str)->tuple[int,str|None]:
-    """Run one product-scoped builder using the existing grant/lease authority."""
-    return run_builder(repo_root,workspace_root,state_root,[product])
+def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str,
+                            worker_id:str|None=None)->tuple[int,str|None]:
+    """Run one product-scoped builder with worker-isolated result state."""
+    return run_builder(repo_root,workspace_root,state_root,[product],worker_id=worker_id)
 
 
 def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
@@ -971,7 +977,8 @@ def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
             rows[worker_id]={"status":"WORKER_EXCEPTION","error_class":type(result).__name__}
         else:
             rc,invocation_id=result
-            ok,status=builder_health(state_root,rc,invocation_id)
+            worker_state=state_root/"worker-state"/worker_id
+            ok,status=builder_health(worker_state,rc,invocation_id)
             rows[worker_id]={"status":status,"returncode":rc,"healthy":ok,
                              "invocation_id":invocation_id}
     if rows:
@@ -1001,7 +1008,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             continue
         try:
             worker_id=pool.submit(slot,run_builder_for_product,
-                                  repo_root,workspace_root,state_root,slot.product)
+                                  repo_root,workspace_root,state_root,slot.product,slot.worker_id)
         except RuntimeError:
             continue
         dispatched.append(worker_id)
