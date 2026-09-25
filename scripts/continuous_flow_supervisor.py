@@ -21,8 +21,20 @@ from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
 
-RUNTIME_LEASES=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,
-    Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json")
+RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
+
+def load_runtime_leases_with_recovery(state_path:Path=RUNTIME_LEASE_STATE)->tuple[RuntimeLeasePool,dict|None]:
+    """Self-heal invalid lease authority once, but never displace a provable live owner."""
+    try:
+        return RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,state_path),None
+    except RuntimeError as exc:
+        if str(exc)!="RUNTIME_LEASE_STATE_INVALID":
+            raise
+    recovery=RuntimeLeasePool.recover_invalid_state(DEFAULT_RUNTIME_CAPACITIES,state_path)
+    pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,state_path)
+    return pool,recovery
+
+RUNTIME_LEASES,RUNTIME_LEASE_RECOVERY=load_runtime_leases_with_recovery()
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -1175,6 +1187,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         dispatched.append(worker_id)
     atomic(state_root/"parallel-worker-pool.json",{
         "schema_version":2,"pool":pool.snapshot(),"runtime_leases":RUNTIME_LEASES.snapshot(),"dispatched":dispatched,
+        "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
         "recorded_at_utc":datetime.now(UTC).isoformat(),
     })
     return dispatched
