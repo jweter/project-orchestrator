@@ -110,14 +110,27 @@ class RuntimeLeasePool:
     def _load(self):
         if not self.state_path or not self.state_path.exists(): return
         try: raw=json.loads(self.state_path.read_text(encoding="utf-8"))
-        except (OSError,json.JSONDecodeError,TypeError): return
-        for x in raw.get("leases",[]):
+        except (OSError,json.JSONDecodeError,TypeError) as exc:
+            raise RuntimeError("RUNTIME_LEASE_STATE_INVALID") from exc
+        if not isinstance(raw,dict) or raw.get("schema_version") not in {1,2}:
+            raise RuntimeError("RUNTIME_LEASE_STATE_INVALID")
+        records=raw.get("leases")
+        if not isinstance(records,list):
+            raise RuntimeError("RUNTIME_LEASE_STATE_INVALID")
+        loaded={}
+        for x in records:
             try:
                 lease=RuntimeLease(x["runtime_id"],x["worker_id"],int(x["owner_pid"]),
                     x["owner_fingerprint"],x["lease_id"],float(x["acquired_at"]),
                     float(x.get("heartbeat_at",x["acquired_at"])))
-                self._leases[lease.worker_id]=lease
-            except (KeyError,TypeError,ValueError): continue
+            except (KeyError,TypeError,ValueError) as exc:
+                raise RuntimeError("RUNTIME_LEASE_STATE_INVALID") from exc
+            if (not lease.worker_id or not lease.lease_id or not lease.owner_fingerprint
+                    or lease.owner_pid<=0 or lease.runtime_id not in self._capacities
+                    or lease.worker_id in loaded):
+                raise RuntimeError("RUNTIME_LEASE_STATE_INVALID")
+            loaded[lease.worker_id]=lease
+        self._leases.update(loaded)
 
     def _persist(self):
         if not self.state_path:return
