@@ -62,6 +62,19 @@ def test_task_outcome_priority_prefers_product_reality_yield(tmp_path):
     (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps(payload),encoding="utf-8")
     assert supervisor.task_outcome_priority(tmp_path,{"task_class":"tests"}) < supervisor.task_outcome_priority(tmp_path,{"task_class":"documentation"})
 
+def test_task_outcome_priority_explores_unseen_over_known_zero_yield(tmp_path):
+    known=terminal("claude-code","GREEN",60,task_class="documentation")
+    payload={"grants":{"known":known}}
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps(payload),encoding="utf-8")
+    assert supervisor.task_outcome_priority(tmp_path,{"task_class":"tests"}) < supervisor.task_outcome_priority(tmp_path,{"task_class":"documentation"})
+
+def test_task_exploration_bonus_decays_after_four_samples(tmp_path):
+    grants={f"k{i}":terminal("claude-code","GREEN",60,task_class="documentation") for i in range(4)}
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":grants}),encoding="utf-8")
+    score=supervisor.task_outcome_priority(tmp_path,{"task_class":"documentation"})
+    assert score[0]==0.0
+    assert score[1]==4
+
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}}
     assert supervisor.productivity_penalty("x",stats)==0.0

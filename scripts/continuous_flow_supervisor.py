@@ -769,12 +769,15 @@ def task_outcome_priority(state_root:Path,task:dict)->tuple[float,int,str]:
     history=runner_productivity_history(state_root,task_class)
     samples=sum(row.get("samples",0.0) for row in history.values())
     if samples<=0:
-        return (0.0,0,task_class)
+        # Deterministic exploration: unseen eligible work gets a bounded first-look bonus.
+        return (-0.20,0,task_class)
     reality=sum(row.get("product_reality_verified",0.0) for row in history.values())/samples
     merged=sum(row.get("merged_verified",0.0) for row in history.values())/samples
     failures=sum(row.get("failures",0.0) for row in history.values())/samples
-    # Lower sorts first: reward reality/merge yield while retaining a bounded failure cost.
-    return (-(0.60*reality+0.30*merged-0.10*failures),int(samples),task_class)
+    outcome=0.60*reality+0.30*merged-0.10*failures
+    # Exploration decays to zero after four observations; mature evidence then dominates.
+    exploration=0.20*max(0.0,(4.0-samples)/4.0)
+    return (-(outcome+exploration),int(samples),task_class)
 
 def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->list[tuple[str,str,dict]]:
     """Plan a bounded conflict-free task batch from exact-head capability graphs."""
