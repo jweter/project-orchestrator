@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json, os, time, uuid
+from contextlib import contextmanager
 
 @dataclass(frozen=True)
 class RuntimeLease:
@@ -55,6 +56,33 @@ class RuntimeLeasePool:
         try: os.kill(pid,0); return True
         except (OSError,PermissionError): return False
 
+    @contextmanager
+    def _locked(self,timeout:float=5.0):
+        """Cross-process lock serializes read/check/write lease transactions."""
+        if not self.state_path:
+            yield; return
+        lock=self.state_path.with_suffix(self.state_path.suffix+".lock")
+        lock.parent.mkdir(parents=True,exist_ok=True)
+        deadline=time.monotonic()+timeout
+        while True:
+            try:
+                fd=os.open(str(lock),os.O_CREAT|os.O_EXCL|os.O_WRONLY)
+                os.write(fd,f"{os.getpid()}\n".encode()); os.close(fd)
+                break
+            except FileExistsError:
+                if time.monotonic()>=deadline:
+                    raise RuntimeError("RUNTIME_LEASE_LOCK_TIMEOUT")
+                time.sleep(0.02)
+        try:
+            yield
+        finally:
+            try: lock.unlink()
+            except FileNotFoundError: pass
+
+    def _reload(self):
+        self._leases.clear()
+        self._load()
+
     def _load(self):
         if not self.state_path or not self.state_path.exists(): return
         try: raw=json.loads(self.state_path.read_text(encoding="utf-8"))
@@ -87,24 +115,30 @@ class RuntimeLeasePool:
         return removed
 
     def acquire(self,runtime_id:str,worker_id:str,owner_pid:int|None=None)->RuntimeLease:
-        self.recover_stale()
-        if runtime_id not in self._capacities:
-            raise RuntimeError(f"RUNTIME_CAPACITY_UNKNOWN:{runtime_id}")
-        if worker_id in self._leases:
-            raise RuntimeError(f"RUNTIME_LEASE_ALREADY_HELD:{worker_id}")
-        if self.running(runtime_id)>=self._capacities[runtime_id]:
-            raise RuntimeError(f"RUNTIME_SATURATED:{runtime_id}")
-        pid=owner_pid or os.getpid()
-        fp=self._fingerprint(pid)
-        if not fp: raise RuntimeError("RUNTIME_OWNER_FINGERPRINT_UNAVAILABLE")
-        lease=RuntimeLease(runtime_id,worker_id,pid,fp,uuid.uuid4().hex,time.time())
-        self._leases[worker_id]=lease; self._persist()
-        return lease
+        with self._locked():
+            if self.state_path:
+                self._reload()
+            self.recover_stale()
+            if runtime_id not in self._capacities:
+                raise RuntimeError(f"RUNTIME_CAPACITY_UNKNOWN:{runtime_id}")
+            if worker_id in self._leases:
+                raise RuntimeError(f"RUNTIME_LEASE_ALREADY_HELD:{worker_id}")
+            if self.running(runtime_id)>=self._capacities[runtime_id]:
+                raise RuntimeError(f"RUNTIME_SATURATED:{runtime_id}")
+            pid=owner_pid or os.getpid()
+            fp=self._fingerprint(pid)
+            if not fp: raise RuntimeError("RUNTIME_OWNER_FINGERPRINT_UNAVAILABLE")
+            lease=RuntimeLease(runtime_id,worker_id,pid,fp,uuid.uuid4().hex,time.time())
+            self._leases[worker_id]=lease; self._persist()
+            return lease
 
     def release(self,worker_id:str)->bool:
-        removed=self._leases.pop(worker_id,None) is not None
-        if removed:self._persist()
-        return removed
+        with self._locked():
+            if self.state_path:
+                self._reload()
+            removed=self._leases.pop(worker_id,None) is not None
+            if removed:self._persist()
+            return removed
 
     def snapshot(self)->dict:
         return {"schema_version":2,"capacities":dict(self._capacities),
