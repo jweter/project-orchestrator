@@ -39,6 +39,11 @@ class NativeWindowsRuntime:
         )
         return RuntimeResult(self.runtime_id,completed.returncode,completed.stdout,completed.stderr)
 
+class LaptopActorRuntime(NativeWindowsRuntime):
+    """Machine-local actor runtime. Commands still execute argv-direct, but the
+    distinct identity lets the scheduler require machine-specific capability."""
+    runtime_id="laptop-actor"
+
 class ExecutionRuntimeRegistry:
     def __init__(self,runtimes:Sequence[object]):
         self._runtimes={}
@@ -56,4 +61,7 @@ class ExecutionRuntimeRegistry:
         except KeyError as exc:
             raise RuntimeError(f"EXECUTION_RUNTIME_UNAVAILABLE:{runtime_id}") from exc
 
-DEFAULT_EXECUTION_RUNTIMES=ExecutionRuntimeRegistry([NativeWindowsRuntime()])
+DEFAULT_EXECUTION_RUNTIMES=ExecutionRuntimeRegistry([
+    NativeWindowsRuntime(),
+    LaptopActorRuntime(),
+])

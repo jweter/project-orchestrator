@@ -1066,6 +1066,19 @@ def select_task_runner(task:dict,registry:RunnerRegistry=DEFAULT_RUNNERS,
                        running:dict[str,int]|None=None)->str:
     return registry.select(runner_requirements_for_task(task),running).runner_id
 
+def runtime_for_task(task:dict)->str:
+    """Choose execution environment independently from the reasoning runner."""
+    raw=task.get("runtime_requirements",[])
+    if raw is None:
+        raw=[]
+    if not isinstance(raw,list) or any(not isinstance(x,str) or not x.strip() for x in raw):
+        raise RuntimeError("INVALID_RUNTIME_REQUIREMENTS")
+    requirements=set(raw)
+    machine_specific={"unreal","ollama","laptop-actor"}
+    if requirements & machine_specific:
+        return "laptop-actor"
+    return "native-windows"
+
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str])->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
@@ -1087,8 +1100,10 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         planned_target=batch[index]
         try:
             runner_id=select_task_runner(planned_target[2])
+            runtime_id=runtime_for_task(planned_target[2])
         except (RuntimeError,ValueError):
             continue
+        planned_target[2]["execution_runtime"]=runtime_id
         # Current execution adapter is the local Aider/Ollama builder. Other
         # registered runners remain ineligible until their adapters are enabled.
         if runner_id!="aider-ollama":

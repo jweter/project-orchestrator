@@ -49,3 +49,21 @@ def test_builder_run_uses_runtime_boundary(tmp_path,monkeypatch):
     assert result.returncode==3 and result.stdout=="out" and result.stderr=="err"
     assert calls[0].argv==("tool","arg")
     assert calls[0].timeout_seconds==9
+
+def test_laptop_actor_runtime_is_registered_and_preserves_identity(tmp_path):
+    from project_orchestrator.execution_runtime import DEFAULT_EXECUTION_RUNTIMES
+    runtime=DEFAULT_EXECUTION_RUNTIMES.require("laptop-actor")
+    result=runtime.execute(RuntimeRequest((sys.executable,"-c","print('actor')"),tmp_path))
+    assert result.runtime_id=="laptop-actor"
+    assert result.returncode==0 and "actor" in result.stdout
+
+def test_runtime_routing_separates_machine_specific_tasks():
+    import scripts.continuous_flow_supervisor as supervisor
+    assert supervisor.runtime_for_task({})=="native-windows"
+    assert supervisor.runtime_for_task({"runtime_requirements":["unreal"]})=="laptop-actor"
+    assert supervisor.runtime_for_task({"runtime_requirements":["ollama"]})=="laptop-actor"
+
+def test_invalid_runtime_requirements_fail_closed():
+    import scripts.continuous_flow_supervisor as supervisor
+    with pytest.raises(RuntimeError,match="INVALID_RUNTIME_REQUIREMENTS"):
+        supervisor.runtime_for_task({"runtime_requirements":"unreal"})
