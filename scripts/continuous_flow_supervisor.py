@@ -763,6 +763,19 @@ def select_conflict_free_slices(slices:list[dict],limit:int|None=None)->list[dic
             break
     return selected
 
+def task_outcome_priority(state_root:Path,task:dict)->tuple[float,int,str]:
+    """Prefer task classes with stronger verified downstream yield, without starving unseen work."""
+    task_class=task_affinity_class(task)
+    history=runner_productivity_history(state_root,task_class)
+    samples=sum(row.get("samples",0.0) for row in history.values())
+    if samples<=0:
+        return (0.0,0,task_class)
+    reality=sum(row.get("product_reality_verified",0.0) for row in history.values())/samples
+    merged=sum(row.get("merged_verified",0.0) for row in history.values())/samples
+    failures=sum(row.get("failures",0.0) for row in history.values())/samples
+    # Lower sorts first: reward reality/merge yield while retaining a bounded failure cost.
+    return (-(0.60*reality+0.30*merged-0.10*failures),int(samples),task_class)
+
 def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->list[tuple[str,str,dict]]:
     """Plan a bounded conflict-free task batch from exact-head capability graphs."""
     candidates=[]
@@ -781,6 +794,7 @@ def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->lis
         for task in derived.get("slices",[]):
             if conflicting_nonterminal_grant(state_root,repo,task) is None:
                 candidates.append((repo,head,task))
+    candidates.sort(key=lambda item:(task_outcome_priority(state_root,item[2]),item[0],item[2].get("slice_id","")))
     selected=[]
     for candidate in candidates:
         repo,head,task=candidate
