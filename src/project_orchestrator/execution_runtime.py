@@ -39,6 +39,31 @@ class NativeWindowsRuntime:
         )
         return RuntimeResult(self.runtime_id,completed.returncode,completed.stdout,completed.stderr)
 
+    def execute_supervised(self,request:RuntimeRequest,authority_check,interval:float=1.0)->RuntimeResult:
+        """Execute while authority remains valid; revoke by terminating the process."""
+        env=os.environ.copy()
+        if request.env: env.update(request.env)
+        process=subprocess.Popen(list(request.argv),cwd=request.cwd,env=env,text=True,
+                                 stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        deadline=None if request.timeout_seconds is None else __import__("time").monotonic()+request.timeout_seconds
+        try:
+            while process.poll() is None:
+                try: authority_check()
+                except Exception:
+                    process.terminate()
+                    try: process.wait(timeout=3)
+                    except subprocess.TimeoutExpired: process.kill(); process.wait()
+                    raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
+                if deadline is not None and __import__("time").monotonic()>=deadline:
+                    process.kill(); process.wait()
+                    raise subprocess.TimeoutExpired(request.argv,request.timeout_seconds)
+                __import__("time").sleep(interval)
+            stdout,stderr=process.communicate()
+            return RuntimeResult(self.runtime_id,process.returncode,stdout,stderr)
+        finally:
+            if process.poll() is None:
+                process.kill(); process.wait()
+
 class LaptopActorRuntime(NativeWindowsRuntime):
     """Machine-local actor runtime with explicit, probeable capabilities."""
     runtime_id="laptop-actor"

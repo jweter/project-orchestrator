@@ -58,8 +58,19 @@ def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
     timeout=kwargs.pop("timeout",None)
     if kwargs:
         raise TypeError(f"unsupported runtime options: {sorted(kwargs)}")
-    result=DEFAULT_EXECUTION_RUNTIMES.require(runtime_id).execute(
-        RuntimeRequest(tuple(argv),cwd,env,timeout))
+    request=RuntimeRequest(tuple(argv),cwd,env,timeout)
+    runtime=DEFAULT_EXECUTION_RUNTIMES.require(runtime_id)
+    if ACTIVE_RUNTIME_FENCE is None:
+        result=runtime.execute(request)
+    else:
+        pool,worker_id,lease_id=ACTIVE_RUNTIME_FENCE
+        def authority_check():
+            pool.assert_fence(worker_id,lease_id)
+            pool.heartbeat(worker_id,lease_id)
+        supervised=getattr(runtime,"execute_supervised",None)
+        if not callable(supervised):
+            raise RuntimeError("EXECUTION_RUNTIME_NOT_FENCEABLE")
+        result=supervised(request,authority_check)
     return subprocess.CompletedProcess(argv,result.returncode,result.stdout,result.stderr)
 
 def gh_json(args:list[str])->Any:
