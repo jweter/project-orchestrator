@@ -59,3 +59,26 @@ def test_restart_recovers_pid_reuse_fingerprint_mismatch(tmp_path):
     first.acquire("laptop-actor","w1",owner_pid=77)
     second=RuntimeLeasePool({"laptop-actor":1},state,lambda pid:"new-start",lambda pid:True)
     assert second.running("laptop-actor")==0
+
+def test_two_pools_cannot_double_allocate_same_durable_capacity(tmp_path):
+    state=tmp_path/"leases.json"
+    fp=lambda pid:f"proc:{pid}:start"
+    alive=lambda pid:True
+    a=RuntimeLeasePool({"laptop-actor":1},state,fp,alive)
+    b=RuntimeLeasePool({"laptop-actor":1},state,fp,alive)
+    a.acquire("laptop-actor","w1",owner_pid=77)
+    with pytest.raises(RuntimeError,match="RUNTIME_SATURATED"):
+        b.acquire("laptop-actor","w2",owner_pid=88)
+
+def test_release_reloads_authoritative_state_before_write(tmp_path):
+    state=tmp_path/"leases.json"
+    fp=lambda pid:f"proc:{pid}:start"
+    alive=lambda pid:True
+    a=RuntimeLeasePool({"native-windows":2},state,fp,alive)
+    b=RuntimeLeasePool({"native-windows":2},state,fp,alive)
+    a.acquire("native-windows","w1",owner_pid=77)
+    b.acquire("native-windows","w2",owner_pid=88)
+    assert a.release("w1")
+    final=RuntimeLeasePool({"native-windows":2},state,fp,alive)
+    assert final.running("native-windows")==1
+    assert final.snapshot()["leases"][0]["worker_id"]=="w2"
