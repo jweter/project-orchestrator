@@ -1102,6 +1102,14 @@ def runtime_for_task(task:dict)->str:
         return runtime_id
     return "native-windows"
 
+def resource_leases_for_task(task:dict,runtime_id:str)->tuple[str,...]:
+    """Lease only scarce machine resources; ordinary Windows capacity stays parallel."""
+    raw=task.get("runtime_requirements",[]) or []
+    resources=[]
+    if "ollama" in raw: resources.append("resource:ollama")
+    if "unreal" in raw: resources.append("resource:unreal")
+    return tuple(resources)
+
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str])->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
@@ -1133,21 +1141,32 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             continue
         assigned[slot.product]=index+1
         try:
+            lease_ids={}
+            for resource_id in resource_leases_for_task(planned_target[2],runtime_id):
+                lease=RUNTIME_LEASES.acquire(resource_id,f"{slot.worker_id}:{resource_id}")
+                lease_ids[resource_id]=lease.lease_id
             runtime_lease=RUNTIME_LEASES.acquire(runtime_id,slot.worker_id)
             planned_target[2]["runtime_lease_id"]=runtime_lease.lease_id
+            planned_target[2]["resource_lease_ids"]=lease_ids
         except RuntimeError:
+            for resource_id in list(locals().get("lease_ids",{})):
+                RUNTIME_LEASES.release(f"{slot.worker_id}:{resource_id}")
             continue
-        def leased_builder(*args,_worker_id=slot.worker_id,**kwargs):
+        def leased_builder(*args,_worker_id=slot.worker_id,_resources=tuple(lease_ids),**kwargs):
             try:
                 return run_builder_for_product(*args,**kwargs)
             finally:
                 RUNTIME_LEASES.release(_worker_id)
+                for resource_id in _resources:
+                    RUNTIME_LEASES.release(f"{_worker_id}:{resource_id}")
         try:
             worker_id=pool.submit(slot,leased_builder,
                                   repo_root,workspace_root,state_root,slot.product,slot.worker_id,
                                   planned_target)
         except RuntimeError:
             RUNTIME_LEASES.release(slot.worker_id)
+            for resource_id in lease_ids:
+                RUNTIME_LEASES.release(f"{slot.worker_id}:{resource_id}")
             continue
         dispatched.append(worker_id)
     atomic(state_root/"parallel-worker-pool.json",{
