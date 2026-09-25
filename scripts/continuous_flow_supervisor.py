@@ -17,6 +17,7 @@ from project_orchestrator.decision_outcome import attribute as attribute_decisio
 from project_orchestrator.decision_learning import compile_decision_learning, planning_hint
 from project_orchestrator.jev_evidence import load_jsonl
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -1054,6 +1055,17 @@ def harvest_parallel_builders(pool:ParallelWorkerPool,state_root:Path)->dict:
     return rows
 
 
+def runner_requirements_for_task(task:dict)->set[str]:
+    """Read explicit runner requirements; legacy slices use the proven local code runner."""
+    raw=task.get("runner_requirements",["code","local","windows","offline"])
+    if not isinstance(raw,list) or not raw or any(not isinstance(x,str) or not x.strip() for x in raw):
+        raise RuntimeError("INVALID_RUNNER_REQUIREMENTS")
+    return set(raw)
+
+def select_task_runner(task:dict,registry:RunnerRegistry=DEFAULT_RUNNERS,
+                       running:dict[str,int]|None=None)->str:
+    return registry.select(runner_requirements_for_task(task),running).runner_id
+
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str])->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
@@ -1073,6 +1085,14 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         if index>=len(batch):
             continue
         planned_target=batch[index]
+        try:
+            runner_id=select_task_runner(planned_target[2])
+        except (RuntimeError,ValueError):
+            continue
+        # Current execution adapter is the local Aider/Ollama builder. Other
+        # registered runners remain ineligible until their adapters are enabled.
+        if runner_id!="aider-ollama":
+            continue
         assigned[slot.product]=index+1
         try:
             worker_id=pool.submit(slot,run_builder_for_product,
