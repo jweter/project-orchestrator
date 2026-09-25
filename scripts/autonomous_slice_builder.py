@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from project_orchestrator.execution_runtime import DEFAULT_EXECUTION_RUNTIMES, RuntimeRequest
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
-from project_orchestrator.independent_verdict import review_candidate
+from project_orchestrator.independent_verdict import review_candidate, bind_preflight_evidence
 
 ACTIVE_RUNTIME_ID="native-windows"
 ACTIVE_RUNTIME_FENCE=None
@@ -915,7 +915,17 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         atomic_json(state_path,result); return result
     head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
     if execution_grant is not None:
-        verdict=review_candidate(ws,base,head,slice_authority,paths,preflight.returncode)
+        try:
+            grant_id=json.loads(execution_grant.read_text(encoding="utf-8"))["grant_id"]
+            evidence_binding=bind_preflight_evidence(ws,base,head,grant_id)
+        except (OSError,json.JSONDecodeError,KeyError,TypeError,RuntimeError) as exc:
+            reset_workspace(ws,base)
+            result={"status":"PREFLIGHT_EVIDENCE_REJECTED","repository":repo,
+                    "review_reason":str(exc),"head_sha":head,
+                    "last_repo_index":idx,"last_repository":repo}
+            atomic_json(state_path,result); return result
+        verdict=review_candidate(ws,base,head,slice_authority,paths,preflight.returncode,
+                                 evidence_binding=evidence_binding,grant_id=grant_id)
         if verdict.status!="APPROVE":
             reset_workspace(ws,base)
             result={"status":"INDEPENDENT_REVIEW_REJECTED","repository":repo,
@@ -923,7 +933,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                     "last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
         advance_grant_stage(execution_grant,"INDEPENDENT_REVIEW_APPROVED",repository=repo,
-                            base_sha=base,branch=branch,head_sha=head,reviewer="deterministic-verdict-v1")
+                            base_sha=base,branch=branch,head_sha=head,reviewer="deterministic-verdict-v2",
+                            preflight_evidence_binding=evidence_binding)
         advance_grant_stage(execution_grant,"COMMITTED",repository=repo,base_sha=base,branch=branch,head_sha=head)
     push=run(["git","push","-u","origin",branch],ws)
     if push.returncode:
