@@ -84,15 +84,30 @@ class LaptopActorRuntime(NativeWindowsRuntime):
     runtime_id="laptop-actor"
     capabilities=frozenset({"windows","local","offline"})
 
+    @staticmethod
+    def unreal_editor_path()->Path|None:
+        """Resolve a concrete UnrealEditor executable from explicit config, PATH, or Epic installs."""
+        import shutil
+        configured=os.environ.get("UNREAL_EDITOR","").strip()
+        if configured:
+            candidate=Path(configured)
+            if candidate.is_file(): return candidate
+        on_path=shutil.which("UnrealEditor") or shutil.which("UnrealEditor.exe")
+        if on_path: return Path(on_path)
+        roots=[Path(os.environ.get("ProgramFiles",r"C:\Program Files"))/"Epic Games"]
+        for root in roots:
+            if not root.is_dir(): continue
+            candidates=sorted(root.glob("UE_*/Engine/Binaries/Win64/UnrealEditor.exe"),reverse=True)
+            if candidates: return candidates[0]
+        return None
+
     def attest(self)->frozenset[str]:
         """Return only capabilities proven on this host at selection time."""
         proven=set(self.capabilities)
         import shutil
         if shutil.which("ollama"):
             proven.add("ollama")
-        # Unreal is intentionally not inferred from Windows alone. It becomes
-        # eligible only when an Unreal executable is actually discoverable.
-        if shutil.which("UnrealEditor") or shutil.which("UnrealEditor.exe"):
+        if self.unreal_editor_path() is not None:
             proven.add("unreal")
         return frozenset(proven)
 

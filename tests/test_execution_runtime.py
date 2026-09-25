@@ -57,10 +57,12 @@ def test_laptop_actor_runtime_is_registered_and_preserves_identity(tmp_path):
     assert result.runtime_id=="laptop-actor"
     assert result.returncode==0 and "actor" in result.stdout
 
-def test_runtime_routing_separates_machine_specific_tasks():
+def test_runtime_routing_separates_machine_specific_tasks(monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
+    from project_orchestrator.execution_runtime import LaptopActorRuntime
     assert supervisor.runtime_for_task({})=="native-windows"
-    # Machine-specific routing now requires live capability attestation.
+    # Machine-specific routing requires an actually discovered executable.
+    monkeypatch.setattr(LaptopActorRuntime,"unreal_editor_path",staticmethod(lambda:None))
     with pytest.raises(RuntimeError,match="CAPABILITY_MISMATCH"):
         supervisor.runtime_for_task({"runtime_requirements":["unreal"]})
     # Ollama is host-dependent and is covered with deterministic probes in
