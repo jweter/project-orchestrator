@@ -132,6 +132,43 @@ class RuntimeLeasePool:
             loaded[lease.worker_id]=lease
         self._leases.update(loaded)
 
+    @classmethod
+    def recover_invalid_state(cls,capacities:dict[str,int],state_path:Path,*,fingerprint=None,pid_alive=None)->dict:
+        """Quarantine invalid authority only when no plausible live owner can be proven."""
+        fingerprint=fingerprint or cls._default_fingerprint
+        pid_alive=pid_alive or cls._default_pid_alive
+        if not state_path.exists():
+            return {"status":"NO_STATE","quarantine":None}
+        try:
+            cls(capacities,state_path,fingerprint,pid_alive)
+            return {"status":"VALID","quarantine":None}
+        except RuntimeError as exc:
+            if str(exc)!="RUNTIME_LEASE_STATE_INVALID":
+                raise
+        try:
+            raw=json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError,TypeError):
+            raw=None
+        records=raw.get("leases",[]) if isinstance(raw,dict) else []
+        if isinstance(records,list):
+            for record in records:
+                if not isinstance(record,dict): continue
+                try: pid=int(record.get("owner_pid",0))
+                except (TypeError,ValueError): pid=0
+                expected=record.get("owner_fingerprint")
+                if pid>0 and expected and pid_alive(pid) and fingerprint(pid)==expected:
+                    raise RuntimeError("RUNTIME_LEASE_RECOVERY_LIVE_OWNER")
+        quarantine=state_path.with_name(f"{state_path.name}.quarantine-{int(time.time())}-{uuid.uuid4().hex[:8]}")
+        state_path.replace(quarantine)
+        audit=state_path.with_suffix(state_path.suffix+".recovery.jsonl")
+        event={"schema_version":1,"event":"RUNTIME_LEASE_STATE_QUARANTINED",
+               "quarantine":str(quarantine),"recovered_at":time.time()}
+        with audit.open("a",encoding="utf-8") as handle:
+            handle.write(json.dumps(event,sort_keys=True)+"\n")
+        pool=cls(capacities,state_path,fingerprint,pid_alive)
+        pool._persist()
+        return {"status":"RECOVERED","quarantine":str(quarantine)}
+
     def _persist(self):
         if not self.state_path:return
         self.state_path.parent.mkdir(parents=True,exist_ok=True)
