@@ -60,8 +60,11 @@ def test_laptop_actor_runtime_is_registered_and_preserves_identity(tmp_path):
 def test_runtime_routing_separates_machine_specific_tasks():
     import scripts.continuous_flow_supervisor as supervisor
     assert supervisor.runtime_for_task({})=="native-windows"
-    assert supervisor.runtime_for_task({"runtime_requirements":["unreal"]})=="laptop-actor"
-    assert supervisor.runtime_for_task({"runtime_requirements":["ollama"]})=="laptop-actor"
+    # Machine-specific routing now requires live capability attestation.
+    with pytest.raises(RuntimeError,match="CAPABILITY_MISMATCH"):
+        supervisor.runtime_for_task({"runtime_requirements":["unreal"]})
+    # Ollama is host-dependent and is covered with deterministic probes in
+    # test_runtime_capability_attestation.py.
 
 def test_invalid_runtime_requirements_fail_closed():
     import scripts.continuous_flow_supervisor as supervisor
