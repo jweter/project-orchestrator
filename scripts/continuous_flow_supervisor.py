@@ -914,11 +914,20 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         (state_root/"builder-last-output.txt").write_text("EXECUTION_GRANT_REQUIRED\n",encoding="utf-8")
         return 2,None
     try:
-        grant_path=write_execution_grant(repo_root,state_root,products)
+        grant_path=None
+        for attempt in range(3):
+            try:
+                grant_path=write_execution_grant(repo_root,state_root,products)
+                break
+            except RuntimeError as exc:
+                if str(exc)!="GRANT_ISSUANCE_BUSY":
+                    raise
+                if attempt==2:
+                    atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+                    return 0,None
+                time.sleep(0.05*(attempt+1))
+        assert grant_path is not None
     except RuntimeError as exc:
-        if str(exc)=="GRANT_ISSUANCE_BUSY":
-            atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
-            return 0,None
         if str(exc)=="ALL_EXECUTION_LANES_COMPLETE":
             atomic(state_root/"builder.json",{"status":"NO_WORK","reason":"ALL_EXECUTION_LANES_COMPLETE"})
             (state_root/"builder-last-output.txt").write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
