@@ -64,20 +64,43 @@ class RuntimeLeasePool:
         lock=self.state_path.with_suffix(self.state_path.suffix+".lock")
         lock.parent.mkdir(parents=True,exist_ok=True)
         deadline=time.monotonic()+timeout
+        owner_pid=os.getpid()
+        owner_fp=self._fingerprint(owner_pid)
+        if not owner_fp:
+            raise RuntimeError("RUNTIME_LOCK_OWNER_FINGERPRINT_UNAVAILABLE")
+        token=uuid.uuid4().hex
+        payload={"schema_version":1,"pid":owner_pid,"fingerprint":owner_fp,
+                 "token":token,"acquired_at":time.time()}
         while True:
             try:
                 fd=os.open(str(lock),os.O_CREAT|os.O_EXCL|os.O_WRONLY)
-                os.write(fd,f"{os.getpid()}\n".encode()); os.close(fd)
+                os.write(fd,(json.dumps(payload,sort_keys=True)+"\n").encode()); os.close(fd)
                 break
             except FileExistsError:
+                stale=False
+                try:
+                    current=json.loads(lock.read_text(encoding="utf-8"))
+                    pid=int(current["pid"]); fp=current["fingerprint"]
+                    alive=self._pid_alive(pid)
+                    stale=(not alive) or self._fingerprint(pid)!=fp
+                except (OSError,json.JSONDecodeError,KeyError,TypeError,ValueError):
+                    stale=False
+                if stale:
+                    try: lock.unlink()
+                    except FileNotFoundError: pass
+                    continue
                 if time.monotonic()>=deadline:
                     raise RuntimeError("RUNTIME_LEASE_LOCK_TIMEOUT")
                 time.sleep(0.02)
         try:
             yield
         finally:
-            try: lock.unlink()
-            except FileNotFoundError: pass
+            try:
+                current=json.loads(lock.read_text(encoding="utf-8"))
+                if current.get("token")==token:
+                    lock.unlink()
+            except (FileNotFoundError,OSError,json.JSONDecodeError):
+                pass
 
     def _reload(self):
         self._leases.clear()
