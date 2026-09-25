@@ -32,6 +32,13 @@ def test_productivity_can_prefer_faster_equally_reliable_runner(tmp_path):
       RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),2,30)])
     assert supervisor.select_adaptive_runner({"task_class":"repair"},tmp_path,registry,{})=="aider-ollama"
 
+def test_productivity_prefers_explicit_execution_seconds_over_queue_lifetime(tmp_path):
+    item=terminal("claude-code","GREEN",600)
+    item["execution_seconds"]=30
+    payload={"grants":{"a":item}}
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps(payload),encoding="utf-8")
+    assert supervisor.runner_productivity_history(tmp_path,"repair")["claude-code"]["seconds"]==30.0
+
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0}}
     assert supervisor.productivity_penalty("x",stats)==0.0

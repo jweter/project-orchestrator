@@ -1217,11 +1217,15 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
         if not isinstance(runner_id,str) or not runner_id:
             continue
         try:
-            started=datetime.fromisoformat(record.get("claimed_at") or record.get("issued_at"))
-            finished=datetime.fromisoformat(record.get("finished_at"))
-            if started.tzinfo is None: started=started.replace(tzinfo=UTC)
-            if finished.tzinfo is None: finished=finished.replace(tzinfo=UTC)
-            seconds=max((finished-started).total_seconds(),1.0)
+            explicit_seconds=record.get("execution_seconds")
+            if explicit_seconds is not None:
+                seconds=max(float(explicit_seconds),1.0)
+            else:
+                started=datetime.fromisoformat(record.get("execution_started_at") or record.get("claimed_at") or record.get("issued_at"))
+                finished=datetime.fromisoformat(record.get("execution_finished_at") or record.get("finished_at"))
+                if started.tzinfo is None: started=started.replace(tzinfo=UTC)
+                if finished.tzinfo is None: finished=finished.replace(tzinfo=UTC)
+                seconds=max((finished-started).total_seconds(),1.0)
         except (TypeError,ValueError):
             continue
         row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0})

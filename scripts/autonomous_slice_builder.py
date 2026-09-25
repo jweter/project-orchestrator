@@ -880,7 +880,16 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
 
     task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)
     selected_runner=(slice_authority or {}).get("runner_id") if slice_authority is not None else None
+    execution_started_at=datetime.now(UTC)
+    if execution_grant is not None:
+        advance_grant_stage(execution_grant,"EXECUTING",execution_started_at=execution_started_at.isoformat())
     builder=run_builder(ws,task_prompt,selected_runner)
+    execution_finished_at=datetime.now(UTC)
+    if execution_grant is not None:
+        advance_grant_stage(execution_grant,"EXECUTION_FINISHED",
+                            execution_started_at=execution_started_at.isoformat(),
+                            execution_finished_at=execution_finished_at.isoformat(),
+                            execution_seconds=max((execution_finished_at-execution_started_at).total_seconds(),0.0))
     cleanup_aider_artifacts(ws)
     paths=changed_paths(ws,base)
     if builder.returncode!=0:
