@@ -29,6 +29,23 @@ class NativeWindowsRuntime:
     """Direct argv execution without a shell; suitable for isolated worktrees."""
     runtime_id="native-windows"
 
+    @staticmethod
+    def _terminate_tree(process:subprocess.Popen,grace_seconds:float=3.0)->None:
+        """Revoke the whole Windows process tree, not merely its root process."""
+        if process.poll() is not None: return
+        if os.name=="nt":
+            killer=subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],
+                                  text=True,capture_output=True,check=False)
+            try: process.wait(timeout=grace_seconds)
+            except subprocess.TimeoutExpired:
+                process.kill(); process.wait()
+            if killer.returncode not in {0,128}:  # 128: process already exited
+                raise RuntimeError("PROCESS_TREE_TERMINATION_FAILED")
+            return
+        process.terminate()
+        try: process.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired: process.kill(); process.wait()
+
     def execute(self,request:RuntimeRequest)->RuntimeResult:
         env=os.environ.copy()
         if request.env:
@@ -50,19 +67,17 @@ class NativeWindowsRuntime:
             while process.poll() is None:
                 try: authority_check()
                 except Exception:
-                    process.terminate()
-                    try: process.wait(timeout=3)
-                    except subprocess.TimeoutExpired: process.kill(); process.wait()
+                    self._terminate_tree(process)
                     raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
                 if deadline is not None and __import__("time").monotonic()>=deadline:
-                    process.kill(); process.wait()
+                    self._terminate_tree(process)
                     raise subprocess.TimeoutExpired(request.argv,request.timeout_seconds)
                 __import__("time").sleep(interval)
             stdout,stderr=process.communicate()
             return RuntimeResult(self.runtime_id,process.returncode,stdout,stderr)
         finally:
             if process.poll() is None:
-                process.kill(); process.wait()
+                self._terminate_tree(process)
 
 class LaptopActorRuntime(NativeWindowsRuntime):
     """Machine-local actor runtime with explicit, probeable capabilities."""
