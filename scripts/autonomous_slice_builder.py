@@ -81,8 +81,8 @@ def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
         result=supervised(request,authority_check)
     return subprocess.CompletedProcess(argv,result.returncode,result.stdout,result.stderr)
 
-def gh_json(args:list[str])->Any:
-    p=subprocess.run(["gh",*args],text=True,capture_output=True,check=False)
+def gh_json(args:list[str],cwd:Path|None=None)->Any:
+    p=run(["gh",*args],cwd or Path.cwd())
     if p.returncode: raise RuntimeError(p.stderr.strip() or "gh failed")
     return json.loads(p.stdout)
 
@@ -197,8 +197,7 @@ def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
         ws=isolated
     if not ws.exists():
         root.mkdir(parents=True,exist_ok=True)
-        proc=subprocess.run(["gh","repo","clone",repo,str(ws),"--","--filter=blob:none"],
-                            text=True,capture_output=True,check=False)
+        proc=run(["gh","repo","clone",repo,str(ws),"--","--filter=blob:none"],root)
         if proc.returncode: raise RuntimeError("clone failed")
     origin=run(["git","remote","get-url","origin"],ws)
     if origin.returncode or repo.lower() not in origin.stdout.lower():
@@ -947,9 +946,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     body=("Autonomous laptop-actor bounded slice. Local Ollama/Aider produced the change; "
           "canonical exact-head preflight passed. Merge authority remains external and fail-closed."
           +linear_ref)
-    created=subprocess.run(["gh","pr","create","--repo",repo,"--base",main,"--head",branch,
-                            "--title","AUTO: bounded autonomous engineering slice","--body",body],
-                           cwd=ws,text=True,capture_output=True,check=False)
+    created=run(["gh","pr","create","--repo",repo,"--base",main,"--head",branch,
+                 "--title","AUTO: bounded autonomous engineering slice","--body",body],ws)
     status="PR_OPEN" if created.returncode==0 else "PR_CREATE_FAILED"
     pr_url=created.stdout.strip()
     pr_number=pr_number_from_url(pr_url) if created.returncode==0 else None
