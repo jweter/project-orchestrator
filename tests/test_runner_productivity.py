@@ -54,6 +54,14 @@ def test_product_reality_quality_outweighs_merge_only():
     reality={"x":{"verified_advancement":2.0,"seconds":120.0,"failures":0.0,"samples":2.0,"repair_attempts":0.0,"merged_verified":2.0,"product_reality_verified":2.0}}
     assert supervisor.productivity_penalty("x",reality)<supervisor.productivity_penalty("x",merged)
 
+def test_task_outcome_priority_prefers_product_reality_yield(tmp_path):
+    strong=terminal("claude-code","GREEN",60,task_class="tests")
+    strong["outcome_quality"]="PRODUCT_REALITY_VERIFIED"
+    weak=terminal("claude-code","GREEN",60,task_class="documentation")
+    payload={"grants":{"strong":strong,"weak":weak}}
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps(payload),encoding="utf-8")
+    assert supervisor.task_outcome_priority(tmp_path,{"task_class":"tests"}) < supervisor.task_outcome_priority(tmp_path,{"task_class":"documentation"})
+
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}}
     assert supervisor.productivity_penalty("x",stats)==0.0
