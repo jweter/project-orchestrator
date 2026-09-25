@@ -1155,13 +1155,63 @@ def runner_verified_history(state_root:Path)->dict[str,dict[str,int]]:
             row["failure"]+=1
     return history
 
-def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[str,int])->tuple[float,int,str]:
+def task_affinity_class(task:dict)->str:
+    """Derive a stable coarse task class from authoritative slice metadata."""
+    explicit=task.get("task_class")
+    if isinstance(explicit,str) and explicit.strip():
+        return explicit.strip().lower()
+    text=" ".join(str(task.get(key) or "") for key in ("objective","slice_id","capability_id")).lower()
+    paths=" ".join(str(x).lower() for x in task.get("allowed_paths",[]) if isinstance(x,str))
+    material=f"{text} {paths}"
+    rules=(
+        ("tests",("test","pytest","spec")),
+        ("documentation",("docs/","readme","documentation")),
+        ("unreal",("unreal",".uproject","blueprint")),
+        ("refactor",("refactor","cleanup","restructure")),
+        ("repair",("fix","repair","bug","failure")),
+    )
+    for label,tokens in rules:
+        if any(token in material for token in tokens):
+            return label
+    return "code"
+
+def runner_affinity_history(state_root:Path,task_class:str)->dict[str,dict[str,int]]:
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    history:dict[str,dict[str,int]]={}
+    for record in grants.values():
+        if not isinstance(record,dict) or record.get("state") not in {"COMPLETED","ABANDONED","QUARANTINED"}:
+            continue
+        authority=record.get("execution_slice") or {}
+        if not isinstance(authority,dict) or task_affinity_class(authority)!=task_class:
+            continue
+        runner_id=record.get("runner_id") or authority.get("runner_id")
+        if not isinstance(runner_id,str) or not runner_id:
+            continue
+        row=history.setdefault(runner_id,{"success":0,"failure":0})
+        status=str(record.get("result_status") or "")
+        if record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}:
+            row["success"]+=1
+        else:
+            row["failure"]+=1
+    return history
+
+def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[str,int],
+                          affinity:dict[str,dict[str,int]]|None=None)->tuple[float,int,str]:
     row=history.get(manifest.runner_id,{})
     successes=int(row.get("success",0)); failures=int(row.get("failure",0))
     # Bayesian smoothing prevents tiny samples from dominating static priority.
     reliability=(successes+1)/(successes+failures+2)
+    affinity_row=(affinity or {}).get(manifest.runner_id,{})
+    affinity_success=int(affinity_row.get("success",0)); affinity_failure=int(affinity_row.get("failure",0))
+    affinity_reliability=(affinity_success+1)/(affinity_success+affinity_failure+2)
+    affinity_weight=min(affinity_success+affinity_failure,4)/4
+    blended=reliability*(1-affinity_weight)+affinity_reliability*affinity_weight
     utilization=running.get(manifest.runner_id,0)/manifest.max_concurrency
-    return (utilization + (1.0-reliability),manifest.priority,manifest.runner_id)
+    return (utilization + (1.0-blended),manifest.priority,manifest.runner_id)
 
 def select_adaptive_runner(task:dict,state_root:Path,registry:RunnerRegistry,
                            running:dict[str,int])->str:
@@ -1169,7 +1219,8 @@ def select_adaptive_runner(task:dict,state_root:Path,registry:RunnerRegistry,
     if not candidates:
         raise RuntimeError("NO_ELIGIBLE_RUNNER")
     history=runner_verified_history(state_root)
-    return min(candidates,key=lambda item:adaptive_runner_score(item,history,running)).runner_id
+    affinity=runner_affinity_history(state_root,task_affinity_class(task))
+    return min(candidates,key=lambda item:adaptive_runner_score(item,history,running,affinity)).runner_id
 
 def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,int]:
     """Reconstruct capacity from durable ownership, excluding provably stale claims."""
