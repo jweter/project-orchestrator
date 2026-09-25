@@ -21,7 +21,8 @@ from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
 
-RUNTIME_LEASES=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES)
+RUNTIME_LEASES=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,
+    Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json")
 
 def atomic(path:Path,payload:dict)->None:
     path.parent.mkdir(parents=True,exist_ok=True)
