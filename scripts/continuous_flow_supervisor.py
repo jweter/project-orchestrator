@@ -1032,6 +1032,9 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     runner_id=grant_authority.get("runner_id")
     runtime_id=grant_authority.get("execution_runtime")
     runtime_lease_id=grant_authority.get("runtime_lease_id")
+    resource_lease_ids=grant_authority.get("resource_lease_ids",{})
+    if not isinstance(resource_lease_ids,dict):
+        raise RuntimeError("RESOURCE_LEASE_AUTHORITY_INVALID")
     if not runner_id or not runtime_id:
         raise RuntimeError("EXECUTION_GRANT_IDENTITY_REQUIRED")
     if not runtime_lease_id:
@@ -1041,7 +1044,8 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         "--execution-grant",str(grant_path),"--invocation-id",invocation_id,
         "--runner-id",runner_id,"--runtime-id",runtime_id,
         "--runtime-lease-id",runtime_lease_id,
-        "--runtime-lease-state",str(RUNTIME_LEASES.state_path)]
+        "--runtime-lease-state",str(RUNTIME_LEASES.state_path),
+        "--resource-lease-ids",json.dumps(resource_lease_ids,sort_keys=True)]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     builder_output.write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")

@@ -9,6 +9,7 @@ from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIM
 
 ACTIVE_RUNTIME_ID="native-windows"
 ACTIVE_RUNTIME_FENCE=None
+ACTIVE_RESOURCE_FENCES=[]
 try:
     from scripts.lane_leases import open_pr_paths
     from scripts.autonomous_contract_guard import contract_guard_failure
@@ -54,6 +55,9 @@ def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
         pool,worker_id,lease_id=ACTIVE_RUNTIME_FENCE
         pool.assert_fence(worker_id,lease_id)
         pool.heartbeat(worker_id,lease_id)
+        for resource_worker,resource_lease_id in ACTIVE_RESOURCE_FENCES:
+            pool.assert_fence(resource_worker,resource_lease_id)
+            pool.heartbeat(resource_worker,resource_lease_id)
     env=kwargs.pop("env",None)
     timeout=kwargs.pop("timeout",None)
     if kwargs:
@@ -67,6 +71,9 @@ def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
         def authority_check():
             pool.assert_fence(worker_id,lease_id)
             pool.heartbeat(worker_id,lease_id)
+            for resource_worker,resource_lease_id in ACTIVE_RESOURCE_FENCES:
+                pool.assert_fence(resource_worker,resource_lease_id)
+                pool.heartbeat(resource_worker,resource_lease_id)
         supervised=getattr(runtime,"execute_supervised",None)
         if not callable(supervised):
             raise RuntimeError("EXECUTION_RUNTIME_NOT_FENCEABLE")
@@ -1000,11 +1007,13 @@ def main()->int:
                         help="Current runtime lease fencing token")
     parser.add_argument("--runtime-lease-state",default=None,
                         help="Durable runtime lease authority state")
+    parser.add_argument("--resource-lease-ids",default="{}",
+                        help="JSON resource-id to fencing-token authority")
     args=parser.parse_args()
     state=Path(args.state)
     invocation_id=args.invocation_id or uuid.uuid4().hex
     try:
-        global ACTIVE_RUNTIME_ID,ACTIVE_RUNTIME_FENCE
+        global ACTIVE_RUNTIME_ID,ACTIVE_RUNTIME_FENCE,ACTIVE_RESOURCE_FENCES
         ACTIVE_RUNTIME_ID=args.runtime_id or "native-windows"
         if args.runtime_lease_id:
             if not args.runtime_lease_state:
@@ -1018,6 +1027,18 @@ def main()->int:
             lease_pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,Path(args.runtime_lease_state))
             ACTIVE_RUNTIME_FENCE=(lease_pool,worker_identity,args.runtime_lease_id)
             lease_pool.assert_fence(worker_identity,args.runtime_lease_id)
+            try:
+                resource_ids=json.loads(args.resource_lease_ids)
+            except (json.JSONDecodeError,TypeError):
+                raise RuntimeError("RESOURCE_LEASE_AUTHORITY_INVALID")
+            if not isinstance(resource_ids,dict):
+                raise RuntimeError("RESOURCE_LEASE_AUTHORITY_INVALID")
+            ACTIVE_RESOURCE_FENCES=[
+                (f"{worker_identity}:{resource_id}",lease_id)
+                for resource_id,lease_id in resource_ids.items()
+            ]
+            for resource_worker,resource_lease_id in ACTIVE_RESOURCE_FENCES:
+                lease_pool.assert_fence(resource_worker,resource_lease_id)
         workspace=Path(args.workspace_root)
         if not args.execution_grant and not args.unsafe_manual_all:
             result={"status":"EXECUTION_GRANT_REQUIRED","invocation_id":invocation_id}
