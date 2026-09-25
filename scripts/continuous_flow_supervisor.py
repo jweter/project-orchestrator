@@ -1199,8 +1199,53 @@ def runner_affinity_history(state_root:Path,task_class:str)->dict[str,dict[str,i
             row["failure"]+=1
     return history
 
+def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[str,dict[str,float]]:
+    """Aggregate verified advancement and elapsed worker time from terminal lifecycle evidence."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    stats:dict[str,dict[str,float]]={}
+    for record in grants.values():
+        if not isinstance(record,dict) or record.get("state") not in {"COMPLETED","ABANDONED","QUARANTINED"}:
+            continue
+        authority=record.get("execution_slice") or {}
+        if task_class is not None and (not isinstance(authority,dict) or task_affinity_class(authority)!=task_class):
+            continue
+        runner_id=record.get("runner_id") or (authority.get("runner_id") if isinstance(authority,dict) else None)
+        if not isinstance(runner_id,str) or not runner_id:
+            continue
+        try:
+            started=datetime.fromisoformat(record.get("claimed_at") or record.get("issued_at"))
+            finished=datetime.fromisoformat(record.get("finished_at"))
+            if started.tzinfo is None: started=started.replace(tzinfo=UTC)
+            if finished.tzinfo is None: finished=finished.replace(tzinfo=UTC)
+            seconds=max((finished-started).total_seconds(),1.0)
+        except (TypeError,ValueError):
+            continue
+        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0})
+        status=str(record.get("result_status") or "")
+        success=record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
+        row["verified_advancement"]+=1.0 if success else 0.0
+        row["failures"]+=0.0 if success else 1.0
+        row["seconds"]+=seconds
+        row["samples"]+=1.0
+    return stats
+
+def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
+    row=stats.get(runner_id)
+    if not row or row["samples"]<2 or row["seconds"]<=0:
+        return 0.0
+    advancement_per_hour=row["verified_advancement"]*3600.0/row["seconds"]
+    failure_rate=row["failures"]/row["samples"]
+    # Bounded contribution: productivity informs routing but cannot override hard gates.
+    throughput_penalty=1.0/(1.0+advancement_per_hour)
+    return min(0.5,0.25*throughput_penalty+0.25*failure_rate)
+
 def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[str,int],
-                          affinity:dict[str,dict[str,int]]|None=None)->tuple[float,int,str]:
+                          affinity:dict[str,dict[str,int]]|None=None,
+                          productivity:dict[str,dict[str,float]]|None=None)->tuple[float,int,str]:
     row=history.get(manifest.runner_id,{})
     successes=int(row.get("success",0)); failures=int(row.get("failure",0))
     # Bayesian smoothing prevents tiny samples from dominating static priority.
@@ -1211,7 +1256,8 @@ def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[
     affinity_weight=min(affinity_success+affinity_failure,4)/4
     blended=reliability*(1-affinity_weight)+affinity_reliability*affinity_weight
     utilization=running.get(manifest.runner_id,0)/manifest.max_concurrency
-    return (utilization + (1.0-blended),manifest.priority,manifest.runner_id)
+    return (utilization + (1.0-blended) + productivity_penalty(manifest.runner_id,productivity or {}),
+            manifest.priority,manifest.runner_id)
 
 def select_adaptive_runner(task:dict,state_root:Path,registry:RunnerRegistry,
                            running:dict[str,int])->str:
@@ -1219,8 +1265,10 @@ def select_adaptive_runner(task:dict,state_root:Path,registry:RunnerRegistry,
     if not candidates:
         raise RuntimeError("NO_ELIGIBLE_RUNNER")
     history=runner_verified_history(state_root)
-    affinity=runner_affinity_history(state_root,task_affinity_class(task))
-    return min(candidates,key=lambda item:adaptive_runner_score(item,history,running,affinity)).runner_id
+    task_class=task_affinity_class(task)
+    affinity=runner_affinity_history(state_root,task_class)
+    productivity=runner_productivity_history(state_root,task_class)
+    return min(candidates,key=lambda item:adaptive_runner_score(item,history,running,affinity,productivity)).runner_id
 
 def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,int]:
     """Reconstruct capacity from durable ownership, excluding provably stale claims."""
