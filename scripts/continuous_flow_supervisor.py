@@ -65,7 +65,8 @@ def builder_health(state_root:Path,returncode:int,expected_invocation_id:str|Non
     if expected_invocation_id is not None and payload.get("invocation_id")!=expected_invocation_id:
         return False,"STALE_BUILDER_STATE"
     degraded={"P1_BUILDER_FAILURE","BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
-    return status not in degraded,status
+    productive={"USER_ACTIVE","IMPLEMENTING","PREFLIGHT_GREEN","PR_OPEN","CI_PENDING","GREEN","MERGED","PRODUCT_REALITY_PENDING","PRODUCT_REALITY_VERIFIED"}
+    return status in productive and status not in degraded,status
 
 def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str]:
     """Snapshot contract-declared workspace identity and HEAD independently of readiness certificates."""
