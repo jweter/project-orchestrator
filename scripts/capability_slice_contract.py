@@ -14,6 +14,8 @@ def _slice_record(cid:str,s:dict[str,Any],repository:str,exact_head:str)->dict[s
         "acceptance":s["acceptance"],
         "allowed_paths":s.get("allowed_paths",[]),
         "forbidden_paths":s.get("forbidden_paths",[]),
+        "runner_requirements":s.get("runner_requirements",["code","local","windows","offline"]),
+        "runtime_requirements":s.get("runtime_requirements",[]),
     }
 
 def derive_slices(payload:dict[str,Any],*,repository:str,exact_head:str)->dict[str,Any]:
