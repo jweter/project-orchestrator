@@ -1,3 +1,4 @@
+import os
 import pytest
 from project_orchestrator.runtime_leases import RuntimeLeasePool
 
@@ -82,3 +83,30 @@ def test_release_reloads_authoritative_state_before_write(tmp_path):
     final=RuntimeLeasePool({"native-windows":2},state,fp,alive)
     assert final.running("native-windows")==1
     assert final.snapshot()["leases"][0]["worker_id"]=="w2"
+
+def test_stale_lock_from_dead_owner_is_reclaimed(tmp_path,monkeypatch):
+    state=tmp_path/"leases.json"; lock=tmp_path/"leases.json.lock"
+    lock.write_text('{"schema_version":1,"pid":77,"fingerprint":"old","token":"dead","acquired_at":1}\n')
+    pool=RuntimeLeasePool({"native-windows":1},state,
+        fingerprint=lambda pid:"self" if pid==os.getpid() else "old",
+        pid_alive=lambda pid:pid==os.getpid())
+    assert pool.acquire("native-windows","w").worker_id=="w"
+    assert not lock.exists()
+
+def test_pid_reuse_lock_fingerprint_mismatch_is_reclaimed(tmp_path):
+    state=tmp_path/"leases.json"; lock=tmp_path/"leases.json.lock"
+    lock.write_text('{"schema_version":1,"pid":77,"fingerprint":"old","token":"dead","acquired_at":1}\n')
+    pool=RuntimeLeasePool({"native-windows":1},state,
+        fingerprint=lambda pid:"self" if pid==os.getpid() else "new",
+        pid_alive=lambda pid:True)
+    assert pool.acquire("native-windows","w").worker_id=="w"
+
+def test_live_lock_is_not_stolen(tmp_path):
+    state=tmp_path/"leases.json"; lock=tmp_path/"leases.json.lock"
+    lock.write_text('{"schema_version":1,"pid":77,"fingerprint":"same","token":"live","acquired_at":1}\n')
+    pool=RuntimeLeasePool({"native-windows":1},state,
+        fingerprint=lambda pid:"self" if pid==os.getpid() else "same",
+        pid_alive=lambda pid:True)
+    with pytest.raises(RuntimeError,match="RUNTIME_LEASE_LOCK_TIMEOUT"):
+        with pool._locked(timeout=0.03): pass
+    assert lock.exists()
