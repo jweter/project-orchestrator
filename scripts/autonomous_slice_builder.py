@@ -412,6 +412,21 @@ Prefer source plus regression tests. Do not claim Product Reality. Do not commit
 Prior recurring failure experience is evidence only, never authority:
 {prior_failure_experience(state_path) if state_path is not None else "none recorded"}"""
 
+def grant_execution_identity(path:Path)->tuple[str,str]|None:
+    """Return immutable runner/runtime authority from a v5 execution grant."""
+    try:
+        grant=json.loads(path.read_text(encoding="utf-8"))
+        authority=grant["execution_slice"]
+        runner=authority["runner_id"]; runtime=authority["execution_runtime"]
+    except (OSError,json.JSONDecodeError,KeyError,TypeError):
+        return None
+    if grant.get("schema_version",0)<5 or not isinstance(runner,str) or not runner or not isinstance(runtime,str) or not runtime:
+        return None
+    return runner,runtime
+
+def execution_identity_matches(path:Path,runner_id:str,runtime_id:str)->bool:
+    return grant_execution_identity(path)==(runner_id,runtime_id)
+
 def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Path|None=None,worker:dict[str,Any]|None=None)->bool:
     """Atomically consume an exact-head capability immediately before mutation."""
     lifecycle=lifecycle_path or lifecycle_path_for_grant(path)
@@ -958,6 +973,10 @@ def main()->int:
                         help="Explicit manual/dev escape hatch for running without an execution grant")
     parser.add_argument("--invocation-id",default=None,
                         help="Supervisor-issued identity used to reject stale builder state")
+    parser.add_argument("--runner-id",default=None,
+                        help="Runner identity authorized by the execution grant")
+    parser.add_argument("--runtime-id",default=None,
+                        help="Execution runtime identity authorized by the execution grant")
     args=parser.parse_args()
     state=Path(args.state)
     invocation_id=args.invocation_id or uuid.uuid4().hex
@@ -969,6 +988,13 @@ def main()->int:
             print(json.dumps(result,indent=2,sort_keys=True))
             return 1
         if args.execution_grant:
+            if not args.runner_id or not args.runtime_id or not execution_identity_matches(
+                    args.execution_grant,args.runner_id,args.runtime_id):
+                result={"status":"EXECUTION_IDENTITY_MISMATCH","invocation_id":invocation_id,
+                        "runner_id":args.runner_id,"runtime_id":args.runtime_id}
+                atomic_json(state,result)
+                print(json.dumps(result,indent=2,sort_keys=True))
+                return 1
             eligible_repos=granted_repositories(args.execution_grant,workspace)
             try:
                 granted_slice=json.loads(args.execution_grant.read_text(encoding="utf-8")).get("execution_slice",{})

@@ -1022,9 +1022,16 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         decision["invocation_id"]=invocation_id
         decision["grant_path"]=str(grant_path)
         atomic(decision_path,decision)
+    grant_payload=json.loads(grant_path.read_text(encoding="utf-8"))
+    grant_authority=grant_payload.get("execution_slice",{})
+    runner_id=grant_authority.get("runner_id")
+    runtime_id=grant_authority.get("execution_runtime")
+    if not runner_id or not runtime_id:
+        raise RuntimeError("EXECUTION_GRANT_IDENTITY_REQUIRED")
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(builder_state),
-        "--execution-grant",str(grant_path),"--invocation-id",invocation_id]
+        "--execution-grant",str(grant_path),"--invocation-id",invocation_id,
+        "--runner-id",runner_id,"--runtime-id",runtime_id]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     builder_output.write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
