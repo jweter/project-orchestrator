@@ -879,12 +879,13 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         advance_grant_stage(execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch)
 
     task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)
-    builder=run_builder(ws,task_prompt,runner_id)
+    selected_runner=(slice_authority or {}).get("runner_id") if slice_authority is not None else None
+    builder=run_builder(ws,task_prompt,selected_runner)
     cleanup_aider_artifacts(ws)
     paths=changed_paths(ws,base)
     if builder.returncode!=0:
         reset_workspace(ws,base)
-        lesson=retain_failure_lesson(state_path,f"{runner_id or 'aider-ollama'}_execution",builder.stderr or builder.stdout or f"returncode={builder.returncode}","BUILDER_FAILED")
+        lesson=retain_failure_lesson(state_path,f"{selected_runner or 'aider-ollama'}_execution",builder.stderr or builder.stdout or f"returncode={builder.returncode}","BUILDER_FAILED")
         result={"status":"BUILDER_FAILED","repository":repo,"returncode":builder.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     if not paths:
@@ -892,7 +893,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         atomic_json(state_path,result); return result
     initial_failure=generated_change_failure(ws,base,paths,slice_authority)
     if initial_failure:
-        repair=run_builder(ws,repair_prompt(repo,initial_failure,paths),runner_id)
+        repair=run_builder(ws,repair_prompt(repo,initial_failure,paths),selected_runner)
         cleanup_aider_artifacts(ws)
         paths=changed_paths(ws,base)
         if repair.returncode!=0:
