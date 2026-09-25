@@ -902,7 +902,14 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         atomic_json(state_path,result); return result
     initial_failure=generated_change_failure(ws,base,paths,slice_authority)
     if initial_failure:
+        repair_started_at=datetime.now(UTC)
         repair=run_builder(ws,repair_prompt(repo,initial_failure,paths),selected_runner)
+        repair_finished_at=datetime.now(UTC)
+        repair_seconds=max((repair_finished_at-repair_started_at).total_seconds(),0.0)
+        if execution_grant is not None:
+            advance_grant_stage(execution_grant,"REPAIR_FINISHED",
+                                repair_attempts=1,repair_seconds=repair_seconds,
+                                execution_seconds=max((execution_finished_at-execution_started_at).total_seconds(),0.0)+repair_seconds)
         cleanup_aider_artifacts(ws)
         paths=changed_paths(ws,base)
         if repair.returncode!=0:

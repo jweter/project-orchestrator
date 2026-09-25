@@ -1228,13 +1228,17 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
                 seconds=max((finished-started).total_seconds(),1.0)
         except (TypeError,ValueError):
             continue
-        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0})
+        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0,"repair_attempts":0.0})
         status=str(record.get("result_status") or "")
         success=record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
         row["verified_advancement"]+=1.0 if success else 0.0
         row["failures"]+=0.0 if success else 1.0
         row["seconds"]+=seconds
         row["samples"]+=1.0
+        try:
+            row["repair_attempts"]+=max(float(record.get("repair_attempts",0)),0.0)
+        except (TypeError,ValueError):
+            pass
     return stats
 
 def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
@@ -1243,9 +1247,10 @@ def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
         return 0.0
     advancement_per_hour=row["verified_advancement"]*3600.0/row["seconds"]
     failure_rate=row["failures"]/row["samples"]
+    repair_rate=row.get("repair_attempts",0.0)/row["samples"]
     # Bounded contribution: productivity informs routing but cannot override hard gates.
     throughput_penalty=1.0/(1.0+advancement_per_hour)
-    return min(0.5,0.25*throughput_penalty+0.25*failure_rate)
+    return min(0.5,0.20*throughput_penalty+0.20*failure_rate+0.10*min(repair_rate,1.0))
 
 def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[str,int],
                           affinity:dict[str,dict[str,int]]|None=None,
