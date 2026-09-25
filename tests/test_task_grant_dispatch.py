@@ -24,6 +24,7 @@ def test_dispatch_assigns_distinct_tasks_to_same_repo_workers(tmp_path,monkeypat
     d=tmp_path/"capability-graphs"; d.mkdir()
     (d/"jweter__repo.json").write_text(json.dumps(graph()))
     calls=[]
+    monkeypatch.setattr(supervisor,"RUNTIME_LEASES",supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
     def worker(*args,**kwargs):
         calls.append(args[-1])
         return (0,None)
