@@ -1150,7 +1150,8 @@ def durable_runner_occupancy(state_root:Path)->dict[str,int]:
     return running
 
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
-                               state_root:Path,products:list[str])->list[str]:
+                               state_root:Path,products:list[str],
+                               runner_registry:RunnerRegistry|None=None)->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
     dispatched=[]
     try:
@@ -1162,6 +1163,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         for product in products
     }
     assigned={product:0 for product in products}
+    runners=runner_registry or DEFAULT_RUNNERS
     runner_running=durable_runner_occupancy(state_root)
     legacy_lane_cursor=sum(runner_running.values())
     for slot in pool.available_slots(products):
@@ -1176,15 +1178,15 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
                 legacy_lanes=("aider-ollama","claude-code")
                 runner_id=legacy_lanes[legacy_lane_cursor % len(legacy_lanes)]
                 try:
-                    manifest=next(item for item in DEFAULT_RUNNERS.eligible(runner_requirements_for_task(runner_task),runner_running) if item.runner_id==runner_id)
+                    manifest=next(item for item in runners.eligible(runner_requirements_for_task(runner_task),runner_running) if item.runner_id==runner_id)
                 except StopIteration:
-                    runner_id=select_task_runner(runner_task,running=runner_running)
+                    runner_id=select_task_runner(runner_task,runners,runner_running)
                 else:
                     if not manifest.enabled or runner_running.get(runner_id,0)>=manifest.max_concurrency:
-                        runner_id=select_task_runner(runner_task,running=runner_running)
+                        runner_id=select_task_runner(runner_task,runners,runner_running)
                 legacy_lane_cursor+=1
             else:
-                runner_id=select_task_runner(runner_task,running=runner_running)
+                runner_id=select_task_runner(runner_task,runners,runner_running)
             runtime_id=runtime_for_task(planned_target[2])
         except (RuntimeError,ValueError):
             continue
