@@ -1133,6 +1133,44 @@ def resource_leases_for_task(task:dict,runtime_id:str)->tuple[str,...]:
     if "unreal" in raw: resources.append("resource:unreal")
     return tuple(resources)
 
+def runner_verified_history(state_root:Path)->dict[str,dict[str,int]]:
+    """Summarize durable terminal runner outcomes; only verified lifecycle evidence counts."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    history:dict[str,dict[str,int]]={}
+    for record in grants.values():
+        if not isinstance(record,dict) or record.get("state") not in {"COMPLETED","ABANDONED","QUARANTINED"}:
+            continue
+        runner_id=record.get("runner_id") or (record.get("execution_slice") or {}).get("runner_id")
+        if not isinstance(runner_id,str) or not runner_id:
+            continue
+        row=history.setdefault(runner_id,{"success":0,"failure":0})
+        status=str(record.get("result_status") or "")
+        if record.get("state")=="COMPLETED" and status not in {"BUILDER_FAILED","PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"} and "FAILED" not in status:
+            row["success"]+=1
+        else:
+            row["failure"]+=1
+    return history
+
+def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[str,int])->tuple[float,int,str]:
+    row=history.get(manifest.runner_id,{})
+    successes=int(row.get("success",0)); failures=int(row.get("failure",0))
+    # Bayesian smoothing prevents tiny samples from dominating static priority.
+    reliability=(successes+1)/(successes+failures+2)
+    utilization=running.get(manifest.runner_id,0)/manifest.max_concurrency
+    return (utilization + (1.0-reliability),manifest.priority,manifest.runner_id)
+
+def select_adaptive_runner(task:dict,state_root:Path,registry:RunnerRegistry,
+                           running:dict[str,int])->str:
+    candidates=registry.eligible(runner_requirements_for_task(task),running)
+    if not candidates:
+        raise RuntimeError("NO_ELIGIBLE_RUNNER")
+    history=runner_verified_history(state_root)
+    return min(candidates,key=lambda item:adaptive_runner_score(item,history,running)).runner_id
+
 def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,int]:
     """Reconstruct capacity from durable ownership, excluding provably stale claims."""
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -1175,7 +1213,6 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
     assigned={product:0 for product in products}
     runners=runner_registry or DEFAULT_RUNNERS
     runner_running=durable_runner_occupancy(state_root)
-    legacy_lane_cursor=sum(runner_running.values())
     for slot in pool.available_slots(products):
         batch=task_batches.get(slot.product,[])
         index=assigned.get(slot.product,0)
@@ -1184,19 +1221,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         planned_target=batch[index]
         try:
             runner_task=planned_target[2]
-            if "runner_requirements" not in runner_task:
-                legacy_lanes=("aider-ollama","claude-code")
-                runner_id=legacy_lanes[legacy_lane_cursor % len(legacy_lanes)]
-                try:
-                    manifest=next(item for item in runners.eligible(runner_requirements_for_task(runner_task),runner_running) if item.runner_id==runner_id)
-                except StopIteration:
-                    runner_id=select_task_runner(runner_task,runners,runner_running)
-                else:
-                    if not manifest.enabled or runner_running.get(runner_id,0)>=manifest.max_concurrency:
-                        runner_id=select_task_runner(runner_task,runners,runner_running)
-                legacy_lane_cursor+=1
-            else:
-                runner_id=select_task_runner(runner_task,runners,runner_running)
+            runner_id=select_adaptive_runner(runner_task,state_root,runners,runner_running)
             runtime_id=runtime_for_task(planned_target[2])
         except (RuntimeError,ValueError):
             continue
