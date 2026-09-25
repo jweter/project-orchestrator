@@ -18,7 +18,7 @@ from project_orchestrator.decision_learning import compile_decision_learning, pl
 from project_orchestrator.jev_evidence import load_jsonl
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
-from project_orchestrator.execution_runtime import require_runtime_capabilities
+from project_orchestrator.execution_runtime import require_runtime_capabilities, DEFAULT_EXECUTION_RUNTIMES
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
@@ -1156,6 +1156,12 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         except (RuntimeError,ValueError):
             continue
         planned_target[2]["execution_runtime"]=runtime_id
+        runtime=DEFAULT_EXECUTION_RUNTIMES.require(runtime_id)
+        provenance=getattr(runtime,"provenance",None)
+        if callable(provenance):
+            planned_target[2]["runtime_provenance"]=provenance()
+        else:
+            planned_target[2]["runtime_provenance"]={"runtime_id":runtime_id}
         # Current execution adapter is the local Aider/Ollama builder. Other
         # registered runners remain ineligible until their adapters are enabled.
         if runner_id!="aider-ollama":
