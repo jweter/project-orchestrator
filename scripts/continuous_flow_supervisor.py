@@ -942,7 +942,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
                 if str(exc)!="GRANT_ISSUANCE_BUSY":
                     raise
                 if attempt==2:
-                    atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+                    atomic(builder_state,{"status":"OWNERSHIP_HELD","reason":str(exc)})
                     return 0,None
                 time.sleep(0.05*(attempt+1))
         assert grant_path is not None
@@ -952,7 +952,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
             builder_output.write_text("ALL_EXECUTION_LANES_COMPLETE\n",encoding="utf-8")
             return 0,None
         if str(exc).startswith("EXECUTION_SLICE_ALREADY_OWNED:"):
-            atomic(state_root/"builder.json",{"status":"OWNERSHIP_HELD","reason":str(exc)})
+            atomic(builder_state,{"status":"OWNERSHIP_HELD","reason":str(exc)})
             builder_output.write_text(str(exc)+"\n",encoding="utf-8")
             return 0,None
         raise
