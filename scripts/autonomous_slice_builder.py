@@ -5,6 +5,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from project_orchestrator.execution_runtime import DEFAULT_EXECUTION_RUNTIMES, RuntimeRequest
+from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
+
+ACTIVE_RUNTIME_ID="native-windows"
+ACTIVE_RUNTIME_FENCE=None
 try:
     from scripts.lane_leases import open_pr_paths
     from scripts.autonomous_contract_guard import contract_guard_failure
@@ -45,7 +49,11 @@ MAX_AUTONOMOUS_CHANGED_LINES=400
 
 def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
     """Execute through Foundry's runtime boundary while preserving legacy result shape."""
-    runtime_id=kwargs.pop("runtime_id","native-windows")
+    runtime_id=kwargs.pop("runtime_id",ACTIVE_RUNTIME_ID)
+    if ACTIVE_RUNTIME_FENCE is not None:
+        pool,worker_id,lease_id=ACTIVE_RUNTIME_FENCE
+        pool.assert_fence(worker_id,lease_id)
+        pool.heartbeat(worker_id,lease_id)
     env=kwargs.pop("env",None)
     timeout=kwargs.pop("timeout",None)
     if kwargs:
@@ -977,10 +985,28 @@ def main()->int:
                         help="Runner identity authorized by the execution grant")
     parser.add_argument("--runtime-id",default=None,
                         help="Execution runtime identity authorized by the execution grant")
+    parser.add_argument("--runtime-lease-id",default=None,
+                        help="Current runtime lease fencing token")
+    parser.add_argument("--runtime-lease-state",default=None,
+                        help="Durable runtime lease authority state")
     args=parser.parse_args()
     state=Path(args.state)
     invocation_id=args.invocation_id or uuid.uuid4().hex
     try:
+        global ACTIVE_RUNTIME_ID,ACTIVE_RUNTIME_FENCE
+        ACTIVE_RUNTIME_ID=args.runtime_id or "native-windows"
+        if args.runtime_lease_id:
+            if not args.runtime_lease_state:
+                raise RuntimeError("RUNTIME_LEASE_STATE_REQUIRED")
+            worker_identity=invocation_id
+            if args.execution_grant:
+                try:
+                    worker_identity=json.loads(Path(args.execution_grant).read_text(encoding="utf-8")).get("worker") or invocation_id
+                except (OSError,json.JSONDecodeError,TypeError):
+                    raise RuntimeError("RUNTIME_LEASE_FENCE_REJECTED")
+            lease_pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,Path(args.runtime_lease_state))
+            ACTIVE_RUNTIME_FENCE=(lease_pool,worker_identity,args.runtime_lease_id)
+            lease_pool.assert_fence(worker_identity,args.runtime_lease_id)
         workspace=Path(args.workspace_root)
         if not args.execution_grant and not args.unsafe_manual_all:
             result={"status":"EXECUTION_GRANT_REQUIRED","invocation_id":invocation_id}

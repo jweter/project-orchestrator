@@ -1,4 +1,4 @@
-import json
+﻿import json
 import scripts.continuous_flow_supervisor as supervisor
 
 def test_run_builder_retries_transient_grant_issue_contention(tmp_path, monkeypatch):
@@ -6,7 +6,7 @@ def test_run_builder_retries_transient_grant_issue_contention(tmp_path, monkeypa
     attempts={"count":0}
     grant=state/"hands-off-execution-grants"/"g.json"
     grant.parent.mkdir()
-    grant.write_text(json.dumps({"schema_version":5,"grant_id":"g","execution_slice":{"runner_id":"aider-ollama","execution_runtime":"native-windows"}}),encoding="utf-8")
+    grant.write_text(json.dumps({"schema_version":5,"grant_id":"g","execution_slice":{"runner_id":"aider-ollama","execution_runtime":"native-windows","runtime_lease_id":"lease-test"}}),encoding="utf-8")
     def issue(*_args,**_kwargs):
         attempts["count"]+=1
         if attempts["count"]<3:
@@ -19,3 +19,4 @@ def test_run_builder_retries_transient_grant_issue_contention(tmp_path, monkeypa
     rc,_=supervisor.run_builder(tmp_path,tmp_path,state,["product"])
     assert rc==0
     assert attempts["count"]==3
+

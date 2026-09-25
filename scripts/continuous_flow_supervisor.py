@@ -1031,12 +1031,17 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     grant_authority=grant_payload.get("execution_slice",{})
     runner_id=grant_authority.get("runner_id")
     runtime_id=grant_authority.get("execution_runtime")
+    runtime_lease_id=grant_authority.get("runtime_lease_id")
     if not runner_id or not runtime_id:
         raise RuntimeError("EXECUTION_GRANT_IDENTITY_REQUIRED")
+    if not runtime_lease_id:
+        raise RuntimeError("RUNTIME_LEASE_ID_REQUIRED")
     cmd=[sys.executable,str(repo_root/"scripts"/"autonomous_slice_builder.py"),
         "--workspace-root",str(workspace_root),"--state",str(builder_state),
         "--execution-grant",str(grant_path),"--invocation-id",invocation_id,
-        "--runner-id",runner_id,"--runtime-id",runtime_id]
+        "--runner-id",runner_id,"--runtime-id",runtime_id,
+        "--runtime-lease-id",runtime_lease_id,
+        "--runtime-lease-state",str(RUNTIME_LEASES.state_path)]
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     builder_output.write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
@@ -1128,7 +1133,8 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             continue
         assigned[slot.product]=index+1
         try:
-            RUNTIME_LEASES.acquire(runtime_id,slot.worker_id)
+            runtime_lease=RUNTIME_LEASES.acquire(runtime_id,slot.worker_id)
+            planned_target[2]["runtime_lease_id"]=runtime_lease.lease_id
         except RuntimeError:
             continue
         def leased_builder(*args,_worker_id=slot.worker_id,**kwargs):
