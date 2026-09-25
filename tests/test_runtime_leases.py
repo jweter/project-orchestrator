@@ -110,3 +110,23 @@ def test_live_lock_is_not_stolen(tmp_path):
     with pytest.raises(RuntimeError,match="RUNTIME_LEASE_LOCK_TIMEOUT"):
         with pool._locked(timeout=0.03): pass
     assert lock.exists()
+
+def test_heartbeat_requires_current_lease_fencing_token(tmp_path):
+    state=tmp_path/"leases.json"; fp=lambda pid:f"p:{pid}"
+    pool=RuntimeLeasePool({"native-windows":1},state,fp,lambda pid:True)
+    lease=pool.acquire("native-windows","w",owner_pid=77)
+    with pytest.raises(RuntimeError,match="FENCE_REJECTED"):
+        pool.heartbeat("w","superseded")
+    renewed=pool.heartbeat("w",lease.lease_id)
+    assert renewed.heartbeat_at>=lease.heartbeat_at
+    assert renewed.lease_id==lease.lease_id
+
+def test_superseded_worker_cannot_cross_execution_fence(tmp_path):
+    state=tmp_path/"leases.json"; fp=lambda pid:f"p:{pid}"
+    pool=RuntimeLeasePool({"native-windows":1},state,fp,lambda pid:True)
+    old=pool.acquire("native-windows","w",owner_pid=77)
+    pool.release("w")
+    current=pool.acquire("native-windows","w",owner_pid=88)
+    with pytest.raises(RuntimeError,match="FENCE_REJECTED"):
+        pool.assert_fence("w",old.lease_id)
+    assert pool.assert_fence("w",current.lease_id)==current

@@ -12,6 +12,7 @@ class RuntimeLease:
     owner_fingerprint:str
     lease_id:str
     acquired_at:float
+    heartbeat_at:float
 
 class RuntimeLeasePool:
     """Durable capacity authority for execution runtimes."""
@@ -113,7 +114,8 @@ class RuntimeLeasePool:
         for x in raw.get("leases",[]):
             try:
                 lease=RuntimeLease(x["runtime_id"],x["worker_id"],int(x["owner_pid"]),
-                    x["owner_fingerprint"],x["lease_id"],float(x["acquired_at"]))
+                    x["owner_fingerprint"],x["lease_id"],float(x["acquired_at"]),
+                    float(x.get("heartbeat_at",x["acquired_at"])))
                 self._leases[lease.worker_id]=lease
             except (KeyError,TypeError,ValueError): continue
 
@@ -151,9 +153,35 @@ class RuntimeLeasePool:
             pid=owner_pid or os.getpid()
             fp=self._fingerprint(pid)
             if not fp: raise RuntimeError("RUNTIME_OWNER_FINGERPRINT_UNAVAILABLE")
-            lease=RuntimeLease(runtime_id,worker_id,pid,fp,uuid.uuid4().hex,time.time())
+            now=time.time()
+            lease=RuntimeLease(runtime_id,worker_id,pid,fp,uuid.uuid4().hex,now,now)
             self._leases[worker_id]=lease; self._persist()
             return lease
+
+    def assert_fence(self,worker_id:str,lease_id:str)->RuntimeLease:
+        """Prove the caller still owns the authoritative runtime lease."""
+        with self._locked():
+            if self.state_path:self._reload()
+            lease=self._leases.get(worker_id)
+            if lease is None or lease.lease_id!=lease_id:
+                raise RuntimeError("RUNTIME_LEASE_FENCE_REJECTED")
+            if not self._pid_alive(lease.owner_pid) or self._fingerprint(lease.owner_pid)!=lease.owner_fingerprint:
+                raise RuntimeError("RUNTIME_LEASE_FENCE_REJECTED")
+            return lease
+
+    def heartbeat(self,worker_id:str,lease_id:str)->RuntimeLease:
+        """Renew liveness only when the caller presents the current fencing token."""
+        with self._locked():
+            if self.state_path:self._reload()
+            lease=self._leases.get(worker_id)
+            if lease is None or lease.lease_id!=lease_id:
+                raise RuntimeError("RUNTIME_LEASE_FENCE_REJECTED")
+            if not self._pid_alive(lease.owner_pid) or self._fingerprint(lease.owner_pid)!=lease.owner_fingerprint:
+                raise RuntimeError("RUNTIME_LEASE_FENCE_REJECTED")
+            renewed=RuntimeLease(lease.runtime_id,lease.worker_id,lease.owner_pid,
+                lease.owner_fingerprint,lease.lease_id,lease.acquired_at,time.time())
+            self._leases[worker_id]=renewed; self._persist()
+            return renewed
 
     def release(self,worker_id:str)->bool:
         with self._locked():
