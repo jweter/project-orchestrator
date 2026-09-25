@@ -1133,6 +1133,22 @@ def resource_leases_for_task(task:dict,runtime_id:str)->tuple[str,...]:
     if "unreal" in raw: resources.append("resource:unreal")
     return tuple(resources)
 
+def durable_runner_occupancy(state_root:Path)->dict[str,int]:
+    """Reconstruct runner capacity from durable live grant ownership after restart."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    running:dict[str,int]={}
+    for record in grants.values():
+        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","RUNNING"}:
+            continue
+        runner_id=record.get("runner_id") or (record.get("execution_slice") or {}).get("runner_id")
+        if isinstance(runner_id,str) and runner_id:
+            running[runner_id]=running.get(runner_id,0)+1
+    return running
+
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str])->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
@@ -1146,8 +1162,8 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         for product in products
     }
     assigned={product:0 for product in products}
-    runner_running:dict[str,int]={}
-    legacy_lane_cursor=0
+    runner_running=durable_runner_occupancy(state_root)
+    legacy_lane_cursor=sum(runner_running.values())
     for slot in pool.available_slots(products):
         batch=task_batches.get(slot.product,[])
         index=assigned.get(slot.product,0)
