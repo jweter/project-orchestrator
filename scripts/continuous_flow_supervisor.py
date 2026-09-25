@@ -4,9 +4,9 @@ import argparse, atexit, hashlib, json, os, shutil, socket, subprocess, sys, tim
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 try:
-    from scripts.autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
+    from scripts.autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock, mutate_grant_lifecycle
 except ModuleNotFoundError:
-    from autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock
+    from autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock, mutate_grant_lifecycle
 
 from scripts.capability_slice_contract import derive_slice, derive_slices
 from scripts.product_completion_proof import build_completion_proof
@@ -298,6 +298,13 @@ def reconcile_verified_merge(state_root:Path,event:dict)->dict:
             return {"status":"ALREADY_RECONCILED","evidence":str(path)}
         return {"status":"COMPLETION_EVIDENCE_CONFLICT"}
     atomic(path,evidence)
+    def mark_verified_merge(item):
+        if item.get("head_sha")!=head or item.get("pr_number")!=pr:
+            return False
+        item["outcome_quality"]="MERGED_VERIFIED"
+        item["merged_verified_at"]=datetime.now(UTC).isoformat()
+        return True
+    mutate_grant_lifecycle(lifecycle,grant_id,mark_verified_merge)
     return {"status":"SLICE_VERIFIED_COMPLETE","evidence":str(path),"capability_id":capability_id,"slice_id":slice_id}
 
 def reconcile_capability_from_slice_evidence(state_root:Path,repo:str,capability_id:str)->dict:
@@ -1228,7 +1235,7 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
                 seconds=max((finished-started).total_seconds(),1.0)
         except (TypeError,ValueError):
             continue
-        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0,"repair_attempts":0.0})
+        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0,"repair_attempts":0.0,"merged_verified":0.0})
         status=str(record.get("result_status") or "")
         success=record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
         row["verified_advancement"]+=1.0 if success else 0.0
@@ -1239,6 +1246,8 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
             row["repair_attempts"]+=max(float(record.get("repair_attempts",0)),0.0)
         except (TypeError,ValueError):
             pass
+        if record.get("outcome_quality")=="MERGED_VERIFIED":
+            row["merged_verified"]+=1.0
     return stats
 
 def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
@@ -1248,9 +1257,11 @@ def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
     advancement_per_hour=row["verified_advancement"]*3600.0/row["seconds"]
     failure_rate=row["failures"]/row["samples"]
     repair_rate=row.get("repair_attempts",0.0)/row["samples"]
-    # Bounded contribution: productivity informs routing but cannot override hard gates.
+    merge_rate=row.get("merged_verified",0.0)/row["samples"]
+    # Bounded contribution: reward exact-head verified merges, not merely PR creation.
     throughput_penalty=1.0/(1.0+advancement_per_hour)
-    return min(0.5,0.20*throughput_penalty+0.20*failure_rate+0.10*min(repair_rate,1.0))
+    quality_penalty=1.0-merge_rate
+    return min(0.5,0.15*throughput_penalty+0.15*failure_rate+0.10*min(repair_rate,1.0)+0.10*quality_penalty)
 
 def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[str,int],
                           affinity:dict[str,dict[str,int]]|None=None,
