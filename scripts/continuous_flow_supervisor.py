@@ -1111,16 +1111,21 @@ def runtime_for_task(task:dict)->str:
     if not isinstance(raw,list) or any(not isinstance(x,str) or not x.strip() for x in raw):
         raise RuntimeError("INVALID_RUNTIME_REQUIREMENTS")
     requirements=set(raw)
-    machine_specific={"unreal","ollama","laptop-actor"}
-    if requirements & machine_specific:
+    runtime_identity="laptop-actor" if "laptop-actor" in requirements else None
+    capabilities=requirements-{"laptop-actor"}
+    machine_capabilities={"unreal","ollama"}
+    if runtime_identity or capabilities & machine_capabilities:
         runtime_id="laptop-actor"
-        require_runtime_capabilities(runtime_id,sorted(requirements & machine_specific))
+        require_runtime_capabilities(runtime_id,sorted(capabilities & machine_capabilities))
         return runtime_id
     return "native-windows"
 
 def resource_leases_for_task(task:dict,runtime_id:str)->tuple[str,...]:
     """Lease only scarce machine resources; ordinary Windows capacity stays parallel."""
-    raw=task.get("runtime_requirements",[]) or []
+    raw=task.get("runtime_requirements",[])
+    if raw is None: raw=[]
+    if not isinstance(raw,list) or any(not isinstance(x,str) or not x.strip() for x in raw):
+        raise RuntimeError("INVALID_RUNTIME_REQUIREMENTS")
     resources=[]
     if "ollama" in raw: resources.append("resource:ollama")
     if "unreal" in raw: resources.append("resource:unreal")
