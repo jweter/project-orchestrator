@@ -119,7 +119,8 @@ def test_dashboard_snapshot_projects_dispatch_block_reasons(tmp_path):
 
 def test_dashboard_snapshot_counts_and_orders_terminal_outcomes(tmp_path):
     older=terminal("aider-ollama","GREEN",60,task_class="tests")
-    older.update({"finished_at":"2026-09-25T10:00:00+00:00","outcome_quality":"MERGED_VERIFIED","repair_attempts":2,"execution_seconds":60})
+    older.update({"finished_at":"2026-09-25T10:00:00+00:00","outcome_quality":"MERGED_VERIFIED","repair_attempts":2,"execution_seconds":60,
+                  "pr_number":42,"pr_url":"https://github.com/jweter/repo/pull/42","head_sha":"abc","execution_stage":"CI_PENDING"})
     newer=terminal("claude-code","GREEN",60,task_class="tests")
     newer.update({"finished_at":"2026-09-25T11:00:00+00:00","outcome_quality":"PRODUCT_REALITY_VERIFIED","execution_seconds":60})
     failed=terminal("claude-code","TEST_FAILURE",60,task_class="tests")
@@ -129,6 +130,8 @@ def test_dashboard_snapshot_counts_and_orders_terminal_outcomes(tmp_path):
     assert snapshot["outcome_counters"]=={"completed":2,"failed":1,"merged_verified":2,"product_reality_verified":1,"repairs":2}
     assert snapshot["flow"]["measured_worker_seconds"]==180.0
     assert snapshot["flow"]["verified_advancement_per_worker_hour"]==40.0
+    assert snapshot["github"]["pull_requests"][0]["pr_number"]==42
+    assert snapshot["github"]["promotion_gates"][0]=={"repository":None,"pr_number":42,"head_sha":"abc","stage":"CI_PENDING","result_status":"GREEN"}
     assert [row["grant_id"] for row in snapshot["recent_completed_work"]]==["bad","new","old"]
 
 def test_productivity_penalty_requires_multiple_samples():

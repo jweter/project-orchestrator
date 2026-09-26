@@ -1368,7 +1368,9 @@ def write_dashboard_snapshot(state_root:Path)->dict:
         except (TypeError,ValueError): pass
         terminal.append({"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
                          "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
-                         "result_status":status,"outcome_quality":outcome,"finished_at":r.get("finished_at")})
+                         "result_status":status,"outcome_quality":outcome,"finished_at":r.get("finished_at"),
+                         "pr_number":r.get("pr_number"),"pr_url":r.get("pr_url"),
+                         "head_sha":r.get("head_sha"),"execution_stage":r.get("execution_stage")})
     terminal.sort(key=lambda row:row.get("finished_at") or "",reverse=True)
     elapsed_seconds=0.0
     for r in lifecycle.values():
@@ -1391,6 +1393,11 @@ def write_dashboard_snapshot(state_root:Path)->dict:
              "recent_completed_work":terminal[:20],"outcome_counters":counters,
              "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
                      "measured_worker_seconds":elapsed_seconds},
+             "github":{"pull_requests":[row for row in terminal if row.get("pr_number") is not None],
+                       "promotion_gates":[{"repository":row.get("repository"),"pr_number":row.get("pr_number"),
+                                           "head_sha":row.get("head_sha"),"stage":row.get("execution_stage"),
+                                           "result_status":row.get("result_status")}
+                                          for row in terminal if row.get("pr_number") is not None]},
              "queue":{"selected_repository":dispatch.get("selected_repository"),
                       "selected_product":dispatch.get("selected_product"),
                       "decisions":dispatch.get("decisions",[]),
