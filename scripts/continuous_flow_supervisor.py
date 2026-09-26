@@ -1560,6 +1560,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
                                runner_registry:RunnerRegistry|None=None)->list[str]:
     """Keep product workers saturated; repository grants remain the mutation authority."""
     dispatched=[]
+    blocked=[]
     try:
         activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
@@ -1581,7 +1582,11 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             runner_task=planned_target[2]
             runner_id=select_adaptive_runner(runner_task,state_root,runners,runner_running)
             runtime_id=runtime_for_task(planned_target[2])
-        except (RuntimeError,ValueError):
+        except (RuntimeError,ValueError) as exc:
+            blocked.append({"product":slot.product,"worker_id":slot.worker_id,
+                            "repository":planned_target[0],
+                            "slice_id":planned_target[2].get("slice_id"),
+                            "reason":str(exc).split(":",1)[0] or type(exc).__name__})
             continue
         planned_target[2]["execution_runtime"]=runtime_id
         planned_target[2]["worker_id"]=slot.worker_id
@@ -1593,6 +1598,10 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             planned_target[2]["runtime_provenance"]={"runtime_id":runtime_id}
         # Only runners with implemented builder adapters may receive mutation grants.
         if runner_id not in {"aider-ollama","claude-code"}:
+            blocked.append({"product":slot.product,"worker_id":slot.worker_id,
+                            "repository":planned_target[0],
+                            "slice_id":planned_target[2].get("slice_id"),
+                            "reason":"RUNNER_ADAPTER_UNAVAILABLE"})
             continue
         assigned[slot.product]=index+1
         runner_running[runner_id]=runner_running.get(runner_id,0)+1
@@ -1604,7 +1613,11 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             runtime_lease=RUNTIME_LEASES.acquire(runtime_id,slot.worker_id)
             planned_target[2]["runtime_lease_id"]=runtime_lease.lease_id
             planned_target[2]["resource_lease_ids"]=lease_ids
-        except RuntimeError:
+        except RuntimeError as exc:
+            blocked.append({"product":slot.product,"worker_id":slot.worker_id,
+                            "repository":planned_target[0],
+                            "slice_id":planned_target[2].get("slice_id"),
+                            "reason":str(exc).split(":",1)[0] or "RUNTIME_LEASE_UNAVAILABLE"})
             for resource_id in list(locals().get("lease_ids",{})):
                 RUNTIME_LEASES.release(f"{slot.worker_id}:{resource_id}")
             continue
@@ -1619,12 +1632,19 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             worker_id=pool.submit(slot,leased_builder,
                                   repo_root,workspace_root,state_root,slot.product,slot.worker_id,
                                   planned_target)
-        except RuntimeError:
+        except RuntimeError as exc:
+            blocked.append({"product":slot.product,"worker_id":slot.worker_id,
+                            "repository":planned_target[0],
+                            "slice_id":planned_target[2].get("slice_id"),
+                            "reason":str(exc).split(":",1)[0] or "WORKER_SUBMISSION_REJECTED"})
             RUNTIME_LEASES.release(slot.worker_id)
             for resource_id in lease_ids:
                 RUNTIME_LEASES.release(f"{slot.worker_id}:{resource_id}")
             continue
         dispatched.append(worker_id)
+    atomic(state_root/"dispatch-blocks.json",{
+        "schema_version":1,"blocked":blocked,"recorded_at_utc":datetime.now(UTC).isoformat(),
+    })
     atomic(state_root/"parallel-worker-pool.json",{
         "schema_version":2,"pool":pool.snapshot(),"runtime_leases":RUNTIME_LEASES.snapshot(),"dispatched":dispatched,
         "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
@@ -2694,6 +2714,15 @@ def product_convergence(state_root:Path,authorized_products:list[str],*,current_
         if product in authorized:
             active[product]={"grant_id":grant_id,"repository":record.get("repository"),"state":record.get("state")}
     reasons={}
+    try:
+        blocks=json.loads((state_root/"dispatch-blocks.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        blocks={}
+    for item in blocks.get("blocked",[]) if isinstance(blocks,dict) else []:
+        if isinstance(item,dict) and item.get("product") in authorized:
+            reasons[item["product"]]={"reason":item.get("reason","DISPATCH_BLOCKED"),
+                                      "repository":item.get("repository"),
+                                      "slice_id":item.get("slice_id")}
     try:
         decision=json.loads((state_root/"dispatch-decision.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
