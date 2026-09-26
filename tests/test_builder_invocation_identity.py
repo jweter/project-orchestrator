@@ -40,6 +40,9 @@ def test_run_builder_passes_and_returns_same_invocation_id(tmp_path,monkeypatch)
 
 
 def test_runtime_fence_uses_granted_worker_identity(tmp_path,monkeypatch):
+    monkeypatch.setattr(builder,"ACTIVE_RUNTIME_FENCE",None)
+    monkeypatch.setattr(builder,"ACTIVE_RESOURCE_FENCES",[])
+    monkeypatch.setattr(builder,"ACTIVE_RUNTIME_ID","native-windows")
     from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
     lease_state=tmp_path/"leases.json"
     pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,lease_state)
