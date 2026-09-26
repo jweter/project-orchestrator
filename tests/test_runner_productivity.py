@@ -104,6 +104,18 @@ def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
     assert snapshot["outcome_counters"]=={"completed":0,"failed":0,"merged_verified":0,"product_reality_verified":0,"repairs":0}
     assert (tmp_path/"telemetry"/"foundry-dashboard.json").exists()
 
+def test_dashboard_ci_reconciliation_is_observational(tmp_path,monkeypatch):
+    record={"state":"COMPLETED","repository":"jweter/repo","pr_number":42,"head_sha":"abc"}
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{"g1":record}}),encoding="utf-8")
+    class Result:
+        returncode=0
+        stdout=json.dumps([{"name":"CI","state":"SUCCESS","link":"https://example.test/ci"}])
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *args,**kwargs:Result())
+    observed=supervisor.reconcile_dashboard_ci(tmp_path,tmp_path)
+    assert observed["pull_requests"][0]["ci_conclusion"]=="SUCCESS"
+    persisted=json.loads((tmp_path/"hands-off-grant-lifecycle.json").read_text(encoding="utf-8"))
+    assert persisted["grants"]["g1"]==record
+
 def test_dashboard_snapshot_projects_dispatch_block_reasons(tmp_path):
     dispatch={"selected_repository":"jweter/ready","selected_product":"rocksmith","decisions":[
         {"repository":"jweter/busy","outcome":"ALREADY_OWNED","reason":"NONTERMINAL_GRANT","grant_id":"g1"},
