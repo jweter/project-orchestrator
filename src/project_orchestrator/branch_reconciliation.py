@@ -260,13 +260,13 @@ def execute_reconciliation(
             )
 
     for command in formats:
-        result = run(command, "format")
-        if result.returncode != 0:
+        command_result = run(command, "format")
+        if command_result.returncode != 0:
             return _execution_result(plan, modernization_branch, transcript, "FAILED", "repository-approved formatting failed")
 
     for command in targeted:
-        result = run(command, "targeted_test")
-        if result.returncode != 0:
+        command_result = run(command, "targeted_test")
+        if command_result.returncode != 0:
             return _execution_result(plan, modernization_branch, transcript, "FAILED", "targeted verification failed")
 
     verified = run(preflight, "full_preflight")
