@@ -29,6 +29,8 @@ from project_orchestrator.grant_issuance import (
     release_grant_issue_lock,
     reserve_execution_grant,
 )
+from project_orchestrator import recovery_manager as _recovery
+
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
 
@@ -675,58 +677,37 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
     detail=";".join(blocked) or "UNKNOWN"
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
 
-ISSUE_LEASE_SECONDS=60
-RECOVERY_GENERATION_LEASE_SECONDS=60
+ISSUE_LEASE_SECONDS=_recovery.ISSUE_LEASE_SECONDS
+RECOVERY_GENERATION_LEASE_SECONDS=_recovery.RECOVERY_GENERATION_LEASE_SECONDS
+CLAIM_LEASE_SECONDS=_recovery.CLAIM_LEASE_SECONDS
+UNKNOWN_LIVENESS_MAX_CHECKS=_recovery.UNKNOWN_LIVENESS_MAX_CHECKS
+
+def process_start_fingerprint(pid:int|None=None)->str|None:
+    return _recovery.process_start_fingerprint(pid)
+
+def worker_liveness(worker:dict|None)->str:
+    return _recovery.worker_liveness(worker)
 
 def recover_stale_issued_grants(state_root:Path,now:datetime|None=None)->list[str]:
-    path=state_root/"hands-off-grant-lifecycle.json"
-    lifecycle_lock=_acquire_lifecycle_lock(path)
-    try:
-        """Release an unclaimed issuance only when its issuer is proven dead after the issue lease."""
-        if not path.exists():
-            return []
-        try:
-            payload=json.loads(path.read_text(encoding="utf-8"))
-            grants=payload.get("grants",{})
-        except (OSError,json.JSONDecodeError,TypeError):
-            raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
-        current=now or datetime.now(UTC)
-        recovered=[]; changed=False
-        for grant_id,record in grants.items():
-            if not isinstance(record,dict) or record.get("state")!="ISSUED":
-                continue
-            try:
-                issued=datetime.fromisoformat(record["issued_at"])
-                if issued.tzinfo is None:
-                    issued=issued.replace(tzinfo=UTC)
-            except (KeyError,TypeError,ValueError):
-                continue
-            if (current-issued).total_seconds()<=ISSUE_LEASE_SECONDS:
-                continue
-            liveness=worker_liveness(record.get("issuer"))
-            record["last_issue_liveness_check_at"]=current.isoformat()
-            record["issuer_liveness"]=liveness
-            changed=True
-            if liveness=="DEAD":
-                record["state"]="ABANDONED"
-                record["finished_at"]=current.isoformat()
-                record["result_status"]="ISSUE_LEASE_EXPIRED_ISSUER_DEAD"
-                recovered.append(grant_id)
-            elif liveness=="UNKNOWN":
-                checks=int(record.get("issue_unknown_liveness_checks",0))+1
-                record["issue_unknown_liveness_checks"]=checks
-                if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
-                    record["state"]="QUARANTINED"
-                    record["finished_at"]=current.isoformat()
-                    record["result_status"]="ISSUE_LEASE_UNKNOWN_QUARANTINED"
-            else:
-                record["issue_unknown_liveness_checks"]=0
-                record["result_status"]="ISSUE_LEASE_EXPIRED_ISSUER_ALIVE"
-        if changed:
-            atomic(path,payload)
-        return recovered
-    finally:
-        _release_lifecycle_lock(lifecycle_lock)
+    return _recovery.recover_stale_issued_grants(state_root,now,worker_liveness)
+
+def recover_stale_recovery_generations(state_root:Path,now:datetime|None=None,liveness_probe=None)->list[str]:
+    return _recovery.recover_stale_recovery_generations(
+        state_root,now,liveness_probe or worker_liveness,
+    )
+
+def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_probe=None)->list[str]:
+    return _recovery.recover_stale_grant_claims(
+        state_root,now,liveness_probe or worker_liveness,
+    )
+
+def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=None)->dict[str,str]:
+    return _recovery.recheck_quarantined_claims(
+        state_root,now,liveness_probe or worker_liveness,
+    )
+
+def quarantined_grants(state_root:Path)->dict[str,dict]:
+    return _recovery.quarantined_grants(state_root)
 
 def slice_paths_conflict(left:dict,right:dict)->bool:
     """Fail closed unless two slices prove disjoint mutation authority."""
@@ -1557,186 +1538,6 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
     return dispatched
 
 
-CLAIM_LEASE_SECONDS=1800
-UNKNOWN_LIVENESS_MAX_CHECKS=5
-
-def process_start_fingerprint(pid:int|None=None)->str|None:
-    """Return a lightweight OS-backed process creation identity."""
-    pid=pid or os.getpid()
-    if sys.platform.startswith("linux"):
-        try:
-            stat=Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-            start_ticks=stat[stat.rfind(")")+2:].split()[19]
-            boot_id=Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
-            return f"linux:{boot_id}:{start_ticks}"
-        except (OSError,IndexError,ValueError):
-            return None
-    if sys.platform=="win32":
-        try:
-            import ctypes
-            from ctypes import wintypes
-            kernel32=ctypes.WinDLL("kernel32",use_last_error=True)
-            handle=kernel32.OpenProcess(0x1000,False,pid)
-            if not handle:
-                return None
-            creation=wintypes.FILETIME(); exit_time=wintypes.FILETIME()
-            kernel=wintypes.FILETIME(); user=wintypes.FILETIME()
-            try:
-                if not kernel32.GetProcessTimes(handle,ctypes.byref(creation),ctypes.byref(exit_time),
-                                                ctypes.byref(kernel),ctypes.byref(user)):
-                    return None
-                ticks=(creation.dwHighDateTime<<32)|creation.dwLowDateTime
-                return f"windows:{ticks}"
-            finally:
-                kernel32.CloseHandle(handle)
-        except (AttributeError,OSError):
-            return None
-    return None
-
-def worker_liveness(worker:dict|None)->str:
-    """Return ALIVE, DEAD, or UNKNOWN without guessing across hosts or legacy state."""
-    if not isinstance(worker,dict):
-        return "UNKNOWN"
-    if worker.get("host")!=socket.gethostname():
-        return "UNKNOWN"
-    try:
-        pid=int(worker["pid"])
-    except (KeyError,TypeError,ValueError):
-        return "UNKNOWN"
-    if pid<=0:
-        return "UNKNOWN"
-    expected=worker.get("process_start_fingerprint")
-    if expected:
-        try:
-            from scripts.autonomous_slice_builder import process_start_fingerprint as builder_process_start_fingerprint
-            actual=builder_process_start_fingerprint(pid)
-        except (ImportError,OSError):
-            return "UNKNOWN"
-        if actual is None:
-            return "DEAD"
-        if actual!=expected:
-            return "DEAD"
-        return "ALIVE"
-    try:
-        os.kill(pid,0)
-    except ProcessLookupError:
-        return "DEAD"
-    except (PermissionError,OSError):
-        return "UNKNOWN"
-    return "ALIVE"
-
-def recover_stale_recovery_generations(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
-    """Release recovery generations only when their owning supervisor is proven dead."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    lock=_acquire_lifecycle_lock(path)
-    try:
-        if not path.exists():
-            return []
-        try:
-            payload=json.loads(path.read_text(encoding="utf-8"))
-            grants=payload.get("grants",{})
-        except (OSError,json.JSONDecodeError,TypeError):
-            return []
-        current=now or datetime.now(UTC)
-        released=[]; changed=False
-        for grant_id,record in grants.items():
-            if not isinstance(record,dict) or not record.get("recovery_generation"):
-                continue
-            try:
-                started=datetime.fromisoformat(record["recovery_generation_started_at"])
-                if started.tzinfo is None:
-                    started=started.replace(tzinfo=UTC)
-            except (KeyError,TypeError,ValueError):
-                record["recovery_generation_liveness"]="UNKNOWN"
-                record["recovery_generation_result"]="RECOVERY_GENERATION_TIMESTAMP_INVALID"
-                record["recovery_state"]="QUARANTINED"
-                record["recovery_quarantine_reason"]="RECOVERY_GENERATION_TIMESTAMP_INVALID"
-                changed=True
-                continue
-            if (current-started).total_seconds()<=RECOVERY_GENERATION_LEASE_SECONDS:
-                continue
-            liveness=liveness_probe(record.get("recovery_generation_worker"))
-            record["recovery_generation_last_liveness_check_at"]=current.isoformat()
-            record["recovery_generation_liveness"]=liveness
-            changed=True
-            if liveness=="DEAD":
-                record.pop("recovery_generation",None)
-                record.pop("recovery_generation_started_at",None)
-                record.pop("recovery_generation_worker",None)
-                record["recovery_generation_released_at"]=current.isoformat()
-                record["recovery_generation_result"]="RECOVERY_GENERATION_OWNER_DEAD"
-                released.append(grant_id)
-            elif liveness=="ALIVE":
-                record["recovery_generation_result"]="RECOVERY_GENERATION_OWNER_ALIVE"
-            else:
-                checks=int(record.get("recovery_generation_unknown_checks",0))+1
-                record["recovery_generation_unknown_checks"]=checks
-                record["recovery_generation_result"]="RECOVERY_GENERATION_OWNER_UNKNOWN"
-                if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
-                    record["recovery_state"]="QUARANTINED"
-                    record["recovery_quarantine_reason"]="RECOVERY_GENERATION_OWNER_UNKNOWN"
-        if changed:
-            atomic(path,payload)
-        return released
-    finally:
-        _release_lifecycle_lock(lock)
-
-def recover_stale_grant_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->list[str]:
-    try:
-        """Abandon an expired claim only when its owning worker is proven dead."""
-        path=state_root/"hands-off-grant-lifecycle.json"
-        lifecycle_lock=_acquire_lifecycle_lock(path)
-        if not path.exists():
-            return []
-        try:
-            payload=json.loads(path.read_text(encoding="utf-8"))
-            grants=payload.get("grants",{})
-        except (OSError,json.JSONDecodeError,TypeError):
-            return []
-        current=now or datetime.now(UTC)
-        abandoned=[]; changed=False
-        for grant_id,record in grants.items():
-            if not isinstance(record,dict) or record.get("state")!="CLAIMED":
-                continue
-            try:
-                heartbeat=datetime.fromisoformat(record.get("last_heartbeat_at",record["claimed_at"]))
-                if heartbeat.tzinfo is None:
-                    heartbeat=heartbeat.replace(tzinfo=UTC)
-            except (KeyError,TypeError,ValueError):
-                continue
-            age=(current-heartbeat).total_seconds()
-            if age <= CLAIM_LEASE_SECONDS:
-                continue
-            liveness=liveness_probe(record.get("worker"))
-            record["last_liveness_check_at"]=current.isoformat()
-            record["worker_liveness"]=liveness
-            changed=True
-            if liveness=="DEAD":
-                record["state"]="ABANDONED"
-                record["finished_at"]=current.isoformat()
-                record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_DEAD"
-                abandoned.append(grant_id)
-            elif liveness=="UNKNOWN":
-                checks=int(record.get("unknown_liveness_checks",0))+1
-                record["unknown_liveness_checks"]=checks
-                record.setdefault("unknown_liveness_first_seen_at",current.isoformat())
-                if checks>=UNKNOWN_LIVENESS_MAX_CHECKS:
-                    record["state"]="QUARANTINED"
-                    record["finished_at"]=current.isoformat()
-                    record["result_status"]="CLAIM_LEASE_UNKNOWN_QUARANTINED"
-                else:
-                    record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_UNKNOWN"
-            else:
-                record["unknown_liveness_checks"]=0
-                record.pop("unknown_liveness_first_seen_at",None)
-                record["result_status"]="CLAIM_LEASE_EXPIRED_WORKER_ALIVE"
-        if changed:
-            atomic(path,payload)
-        return abandoned
-
-    finally:
-        _release_lifecycle_lock(lifecycle_lock)
-
 def classify_orphan_branch(repo:str,ws:Path,branch:str)->tuple[str,dict]:
     """Classify clean autonomous branch state without mutating it."""
     base=subprocess.run(["git","merge-base","HEAD","origin/main"],cwd=ws,text=True,capture_output=True,check=False)
@@ -2481,86 +2282,6 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
                 if not commit_recovery_record(path,grant_id,expected_records.get(grant_id,{}),record):
                     outcomes[grant_id]="PRESERVED_RECOVERY_CONCURRENT_STATE_CHANGE"
     return outcomes
-
-def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_probe=worker_liveness)->dict[str,str]:
-    try:
-        """Re-evaluate ownership quarantine; only proof of death authorizes recovery."""
-        path=state_root/"hands-off-grant-lifecycle.json"
-        lifecycle_lock=_acquire_lifecycle_lock(path)
-        if not path.exists():
-            return {}
-        try:
-            payload=json.loads(path.read_text(encoding="utf-8")); grants=payload.get("grants",{})
-        except (OSError,json.JSONDecodeError,TypeError):
-            return {}
-        current=now or datetime.now(UTC); outcomes={}; changed=False
-        for grant_id,record in grants.items():
-            if not isinstance(record,dict) or record.get("state")!="QUARANTINED":
-                continue
-            result_status=record.get("result_status")
-            if result_status not in {"CLAIM_LEASE_UNKNOWN_QUARANTINED","ISSUE_LEASE_UNKNOWN_QUARANTINED"}:
-                continue
-            if record.get("recovery_generation"):
-                outcomes[grant_id]="RECOVERY_GENERATION_ACTIVE"
-                continue
-            owner_field="issuer" if result_status=="ISSUE_LEASE_UNKNOWN_QUARANTINED" else "worker"
-            liveness=liveness_probe(record.get(owner_field))
-            record["quarantine_last_recheck_at"]=current.isoformat()
-            record["quarantine_rechecks"]=int(record.get("quarantine_rechecks",0))+1
-            record["worker_liveness"]=liveness; changed=True
-            if liveness=="DEAD":
-                record["state"]="ABANDONED"
-                record["result_status"]=(
-                    "ISSUE_LEASE_QUARANTINE_ISSUER_DEAD"
-                    if owner_field=="issuer" else "CLAIM_LEASE_QUARANTINE_WORKER_DEAD"
-                )
-                record["finished_at"]=current.isoformat()
-                outcomes[grant_id]="RELEASED_TO_RECOVERY"
-            elif liveness=="ALIVE":
-                record["state"]="ISSUED" if owner_field=="issuer" else "CLAIMED"
-                record["result_status"]=(
-                    "ISSUE_LEASE_QUARANTINE_ISSUER_ALIVE"
-                    if owner_field=="issuer" else "CLAIM_LEASE_QUARANTINE_WORKER_ALIVE"
-                )
-                counter="issue_unknown_liveness_checks" if owner_field=="issuer" else "unknown_liveness_checks"
-                record[counter]=0
-                record.pop("unknown_liveness_first_seen_at",None)
-                record.pop("finished_at",None)
-                outcomes[grant_id]="RESTORED_TO_ISSUED" if owner_field=="issuer" else "RESTORED_TO_CLAIMED"
-            else:
-                outcomes[grant_id]="STILL_UNKNOWN"
-        if changed: atomic(path,payload)
-        return outcomes
-
-    finally:
-        _release_lifecycle_lock(lifecycle_lock)
-
-def quarantined_grants(state_root:Path)->dict[str,dict]:
-    """Expose terminal ownership/recovery quarantines without leaking worker secrets."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    if not path.exists():
-        return {}
-    try:
-        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        return {}
-    result={}
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict):
-            continue
-        if record.get("state")=="QUARANTINED" or record.get("recovery_state")=="QUARANTINED":
-            worker=record.get("worker") if isinstance(record.get("worker"),dict) else {}
-            result[grant_id]={
-                "repository":record.get("repository"),
-                "result_status":record.get("result_status"),
-                "recovery_result":record.get("recovery_result"),
-                "unknown_liveness_checks":record.get("unknown_liveness_checks",0),
-                "worker_host":worker.get("host"),
-                "worker_pid":worker.get("pid"),
-                "process_start_fingerprint":worker.get("process_start_fingerprint"),
-                "finished_at":record.get("finished_at"),
-            }
-    return result
 
 def productive_liveness(state_root:Path,authorized_products:list[str],now:datetime|None=None,stale_seconds:int=900,
                         builder_status:str|None=None)->dict:
