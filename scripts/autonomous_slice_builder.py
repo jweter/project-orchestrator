@@ -806,6 +806,32 @@ def run_exact_head_preflight(ws:Path,expected_head:str)->tuple[subprocess.Comple
     after=run(["git","rev-parse","HEAD"],ws).stdout.strip()
     return result,after,after==expected_head
 
+def refresh_base_before_publish(ws:Path,main_branch:str,expected_base:str)->dict[str,str]:
+    """Refresh and reconcile the unpublished candidate with the live default branch.
+
+    The autonomous worker must never open a PR from a base known to be stale. A
+    successful rebase invalidates prior exact-head verification, so callers must
+    rerun canonical preflight and independent review before publishing.
+    """
+    fetched=run(["git","fetch","origin",main_branch],ws)
+    if fetched.returncode:
+        head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+        return {"status":"FETCH_FAILED","base_sha":expected_base,"head_sha":head}
+    latest_result=run(["git","rev-parse",f"origin/{main_branch}"],ws)
+    latest_base=latest_result.stdout.strip() if latest_result.returncode==0 else ""
+    head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    if not latest_base:
+        return {"status":"FETCH_FAILED","base_sha":expected_base,"head_sha":head}
+    if latest_base==expected_base:
+        return {"status":"UNCHANGED","base_sha":expected_base,"head_sha":head}
+    rebased=run(["git","rebase",latest_base],ws)
+    if rebased.returncode:
+        run(["git","rebase","--abort"],ws)
+        return {"status":"CONFLICT","base_sha":latest_base,"head_sha":head}
+    new_head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    return {"status":"REBASED","base_sha":latest_base,"head_sha":new_head}
+
+
 def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
                execution_grant:Path|None=None,worker_id:str|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
@@ -966,6 +992,58 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                             base_sha=base,branch=branch,head_sha=head,reviewer="deterministic-verdict-v2",
                             preflight_evidence_binding=evidence_binding)
         advance_grant_stage(execution_grant,"COMMITTED",repository=repo,base_sha=base,branch=branch,head_sha=head)
+    refresh=refresh_base_before_publish(ws,main,base)
+    if refresh["status"]=="FETCH_FAILED":
+        result={"status":"BASE_REFRESH_FAILED","repository":repo,"head":head,
+                "base_sha":base,"last_repo_index":idx,"last_repository":repo}
+        atomic_json(state_path,result); return result
+    if refresh["status"]=="CONFLICT":
+        result={"status":"BASE_RECONCILIATION_CONFLICT","repository":repo,"head":head,
+                "base_sha":refresh["base_sha"],"last_repo_index":idx,"last_repository":repo}
+        atomic_json(state_path,result); return result
+    if refresh["status"]=="REBASED":
+        base=refresh["base_sha"]; head=refresh["head_sha"]
+        paths=changed_paths(ws,base)
+        if not paths:
+            result={"status":"BASE_RECONCILIATION_NO_OP","repository":repo,"head":head,
+                    "base_sha":base,"last_repo_index":idx,"last_repository":repo}
+            atomic_json(state_path,result); return result
+        drift_failure=generated_change_failure(ws,base,paths,slice_authority)
+        if drift_failure:
+            result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
+                    "final_failure":f"post_rebase:{drift_failure}","head_sha":head,
+                    "last_repo_index":idx,"last_repository":repo}
+            atomic_json(state_path,result); return result
+        preflight,verified_head,head_stable=run_exact_head_preflight(ws,head)
+        if preflight.returncode!=0 or not head_stable:
+            detail=(preflight.stderr or preflight.stdout or
+                    (f"HEAD_CHANGED_DURING_PREFLIGHT:{head}:{verified_head}" if verified_head!=head
+                     else f"returncode={preflight.returncode}"))
+            lesson=retain_failure_lesson(state_path,"post_rebase_preflight",detail,"PREFLIGHT_FAILED")
+            result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,
+                    "verified_head_sha":verified_head,"expected_head_sha":head,
+                    "failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
+            atomic_json(state_path,result); return result
+        if execution_grant is not None:
+            try:
+                grant_id=json.loads(execution_grant.read_text(encoding="utf-8"))["grant_id"]
+                evidence_binding=bind_preflight_evidence(ws,base,head,grant_id)
+            except (OSError,json.JSONDecodeError,KeyError,TypeError,RuntimeError) as exc:
+                result={"status":"PREFLIGHT_EVIDENCE_REJECTED","repository":repo,
+                        "review_reason":str(exc),"head_sha":head,
+                        "last_repo_index":idx,"last_repository":repo}
+                atomic_json(state_path,result); return result
+            verdict=review_candidate(ws,base,head,slice_authority,paths,preflight.returncode,
+                                     evidence_binding=evidence_binding,grant_id=grant_id)
+            if verdict.status!="APPROVE":
+                result={"status":"INDEPENDENT_REVIEW_REJECTED","repository":repo,
+                        "review_reason":verdict.reason,"head_sha":head,
+                        "last_repo_index":idx,"last_repository":repo}
+                atomic_json(state_path,result); return result
+            advance_grant_stage(execution_grant,"INDEPENDENT_REVIEW_APPROVED",repository=repo,
+                                base_sha=base,branch=branch,head_sha=head,reviewer="deterministic-verdict-v2",
+                                preflight_evidence_binding=evidence_binding)
+            advance_grant_stage(execution_grant,"COMMITTED",repository=repo,base_sha=base,branch=branch,head_sha=head)
     push=run(["git","push","-u","origin",branch],ws)
     if push.returncode:
         result={"status":"PUSH_FAILED","repository":repo,"head":head,"last_repo_index":idx,"last_repository":repo}
