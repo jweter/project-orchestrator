@@ -812,6 +812,18 @@ def run_preflight(ws:Path)->subprocess.CompletedProcess[str]:
         env["PATH"]=str(cmake_bin)+os.pathsep+env.get("PATH","")
     return run([sys.executable,str(script)],ws,env=env,timeout=MAX_PREFLIGHT_SECONDS)
 
+def run_exact_head_preflight(ws:Path,expected_head:str)->tuple[subprocess.CompletedProcess[str],str,bool]:
+    """Run canonical preflight only while the worktree remains at the committed candidate HEAD."""
+    before=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    if not expected_head or before!=expected_head:
+        result=subprocess.CompletedProcess(
+            ["canonical-preflight"],1,"",f"PREFLIGHT_HEAD_MISMATCH:{expected_head}:{before}"
+        )
+        return result,before,False
+    result=run_preflight(ws)
+    after=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    return result,after,after==expected_head
+
 def atomic_json(path:Path,payload:dict[str,Any])->None:
     """Persist JSON without sharing one predictable temp path across workers.
 
@@ -943,12 +955,6 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                     "initial_failure":initial_failure,"final_failure":final_failure,
                     "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
-    preflight=run_preflight(ws)
-    if preflight.returncode!=0:
-        reset_workspace(ws,base)
-        lesson=retain_failure_lesson(state_path,"preflight",preflight.stderr or preflight.stdout or f"returncode={preflight.returncode}","PREFLIGHT_FAILED")
-        result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
-        atomic_json(state_path,result); return result
     run(["git","add","-A"],ws)
     commit=run(["git","commit","-m",f"actor autonomous bounded slice {stamp}"],ws)
     if commit.returncode:
@@ -956,6 +962,17 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         result={"status":"COMMIT_FAILED","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    preflight,verified_head,head_stable=run_exact_head_preflight(ws,head)
+    if preflight.returncode!=0 or not head_stable:
+        reset_workspace(ws,base)
+        detail=(preflight.stderr or preflight.stdout or
+                (f"HEAD_CHANGED_DURING_PREFLIGHT:{head}:{verified_head}" if verified_head!=head
+                 else f"returncode={preflight.returncode}"))
+        lesson=retain_failure_lesson(state_path,"preflight",detail,"PREFLIGHT_FAILED")
+        result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,
+                "verified_head_sha":verified_head,"expected_head_sha":head,
+                "failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
+        atomic_json(state_path,result); return result
     if execution_grant is not None:
         try:
             grant_id=json.loads(execution_grant.read_text(encoding="utf-8"))["grant_id"]
