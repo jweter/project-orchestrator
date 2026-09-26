@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0", "hypothesis>=6.0"]
+dev = ["pytest>=9.0", "hypothesis>=6.0", "ruff>=0.13", "mypy>=1.18"]
 
 [project.scripts]
 project-orchestrator = "project_orchestrator.cli:main"
@@ -32,3 +32,19 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+files = [
+  "src/project_orchestrator/runtime_leases.py",
+  "src/project_orchestrator/execution_runtime.py",
+  "src/project_orchestrator/branch_lifecycle.py",
+  "src/project_orchestrator/branch_reconciliation.py",
+]
