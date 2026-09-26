@@ -3204,6 +3204,17 @@ def main()->int:
         product_proof=record_product_identity_advancement(state,repository=selected_builder_repository(state,builder_invocation_id),
             builder_status=builder_status,lifecycle_advanced=lifecycle_advanced,burst_id=burst_id,
             process_instance_id=process_instance_id,sequence=record["sequence"])
+        # Dashboard telemetry is observational only and must never consume or block
+        # an execution opportunity. CI reconciliation failure degrades the UI but
+        # does not change lifecycle or promotion authority.
+        try:
+            reconcile_dashboard_ci(state,repo)
+        except (OSError,TypeError,subprocess.SubprocessError):
+            pass
+        try:
+            write_dashboard_snapshot(state)
+        except (OSError,TypeError,ValueError):
+            pass
         record["burst_pass"]=burst_pass
         atomic(state/"continuation-current-burst.json",{"schema_version":2,"burst_id":burst_id,
             "process_instance_id":process_instance_id,

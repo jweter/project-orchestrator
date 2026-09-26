@@ -104,6 +104,11 @@ def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
     assert snapshot["outcome_counters"]=={"completed":0,"failed":0,"merged_verified":0,"product_reality_verified":0,"repairs":0}
     assert (tmp_path/"telemetry"/"foundry-dashboard.json").exists()
 
+def test_dashboard_snapshot_writer_creates_telemetry_directory(tmp_path):
+    snapshot=supervisor.write_dashboard_snapshot(tmp_path)
+    assert snapshot["schema_version"]==1
+    assert (tmp_path/"telemetry"/"foundry-dashboard.json").is_file()
+
 def test_dashboard_ci_reconciliation_is_observational(tmp_path,monkeypatch):
     record={"state":"COMPLETED","repository":"jweter/repo","pr_number":42,"head_sha":"abc"}
     (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{"g1":record}}),encoding="utf-8")
