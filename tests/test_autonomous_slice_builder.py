@@ -384,7 +384,8 @@ def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, mo
     grant.write_text(json.dumps({"grant_id":"g1"}),encoding="utf-8")
     result=builder.build_once(tmp_path,tmp_path/"state.json",
         eligible_repos={"jweter/rocksmith-cdlc-generator":"authorized"},execution_grant=grant,worker_id="worker-1")
-    assert ["git","checkout","-B","actor-staging-worker-1","authorized"] in calls
+    assert ["git","checkout","--detach","authorized"] in calls
+    assert not any(call[:4]==["git","checkout","-B","actor-staging"] for call in calls)
     assert result["status"]=="EXECUTION_SLICE_AUTHORITY_REQUIRED"
     assert not (tmp_path/"hands-off-grant-lifecycle.json").exists()
 
