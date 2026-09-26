@@ -860,7 +860,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     else:
         expected=None
         checkout_target=f"origin/{main}"
-    reset=run(["git","checkout","-B","actor-staging",checkout_target],ws)
+    staging_branch="actor-staging" if not worker_id else f"actor-staging-{worker_id}"
+    reset=run(["git","checkout","-B",staging_branch,checkout_target],ws)
     if reset.returncode: raise RuntimeError("base checkout failed")
     base=run(["git","rev-parse","HEAD"],ws).stdout.strip()
     if execution_grant is not None:
@@ -879,7 +880,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         slice_authority=None
         heartbeat_stop=heartbeat_thread=None
     stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
+    worker_suffix=f"-{worker_id}" if worker_id else ""
+    branch=f"actor/autonomous-{repo.split('/')[-1].lower()}{worker_suffix}-{stamp}"
     if run(["git","checkout","-B",branch,base],ws).returncode:
         raise RuntimeError("branch creation failed")
     if execution_grant is not None:
