@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse, atexit, hashlib, json, os, shutil, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-try:
-    from scripts.autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock, mutate_grant_lifecycle
-except ModuleNotFoundError:
-    from autonomous_slice_builder import _acquire_lifecycle_lock, _release_lifecycle_lock, mutate_grant_lifecycle
+from project_orchestrator.grant_lifecycle import (
+    acquire_lifecycle_lock as _acquire_lifecycle_lock,
+    mutate_grant_lifecycle,
+    release_lifecycle_lock as _release_lifecycle_lock,
+)
+from project_orchestrator.state_io import atomic_json as atomic
 
 from scripts.capability_slice_contract import derive_slice, derive_slices
 from scripts.product_completion_proof import build_completion_proof
@@ -35,26 +37,6 @@ def load_runtime_leases_with_recovery(state_path:Path=RUNTIME_LEASE_STATE)->tupl
     return pool,recovery
 
 RUNTIME_LEASES,RUNTIME_LEASE_RECOVERY=load_runtime_leases_with_recovery()
-
-def atomic(path:Path,payload:dict)->None:
-    path.parent.mkdir(parents=True,exist_ok=True)
-    tmp=path.with_name(f"{path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
-    try:
-        tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
-        for attempt in range(5):
-            try:
-                tmp.replace(path)
-                break
-            except PermissionError:
-                if attempt == 4:
-                    # Windows scanners/readers may deny rename-over-open-file while
-                    # still allowing a normal overwrite. Preserve the temp-first
-                    # write and degrade to copy-overwrite rather than killing flow.
-                    shutil.copyfile(tmp,path)
-                    break
-                time.sleep(0.1 * (attempt + 1))
-    finally:
-        tmp.unlink(missing_ok=True)
 
 def start_merge_watcher(repo_root:Path,state_root:Path,poll_seconds:int)->subprocess.Popen:
     return subprocess.Popen([sys.executable,str(repo_root/"scripts"/"green_pr_watch_loop.py"),
