@@ -16,12 +16,15 @@ def _record(started, **extra):
 def test_dead_recovery_generation_owner_is_released(tmp_path):
     path=tmp_path/"hands-off-grant-lifecycle.json"
     old=(datetime.now(UTC)-timedelta(seconds=supervisor.RECOVERY_GENERATION_LEASE_SECONDS+10)).isoformat()
-    _state(path,_record(old))
+    execution_slice={"capability_id":"c","slice_id":"s","repository":"o/repo","exact_head":"abc"}
+    _state(path,_record(old,execution_slice=execution_slice))
+    assert supervisor.conflicting_nonterminal_grant(tmp_path,"o/repo",execution_slice) is not None
     released=supervisor.recover_stale_recovery_generations(tmp_path,liveness_probe=lambda _: "DEAD")
     assert released==["g"]
     record=json.loads(path.read_text())["grants"]["g"]
     assert "recovery_generation" not in record
     assert record["recovery_generation_result"]=="RECOVERY_GENERATION_OWNER_DEAD"
+    assert supervisor.conflicting_nonterminal_grant(tmp_path,"o/repo",execution_slice) is None
 
 def test_live_recovery_generation_owner_keeps_fence(tmp_path):
     path=tmp_path/"hands-off-grant-lifecycle.json"
