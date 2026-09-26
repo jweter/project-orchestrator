@@ -68,3 +68,16 @@ def test_builder_exit_without_claim_terminalizes_reservation(tmp_path):
     record=json.loads(lifecycle.read_text())["grants"]["g1"]
     assert record["state"]=="ABANDONED"
     assert record["result_status"]=="BUILDER_EXITED_WITHOUT_CLAIM:2"
+
+
+def test_builder_exit_without_claim_records_preclaim_failure_class(tmp_path):
+    grant_dir=tmp_path/"hands-off-execution-grants"; grant_dir.mkdir()
+    grant=grant_dir/"g1.json"; grant.write_text(json.dumps({"grant_id":"g1"}),encoding="utf-8")
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g1":{"state":"ISSUED"}}}),encoding="utf-8")
+    builder_state=tmp_path/"builder.json"
+    builder_state.write_text(json.dumps({"status":"P1_BUILDER_FAILURE","error_class":"RuntimeError"}),encoding="utf-8")
+    assert supervisor.finalize_unclaimed_grant(grant,1,builder_state)
+    record=json.loads(lifecycle.read_text())["grants"]["g1"]
+    assert record["state"]=="ABANDONED"
+    assert record["result_status"]=="BUILDER_EXITED_WITHOUT_CLAIM:1:P1_BUILDER_FAILURE:RuntimeError"
