@@ -1347,6 +1347,8 @@ def write_dashboard_snapshot(state_root:Path)->dict:
             return default
     lifecycle=load_json(state_root/"hands-off-grant-lifecycle.json",{}).get("grants",{})
     workers=load_json(state_root/"parallel-worker-pool.json",{})
+    dispatch=load_json(state_root/"dispatch-decision.json",{})
+    rotations=load_json(state_root/"async-gate-rotation-history.json",{})
     active=[{"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
              "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
              "planner_decision_id":r.get("planner_decision_id")}
@@ -1389,6 +1391,10 @@ def write_dashboard_snapshot(state_root:Path)->dict:
              "recent_completed_work":terminal[:20],"outcome_counters":counters,
              "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
                      "measured_worker_seconds":elapsed_seconds},
+             "queue":{"selected_repository":dispatch.get("selected_repository"),
+                      "selected_product":dispatch.get("selected_product"),
+                      "decisions":dispatch.get("decisions",[]),
+                      "recent_async_rotations":rotations.get("rotations",[])[-20:]},
              "worker_pool":workers.get("pool",{}),
              "planner_decision_quality":planner_decision_quality(state_root),
              "products":{}}
