@@ -89,6 +89,19 @@ def test_planner_decision_quality_joins_verified_outcomes(tmp_path):
                            "merged_verified":2.0,"product_reality_verified":1.0}
     assert quality["d2"]["failures"]==1.0
 
+def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
+    grant=terminal("claude-code","GREEN",60,task_class="tests")
+    grant.update({"state":"CLAIMED","planner_decision_id":"d1","slice_id":"S1",
+                  "execution_slice":{"repository":"jweter/repo","task_class":"tests"}})
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{"g1":grant}}),encoding="utf-8")
+    decisions=tmp_path/"planner-decisions"; decisions.mkdir()
+    (decisions/"rocksmith.json").write_text(json.dumps({"candidate_count":3,"selected_count":1,"candidates":[{"slice_id":"S1"}]}),encoding="utf-8")
+    snapshot=supervisor.write_dashboard_snapshot(tmp_path)
+    assert snapshot["active_count"]==1
+    assert snapshot["active_work"][0]["repository"]=="jweter/repo"
+    assert snapshot["products"]["rocksmith"]["candidate_count"]==3
+    assert (tmp_path/"telemetry"/"foundry-dashboard.json").exists()
+
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}}
     assert supervisor.productivity_penalty("x",stats)==0.0

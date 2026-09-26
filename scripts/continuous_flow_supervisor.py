@@ -1338,6 +1338,34 @@ def planner_decision_quality(state_root:Path)->dict[str,dict[str,float]]:
             row["product_reality_verified"]+=1.0
     return quality
 
+def write_dashboard_snapshot(state_root:Path)->dict:
+    """Persist a read-only, phone-dashboard-friendly Foundry state projection."""
+    def load_json(path:Path,default):
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError,TypeError):
+            return default
+    lifecycle=load_json(state_root/"hands-off-grant-lifecycle.json",{}).get("grants",{})
+    workers=load_json(state_root/"parallel-worker-pool.json",{})
+    active=[{"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
+             "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
+             "planner_decision_id":r.get("planner_decision_id")}
+            for gid,r in lifecycle.items() if isinstance(r,dict) and r.get("state") in {"ISSUED","CLAIMED","QUARANTINED"}]
+    payload={"schema_version":1,"recorded_at":datetime.now(UTC).isoformat(),
+             "active_work":active,"active_count":len(active),
+             "worker_pool":workers.get("pool",{}),
+             "planner_decision_quality":planner_decision_quality(state_root),
+             "products":{}}
+    decisions=state_root/"planner-decisions"
+    if decisions.exists():
+        for path in sorted(decisions.glob("*.json")):
+            data=load_json(path,{})
+            payload["products"][path.stem]={"candidate_count":data.get("candidate_count",0),
+                                            "selected_count":data.get("selected_count",0),
+                                            "candidates":data.get("candidates",[])}
+    atomic(state_root/"telemetry"/"foundry-dashboard.json",payload)
+    return payload
+
 def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
     row=stats.get(runner_id)
     if not row or row["samples"]<2 or row["seconds"]<=0:
