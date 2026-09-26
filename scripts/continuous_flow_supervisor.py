@@ -30,6 +30,7 @@ from project_orchestrator.grant_issuance import (
     reserve_execution_grant,
 )
 from project_orchestrator import recovery_manager as _recovery
+from project_orchestrator import planning_dispatch as _planning
 
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
@@ -560,21 +561,8 @@ def publish_direction_outbox(state_root:Path)->None:
     })
 
 def reserved_quarantine_repositories(state_root:Path)->set[str]:
-    """Reserve only lanes whose ownership or preserved-work recovery remains quarantined."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    try:
-        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        return set()
-    reserved=set()
-    for record in grants.values():
-        if not isinstance(record,dict):
-            continue
-        if record.get("state")=="QUARANTINED" or record.get("recovery_state")=="QUARANTINED":
-            repo=record.get("repository")
-            if isinstance(repo,str) and repo:
-                reserved.add(repo)
-    return reserved
+    return _planning.reserved_quarantine_repositories(state_root)
+
 
 def refresh_decision_learning(state_root:Path)->dict:
     """Reconcile terminal worker evidence into advisory decision-learning state."""
@@ -602,80 +590,17 @@ def refresh_decision_learning(state_root:Path)->dict:
 
 
 def decision_learning_hint(state_root:Path,decision_class:str)->dict:
-    try:
-        payload=json.loads((state_root/"decision-learning.json").read_text(encoding="utf-8"))
-        learning=payload.get("learning",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        learning={"policies":[]}
-    return planning_hint(learning,decision_class)
+    return _planning.decision_learning_hint(state_root,decision_class)
+
 
 
 def select_execution_target(state_root:Path,activation:dict,products:list[str])->tuple[str,str]:
-    """Select one READY repository deterministically; unavailable authority isolates only that lane."""
-    reserved=reserved_quarantine_repositories(state_root)
-    candidates=sorted(
-        (repo,head)
-        for name in products
-        for repo,head in activation["products"][name]["repositories"].items()
-        if head and repo not in reserved
+    return _planning.select_execution_target(
+        state_root,activation,products,
+        load_execution_slice_fn=load_execution_slice,
+        conflict_check_fn=conflicting_nonterminal_grant,
     )
-    if not candidates:
-        raise RuntimeError("NO_EXECUTION_TARGET")
-    cursor_path=state_root/"execution-target-cursor.json"
-    try:
-        previous=json.loads(cursor_path.read_text(encoding="utf-8")).get("repository")
-    except (OSError,json.JSONDecodeError,TypeError):
-        previous=None
-    ordered=candidates
-    learning_hint=decision_learning_hint(state_root,"portfolio:allocation")
-    # Learning remains advisory. Record it beside the deterministic selection
-    # so later evidence can prove whether following it would have helped.
-    atomic(state_root/"decision-learning-hint.json",{
-        "schema_version":1,"decision_class":"portfolio:allocation",
-        "hint":learning_hint,"recorded_at_utc":datetime.now(UTC).isoformat(),
-    })
-    if previous:
-        after=[item for item in candidates if item[0]>previous]
-        before=[item for item in candidates if item[0]<=previous]
-        ordered=after+before
-    blocked=[]
-    decisions=[]
-    for repo,head in ordered:
-        product=product_for_repository(repo)
-        try:
-            execution=load_execution_slice(state_root,repo,head)
-        except RuntimeError as exc:
-            reason=str(exc)
-            decisions.append({"repository":repo,"product":product,"head_sha":head,
-                              "outcome":"NOT_READY","reason":reason})
-            blocked.append(f"{repo}={reason}")
-            continue
-        if execution.get("status")=="NO_WORK":
-            decisions.append({"repository":repo,"product":product,"head_sha":head,
-                              "outcome":"NO_AUTHORIZED_SLICE","reason":"NO_WORK"})
-            blocked.append(f"{repo}=NO_WORK")
-            continue
-        conflict=conflicting_nonterminal_grant(state_root,repo,execution)
-        if conflict:
-            decisions.append({"repository":repo,"product":product,"head_sha":head,
-                              "outcome":"ALREADY_OWNED","reason":"NONTERMINAL_GRANT",
-                              "grant_id":conflict.get("grant_id"),"grant_state":conflict.get("state")})
-            blocked.append(f"{repo}=ALREADY_OWNED:{conflict.get('grant_id')}")
-            continue
-        decisions.append({"repository":repo,"product":product,"head_sha":head,
-                          "outcome":"SELECTED","reason":"READY_EXECUTION_SLICE"})
-        atomic(state_root/"dispatch-decision.json",{"schema_version":1,
-            "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":repo,
-            "selected_product":product,"decisions":decisions})
-        atomic(cursor_path,{"repository":repo})
-        return repo,head
-    atomic(state_root/"dispatch-decision.json",{"schema_version":1,
-        "recorded_at_utc":datetime.now(UTC).isoformat(),"selected_repository":None,
-        "selected_product":None,"decisions":decisions})
-    if blocked and all(item.endswith("=NO_WORK") for item in blocked):
-        raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
-    detail=";".join(blocked) or "UNKNOWN"
-    raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
+
 
 ISSUE_LEASE_SECONDS=_recovery.ISSUE_LEASE_SECONDS
 RECOVERY_GENERATION_LEASE_SECONDS=_recovery.RECOVERY_GENERATION_LEASE_SECONDS
@@ -710,91 +635,32 @@ def quarantined_grants(state_root:Path)->dict[str,dict]:
     return _recovery.quarantined_grants(state_root)
 
 def slice_paths_conflict(left:dict,right:dict)->bool:
-    """Fail closed unless two slices prove disjoint mutation authority."""
-    a=left.get("allowed_paths"); b=right.get("allowed_paths")
-    if not isinstance(a,list) or not isinstance(b,list) or not a or not b:
-        return True
-    def norm(path):
-        return str(path).replace("\\","/").strip("/")
-    for x in map(norm,a):
-        for y in map(norm,b):
-            if not x or not y or x==y or x.startswith(y+"/") or y.startswith(x+"/"):
-                return True
-    return False
+    return _planning.slice_paths_conflict(left,right)
+
 
 def select_conflict_free_slices(slices:list[dict],limit:int|None=None)->list[dict]:
-    """Greedily select a deterministic maximal set of pairwise-disjoint slices."""
-    selected=[]
-    for candidate in slices:
-        if any(slice_paths_conflict(candidate,owned) for owned in selected):
-            continue
-        selected.append(candidate)
-        if limit is not None and len(selected)>=limit:
-            break
-    return selected
+    return _planning.select_conflict_free_slices(slices,limit)
+
 
 def task_outcome_priority(state_root:Path,task:dict)->tuple[float,int,str]:
-    """Prefer task classes with stronger verified downstream yield, without starving unseen work."""
-    task_class=task_affinity_class(task)
-    history=runner_productivity_history(state_root,task_class)
-    samples=sum(row.get("samples",0.0) for row in history.values())
-    if samples<=0:
-        # Deterministic exploration: unseen eligible work gets a bounded first-look bonus.
-        return (-0.20,0,task_class)
-    reality=sum(row.get("product_reality_verified",0.0) for row in history.values())/samples
-    merged=sum(row.get("merged_verified",0.0) for row in history.values())/samples
-    failures=sum(row.get("failures",0.0) for row in history.values())/samples
-    outcome=0.60*reality+0.30*merged-0.10*failures
-    # Exploration decays to zero after four observations; mature evidence then dominates.
-    exploration=0.20*max(0.0,(4.0-samples)/4.0)
-    return (-(outcome+exploration),int(samples),task_class)
+    return _planning.task_outcome_priority(state_root,task)
+
 
 def planner_decision_id(product:str,repo:str,head:str,task:dict)->str:
-    material=f"{product}\0{repo}\0{head}\0{task.get('slice_id','')}\0{task.get('capability_id','')}"
-    return hashlib.sha256(material.encode()).hexdigest()[:24]
+    return _planning.planner_decision_id(product,repo,head,task)
+
 
 def persist_planner_decision(state_root:Path,product:str,candidates:list,selected:list)->None:
-    rows=[]
-    selected_ids={(repo,task.get("slice_id")) for repo,_,task in selected}
-    for repo,head,task in candidates:
-        priority=task_outcome_priority(state_root,task)
-        rows.append({"decision_id":planner_decision_id(product,repo,head,task),
-                     "repository":repo,"head_sha":head,"slice_id":task.get("slice_id"),
-                     "task_class":priority[2],"priority_score":priority[0],"samples":priority[1],
-                     "selected":(repo,task.get("slice_id")) in selected_ids})
-    atomic(state_root/"planner-decisions"/f"{product}.json",
-           {"schema_version":1,"product":product,"recorded_at":datetime.now(UTC).isoformat(),
-            "candidate_count":len(rows),"selected_count":len(selected),"candidates":rows})
+    _planning.persist_planner_decision(state_root,product,candidates,selected)
+
 
 def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->list[tuple[str,str,dict]]:
-    """Plan a bounded conflict-free task batch from exact-head capability graphs."""
-    candidates=[]
-    repositories=activation.get("products",{}).get(product,{}).get("repositories",{})
-    for repo,head in sorted(repositories.items()):
-        if not head:
-            continue
-        path=state_root/"capability-graphs"/f"{repo.replace('/','__')}.json"
-        try:
-            payload=json.loads(path.read_text(encoding="utf-8"))
-        except (OSError,json.JSONDecodeError):
-            continue
-        derived=derive_slices(payload,repository=repo,exact_head=head)
-        if derived.get("status")!="READY":
-            continue
-        for task in derived.get("slices",[]):
-            if conflicting_nonterminal_grant(state_root,repo,task) is None:
-                candidates.append((repo,head,task))
-    candidates.sort(key=lambda item:(task_outcome_priority(state_root,item[2]),item[0],item[2].get("slice_id","")))
-    selected=[]
-    for candidate in candidates:
-        repo,head,task=candidate
-        if any(repo==r and slice_paths_conflict(task,other) for r,_,other in selected):
-            continue
-        selected.append(candidate)
-        if len(selected)>=limit:
-            break
-    persist_planner_decision(state_root,product,candidates,selected)
-    return selected
+    return _planning.ready_task_batch(
+        state_root,activation,product,limit,
+        derive_slices_fn=derive_slices,
+        conflict_check_fn=conflicting_nonterminal_grant,
+    )
+
 
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
     return _conflicting_nonterminal_grant(state_root,repo,execution_slice,slice_paths_conflict)
@@ -1093,24 +959,8 @@ def runner_verified_history(state_root:Path)->dict[str,dict[str,int]]:
     return history
 
 def task_affinity_class(task:dict)->str:
-    """Derive a stable coarse task class from authoritative slice metadata."""
-    explicit=task.get("task_class")
-    if isinstance(explicit,str) and explicit.strip():
-        return explicit.strip().lower()
-    text=" ".join(str(task.get(key) or "") for key in ("objective","slice_id","capability_id")).lower()
-    paths=" ".join(str(x).lower() for x in task.get("allowed_paths",[]) if isinstance(x,str))
-    material=f"{text} {paths}"
-    rules=(
-        ("tests",("test","pytest","spec")),
-        ("documentation",("docs/","readme","documentation")),
-        ("unreal",("unreal",".uproject","blueprint")),
-        ("refactor",("refactor","cleanup","restructure")),
-        ("repair",("fix","repair","bug","failure")),
-    )
-    for label,tokens in rules:
-        if any(token in material for token in tokens):
-            return label
-    return "code"
+    return _planning.task_affinity_class(task)
+
 
 def runner_affinity_history(state_root:Path,task_class:str)->dict[str,dict[str,int]]:
     path=state_root/"hands-off-grant-lifecycle.json"
@@ -1137,58 +987,8 @@ def runner_affinity_history(state_root:Path,task_class:str)->dict[str,dict[str,i
     return history
 
 def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[str,dict[str,float]]:
-    """Aggregate verified advancement and elapsed worker time from terminal lifecycle evidence."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    try:
-        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        return {}
-    stats:dict[str,dict[str,float]]={}
-    for record in grants.values():
-        if not isinstance(record,dict) or record.get("state") not in {"COMPLETED","ABANDONED","QUARANTINED"}:
-            continue
-        authority=record.get("execution_slice") or {}
-        if task_class is not None and (not isinstance(authority,dict) or task_affinity_class(authority)!=task_class):
-            continue
-        runner_id=record.get("runner_id") or (authority.get("runner_id") if isinstance(authority,dict) else None)
-        if not isinstance(runner_id,str) or not runner_id:
-            continue
-        try:
-            explicit_seconds=record.get("execution_seconds")
-            if explicit_seconds is not None:
-                seconds=max(float(explicit_seconds),1.0)
-            else:
-                started=datetime.fromisoformat(record.get("execution_started_at") or record.get("claimed_at") or record.get("issued_at"))
-                finished=datetime.fromisoformat(record.get("execution_finished_at") or record.get("finished_at"))
-                if started.tzinfo is None: started=started.replace(tzinfo=UTC)
-                if finished.tzinfo is None: finished=finished.replace(tzinfo=UTC)
-                seconds=max((finished-started).total_seconds(),1.0)
-        except (TypeError,ValueError):
-            continue
-        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"successful_execution":0.0,
-                                        "seconds":0.0,"failures":0.0,"samples":0.0,
-                                        "repair_attempts":0.0,"merged_verified":0.0,
-                                        "product_reality_verified":0.0})
-        status=str(record.get("result_status") or "")
-        execution_success=record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {
-            "PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"
-        }
-        quality=record.get("outcome_quality")
-        verified=quality in {"MERGED_VERIFIED","PRODUCT_REALITY_VERIFIED"}
-        row["successful_execution"]+=1.0 if execution_success else 0.0
-        row["verified_advancement"]+=1.0 if verified else 0.0
-        row["failures"]+=0.0 if execution_success else 1.0
-        row["seconds"]+=seconds
-        row["samples"]+=1.0
-        try:
-            row["repair_attempts"]+=max(float(record.get("repair_attempts",0)),0.0)
-        except (TypeError,ValueError):
-            pass
-        if verified:
-            row["merged_verified"]+=1.0
-        if quality=="PRODUCT_REALITY_VERIFIED":
-            row["product_reality_verified"]+=1.0
-    return stats
+    return _planning.runner_productivity_history(state_root,task_class)
+
 
 def planner_decision_quality(state_root:Path)->dict[str,dict[str,float]]:
     """Aggregate downstream execution quality by durable planner decision identity."""
@@ -1588,118 +1388,18 @@ def recheck_preserved_work_quarantines(workspace_root:Path,state_root:Path)->dic
 
 def productive_liveness(state_root:Path,authorized_products:list[str],now:datetime|None=None,stale_seconds:int=900,
                         builder_status:str|None=None)->dict:
-    """Expose recent productive flow without confusing authorization with executable work."""
-    current=now or datetime.now(UTC)
-    lifecycle=state_root/"hands-off-grant-lifecycle.json"
-    try:
-        grants=json.loads(lifecycle.read_text(encoding="utf-8")).get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        grants={}
-    records=[]; latest=None; active=False
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict): continue
-        state=record.get("state")
-        if state not in {"CLAIMED","RUNNING","COMPLETED"}: continue
-        stamp=(record.get("last_productive_mutation_at") or record.get("stage_updated_at")
-               or record.get("last_heartbeat_at") or record.get("finished_at")
-               or record.get("claimed_at") or record.get("started_at"))
-        parsed=None
-        if isinstance(stamp,str):
-            try: parsed=datetime.fromisoformat(stamp.replace("Z","+00:00"))
-            except ValueError: parsed=None
-        if parsed and (latest is None or parsed>latest): latest=parsed
-        is_active=state in {"CLAIMED","RUNNING"}
-        active=active or is_active
-        records.append({"grant_id":grant_id,"repository":record.get("repository"),
-                        "slice_id":record.get("slice_id"),"head_sha":record.get("head_sha") or record.get("exact_head"),
-                        "stage":record.get("execution_stage") or record.get("stage") or state,
-                        "state":state,"progress_at":stamp})
-    age=(current-latest).total_seconds() if latest else None
-    terminal=builder_status=="NO_WORK"
-    eligible=bool(authorized_products) and not terminal
-    productive=bool(records) and age is not None and age<=stale_seconds
-    if terminal or not authorized_products: status="NO_AUTHORIZED_WORK"
-    elif productive: status="PRODUCTIVE"
-    elif active: status="STALE_ACTIVE_WORK"
-    else: status="ELIGIBLE_IDLE"
-    return {"status":status,"productive":productive,"eligible_work":eligible,
-            "authorized_products":sorted(authorized_products),"grant_evidence":records,
-            "last_productive_mutation_at":latest.isoformat() if latest else None,
-            "seconds_since_productive_mutation":age,"stale_after_seconds":stale_seconds}
+    return _planning.productive_liveness(state_root,authorized_products,now,stale_seconds,builder_status)
+
 
 def product_convergence(state_root:Path,authorized_products:list[str],*,current_invocation_id:str|None=None)->dict:
-    """Prove each authorized product is owned or has fresh, explicit non-execution evidence."""
-    authorized={p for p in authorized_products if p in {"knowledge-engine","rocksmith","everward"}}
-    active={}
-    try:
-        grants=json.loads((state_root/"hands-off-grant-lifecycle.json").read_text(encoding="utf-8")).get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        grants={}
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","RUNNING"}:
-            continue
-        repository=record.get("repository")
-        authority=record.get("execution_slice")
-        if not repository and isinstance(authority,dict):
-            repository=authority.get("repository")
-        if not repository:
-            repositories=[value for value in record.get("authorized_repositories",[])
-                          if isinstance(value,str) and value]
-            if len(repositories)==1:
-                repository=repositories[0]
-        product=product_for_repository(repository)
-        if product in authorized:
-            active[product]={"grant_id":grant_id,"repository":repository,"state":record.get("state")}
-    reasons={}
-    try:
-        blocks=json.loads((state_root/"dispatch-blocks.json").read_text(encoding="utf-8"))
-    except (OSError,json.JSONDecodeError,TypeError):
-        blocks={}
-    blocks_are_fresh=(isinstance(blocks,dict) and current_invocation_id is not None
-                      and blocks.get("invocation_id")==current_invocation_id)
-    for item in blocks.get("blocked",[]) if blocks_are_fresh else []:
-        if isinstance(item,dict) and item.get("product") in authorized:
-            reasons[item["product"]]={"reason":item.get("reason","DISPATCH_BLOCKED"),
-                                      "repository":item.get("repository"),
-                                      "slice_id":item.get("slice_id")}
-    try:
-        decision=json.loads((state_root/"dispatch-decision.json").read_text(encoding="utf-8"))
-    except (OSError,json.JSONDecodeError,TypeError):
-        decision={}
-    decision_is_fresh=(isinstance(decision,dict) and current_invocation_id is not None
-                       and decision.get("invocation_id")==current_invocation_id)
-    for item in decision.get("decisions",[]) if decision_is_fresh else []:
-        if not isinstance(item,dict): continue
-        product=item.get("product"); outcome=item.get("outcome")
-        if product in authorized and product not in active and outcome not in {None,"SELECTED"}:
-            reasons.setdefault(product,[]).append({"outcome":outcome,"reason":item.get("reason"),
-                                                   "repository":item.get("repository")})
-    missing=sorted(authorized-set(active)-set(reasons))
-    status="CONVERGED" if not missing else "UNEXPLAINED_ELIGIBLE_IDLE"
-    payload={"schema_version":1,"status":status,"authorized_products":sorted(authorized),
-             "active_products":active,"explained_nonexecuting_products":reasons,
-             "dispatch_evidence_fresh":blocks_are_fresh or decision_is_fresh,
-             "dispatch_block_evidence_fresh":blocks_are_fresh,
-             "dispatch_decision_evidence_fresh":decision_is_fresh,
-             "dispatch_invocation_id":current_invocation_id,
-             "unexplained_eligible_products":missing,"recorded_at_utc":datetime.now(UTC).isoformat()}
-    atomic(state_root/"product-convergence.json",payload)
-    return payload
+    return _planning.product_convergence(
+        state_root,authorized_products,current_invocation_id=current_invocation_id,
+    )
+
 
 def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
-    """Turn a proven idle/stale condition into a bounded immediate scheduler request."""
-    status=liveness.get("status")
-    if status not in {"ELIGIBLE_IDLE","STALE_ACTIVE_WORK"}:
-        return {"requested":False,"reason":"LIVENESS_RECOVERY_NOT_REQUIRED"}
-    # Never steal an active claim here. Stale ownership is handled by the
-    # lease/liveness recovery path; this only requests another scheduler pass.
-    request_immediate_builder(state_root)
-    result={"requested":True,"reason":status,
-            "requested_at_utc":datetime.now(UTC).isoformat(),
-            "active_claim_present":any(r.get("state") in {"CLAIMED","RUNNING"}
-                for r in liveness.get("grant_evidence",[]) if isinstance(r,dict))}
-    atomic(state_root/"liveness-reacquire.json",result)
-    return result
+    return _planning.request_liveness_reacquire(state_root,liveness,request_immediate_builder)
+
 
 def record_async_gate_rotation(state_root:Path,*,blocked_repository:str|None,blocked_status:str,
                                next_repository:str|None,burst_id:str|None,process_instance_id:str|None)->dict:
@@ -1747,14 +1447,12 @@ def record_burst_repository_pass(state_root:Path,*,repository:str|None,builder_s
     atomic(path,proof)
     return proof
 
-PRODUCT_BY_REPOSITORY={
-    "jweter/knowledge-engine-core":"knowledge-engine","jweter/knowledge-engine-web":"knowledge-engine",
-    "jweter/knowledge-engine-ai":"knowledge-engine","jweter/rocksmith-cdlc-generator":"rocksmith",
-    "jweter/Project-Everward":"everward",
-}
+PRODUCT_BY_REPOSITORY=_planning.PRODUCT_BY_REPOSITORY
+
 
 def product_for_repository(repository:str|None)->str|None:
-    return PRODUCT_BY_REPOSITORY.get(repository) if repository else None
+    return _planning.product_for_repository(repository)
+
 
 def record_product_identity_advancement(state_root:Path,*,repository:str|None,builder_status:str,lifecycle_advanced:bool,
                                         burst_id:str,process_instance_id:str,sequence:int)->dict:
@@ -2165,6 +1863,9 @@ def main()->int:
         liveness=productive_liveness(state,products,builder_status=builder_status)
         atomic(state/"productive-liveness.json",liveness)
         convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
+        idle_streaks=_planning.record_eligible_idle_streaks(
+            state,products,current_invocation_id=dispatch_invocation_id,
+        )
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
@@ -2172,8 +1873,9 @@ def main()->int:
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
         healthy=(builder_ok and linear_rc in (None,0) and not quarantines
-                 and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
-                 and convergence["status"]=="CONVERGED")
+                 and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}
+                 and convergence["status"]=="CONVERGED"
+                 and idle_streaks["status"]!="P1_LIVENESS_DEFECT")
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
@@ -2185,6 +1887,7 @@ def main()->int:
             "parallel_worker_results":parallel_results,
             "productive_liveness":liveness,
             "product_convergence":convergence,
+            "eligible_idle_streaks":idle_streaks,
             "liveness_reacquire":liveness_reacquire,
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,

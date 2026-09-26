@@ -44,7 +44,7 @@ def test_current_lifecycle_heartbeat_prevents_false_stale(tmp_path):
     assert result["status"]=="PRODUCTIVE"
     assert result["grant_evidence"][0]["stage"]=="PREFLIGHT"
 
-def test_terminal_builder_no_work_is_not_eligible_idle(tmp_path):
+def test_no_work_with_authorized_product_is_truthful_idle_signal(tmp_path):
     result=productive_liveness(tmp_path,["rocksmith"],NOW,builder_status="NO_WORK")
-    assert result["status"]=="NO_AUTHORIZED_WORK"
-    assert result["eligible_work"] is False
+    assert result["status"]=="AUTHORIZED_NO_SLICE"
+    assert result["eligible_work"] is True
