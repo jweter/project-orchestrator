@@ -5,8 +5,26 @@
   "repository_role": "portfolio-control-plane",
   "source_of_truth": "live GitHub evidence plus per-repository governing documents",
   "control_surface_registry": "engineering/control-surface.toml",
+  "authority_loading": {
+    "always_read": [
+      "DoWork.txt",
+      "engineering/control-plane.json",
+      "docs/EXECUTION_AUTHORITY.md"
+    ],
+    "specialist_on_demand": [
+      "docs/EVOLUTION_ENGINE.md",
+      "docs/EVOLUTION_WORKER_HANDOFF.md",
+      "docs/AGENT_ACTION_GUARD.md",
+      "docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md",
+      "docs/LVN_PROMOTION_VERIFICATION.md",
+      "docs/EMERGING_COMPUTE_EVALUATION.md",
+      "docs/REPOSITORY_SKILLS.md",
+      "docs/REMOTE_PREFLIGHT.md"
+    ]
+  },
   "authoritative_documents": [
     "DoWork.txt",
+    "docs/EXECUTION_AUTHORITY.md",
     "engineering/portfolio.json",
     "engineering/knowledge-engine-compatibility.json",
     "engineering/state/learning-memory.json",
