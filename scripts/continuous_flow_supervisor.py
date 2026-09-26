@@ -1417,10 +1417,22 @@ def write_dashboard_snapshot(state_root:Path)->dict:
     advancement_per_hour=(verified*3600.0/elapsed_seconds) if elapsed_seconds>0 else 0.0
     pool=workers.get("pool",{}) if isinstance(workers,dict) else {}
     pool_workers=pool.get("workers",[]) if isinstance(pool,dict) else []
-    active_pool=[w for w in pool_workers if isinstance(w,dict) and not w.get("done",False)]
+    runtime_leases=(workers.get("runtime_leases",{}) or {}).get("leases",[]) if isinstance(workers,dict) else []
+    leased_workers={str(row.get("worker_id") or "") for row in runtime_leases if isinstance(row,dict)}
+    active_grant_workers={str(r.get("worker_id") or "") for r in lifecycle.values()
+                          if isinstance(r,dict) and r.get("state") in {"ISSUED","CLAIMED","QUARANTINED"}}
+    observed_pool=[]
+    for w in pool_workers:
+        if not isinstance(w,dict) or w.get("done",False):
+            continue
+        worker_id=str(w.get("worker_id") or "")
+        row=dict(w)
+        row["activity_status"]="RUNNING" if worker_id in leased_workers or worker_id in active_grant_workers else "STALE"
+        observed_pool.append(row)
+    running_pool=[w for w in observed_pool if w["activity_status"]=="RUNNING"]
     payload={"schema_version":1,"recorded_at":datetime.now(UTC).isoformat(),
-             "active_work":active,"active_count":max(len(active),len(active_pool)),
-             "active_worker_pool":active_pool,
+             "active_work":active,"active_count":max(len(active),len(running_pool)),
+             "active_worker_pool":observed_pool,
              "recent_completed_work":terminal[:20],"outcome_counters":counters,
              "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
                      "measured_worker_seconds":elapsed_seconds},
@@ -3112,6 +3124,14 @@ def main()->int:
                 dispatch_parallel_builders(worker_pool,repo,workspace,state,products)
             )
         pool_snapshot=worker_pool.snapshot()
+        # Persist the authoritative post-harvest/post-dispatch pool, not the
+        # earlier dispatch-time snapshot. Otherwise completed futures can remain
+        # on disk as phantom RUNNING workers until another dispatch occurs.
+        atomic(state/"parallel-worker-pool.json",{
+            "schema_version":2,"pool":pool_snapshot,"runtime_leases":RUNTIME_LEASES.snapshot(),
+            "dispatched":dispatched_workers,"runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
+            "recorded_at_utc":datetime.now(UTC).isoformat(),
+        })
         # The supervisor no longer blocks on implementation. A worker holding a
         # repository grant is active work; other product slots remain schedulable.
         rc=0 if (dispatched_workers or pool_snapshot["running_total"] or parallel_results) else 3
