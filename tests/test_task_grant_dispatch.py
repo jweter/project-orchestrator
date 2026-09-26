@@ -66,6 +66,10 @@ def test_planned_grants_for_disjoint_same_repo_tasks_can_coexist(tmp_path,monkey
     assert ga!=gb
     lifecycle=json.loads((state/"hands-off-grant-lifecycle.json").read_text())["grants"]
     assert {r["slice_id"] for r in lifecycle.values()}=={"A","B"}
+    assert {r["planner_decision_id"] for r in lifecycle.values()}=={
+        supervisor.planner_decision_id("rocksmith","jweter/repo","abc",a),
+        supervisor.planner_decision_id("rocksmith","jweter/repo","abc",b),
+    }
 
 def test_planned_grant_rejects_stale_exact_head(tmp_path,monkeypatch):
     repo_root=tmp_path/"control"; (repo_root/"engineering").mkdir(parents=True)
