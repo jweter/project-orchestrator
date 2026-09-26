@@ -561,7 +561,11 @@ def prior_failure_experience(state_path:Path,limit:int=5)->str:
         lessons=json.loads(path.read_text(encoding="utf-8")).get("lessons",{})
     except (OSError,json.JSONDecodeError,TypeError):
         return "none recorded"
-    ranked=sorted(lessons.values(),key=lambda x:(int(x.get("occurrences",0)),x.get("last_seen","")),reverse=True)
+    engineering_lessons=[
+        item for item in lessons.values()
+        if item.get("last_outcome")!="RUNNER_CAPACITY_DEFERRED"
+    ]
+    ranked=sorted(engineering_lessons,key=lambda x:(int(x.get("occurrences",0)),x.get("last_seen","")),reverse=True)
     lines=[]
     for item in ranked[:limit]:
         detail=" ".join(str(item.get("detail","")).split())[:600]
@@ -920,8 +924,13 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             marker in detail.lower() for marker in ("session limit","usage limit","rate limit")
         )
         outcome="RUNNER_CAPACITY_DEFERRED" if capacity_limited else "BUILDER_FAILED"
-        lesson=retain_failure_lesson(state_path,f"{selected_runner or 'aider-ollama'}_execution",detail,outcome)
-        result={"status":outcome,"repository":repo,"runner_id":selected_runner,"returncode":builder.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
+        result={"status":outcome,"repository":repo,"runner_id":selected_runner,
+                "returncode":builder.returncode,"last_repo_index":idx,"last_repository":repo}
+        if not capacity_limited:
+            lesson=retain_failure_lesson(
+                state_path,f"{selected_runner or 'aider-ollama'}_execution",detail,outcome
+            )
+            result["failure_fingerprint"]=lesson["fingerprint"]
         atomic_json(state_path,result); return result
     if not paths:
         result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
