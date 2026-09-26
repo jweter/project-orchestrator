@@ -1368,9 +1368,27 @@ def write_dashboard_snapshot(state_root:Path)->dict:
                          "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
                          "result_status":status,"outcome_quality":outcome,"finished_at":r.get("finished_at")})
     terminal.sort(key=lambda row:row.get("finished_at") or "",reverse=True)
+    elapsed_seconds=0.0
+    for r in lifecycle.values():
+        if not isinstance(r,dict): continue
+        try:
+            if r.get("execution_seconds") is not None:
+                elapsed_seconds+=max(float(r["execution_seconds"]),0.0)
+            else:
+                started=datetime.fromisoformat(r.get("execution_started_at") or r.get("claimed_at") or r.get("issued_at"))
+                finished=datetime.fromisoformat(r.get("execution_finished_at") or r.get("finished_at"))
+                if started.tzinfo is None: started=started.replace(tzinfo=UTC)
+                if finished.tzinfo is None: finished=finished.replace(tzinfo=UTC)
+                elapsed_seconds+=max((finished-started).total_seconds(),0.0)
+        except (TypeError,ValueError):
+            pass
+    verified=counters["merged_verified"]
+    advancement_per_hour=(verified*3600.0/elapsed_seconds) if elapsed_seconds>0 else 0.0
     payload={"schema_version":1,"recorded_at":datetime.now(UTC).isoformat(),
              "active_work":active,"active_count":len(active),
              "recent_completed_work":terminal[:20],"outcome_counters":counters,
+             "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
+                     "measured_worker_seconds":elapsed_seconds},
              "worker_pool":workers.get("pool",{}),
              "planner_decision_quality":planner_decision_quality(state_root),
              "products":{}}
