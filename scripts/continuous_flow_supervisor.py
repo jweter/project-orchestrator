@@ -1415,8 +1415,12 @@ def write_dashboard_snapshot(state_root:Path)->dict:
             pass
     verified=counters["merged_verified"]
     advancement_per_hour=(verified*3600.0/elapsed_seconds) if elapsed_seconds>0 else 0.0
+    pool=workers.get("pool",{}) if isinstance(workers,dict) else {}
+    pool_workers=pool.get("workers",[]) if isinstance(pool,dict) else []
+    active_pool=[w for w in pool_workers if isinstance(w,dict) and not w.get("done",False)]
     payload={"schema_version":1,"recorded_at":datetime.now(UTC).isoformat(),
-             "active_work":active,"active_count":len(active),
+             "active_work":active,"active_count":max(len(active),len(active_pool)),
+             "active_worker_pool":active_pool,
              "recent_completed_work":terminal[:20],"outcome_counters":counters,
              "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
                      "measured_worker_seconds":elapsed_seconds},
@@ -3204,6 +3208,17 @@ def main()->int:
         product_proof=record_product_identity_advancement(state,repository=selected_builder_repository(state,builder_invocation_id),
             builder_status=builder_status,lifecycle_advanced=lifecycle_advanced,burst_id=burst_id,
             process_instance_id=process_instance_id,sequence=record["sequence"])
+        # Dashboard telemetry is observational only and must never consume or block
+        # an execution opportunity. CI reconciliation failure degrades the UI but
+        # does not change lifecycle or promotion authority.
+        try:
+            reconcile_dashboard_ci(state,repo)
+        except (OSError,TypeError,subprocess.SubprocessError):
+            pass
+        try:
+            write_dashboard_snapshot(state)
+        except (OSError,TypeError,ValueError):
+            pass
         record["burst_pass"]=burst_pass
         atomic(state/"continuation-current-burst.json",{"schema_version":2,"burst_id":burst_id,
             "process_instance_id":process_instance_id,
