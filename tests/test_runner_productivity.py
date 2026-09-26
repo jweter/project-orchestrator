@@ -99,9 +99,23 @@ def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
     snapshot=supervisor.write_dashboard_snapshot(tmp_path)
     assert snapshot["active_count"]==1
     assert snapshot["active_work"][0]["repository"]=="jweter/repo"
+    assert snapshot["queue"]["decisions"]==[]
     assert snapshot["products"]["rocksmith"]["candidate_count"]==3
     assert snapshot["outcome_counters"]=={"completed":0,"failed":0,"merged_verified":0,"product_reality_verified":0,"repairs":0}
     assert (tmp_path/"telemetry"/"foundry-dashboard.json").exists()
+
+def test_dashboard_snapshot_projects_dispatch_block_reasons(tmp_path):
+    dispatch={"selected_repository":"jweter/ready","selected_product":"rocksmith","decisions":[
+        {"repository":"jweter/busy","outcome":"ALREADY_OWNED","reason":"NONTERMINAL_GRANT","grant_id":"g1"},
+        {"repository":"jweter/waiting","outcome":"NOT_READY","reason":"DEPENDENCY_BLOCKED"},
+        {"repository":"jweter/ready","outcome":"SELECTED","reason":"READY_EXECUTION_SLICE"}]}
+    (tmp_path/"dispatch-decision.json").write_text(json.dumps(dispatch),encoding="utf-8")
+    rotations={"rotations":[{"blocked_repository":"jweter/waiting","blocked_status":"CI_PENDING","next_repository":"jweter/ready","rotated":True}]}
+    (tmp_path/"async-gate-rotation-history.json").write_text(json.dumps(rotations),encoding="utf-8")
+    snapshot=supervisor.write_dashboard_snapshot(tmp_path)
+    assert snapshot["queue"]["selected_repository"]=="jweter/ready"
+    assert snapshot["queue"]["decisions"][0]["outcome"]=="ALREADY_OWNED"
+    assert snapshot["queue"]["recent_async_rotations"][0]["blocked_status"]=="CI_PENDING"
 
 def test_dashboard_snapshot_counts_and_orders_terminal_outcomes(tmp_path):
     older=terminal("aider-ollama","GREEN",60,task_class="tests")
