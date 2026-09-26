@@ -1070,6 +1070,22 @@ def finalize_unclaimed_grant(grant_path:Path,returncode:int,builder_state:Path|N
     finally:
         _release_lifecycle_lock(lifecycle_lock)
 
+def mark_builder_running(builder_state:Path,builder_output:Path,*,invocation_id:str,
+                         grant_path:Path,worker_id:str|None,runner_id:str,runtime_id:str)->dict:
+    """Replace stale terminal worker telemetry before the new child process starts."""
+    try:
+        grant_id=json.loads(grant_path.read_text(encoding="utf-8")).get("grant_id")
+    except (OSError,json.JSONDecodeError,TypeError):
+        grant_id=None
+    payload={"schema_version":1,"status":"BUILDER_RUNNING","invocation_id":invocation_id,
+             "worker_id":worker_id,"runner_id":runner_id,"runtime_id":runtime_id,
+             "started_at_utc":datetime.now(UTC).isoformat()}
+    if grant_id:
+        payload["grant_id"]=grant_id
+    atomic(builder_state,payload)
+    builder_output.write_text("",encoding="utf-8")
+    return payload
+
 def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list[str]|None=None,
                 worker_id:str|None=None,planned_target:tuple[str,str,dict]|None=None)->tuple[int,str|None]:
     worker_dir=state_root/"worker-state"/worker_id if worker_id else state_root
@@ -1132,6 +1148,9 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
         "--runtime-lease-id",runtime_lease_id,
         "--runtime-lease-state",str(RUNTIME_LEASES.state_path),
         "--resource-lease-ids",json.dumps(resource_lease_ids,sort_keys=True)]
+    mark_builder_running(builder_state,builder_output,invocation_id=invocation_id,
+                         grant_path=grant_path,worker_id=worker_id,
+                         runner_id=runner_id,runtime_id=runtime_id)
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     builder_output.write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
