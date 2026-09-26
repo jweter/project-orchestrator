@@ -1070,6 +1070,22 @@ def test_product_convergence_flags_unexplained_authorized_product(tmp_path):
     assert result["unexplained_eligible_products"]==["everward","knowledge-engine","rocksmith"]
 
 
+def test_product_convergence_resolves_issued_repository_from_execution_slice(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    grants={"g1":{"state":"ISSUED","authorized_repositories":["jweter/rocksmith-cdlc-generator"],
+                  "execution_slice":{"repository":"jweter/rocksmith-cdlc-generator",
+                                     "slice_id":"human-only-product-reality-debt-report-v1"}}}
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":grants}))
+    result=supervisor.product_convergence(state,["rocksmith"])
+    assert result["status"]=="CONVERGED"
+    assert result["unexplained_eligible_products"]==[]
+    assert result["active_products"]["rocksmith"]=={
+        "grant_id":"g1","repository":"jweter/rocksmith-cdlc-generator","state":"ISSUED"
+    }
+
+
 def test_product_convergence_accepts_active_or_explicit_reason(tmp_path):
     import json
     import scripts.continuous_flow_supervisor as supervisor

@@ -2743,9 +2743,18 @@ def product_convergence(state_root:Path,authorized_products:list[str],*,current_
     for grant_id,record in grants.items():
         if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","RUNNING"}:
             continue
-        product=product_for_repository(record.get("repository"))
+        repository=record.get("repository")
+        authority=record.get("execution_slice")
+        if not repository and isinstance(authority,dict):
+            repository=authority.get("repository")
+        if not repository:
+            repositories=[value for value in record.get("authorized_repositories",[])
+                          if isinstance(value,str) and value]
+            if len(repositories)==1:
+                repository=repositories[0]
+        product=product_for_repository(repository)
         if product in authorized:
-            active[product]={"grant_id":grant_id,"repository":record.get("repository"),"state":record.get("state")}
+            active[product]={"grant_id":grant_id,"repository":repository,"state":record.get("state")}
     reasons={}
     try:
         blocks=json.loads((state_root/"dispatch-blocks.json").read_text(encoding="utf-8"))
