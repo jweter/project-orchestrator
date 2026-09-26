@@ -181,6 +181,34 @@ def clean_generated_workspace_artifacts(ws:Path)->None:
         else:
             evidence.unlink()
 
+def recover_dirty_worker_workspace(ws:Path,root:Path,worker_id:str,name:str)->Path:
+    """Preserve residue from a disposable worker worktree, then return it clean."""
+    recovery=root/".worker-recovery"/worker_id/name
+    recovery.mkdir(parents=True,exist_ok=True)
+    stamp=datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    patch=run(["git","diff","--binary","HEAD"],ws)
+    (recovery/f"{stamp}.patch").write_text(patch.stdout or "",encoding="utf-8")
+    untracked=run(["git","ls-files","--others","--exclude-standard"],ws)
+    saved=[]
+    if untracked.returncode==0:
+        files=recovery/f"{stamp}-untracked"
+        for rel in (line.strip() for line in untracked.stdout.splitlines() if line.strip()):
+            source=ws/rel
+            if source.is_file():
+                target=files/rel
+                target.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(source,target)
+                saved.append(rel)
+    atomic_json(recovery/f"{stamp}.json",{
+        "schema_version":1,"worker_id":worker_id,"workspace":str(ws),
+        "recorded_at_utc":datetime.now(UTC).isoformat(),"untracked":saved,
+    })
+    reset=run(["git","reset","--hard","HEAD"],ws)
+    clean=run(["git","clean","-fd"],ws)
+    if reset.returncode or clean.returncode:
+        raise RuntimeError("worker workspace recovery failed")
+    return recovery
+
 def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
     name=repo.split("/",1)[1]
     canonical=root/name
@@ -204,8 +232,16 @@ def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
         raise RuntimeError("origin mismatch")
     clean_generated_workspace_artifacts(ws)
     dirty=run(["git","status","--porcelain"],ws)
-    if dirty.returncode or dirty.stdout.strip():
-        raise RuntimeError("workspace dirty")
+    if dirty.returncode:
+        raise RuntimeError("workspace status failed")
+    if dirty.stdout.strip():
+        isolated_worker=bool(worker_id) and ws != canonical and ".worker-worktrees" in ws.parts
+        if not isolated_worker:
+            raise RuntimeError("workspace dirty")
+        recover_dirty_worker_workspace(ws,root,worker_id,name)
+        verified=run(["git","status","--porcelain"],ws)
+        if verified.returncode or verified.stdout.strip():
+            raise RuntimeError("worker workspace recovery left residue")
     fetch=run(["git","fetch","--prune","origin"],ws)
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
