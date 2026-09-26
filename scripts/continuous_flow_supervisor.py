@@ -1307,6 +1307,37 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
             row["product_reality_verified"]+=1.0
     return stats
 
+def planner_decision_quality(state_root:Path)->dict[str,dict[str,float]]:
+    """Aggregate downstream execution quality by durable planner decision identity."""
+    path=state_root/"hands-off-grant-lifecycle.json"
+    try:
+        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return {}
+    quality={}
+    for record in grants.values():
+        if not isinstance(record,dict):
+            continue
+        decision_id=record.get("planner_decision_id")
+        if not isinstance(decision_id,str) or not decision_id:
+            continue
+        row=quality.setdefault(decision_id,{"samples":0.0,"failures":0.0,"repairs":0.0,
+                                            "merged_verified":0.0,"product_reality_verified":0.0})
+        row["samples"]+=1.0
+        status=str(record.get("result_status") or "")
+        failed=record.get("state") in {"ABANDONED","QUARANTINED"} or "FAILED" in status
+        row["failures"]+=1.0 if failed else 0.0
+        try:
+            row["repairs"]+=max(float(record.get("repair_attempts",0)),0.0)
+        except (TypeError,ValueError):
+            pass
+        outcome=record.get("outcome_quality")
+        if outcome in {"MERGED_VERIFIED","PRODUCT_REALITY_VERIFIED"}:
+            row["merged_verified"]+=1.0
+        if outcome=="PRODUCT_REALITY_VERIFIED":
+            row["product_reality_verified"]+=1.0
+    return quality
+
 def productivity_penalty(runner_id:str,stats:dict[str,dict[str,float]])->float:
     row=stats.get(runner_id)
     if not row or row["samples"]<2 or row["seconds"]<=0:

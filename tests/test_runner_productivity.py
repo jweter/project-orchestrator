@@ -75,6 +75,20 @@ def test_task_exploration_bonus_decays_after_four_samples(tmp_path):
     assert score[0]==0.0
     assert score[1]==4
 
+def test_planner_decision_quality_joins_verified_outcomes(tmp_path):
+    merged=terminal("claude-code","GREEN",60,task_class="tests")
+    merged.update({"planner_decision_id":"d1","outcome_quality":"MERGED_VERIFIED","repair_attempts":1})
+    reality=terminal("claude-code","GREEN",60,task_class="tests")
+    reality.update({"planner_decision_id":"d1","outcome_quality":"PRODUCT_REALITY_VERIFIED"})
+    failed=terminal("claude-code","TEST_FAILURE",60,task_class="tests")
+    failed.update({"planner_decision_id":"d2","state":"ABANDONED"})
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(
+        json.dumps({"grants":{"m":merged,"r":reality,"f":failed}}),encoding="utf-8")
+    quality=supervisor.planner_decision_quality(tmp_path)
+    assert quality["d1"]=={"samples":2.0,"failures":0.0,"repairs":1.0,
+                           "merged_verified":2.0,"product_reality_verified":1.0}
+    assert quality["d2"]["failures"]==1.0
+
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}}
     assert supervisor.productivity_penalty("x",stats)==0.0
