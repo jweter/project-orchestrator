@@ -1,7 +1,7 @@
 ﻿{
-    "status":  "DEFERRED_ACTIVE_PRODUCT_WORKERS",
-    "worker_count":  3,
-    "at":  "2026-09-26T13:19:22.2002481+00:00",
+    "status":  "COMPLETED",
+    "worker_count":  0,
+    "at":  "2026-09-26T14:33:55.3850393+00:00",
     "action":  "DEPLOY_MAIN_SAFE",
     "command_id":  "deploy-main-safe-20260926-1319"
 }
