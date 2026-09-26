@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
-import os, subprocess
+import os, subprocess, tempfile, time
 from typing import Mapping, Sequence
 
 @dataclass(frozen=True)
@@ -57,27 +57,35 @@ class NativeWindowsRuntime:
         return RuntimeResult(self.runtime_id,completed.returncode,completed.stdout,completed.stderr)
 
     def execute_supervised(self,request:RuntimeRequest,authority_check,interval:float=1.0)->RuntimeResult:
-        """Execute while authority remains valid; revoke by terminating the process."""
+        """Execute while authority remains valid without blocking on full output pipes."""
         env=os.environ.copy()
         if request.env: env.update(request.env)
-        process=subprocess.Popen(list(request.argv),cwd=request.cwd,env=env,text=True,
-                                 stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        deadline=None if request.timeout_seconds is None else __import__("time").monotonic()+request.timeout_seconds
-        try:
-            while process.poll() is None:
-                try: authority_check()
-                except Exception:
+        # PIPE + poll is unsafe here: a verbose child can fill the OS pipe buffer
+        # and block forever before poll() observes exit. Spool output to disk while
+        # the parent remains free to heartbeat/revoke the execution authority.
+        with tempfile.TemporaryFile(mode="w+",encoding="utf-8",errors="replace") as stdout_file, \
+             tempfile.TemporaryFile(mode="w+",encoding="utf-8",errors="replace") as stderr_file:
+            process=subprocess.Popen(list(request.argv),cwd=request.cwd,env=env,text=True,
+                                     stdout=stdout_file,stderr=stderr_file)
+            deadline=None if request.timeout_seconds is None else time.monotonic()+request.timeout_seconds
+            try:
+                while process.poll() is None:
+                    try: authority_check()
+                    except Exception:
+                        self._terminate_tree(process)
+                        raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
+                    if deadline is not None and time.monotonic()>=deadline:
+                        self._terminate_tree(process)
+                        raise subprocess.TimeoutExpired(request.argv,request.timeout_seconds)
+                    time.sleep(interval)
+                process.wait()
+                stdout_file.seek(0); stderr_file.seek(0)
+                return RuntimeResult(
+                    self.runtime_id,process.returncode,stdout_file.read(),stderr_file.read()
+                )
+            finally:
+                if process.poll() is None:
                     self._terminate_tree(process)
-                    raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
-                if deadline is not None and __import__("time").monotonic()>=deadline:
-                    self._terminate_tree(process)
-                    raise subprocess.TimeoutExpired(request.argv,request.timeout_seconds)
-                __import__("time").sleep(interval)
-            stdout,stderr=process.communicate()
-            return RuntimeResult(self.runtime_id,process.returncode,stdout,stderr)
-        finally:
-            if process.poll() is None:
-                self._terminate_tree(process)
 
 class LaptopActorRuntime(NativeWindowsRuntime):
     """Machine-local actor runtime with explicit, probeable capabilities."""
