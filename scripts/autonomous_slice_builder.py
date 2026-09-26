@@ -874,7 +874,10 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             return {"status":"EXECUTION_GRANT_INVALID","repository":repo}
         checkout_target=expected
         pre_checkout=run(["git","status","--porcelain"],ws)
-        if pre_checkout.returncode or pre_checkout.stdout.strip():
+        porcelain_states=set(" MADRCU?!")
+        dirty_lines=[line for line in pre_checkout.stdout.splitlines()
+                     if len(line)>=3 and line[0] in porcelain_states and line[1] in porcelain_states]
+        if pre_checkout.returncode or dirty_lines:
             raise RuntimeError("WORKSPACE_CHANGED_AFTER_ADMISSION")
         reset=run(["git","checkout","--detach",checkout_target],ws)
     else:
