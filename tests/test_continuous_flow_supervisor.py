@@ -1095,8 +1095,9 @@ def test_product_convergence_accepts_active_or_explicit_reason(tmp_path):
     (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":grants}))
     decisions=[{"repository":"jweter/knowledge-engine-core","product":"knowledge-engine",
                 "outcome":"NOT_READY","reason":"EXECUTION_SLICE_NOT_READY"}]
-    (state/"dispatch-decision.json").write_text(json.dumps({"decisions":decisions}))
-    result=supervisor.product_convergence(state,["knowledge-engine","rocksmith","everward"])
+    (state/"dispatch-decision.json").write_text(json.dumps({"invocation_id":"current","decisions":decisions}))
+    result=supervisor.product_convergence(
+        state,["knowledge-engine","rocksmith","everward"],current_invocation_id="current")
     assert result["status"]=="CONVERGED"
     assert sorted(result["active_products"])==["everward","rocksmith"]
     assert result["explained_nonexecuting_products"]["knowledge-engine"][0]["outcome"]=="NOT_READY"
@@ -1130,6 +1131,45 @@ def test_product_convergence_rejects_stale_dispatch_invocation(tmp_path):
     assert result["status"]=="UNEXPLAINED_ELIGIBLE_IDLE"
     assert result["dispatch_evidence_fresh"] is False
     assert result["explained_nonexecuting_products"]=={}
+
+
+def test_product_convergence_rejects_stale_parallel_block_evidence(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{}}))
+    (state/"dispatch-blocks.json").write_text(json.dumps({
+        "invocation_id":"old","blocked":[{"product":"everward","reason":"NO_ELIGIBLE_RUNNER"}]
+    }))
+    result=supervisor.product_convergence(
+        state,["everward"],current_invocation_id="current")
+    assert result["status"]=="UNEXPLAINED_ELIGIBLE_IDLE"
+    assert result["dispatch_block_evidence_fresh"] is False
+    assert result["explained_nonexecuting_products"]=={}
+
+
+def test_parallel_dispatch_records_current_empty_batch_reason(tmp_path,monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+    from tests.test_parallel_worker_pool import ManualExecutor
+    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=1,
+                            executor_factory=ManualExecutor)
+    monkeypatch.setattr(supervisor,"ready_task_batch",lambda *args:[])
+    workers=supervisor.dispatch_parallel_builders(
+        pool,tmp_path,tmp_path,tmp_path,["everward"],dispatch_invocation_id="cycle-1")
+    assert workers==[]
+    blocks=json.loads((tmp_path/"dispatch-blocks.json").read_text())
+    assert blocks["invocation_id"]=="cycle-1"
+    assert blocks["blocked"]==[{
+        "product":"everward","worker_id":None,"repository":None,
+        "slice_id":None,"reason":"NO_CONFLICT_FREE_READY_SLICE"
+    }]
+    convergence=supervisor.product_convergence(
+        tmp_path,["everward"],current_invocation_id="cycle-1")
+    assert convergence["status"]=="CONVERGED"
+    assert convergence["dispatch_block_evidence_fresh"] is True
+    assert convergence["explained_nonexecuting_products"]["everward"]["reason"]=="NO_CONFLICT_FREE_READY_SLICE"
 
 
 def test_product_convergence_accepts_matching_dispatch_invocation(tmp_path):
@@ -1213,10 +1253,13 @@ def test_parallel_dispatch_records_runner_block_for_convergence(tmp_path, monkey
         ("jweter/rocksmith-cdlc-generator","head",{"repository":"jweter/rocksmith-cdlc-generator",
          "exact_head":"head","slice_id":"slice","runner_requirements":["impossible"]})])
     assert supervisor.dispatch_parallel_builders(
-        pool,tmp_path,tmp_path,tmp_path,["rocksmith"],RunnerRegistry([]))==[]
+        pool,tmp_path,tmp_path,tmp_path,["rocksmith"],RunnerRegistry([]),
+        dispatch_invocation_id="current")==[]
     blocks=json.loads((tmp_path/"dispatch-blocks.json").read_text())
+    assert blocks["invocation_id"]=="current"
     assert blocks["blocked"][0]["reason"]=="NO_ELIGIBLE_RUNNER"
-    convergence=supervisor.product_convergence(tmp_path,["rocksmith"])
+    convergence=supervisor.product_convergence(
+        tmp_path,["rocksmith"],current_invocation_id="current")
     assert convergence["status"]=="CONVERGED"
     assert convergence["explained_nonexecuting_products"]["rocksmith"]["reason"]=="NO_ELIGIBLE_RUNNER"
 
