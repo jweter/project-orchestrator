@@ -1338,6 +1338,32 @@ def planner_decision_quality(state_root:Path)->dict[str,dict[str,float]]:
             row["product_reality_verified"]+=1.0
     return quality
 
+def reconcile_dashboard_ci(state_root:Path,workspace:Path)->dict:
+    """Observe exact durable PR heads and persist CI state without changing promotion authority."""
+    try:
+        lifecycle=json.loads((state_root/"hands-off-grant-lifecycle.json").read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        lifecycle={}
+    rows=[]
+    for gid,r in lifecycle.items():
+        if not isinstance(r,dict) or not r.get("pr_number") or not r.get("head_sha") or not r.get("repository"):
+            continue
+        cmd=["gh","pr","checks",str(r["pr_number"]),"--repo",r["repository"],"--json","name,state,link"]
+        p=subprocess.run(cmd,cwd=workspace,text=True,capture_output=True,check=False)
+        checks=[]
+        if p.returncode==0:
+            try: checks=json.loads(p.stdout)
+            except (json.JSONDecodeError,TypeError): checks=[]
+        states={str(c.get("state","")).upper() for c in checks if isinstance(c,dict)}
+        conclusion=("UNREADABLE" if p.returncode else "PENDING" if states & {"PENDING","QUEUED","IN_PROGRESS"}
+                    else "FAILURE" if states & {"FAILURE","ERROR","CANCELLED","TIMED_OUT"}
+                    else "SUCCESS" if checks and states <= {"SUCCESS","SKIPPED","NEUTRAL"} else "UNKNOWN")
+        rows.append({"grant_id":gid,"repository":r["repository"],"pr_number":r["pr_number"],
+                     "head_sha":r["head_sha"],"ci_conclusion":conclusion,"checks":checks})
+    payload={"schema_version":1,"recorded_at":datetime.now(UTC).isoformat(),"pull_requests":rows}
+    atomic(state_root/"dashboard-ci.json",payload)
+    return payload
+
 def write_dashboard_snapshot(state_root:Path)->dict:
     """Persist a read-only, phone-dashboard-friendly Foundry state projection."""
     def load_json(path:Path,default):
@@ -1349,6 +1375,7 @@ def write_dashboard_snapshot(state_root:Path)->dict:
     workers=load_json(state_root/"parallel-worker-pool.json",{})
     dispatch=load_json(state_root/"dispatch-decision.json",{})
     rotations=load_json(state_root/"async-gate-rotation-history.json",{})
+    ci=load_json(state_root/"dashboard-ci.json",{})
     active=[{"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
              "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
              "planner_decision_id":r.get("planner_decision_id")}
@@ -1394,6 +1421,7 @@ def write_dashboard_snapshot(state_root:Path)->dict:
              "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
                      "measured_worker_seconds":elapsed_seconds},
              "github":{"pull_requests":[row for row in terminal if row.get("pr_number") is not None],
+                       "ci":ci.get("pull_requests",[]),
                        "promotion_gates":[{"repository":row.get("repository"),"pr_number":row.get("pr_number"),
                                            "head_sha":row.get("head_sha"),"stage":row.get("execution_stage"),
                                            "result_status":row.get("result_status")}
