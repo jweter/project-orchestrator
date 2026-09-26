@@ -105,14 +105,16 @@ def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
 
 def test_dashboard_snapshot_counts_and_orders_terminal_outcomes(tmp_path):
     older=terminal("aider-ollama","GREEN",60,task_class="tests")
-    older.update({"finished_at":"2026-09-25T10:00:00+00:00","outcome_quality":"MERGED_VERIFIED","repair_attempts":2})
+    older.update({"finished_at":"2026-09-25T10:00:00+00:00","outcome_quality":"MERGED_VERIFIED","repair_attempts":2,"execution_seconds":60})
     newer=terminal("claude-code","GREEN",60,task_class="tests")
-    newer.update({"finished_at":"2026-09-25T11:00:00+00:00","outcome_quality":"PRODUCT_REALITY_VERIFIED"})
+    newer.update({"finished_at":"2026-09-25T11:00:00+00:00","outcome_quality":"PRODUCT_REALITY_VERIFIED","execution_seconds":60})
     failed=terminal("claude-code","TEST_FAILURE",60,task_class="tests")
-    failed.update({"state":"ABANDONED","finished_at":"2026-09-25T12:00:00+00:00"})
+    failed.update({"state":"ABANDONED","finished_at":"2026-09-25T12:00:00+00:00","execution_seconds":60})
     (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{"old":older,"new":newer,"bad":failed}}),encoding="utf-8")
     snapshot=supervisor.write_dashboard_snapshot(tmp_path)
     assert snapshot["outcome_counters"]=={"completed":2,"failed":1,"merged_verified":2,"product_reality_verified":1,"repairs":2}
+    assert snapshot["flow"]["measured_worker_seconds"]==180.0
+    assert snapshot["flow"]["verified_advancement_per_worker_hour"]==40.0
     assert [row["grant_id"] for row in snapshot["recent_completed_work"]]==["bad","new","old"]
 
 def test_productivity_penalty_requires_multiple_samples():
