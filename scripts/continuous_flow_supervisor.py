@@ -987,6 +987,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
         execution_slice={**execution_slice,"runner_id":runner_id,"execution_runtime":runtime_id}
         grant={"schema_version":5,
                "grant_id":grant_id,
+               "worker_id":execution_slice.get("worker_id"),
                "contract_sha256":hashlib.sha256(contract_bytes).hexdigest(),
                "activation_sha256":hashlib.sha256(activation_bytes).hexdigest(),
                "products":{
@@ -1556,6 +1557,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         except (RuntimeError,ValueError):
             continue
         planned_target[2]["execution_runtime"]=runtime_id
+        planned_target[2]["worker_id"]=slot.worker_id
         runtime=DEFAULT_EXECUTION_RUNTIMES.require(runtime_id)
         provenance=getattr(runtime,"provenance",None)
         if callable(provenance):
