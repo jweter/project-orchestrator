@@ -1415,8 +1415,12 @@ def write_dashboard_snapshot(state_root:Path)->dict:
             pass
     verified=counters["merged_verified"]
     advancement_per_hour=(verified*3600.0/elapsed_seconds) if elapsed_seconds>0 else 0.0
+    pool=workers.get("pool",{}) if isinstance(workers,dict) else {}
+    pool_workers=pool.get("workers",[]) if isinstance(pool,dict) else []
+    active_pool=[w for w in pool_workers if isinstance(w,dict) and not w.get("done",False)]
     payload={"schema_version":1,"recorded_at":datetime.now(UTC).isoformat(),
-             "active_work":active,"active_count":len(active),
+             "active_work":active,"active_count":max(len(active),len(active_pool)),
+             "active_worker_pool":active_pool,
              "recent_completed_work":terminal[:20],"outcome_counters":counters,
              "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
                      "measured_worker_seconds":elapsed_seconds},
