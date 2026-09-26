@@ -1588,10 +1588,12 @@ def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,i
 
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str],
-                               runner_registry:RunnerRegistry|None=None)->list[str]:
-    """Keep product workers saturated; repository grants remain the mutation authority."""
+                               runner_registry:RunnerRegistry|None=None,
+                               dispatch_invocation_id:str|None=None)->list[str]:
+    """Keep product workers saturated and bind all non-dispatch evidence to this pass."""
     dispatched=[]
     blocked=[]
+    dispatch_invocation_id=dispatch_invocation_id or uuid.uuid4().hex
     try:
         activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
@@ -1600,6 +1602,10 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         product:ready_task_batch(state_root,activation,product,pool.max_workers_per_product)
         for product in products
     }
+    for product,batch in task_batches.items():
+        if not batch:
+            blocked.append({"product":product,"worker_id":None,"repository":None,
+                            "slice_id":None,"reason":"NO_CONFLICT_FREE_READY_SLICE"})
     assigned={product:0 for product in products}
     runners=runner_registry or DEFAULT_RUNNERS
     runner_running=durable_runner_occupancy(state_root)
@@ -1676,10 +1682,12 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
             continue
         dispatched.append(worker_id)
     atomic(state_root/"dispatch-blocks.json",{
-        "schema_version":1,"blocked":blocked,"recorded_at_utc":datetime.now(UTC).isoformat(),
+        "schema_version":2,"invocation_id":dispatch_invocation_id,
+        "blocked":blocked,"recorded_at_utc":datetime.now(UTC).isoformat(),
     })
     atomic(state_root/"parallel-worker-pool.json",{
         "schema_version":2,"pool":pool.snapshot(),"runtime_leases":RUNTIME_LEASES.snapshot(),"dispatched":dispatched,
+        "dispatch_invocation_id":dispatch_invocation_id,
         "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
         "recorded_at_utc":datetime.now(UTC).isoformat(),
     })
@@ -2760,7 +2768,9 @@ def product_convergence(state_root:Path,authorized_products:list[str],*,current_
         blocks=json.loads((state_root/"dispatch-blocks.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
         blocks={}
-    for item in blocks.get("blocked",[]) if isinstance(blocks,dict) else []:
+    blocks_are_fresh=(isinstance(blocks,dict) and current_invocation_id is not None
+                      and blocks.get("invocation_id")==current_invocation_id)
+    for item in blocks.get("blocked",[]) if blocks_are_fresh else []:
         if isinstance(item,dict) and item.get("product") in authorized:
             reasons[item["product"]]={"reason":item.get("reason","DISPATCH_BLOCKED"),
                                       "repository":item.get("repository"),
@@ -2769,8 +2779,8 @@ def product_convergence(state_root:Path,authorized_products:list[str],*,current_
         decision=json.loads((state_root/"dispatch-decision.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
         decision={}
-    decision_is_fresh=(isinstance(decision,dict)
-        and (current_invocation_id is None or decision.get("invocation_id")==current_invocation_id))
+    decision_is_fresh=(isinstance(decision,dict) and current_invocation_id is not None
+                       and decision.get("invocation_id")==current_invocation_id)
     for item in decision.get("decisions",[]) if decision_is_fresh else []:
         if not isinstance(item,dict): continue
         product=item.get("product"); outcome=item.get("outcome")
@@ -2781,8 +2791,10 @@ def product_convergence(state_root:Path,authorized_products:list[str],*,current_
     status="CONVERGED" if not missing else "UNEXPLAINED_ELIGIBLE_IDLE"
     payload={"schema_version":1,"status":status,"authorized_products":sorted(authorized),
              "active_products":active,"explained_nonexecuting_products":reasons,
-             "dispatch_evidence_fresh":decision_is_fresh,
-             "dispatch_invocation_id":decision.get("invocation_id") if isinstance(decision,dict) else None,
+             "dispatch_evidence_fresh":blocks_are_fresh or decision_is_fresh,
+             "dispatch_block_evidence_fresh":blocks_are_fresh,
+             "dispatch_decision_evidence_fresh":decision_is_fresh,
+             "dispatch_invocation_id":current_invocation_id,
              "unexplained_eligible_products":missing,"recorded_at_utc":datetime.now(UTC).isoformat()}
     atomic(state_root/"product-convergence.json",payload)
     return payload
@@ -3215,13 +3227,19 @@ def main()->int:
                 activation_reason=refresh_reason
         products=products if authorized else []
         parallel_results=harvest_parallel_builders(worker_pool,state)
-        dispatched_workers=dispatch_parallel_builders(worker_pool,repo,workspace,state,products) if products else []
+        dispatch_invocation_id=uuid.uuid4().hex if products else None
+        dispatched_workers=dispatch_parallel_builders(
+            worker_pool,repo,workspace,state,products,
+            dispatch_invocation_id=dispatch_invocation_id
+        ) if products else []
         # A completed nonproductive worker has already released its slot. Refill
         # immediately in the same burst pass instead of waiting for the next loop.
         # This turns ownership/no-work/exception outcomes into routing feedback.
         if products and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
+            dispatch_invocation_id=uuid.uuid4().hex
             dispatched_workers.extend(
-                dispatch_parallel_builders(worker_pool,repo,workspace,state,products)
+                dispatch_parallel_builders(worker_pool,repo,workspace,state,products,
+                                           dispatch_invocation_id=dispatch_invocation_id)
             )
         pool_snapshot=worker_pool.snapshot()
         # Persist the authoritative post-harvest/post-dispatch pool, not the
@@ -3229,7 +3247,8 @@ def main()->int:
         # on disk as phantom RUNNING workers until another dispatch occurs.
         atomic(state/"parallel-worker-pool.json",{
             "schema_version":2,"pool":pool_snapshot,"runtime_leases":RUNTIME_LEASES.snapshot(),
-            "dispatched":dispatched_workers,"runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
+            "dispatched":dispatched_workers,"dispatch_invocation_id":dispatch_invocation_id,
+            "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
             "recorded_at_utc":datetime.now(UTC).isoformat(),
         })
         # The supervisor no longer blocks on implementation. A worker holding a
@@ -3258,7 +3277,7 @@ def main()->int:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
         atomic(state/"productive-liveness.json",liveness)
-        convergence=product_convergence(state,products,current_invocation_id=builder_invocation_id)
+        convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
