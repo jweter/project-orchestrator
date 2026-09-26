@@ -1,6 +1,21 @@
 import os
+import subprocess
+import sys
 import pytest
 from project_orchestrator.runtime_leases import RuntimeLeasePool
+
+@pytest.mark.skipif(os.name!="nt",reason="Windows process liveness regression")
+def test_windows_pid_liveness_detects_other_live_process():
+    child=subprocess.Popen([sys.executable,"-c","import time; time.sleep(30)"])
+    try:
+        assert child.pid!=os.getpid()
+        assert RuntimeLeasePool._default_pid_alive(child.pid)
+        assert RuntimeLeasePool._default_fingerprint(child.pid)
+    finally:
+        child.terminate()
+        child.wait(timeout=10)
+    assert not RuntimeLeasePool._default_pid_alive(child.pid)
+
 
 def test_runtime_lease_enforces_capacity_and_releases():
     pool=RuntimeLeasePool({"laptop-actor":1})

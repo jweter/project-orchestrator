@@ -54,6 +54,19 @@ class RuntimeLeasePool:
     @staticmethod
     def _default_pid_alive(pid:int)->bool:
         if pid<=0:return False
+        if os.name=="nt":
+            try:
+                import ctypes
+                from ctypes import wintypes
+                k=ctypes.WinDLL("kernel32",use_last_error=True)
+                h=k.OpenProcess(0x1000,False,pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+                if not h:return False
+                code=wintypes.DWORD()
+                try:
+                    if not k.GetExitCodeProcess(h,ctypes.byref(code)):return False
+                    return code.value==259  # STILL_ACTIVE
+                finally:k.CloseHandle(h)
+            except (AttributeError,OSError):return False
         try: os.kill(pid,0); return True
         except (OSError,PermissionError): return False
 
