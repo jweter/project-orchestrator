@@ -779,12 +779,17 @@ def task_outcome_priority(state_root:Path,task:dict)->tuple[float,int,str]:
     exploration=0.20*max(0.0,(4.0-samples)/4.0)
     return (-(outcome+exploration),int(samples),task_class)
 
+def planner_decision_id(product:str,repo:str,head:str,task:dict)->str:
+    material=f"{product}\0{repo}\0{head}\0{task.get('slice_id','')}\0{task.get('capability_id','')}"
+    return hashlib.sha256(material.encode()).hexdigest()[:24]
+
 def persist_planner_decision(state_root:Path,product:str,candidates:list,selected:list)->None:
     rows=[]
     selected_ids={(repo,task.get("slice_id")) for repo,_,task in selected}
     for repo,head,task in candidates:
         priority=task_outcome_priority(state_root,task)
-        rows.append({"repository":repo,"head_sha":head,"slice_id":task.get("slice_id"),
+        rows.append({"decision_id":planner_decision_id(product,repo,head,task),
+                     "repository":repo,"head_sha":head,"slice_id":task.get("slice_id"),
                      "task_class":priority[2],"priority_score":priority[0],"samples":priority[1],
                      "selected":(repo,task.get("slice_id")) in selected_ids})
     atomic(state_root/"planner-decisions"/f"{product}.json",
@@ -970,6 +975,9 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
             name for name in products
             if repo in activation["products"][name]["repositories"]
         }
+        planner_id=None
+        if planned_target is not None and len(selected_products)==1:
+            planner_id=planner_decision_id(next(iter(selected_products)),repo,exact_head,execution_slice)
         conflict=conflicting_nonterminal_grant(state_root,repo,execution_slice)
         if conflict:
             raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{conflict['grant_id']}:{conflict['state']}")
@@ -1017,6 +1025,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
                           "slice_id":execution_slice["slice_id"],
                           "runner_id":runner_id,"execution_runtime":runtime_id,
                           "execution_slice":execution_slice,
+                          "planner_decision_id":planner_id,
                               "issuer":lock["worker"]}
             atomic(lifecycle,payload)
         finally:
