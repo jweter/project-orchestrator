@@ -26,6 +26,15 @@ def test_adaptive_runner_prefers_verified_reliability(tmp_path):
 def test_adaptive_runner_accounts_for_current_utilization(tmp_path):
     assert supervisor.select_adaptive_runner({},tmp_path,registry(),{"claude-code":1})=="aider-ollama"
 
+def test_adaptive_runner_routes_around_recent_capacity_exhaustion(tmp_path):
+    from datetime import datetime,UTC
+    write_history(tmp_path,{
+      "c1":{"state":"DEFERRED","runner_id":"claude-code","result_status":"RUNNER_CAPACITY_DEFERRED",
+            "finished_at":datetime.now(UTC).isoformat()},
+    })
+    assert supervisor.runner_capacity_cooldowns(tmp_path)=={"claude-code"}
+    assert supervisor.select_adaptive_runner({},tmp_path,registry(),{})=="aider-ollama"
+
 def test_history_ignores_nonterminal_claims(tmp_path):
     write_history(tmp_path,{
       "x":{"state":"CLAIMED","runner_id":"aider-ollama","result_status":"BUILDER_FAILED"},

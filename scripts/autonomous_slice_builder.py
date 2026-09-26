@@ -903,8 +903,13 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     paths=changed_paths(ws,base)
     if builder.returncode!=0:
         reset_workspace(ws,base)
-        lesson=retain_failure_lesson(state_path,f"{selected_runner or 'aider-ollama'}_execution",builder.stderr or builder.stdout or f"returncode={builder.returncode}","BUILDER_FAILED")
-        result={"status":"BUILDER_FAILED","repository":repo,"returncode":builder.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
+        detail=builder.stderr or builder.stdout or f"returncode={builder.returncode}"
+        capacity_limited=selected_runner=="claude-code" and any(
+            marker in detail.lower() for marker in ("session limit","usage limit","rate limit")
+        )
+        outcome="RUNNER_CAPACITY_DEFERRED" if capacity_limited else "BUILDER_FAILED"
+        lesson=retain_failure_lesson(state_path,f"{selected_runner or 'aider-ollama'}_execution",detail,outcome)
+        result={"status":outcome,"repository":repo,"runner_id":selected_runner,"returncode":builder.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     if not paths:
         result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
@@ -1025,9 +1030,9 @@ def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
         return
     def update(record):
         result_status=result.get("status","UNKNOWN")
-        if result_status=="USER_ACTIVE":
-            # The idle gate intentionally deferred execution; no engineering
-            # failure occurred and a later grant may retry the same slice.
+        if result_status in {"USER_ACTIVE","RUNNER_CAPACITY_DEFERRED"}:
+            # Execution was intentionally deferred; no engineering failure
+            # occurred and a later grant may retry the same slice.
             record["state"]="DEFERRED"
         elif result_status in {
             "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
