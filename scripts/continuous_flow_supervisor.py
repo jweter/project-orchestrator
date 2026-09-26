@@ -1593,7 +1593,9 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         runtime=DEFAULT_EXECUTION_RUNTIMES.require(runtime_id)
         provenance=getattr(runtime,"provenance",None)
         if callable(provenance):
-            planned_target[2]["runtime_provenance"]=provenance()
+            planned_target[2]["runtime_provenance"]=provenance(
+                planned_target[2].get("runtime_requirements",[])
+            )
         else:
             planned_target[2]["runtime_provenance"]={"runtime_id":runtime_id}
         # Only runners with implemented builder adapters may receive mutation grants.
