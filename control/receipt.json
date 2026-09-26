@@ -1,6 +1,7 @@
 ﻿{
-    "status":  "COMPLETED",
-    "at":  "2026-09-26T12:36:29.0718526+00:00",
-    "action":  "STATUS_SNAPSHOT",
-    "command_id":  "probe-recovery-20260926-0736"
+    "status":  "DEFERRED_ACTIVE_PRODUCT_WORKERS",
+    "worker_count":  3,
+    "at":  "2026-09-26T13:19:22.2002481+00:00",
+    "action":  "DEPLOY_MAIN_SAFE",
+    "command_id":  "deploy-main-safe-20260926-1319"
 }
