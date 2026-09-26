@@ -850,14 +850,21 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
 
     ws=ensure_workspace(repo,workspace_root,worker_id)
     main="main"
-    reset=run(["git","checkout","-B","actor-staging",f"origin/{main}"],ws)
-    if reset.returncode: raise RuntimeError("base checkout failed")
-    base=run(["git","rev-parse","HEAD"],ws).stdout.strip()
     if execution_grant is not None:
         if not isinstance(eligible_repos,dict):
             return {"status":"EXECUTION_GRANT_INVALID","repository":repo}
         expected=eligible_repos.get(repo)
-        if not expected or base!=expected:
+        if not expected:
+            return {"status":"EXECUTION_GRANT_INVALID","repository":repo}
+        checkout_target=expected
+    else:
+        expected=None
+        checkout_target=f"origin/{main}"
+    reset=run(["git","checkout","-B","actor-staging",checkout_target],ws)
+    if reset.returncode: raise RuntimeError("base checkout failed")
+    base=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    if execution_grant is not None:
+        if base!=expected:
             return {"status":"EXECUTION_GRANT_HEAD_MISMATCH","repository":repo,"expected_sha":expected,"actual_sha":base}
         slice_authority=execution_slice_authority(execution_grant,repo,expected)
         if slice_authority is None:

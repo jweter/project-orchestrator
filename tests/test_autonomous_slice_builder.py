@@ -375,11 +375,16 @@ def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, mo
     monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
     class Result:
         returncode=0; stdout="authorized\n"; stderr=""
-    monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
+    calls=[]
+    def fake_run(argv,*a,**k):
+        calls.append(argv)
+        return Result()
+    monkeypatch.setattr(builder,"run",fake_run)
     grant=tmp_path/"grant.json"
     grant.write_text(json.dumps({"grant_id":"g1"}),encoding="utf-8")
     result=builder.build_once(tmp_path,tmp_path/"state.json",
         eligible_repos={"jweter/rocksmith-cdlc-generator":"authorized"},execution_grant=grant)
+    assert ["git","checkout","-B","actor-staging","authorized"] in calls
     assert result["status"]=="EXECUTION_SLICE_AUTHORITY_REQUIRED"
     assert not (tmp_path/"hands-off-grant-lifecycle.json").exists()
 
