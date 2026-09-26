@@ -12,6 +12,12 @@ def diagnose(builder: dict[str, Any], liveness: dict[str, Any]) -> dict[str, str
     status = str(builder.get("status", "UNKNOWN"))
     reason = str(builder.get("reason", ""))
 
+    if status == "BUILDER_RUNNING":
+        return {
+            "status": "WORKING",
+            "action": "No intervention required; the current builder invocation is still active.",
+            "voice": "Pick's swinging, mate. This seam is being worked; no need to call the timber crew.",
+        }
     if status == "USER_ACTIVE":
         return {
             "status": "WAITING_POLITELY",
