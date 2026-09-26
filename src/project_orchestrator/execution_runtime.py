@@ -111,11 +111,12 @@ class LaptopActorRuntime(NativeWindowsRuntime):
             proven.add("unreal")
         return frozenset(proven)
 
-    def provenance(self)->dict[str,object]:
-        """Concrete machine evidence suitable for binding into execution authority."""
+    def provenance(self,required_capabilities:Sequence[str]|None=None)->dict[str,object]:
+        """Concrete machine evidence, hashing optional tools only when the task requires them."""
         caps=sorted(self.attest())
         evidence:dict[str,object]={"runtime_id":self.runtime_id,"capabilities":caps}
-        if "unreal" in caps:
+        required=set(caps if required_capabilities is None else required_capabilities)
+        if "unreal" in caps and "unreal" in required:
             editor=self.unreal_editor_path()
             if editor is not None:
                 resolved=editor.resolve()
