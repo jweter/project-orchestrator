@@ -2728,12 +2728,13 @@ def productive_liveness(state_root:Path,authorized_products:list[str],now:dateti
                         "stage":record.get("execution_stage") or record.get("stage") or state,
                         "state":state,"progress_at":stamp})
     age=(current-latest).total_seconds() if latest else None
-    terminal=builder_status=="NO_WORK"
-    eligible=bool(authorized_products) and not terminal
+    no_slice=builder_status=="NO_WORK"
+    eligible=bool(authorized_products)
     productive=bool(records) and age is not None and age<=stale_seconds
-    if terminal or not authorized_products: status="NO_AUTHORIZED_WORK"
+    if not authorized_products: status="NO_AUTHORIZED_WORK"
     elif productive: status="PRODUCTIVE"
     elif active: status="STALE_ACTIVE_WORK"
+    elif no_slice: status="AUTHORIZED_NO_SLICE"
     else: status="ELIGIBLE_IDLE"
     return {"status":status,"productive":productive,"eligible_work":eligible,
             "authorized_products":sorted(authorized_products),"grant_evidence":records,
@@ -2797,6 +2798,76 @@ def product_convergence(state_root:Path,authorized_products:list[str],*,current_
              "dispatch_invocation_id":current_invocation_id,
              "unexplained_eligible_products":missing,"recorded_at_utc":datetime.now(UTC).isoformat()}
     atomic(state_root/"product-convergence.json",payload)
+    return payload
+
+def record_eligible_idle_streaks(state_root:Path,authorized_products:list[str],*,current_invocation_id:str|None=None)->dict:
+    """Persist repeated authorized-but-unscheduled products as explicit liveness defects."""
+    authorized={p for p in authorized_products if p in {"knowledge-engine","rocksmith","everward"}}
+    try:
+        previous=json.loads((state_root/"eligible-idle-streaks.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        previous={"schema_version":1,"products":{}}
+    prior_products=previous.get("products",{}) if isinstance(previous,dict) else {}
+    current={}
+
+    active_products=set()
+    try:
+        grants=json.loads((state_root/"hands-off-grant-lifecycle.json").read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        grants={}
+    for record in grants.values():
+        if not isinstance(record,dict) or record.get("state") not in {"ISSUED","CLAIMED","RUNNING"}:
+            continue
+        repository=record.get("repository")
+        authority=record.get("execution_slice")
+        if not repository and isinstance(authority,dict):
+            repository=authority.get("repository")
+        product=product_for_repository(repository)
+        if product:
+            active_products.add(product)
+
+    try:
+        decision=json.loads((state_root/"dispatch-decision.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        decision={}
+    decision_fresh=(isinstance(decision,dict) and current_invocation_id is not None
+                    and decision.get("invocation_id")==current_invocation_id)
+    try:
+        blocks=json.loads((state_root/"dispatch-blocks.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        blocks={}
+    blocks_fresh=(isinstance(blocks,dict) and current_invocation_id is not None
+                  and blocks.get("invocation_id")==current_invocation_id)
+
+    for product in sorted(authorized):
+        reason=None; signature=None
+        if product in active_products:
+            reason="ACTIVE_WORK"
+        else:
+            decisions=[row for row in decision.get("decisions",[]) if decision_fresh
+                       and isinstance(row,dict) and row.get("product")==product]
+            no_slice=[row for row in decisions if row.get("outcome")=="NO_AUTHORIZED_SLICE"]
+            if no_slice:
+                reason="NO_AUTHORIZED_SLICE"
+                signature=[[row.get("repository"),row.get("head_sha"),row.get("outcome")] for row in no_slice]
+            if reason is None and blocks_fresh:
+                matches=[row for row in blocks.get("blocked",[]) if isinstance(row,dict)
+                         and row.get("product")==product and row.get("reason")=="NO_CONFLICT_FREE_READY_SLICE"]
+                if matches:
+                    reason="NO_CONFLICT_FREE_READY_SLICE"
+                    signature=[[row.get("repository"),row.get("slice_id"),row.get("reason")] for row in matches]
+        prior=prior_products.get(product,{}) if isinstance(prior_products,dict) else {}
+        same=(reason in {"NO_AUTHORIZED_SLICE","NO_CONFLICT_FREE_READY_SLICE"}
+              and prior.get("reason")==reason and prior.get("signature")==signature)
+        streak=int(prior.get("streak",0))+1 if same else (1 if reason in {"NO_AUTHORIZED_SLICE","NO_CONFLICT_FREE_READY_SLICE"} else 0)
+        current[product]={"reason":reason or "NO_FRESH_IDLE_EVIDENCE","signature":signature,
+                          "streak":streak,"p1_liveness_defect":streak>=2}
+    defects=sorted(product for product,row in current.items() if row["p1_liveness_defect"])
+    payload={"schema_version":1,"products":current,"p1_liveness_defects":defects,
+             "status":"P1_LIVENESS_DEFECT" if defects else "OK",
+             "recorded_at_utc":datetime.now(UTC).isoformat(),
+             "dispatch_invocation_id":current_invocation_id}
+    atomic(state_root/"eligible-idle-streaks.json",payload)
     return payload
 
 def request_liveness_reacquire(state_root:Path,liveness:dict)->dict:
@@ -3278,6 +3349,7 @@ def main()->int:
         liveness=productive_liveness(state,products,builder_status=builder_status)
         atomic(state/"productive-liveness.json",liveness)
         convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
+        idle_streaks=record_eligible_idle_streaks(state,products,current_invocation_id=dispatch_invocation_id)
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
@@ -3285,8 +3357,9 @@ def main()->int:
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
         healthy=(builder_ok and linear_rc in (None,0) and not quarantines
-                 and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE"}
-                 and convergence["status"]=="CONVERGED")
+                 and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}
+                 and convergence["status"]=="CONVERGED"
+                 and idle_streaks["status"]!="P1_LIVENESS_DEFECT")
         atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
@@ -3298,6 +3371,7 @@ def main()->int:
             "parallel_worker_results":parallel_results,
             "productive_liveness":liveness,
             "product_convergence":convergence,
+            "eligible_idle_streaks":idle_streaks,
             "liveness_reacquire":liveness_reacquire,
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,
@@ -3366,4 +3440,3 @@ def main()->int:
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
         time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
-
