@@ -28,6 +28,7 @@ checks = [
     ("control_plane", [sys.executable, "engineering/validate_control_plane.py"]),
     ("control_surface", [sys.executable, "engineering/validate_control_surface.py"]),
     ("supervisor_architecture", [sys.executable, "engineering/validate_supervisor_architecture.py"]),
+    ("authority_tree", [sys.executable, "engineering/validate_authority_tree.py"]),
     ("portfolio_inventory", [sys.executable, "engineering/validate_portfolio.py"]),
     ("autonomy_loop", [sys.executable, "-m", "project_orchestrator.loop_audit", "engineering/autonomy-loop-contract.json"]),
     ("harness_context_audit", [sys.executable, "-m", "project_orchestrator.harness_audit", "--policy", "engineering/harness-audit.json"]),
