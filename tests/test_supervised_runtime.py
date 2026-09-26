@@ -21,3 +21,18 @@ def test_supervised_runtime_terminates_when_authority_revoked(tmp_path):
             RuntimeRequest((sys.executable,"-c","import time; time.sleep(10)"),tmp_path),
             authority,interval=.02)
     assert checks["n"]>=2
+
+def test_supervised_runtime_drains_large_stdout_and_stderr_without_deadlock(tmp_path):
+    script=(
+        "import sys;"
+        "sys.stdout.write('x'*2_000_000);"
+        "sys.stderr.write('y'*1_000_000)"
+    )
+    checks=[]
+    r=NativeWindowsRuntime().execute_supervised(
+        RuntimeRequest((sys.executable,"-c",script),tmp_path,timeout_seconds=10),
+        lambda:checks.append(1),interval=.01)
+    assert r.returncode==0
+    assert len(r.stdout)==2_000_000
+    assert len(r.stderr)==1_000_000
+    assert checks
