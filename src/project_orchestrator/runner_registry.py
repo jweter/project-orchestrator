@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping
-import shutil, subprocess
+import json, shutil, subprocess
 
 @dataclass(frozen=True)
 class RunnerManifest:
@@ -48,18 +48,24 @@ class RunnerRegistry:
             raise RuntimeError("NO_ELIGIBLE_RUNNER")
         return candidates[0]
 
-def claude_code_healthy(timeout_seconds:int=30)->bool:
-    """Require both an installed CLI and a successful authenticated headless probe."""
+def claude_code_healthy(timeout_seconds:int=10)->bool:
+    """Check installed/authenticated CLI state without consuming a model turn."""
     if not shutil.which("claude"):
         return False
     try:
         probe=subprocess.run(
-            ["claude","-p","--output-format","text","Reply with exactly FOUNDRY_RUNNER_READY"],
+            ["claude","auth","status"],
             text=True,capture_output=True,timeout=timeout_seconds,check=False,
         )
     except (OSError,subprocess.TimeoutExpired):
         return False
-    return probe.returncode==0 and probe.stdout.strip()=="FOUNDRY_RUNNER_READY"
+    if probe.returncode != 0:
+        return False
+    try:
+        status=json.loads(probe.stdout)
+    except (TypeError,ValueError):
+        return False
+    return status.get("loggedIn") is True
 
 def default_runner_registry(*,probe_external:bool=True)->RunnerRegistry:
     claude_enabled=claude_code_healthy() if probe_external else False

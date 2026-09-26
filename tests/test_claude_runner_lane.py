@@ -2,10 +2,16 @@ import subprocess
 import scripts.autonomous_slice_builder as builder
 import project_orchestrator.runner_registry as registry
 
-def test_claude_health_requires_exact_authenticated_probe(monkeypatch):
+def test_claude_health_uses_auth_status_without_model_generation(monkeypatch):
     monkeypatch.setattr(registry.shutil,"which",lambda name:r"C:\bin\claude.exe")
-    monkeypatch.setattr(registry.subprocess,"run",lambda *a,**k:subprocess.CompletedProcess(a[0],0,"FOUNDRY_RUNNER_READY\n",""))
+    seen={}
+    def fake(argv,**kwargs):
+        seen["argv"]=argv
+        return subprocess.CompletedProcess(argv,0,'{"loggedIn":true}',"")
+    monkeypatch.setattr(registry.subprocess,"run",fake)
     assert registry.claude_code_healthy()
+    assert seen["argv"]==["claude","auth","status"]
+    assert "-p" not in seen["argv"]
 
 def test_claude_health_fails_closed_on_auth_error(monkeypatch):
     monkeypatch.setattr(registry.shutil,"which",lambda name:r"C:\bin\claude.exe")
