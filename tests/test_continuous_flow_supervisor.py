@@ -1164,6 +1164,8 @@ def test_parallel_dispatch_assigns_independent_product_slots(tmp_path, monkeypat
     from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
     from tests.test_parallel_worker_pool import ManualExecutor
     pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=3,executor_factory=ManualExecutor)
+    monkeypatch.setattr(supervisor,"RUNTIME_LEASES",
+                        supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
     monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,activation,product,limit:[
         (f"jweter/{product}",product,{"repository":f"jweter/{product}","exact_head":product,
          "slice_id":f"{product}-task","allowed_paths":[f"{product}/"]})
@@ -1180,6 +1182,27 @@ def test_parallel_dispatch_assigns_independent_product_slots(tmp_path, monkeypat
     snapshot=pool.snapshot()
     assert snapshot["running_by_product"]=={
         "knowledge-engine":1,"rocksmith":1,"everward":1}
+
+
+def test_parallel_dispatch_records_runner_block_for_convergence(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+    from project_orchestrator.runner_registry import RunnerRegistry
+    from tests.test_parallel_worker_pool import ManualExecutor
+    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=1,executor_factory=ManualExecutor)
+    monkeypatch.setattr(supervisor,"RUNTIME_LEASES",
+                        supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
+    monkeypatch.setattr(supervisor,"ready_task_batch",lambda *args:[
+        ("jweter/rocksmith-cdlc-generator","head",{"repository":"jweter/rocksmith-cdlc-generator",
+         "exact_head":"head","slice_id":"slice","runner_requirements":["impossible"]})])
+    assert supervisor.dispatch_parallel_builders(
+        pool,tmp_path,tmp_path,tmp_path,["rocksmith"],RunnerRegistry([]))==[]
+    blocks=json.loads((tmp_path/"dispatch-blocks.json").read_text())
+    assert blocks["blocked"][0]["reason"]=="NO_ELIGIBLE_RUNNER"
+    convergence=supervisor.product_convergence(tmp_path,["rocksmith"])
+    assert convergence["status"]=="CONVERGED"
+    assert convergence["explained_nonexecuting_products"]["rocksmith"]["reason"]=="NO_ELIGIBLE_RUNNER"
 
 
 def test_parallel_worker_failure_is_recorded_without_blocking_pool(tmp_path):
