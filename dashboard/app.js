@@ -1,0 +1,8 @@
+const $=s=>document.querySelector(s);const esc=s=>String(s??"—").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function card(title,body,status=""){return '<div class="card"><div class="row"><div class="title">'+esc(title)+'</div>'+status+'</div><div class="detail">'+body+'</div></div>'}
+async function refresh(){try{const r=await fetch("/api/dashboard",{cache:"no-store"});if(!r.ok)throw Error(r.status);const d=await r.json();$("#live").textContent="LIVE";$("#live").className="good";
+const c=d.outcome_counters||{},f=d.flow||{};$("#summary").innerHTML=[["Workers",d.active_count||0],["Verified",c.merged_verified||0],["Repairs",c.repairs||0],["Adv/hr",Number(f.verified_advancement_per_worker_hour||0).toFixed(2)]].map(x=>'<div class="metric"><b>'+x[1]+'</b><span>'+x[0]+'</span></div>').join("");
+const products=d.products||{};$("#products").innerHTML=Object.entries(products).map(([name,p])=>card(name,'Candidates: '+esc(p.candidate_count||0)+' · Selected: '+esc(p.selected_count||0),'<span class="status">QUEUE</span>')).join("")||card("No planner snapshot","Waiting for Foundry telemetry.");
+$("#workers").innerHTML=(d.active_work||[]).map(w=>card(w.repository||"Worker",'Slice '+esc(w.slice_id)+' · '+esc(w.runner_id),'<span class="status good">'+esc(w.state)+'</span>')).join("")||card("No active workers","No active grant is currently reported.");
+$("#recent").innerHTML=(d.recent_completed_work||[]).slice(0,8).map(w=>card(w.repository||"Completed",esc(w.result_status)+' · '+esc(w.outcome_quality)+(w.pr_number?' · PR #'+esc(w.pr_number):''))).join("")||card("No recent work","No terminal work in the current snapshot.");
+}catch(e){$("#live").textContent="OFFLINE";$("#live").className="bad"}}refresh();setInterval(refresh,15000);
