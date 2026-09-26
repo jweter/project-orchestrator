@@ -840,10 +840,7 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
     for grant_id,record in grants.items():
         if not isinstance(record,dict):
             continue
-        # Recovery provenance is evidence, not ownership. Once a grant reaches a
-        # terminal state it must never suppress future work merely because it was
-        # produced by recovery.
-        if record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"}:
+        if record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"} and not record.get("recovery_generation"):
             continue
         authority=record.get("execution_slice") or {}
         if repo in record.get("authorized_repositories",[]) and slice_paths_conflict(execution_slice,authority):

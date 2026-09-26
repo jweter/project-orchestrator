@@ -248,6 +248,32 @@ def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
 
 HEARTBEAT_SECONDS=60
 
+def _windows_process_start_fingerprint(pid:int)->str|None:
+    """Return creation identity only while the Windows process is still active."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        kernel32=ctypes.WinDLL("kernel32",use_last_error=True)
+        handle=kernel32.OpenProcess(0x1000,False,pid)
+        if not handle:
+            return None
+        creation=wintypes.FILETIME(); exit_time=wintypes.FILETIME()
+        kernel=wintypes.FILETIME(); user=wintypes.FILETIME()
+        exit_code=wintypes.DWORD()
+        try:
+            if not kernel32.GetExitCodeProcess(handle,ctypes.byref(exit_code)):
+                return None
+            if exit_code.value != 259:  # STILL_ACTIVE
+                return None
+            if not kernel32.GetProcessTimes(handle,ctypes.byref(creation),ctypes.byref(exit_time),ctypes.byref(kernel),ctypes.byref(user)):
+                return None
+            ticks=(creation.dwHighDateTime<<32)|creation.dwLowDateTime
+            return f"windows:{ticks}"
+        finally:
+            kernel32.CloseHandle(handle)
+    except (AttributeError,OSError):
+        return None
+
 def process_start_fingerprint(pid:int|None=None)->str|None:
     """Return an OS-backed process creation identity when available."""
     pid=pid or os.getpid()
@@ -260,24 +286,7 @@ def process_start_fingerprint(pid:int|None=None)->str|None:
         except (OSError,IndexError,ValueError):
             return None
     if sys.platform=="win32":
-        try:
-            import ctypes
-            from ctypes import wintypes
-            kernel32=ctypes.WinDLL("kernel32",use_last_error=True)
-            handle=kernel32.OpenProcess(0x1000,False,pid)
-            if not handle:
-                return None
-            creation=wintypes.FILETIME(); exit_time=wintypes.FILETIME()
-            kernel=wintypes.FILETIME(); user=wintypes.FILETIME()
-            try:
-                if not kernel32.GetProcessTimes(handle,ctypes.byref(creation),ctypes.byref(exit_time),ctypes.byref(kernel),ctypes.byref(user)):
-                    return None
-                ticks=(creation.dwHighDateTime<<32)|creation.dwLowDateTime
-                return f"windows:{ticks}"
-            finally:
-                kernel32.CloseHandle(handle)
-        except (AttributeError,OSError):
-            return None
+        return _windows_process_start_fingerprint(pid)
     return None
 
 def worker_incarnation()->dict[str,Any]:
