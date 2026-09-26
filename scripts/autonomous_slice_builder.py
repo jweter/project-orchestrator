@@ -666,6 +666,23 @@ def run_builder(ws:Path,message:str,runner_id:str|None)->subprocess.CompletedPro
         return run_aider(ws,message)
     raise RuntimeError(f"UNSUPPORTED_RUNNER:{runner_id}")
 
+def runner_unavailable_reason(runner_id:str|None,result:subprocess.CompletedProcess[str])->str|None:
+    """Classify transient runner capacity/auth throttles separately from engineering failures."""
+    text=((result.stderr or "")+"\n"+(result.stdout or "")).lower()
+    patterns=(
+        ("session limit","SESSION_LIMIT"),
+        ("usage limit","USAGE_LIMIT"),
+        ("rate limit","RATE_LIMIT"),
+        ("rate_limit","RATE_LIMIT"),
+        ("too many requests","RATE_LIMIT"),
+        ("quota exceeded","QUOTA_EXCEEDED"),
+        ("capacity","CAPACITY"),
+    )
+    for token,reason in patterns:
+        if token in text:
+            return f"{runner_id or 'aider-ollama'}:{reason}"
+    return None
+
 def cleanup_aider_artifacts(ws:Path)->None:
     for path in ws.glob(".aider*"):
         if path.is_dir(): shutil.rmtree(path,ignore_errors=True)
@@ -903,6 +920,12 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     paths=changed_paths(ws,base)
     if builder.returncode!=0:
         reset_workspace(ws,base)
+        unavailable=runner_unavailable_reason(selected_runner,builder)
+        if unavailable:
+            result={"status":"RUNNER_UNAVAILABLE","repository":repo,"runner_id":selected_runner,
+                    "reason":unavailable,"returncode":builder.returncode,
+                    "last_repo_index":idx,"last_repository":repo}
+            atomic_json(state_path,result); return result
         lesson=retain_failure_lesson(state_path,f"{selected_runner or 'aider-ollama'}_execution",builder.stderr or builder.stdout or f"returncode={builder.returncode}","BUILDER_FAILED")
         result={"status":"BUILDER_FAILED","repository":repo,"returncode":builder.returncode,"failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
@@ -1025,9 +1048,9 @@ def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
         return
     def update(record):
         result_status=result.get("status","UNKNOWN")
-        if result_status=="USER_ACTIVE":
-            # The idle gate intentionally deferred execution; no engineering
-            # failure occurred and a later grant may retry the same slice.
+        if result_status in {"USER_ACTIVE","RUNNER_UNAVAILABLE"}:
+            # Deferral is not an engineering failure. USER_ACTIVE waits for idle;
+            # RUNNER_UNAVAILABLE releases the slice for another compatible runner.
             record["state"]="DEFERRED"
         elif result_status in {
             "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
