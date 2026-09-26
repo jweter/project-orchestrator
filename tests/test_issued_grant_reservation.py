@@ -49,15 +49,15 @@ def test_issued_repo_blocks_parallel_different_slice(tmp_path):
     assert conflict["grant_id"]=="g1"
     assert conflict["state"]=="ISSUED"
 
-def test_terminal_recovered_grant_does_not_retain_path_authority(tmp_path):
+def test_abandoned_grant_with_active_recovery_generation_retains_path_authority(tmp_path):
     lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
     lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
         "state":"ABANDONED","recovery_generation":"recovery-1",
         "authorized_repositories":["jweter/repo"],"execution_slice":dict(SLICE)
     }}}),encoding="utf-8")
-    assert supervisor.conflicting_nonterminal_grant(
-        tmp_path,"jweter/repo",SLICE
-    ) is None
+    conflict=supervisor.conflicting_nonterminal_grant(tmp_path,"jweter/repo",SLICE)
+    assert conflict["grant_id"]=="g1"
+    assert conflict["state"]=="ABANDONED"
 
 def test_active_recovered_grant_still_retains_path_authority(tmp_path):
     lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
