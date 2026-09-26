@@ -365,7 +365,7 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
     except (OSError,json.JSONDecodeError,TypeError):
         return {}
     unique_grant=path.parent.name=="hands-off-execution-grants"
-    if (payload.get("schema_version") != 4 or not isinstance(grant_id,str) or not grant_id
+    if (payload.get("schema_version") not in {4,5} or not isinstance(grant_id,str) or not grant_id
             or (unique_grant and grant_id not in grants)
             or (grant_id in grants and (not isinstance(grants[grant_id],dict) or grants[grant_id].get("state")!="ISSUED"))
             or payload.get("contract_sha256") != contract_digest

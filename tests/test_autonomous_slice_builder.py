@@ -1,4 +1,5 @@
 from pathlib import Path
+import pytest
 from scripts import autonomous_slice_builder as b
 
 def test_protected_governance_paths_blocked():
@@ -161,7 +162,8 @@ def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeyp
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
     assert builder.granted_repositories(grant,tmp_path,contract)=={}
 
-def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
+@pytest.mark.parametrize("schema_version",[4,5])
+def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch, schema_version):
     import json
     import scripts.autonomous_slice_builder as builder
     import hashlib
@@ -171,7 +173,7 @@ def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch):
     activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
     activation_digest=hashlib.sha256(activation.read_bytes()).hexdigest()
     grant=tmp_path/"grant.json"
-    grant.write_text(json.dumps({"schema_version":4,"grant_id":"test-grant","contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
+    grant.write_text(json.dumps({"schema_version":schema_version,"grant_id":"test-grant","contract_sha256":digest,"activation_sha256":activation_digest,"products":{"rocksmith":{"repositories":{
         "jweter/rocksmith-cdlc-generator":"certified"}}}}),encoding="utf-8")
     class Result:
         returncode=0; stdout="certified\n"
