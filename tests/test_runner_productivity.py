@@ -100,7 +100,20 @@ def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
     assert snapshot["active_count"]==1
     assert snapshot["active_work"][0]["repository"]=="jweter/repo"
     assert snapshot["products"]["rocksmith"]["candidate_count"]==3
+    assert snapshot["outcome_counters"]=={"completed":0,"failed":0,"merged_verified":0,"product_reality_verified":0,"repairs":0}
     assert (tmp_path/"telemetry"/"foundry-dashboard.json").exists()
+
+def test_dashboard_snapshot_counts_and_orders_terminal_outcomes(tmp_path):
+    older=terminal("aider-ollama","GREEN",60,task_class="tests")
+    older.update({"finished_at":"2026-09-25T10:00:00+00:00","outcome_quality":"MERGED_VERIFIED","repair_attempts":2})
+    newer=terminal("claude-code","GREEN",60,task_class="tests")
+    newer.update({"finished_at":"2026-09-25T11:00:00+00:00","outcome_quality":"PRODUCT_REALITY_VERIFIED"})
+    failed=terminal("claude-code","TEST_FAILURE",60,task_class="tests")
+    failed.update({"state":"ABANDONED","finished_at":"2026-09-25T12:00:00+00:00"})
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{"old":older,"new":newer,"bad":failed}}),encoding="utf-8")
+    snapshot=supervisor.write_dashboard_snapshot(tmp_path)
+    assert snapshot["outcome_counters"]=={"completed":2,"failed":1,"merged_verified":2,"product_reality_verified":1,"repairs":2}
+    assert [row["grant_id"] for row in snapshot["recent_completed_work"]]==["bad","new","old"]
 
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}}

@@ -1351,8 +1351,26 @@ def write_dashboard_snapshot(state_root:Path)->dict:
              "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
              "planner_decision_id":r.get("planner_decision_id")}
             for gid,r in lifecycle.items() if isinstance(r,dict) and r.get("state") in {"ISSUED","CLAIMED","QUARANTINED"}]
+    terminal=[]
+    counters={"completed":0,"failed":0,"merged_verified":0,"product_reality_verified":0,"repairs":0}
+    for gid,r in lifecycle.items():
+        if not isinstance(r,dict) or r.get("state") not in {"COMPLETED","ABANDONED"}:
+            continue
+        status=str(r.get("result_status") or "")
+        outcome=r.get("outcome_quality")
+        counters["completed"]+=1 if r.get("state")=="COMPLETED" else 0
+        counters["failed"]+=1 if r.get("state")=="ABANDONED" or "FAILED" in status else 0
+        counters["merged_verified"]+=1 if outcome in {"MERGED_VERIFIED","PRODUCT_REALITY_VERIFIED"} else 0
+        counters["product_reality_verified"]+=1 if outcome=="PRODUCT_REALITY_VERIFIED" else 0
+        try: counters["repairs"]+=max(int(r.get("repair_attempts",0)),0)
+        except (TypeError,ValueError): pass
+        terminal.append({"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
+                         "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
+                         "result_status":status,"outcome_quality":outcome,"finished_at":r.get("finished_at")})
+    terminal.sort(key=lambda row:row.get("finished_at") or "",reverse=True)
     payload={"schema_version":1,"recorded_at":datetime.now(UTC).isoformat(),
              "active_work":active,"active_count":len(active),
+             "recent_completed_work":terminal[:20],"outcome_counters":counters,
              "worker_pool":workers.get("pool",{}),
              "planner_decision_quality":planner_decision_quality(state_root),
              "products":{}}
