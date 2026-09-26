@@ -105,12 +105,15 @@ def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
     assert (tmp_path/"telemetry"/"foundry-dashboard.json").exists()
 
 def test_dashboard_snapshot_projects_running_worker_pool(tmp_path):
-    (tmp_path/"parallel-worker-pool.json").write_text(json.dumps({"pool":{"running_total":2,"workers":[
-        {"worker_id":"rocksmith-worker-1","product":"rocksmith","slot":1,"done":False},
-        {"worker_id":"everward-worker-1","product":"everward","slot":1,"done":False}]}}),encoding="utf-8")
+    (tmp_path/"parallel-worker-pool.json").write_text(json.dumps({
+        "pool":{"running_total":2,"workers":[
+            {"worker_id":"rocksmith-worker-1","product":"rocksmith","slot":1,"done":False},
+            {"worker_id":"everward-worker-1","product":"everward","slot":1,"done":False}]},
+        "runtime_leases":{"leases":[{"worker_id":"rocksmith-worker-1","runtime_id":"native-windows"}]}}),encoding="utf-8")
     snapshot=supervisor.write_dashboard_snapshot(tmp_path)
-    assert snapshot["active_count"]==2
-    assert [w["worker_id"] for w in snapshot["active_worker_pool"]]==["rocksmith-worker-1","everward-worker-1"]
+    assert snapshot["active_count"]==1
+    assert [(w["worker_id"],w["activity_status"]) for w in snapshot["active_worker_pool"]]==[
+        ("rocksmith-worker-1","RUNNING"),("everward-worker-1","STALE")]
 
 def test_dashboard_snapshot_writer_creates_telemetry_directory(tmp_path):
     snapshot=supervisor.write_dashboard_snapshot(tmp_path)
