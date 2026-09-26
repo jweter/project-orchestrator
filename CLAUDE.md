@@ -1,25 +1,9 @@
 # Claude Code instructions
 
-Follow `AGENTS.md`, `DoWork.txt`, `docs/EVOLUTION_ENGINE.md`, `docs/EVOLUTION_WORKER_HANDOFF.md`, `docs/AGENT_ACTION_GUARD.md`, `docs/AUTONOMOUS_ENGINEERING_SCIENTIST.md`, `docs/LVN_PROMOTION_VERIFICATION.md`, `docs/EMERGING_COMPUTE_EVALUATION.md`, and `docs/REPOSITORY_SKILLS.md`.
+Follow `AGENTS.md` and the canonical shared contract in `docs/EXECUTION_AUTHORITY.md`.
 
-The orchestrator is a policy and evidence system. Keep decision logic pure/deterministic where practical; isolate GitHub I/O from ranking logic; preserve fail-closed semantics; add regression tests for every corrected orchestration failure.
+Do not maintain a second copy of execution policy here. Load specialist documents only when their mechanism is invoked.
 
-Use the Fix_It progression deliberately: **Repair -> Replacement -> Upgrade -> Redesign -> Evolution**. Do not jump stages merely to create activity. Evolution requires verified before/after evidence and must never weaken review, CI, security, privacy, provenance, licensing, architecture, Product Reality, or project-isolation gates.
+Keep control-plane decision logic deterministic where practical, preserve fail-closed semantics, and add regression protection for corrected orchestration failures.
 
-Operate experiment-like autonomous engineering as a scientific loop: **Observe -> formulate hypothesis -> retrieve prior evidence -> design bounded experiment -> estimate cost -> execute -> measure -> compare -> reject or retain -> independently verify -> record -> generalize -> repeat.** Code changes are hypotheses. Retries require lineage. Competing candidates must share an exact baseline and measurement contract. Do not invent a winner when the evidence is within tolerance or incomparable.
-
-Before autonomous implementation, repair retries, or experiment-like fan-out, build an exact-head action context and evaluate the Agent Action Guard. Retrieve exact failure evidence instead of guessing from summaries, prove context/learning lookup happened, and estimate compute/network/write/concurrency/paid-service cost. Only `READY` may continue autonomously; `GATHER_CONTEXT`, `APPROVAL_REQUIRED`, and `FORBIDDEN` stop execution until their boundary is resolved. The guard itself never executes commands.
-
-Before editing known paths, run the repository-skill selector with the exact repository, planned changed paths, and task summary. Use only explicit path/task matches from `engineering/repository-skills.json`. These skills are `ADVISORY_ONLY`; never broaden them across repositories, treat fuzzy similarity as a trigger, infer Product Reality, or treat a skill as authority. A no-match result is expected when no verified skill applies.
-
-After `READY`, route candidate work through the Portfolio Resource Scheduler. Preserve P0-P6 priority; apply fairness only within equal priority; honor explicit exclusive resources and capacity. Do not let separate workers independently overcommit the same local or external resource.
-
-Use the Opportunity Sweeper to convert existing evidence-backed gaps into bounded experiments, not to invent speculative features. Prefer reversible, deterministic measurements with explicit scope and measurement contracts. Deduplicate against active work and equivalent active experiments.
-
-Treat Cross-Repo Pattern Distillation as an earned promotion path. Local lessons stay local until independent repositories and projects show verified domain-independent outcomes. Group by explicit pattern keys only and never transfer product-specific behavior or requirements across projects.
-
-Treat unattended workers as independent verification/evidence producers. Route their sanitized exact-head results through the Evolution worker handoff. Execute only repository-explicit deterministic safe repairs automatically; otherwise perform bounded engineering diagnosis on a governed branch and require independent verification before recording a repair as successful learning.
-
-Treat the **Local Verification Node (LVN)** as an exclusive Windows verification resource, not merely a failed-PR reproducer. An otherwise-green PR may require exact-head LVN evidence when its promotion/experiment contract explicitly carries `<!-- lvn:required -->` or an approved LVN-required label. Never infer that requirement from prose. Dispatch explicit green promotion gates before ordinary failed-PR reproduction within the same P0-P6 priority, deduplicate by repository+PR+exact SHA, wait on pending CI, reject forks/drafts/closed PRs, and require fresh LVN evidence whenever the head SHA changes. LVN results are evidence only and never grant merge authority.
-
-Treat **emerging compute** as an experimental substrate, never as a novelty-driven architecture choice. Before quantum-inspired, quantum simulator, QPU, photonic, neuromorphic, or other experimental-compute work, require a verified classical baseline, the same measurement contract, explicit scientific/problem-fit evidence, bounded cost, reproducibility/noise evidence, and an independent verification strategy. Use a simulator before paid quantum hardware when applicable. The default autonomous external-compute spend is zero. A local benchmark may establish bounded benchmark superiority, but it must never be described as general quantum advantage. Do not add product runtime dependencies or create a dedicated Quantum Engineering Lab until evidence passes the activation gates in `docs/EMERGING_COMPUTE_EVALUATION.md`.
+Use the Fix_It progression deliberately: Repair -> Replacement -> Upgrade -> Redesign -> Evolution. Repeated adjacent repairs are evidence to consider redesign rather than manufacturing more local activity.
