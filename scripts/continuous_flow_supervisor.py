@@ -1035,7 +1035,7 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
     finally:
         release_grant_issue_lock(lock)
 
-def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
+def finalize_unclaimed_grant(grant_path:Path,returncode:int,builder_state:Path|None=None)->bool:
     lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
     if grant_path.parent.name=="hands-off-execution-grants":
         lifecycle=grant_path.parent.parent/"hands-off-grant-lifecycle.json"
@@ -1052,7 +1052,19 @@ def finalize_unclaimed_grant(grant_path:Path,returncode:int)->bool:
             return False
         record["state"]="ABANDONED"
         record["finished_at"]=datetime.now(UTC).isoformat()
-        record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}"
+        failure_status=None
+        failure_class=None
+        if builder_state is not None:
+            try:
+                builder=json.loads(builder_state.read_text(encoding="utf-8"))
+                failure_status=builder.get("status")
+                failure_class=builder.get("error_class")
+            except (OSError,json.JSONDecodeError,TypeError):
+                pass
+        suffix=f":{failure_status}" if failure_status else ""
+        if failure_class:
+            suffix+=f":{failure_class}"
+        record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}{suffix}"
         atomic(lifecycle,payload)
         return True
     finally:
@@ -1123,7 +1135,7 @@ def run_builder(repo_root:Path,workspace_root:Path,state_root:Path,products:list
     p=subprocess.run(cmd,
         cwd=repo_root,text=True,capture_output=True,check=False)
     builder_output.write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
-    finalize_unclaimed_grant(grant_path,p.returncode)
+    finalize_unclaimed_grant(grant_path,p.returncode,builder_state)
     return p.returncode,invocation_id
 
 def run_builder_for_product(repo_root:Path,workspace_root:Path,state_root:Path,product:str,
