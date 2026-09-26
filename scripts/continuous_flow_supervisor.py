@@ -22,6 +22,13 @@ from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities, DEFAULT_EXECUTION_RUNTIMES
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
+from project_orchestrator.grant_issuance import (
+    acquire_grant_issue_lock as _acquire_grant_issue_lock,
+    conflicting_nonterminal_grant as _conflicting_nonterminal_grant,
+    finalize_unclaimed_grant,
+    release_grant_issue_lock,
+    reserve_execution_grant,
+)
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
 
@@ -809,26 +816,7 @@ def ready_task_batch(state_root:Path,activation:dict,product:str,limit:int)->lis
     return selected
 
 def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)->dict|None:
-    """Return only ownership whose bounded path authority conflicts."""
-    path=state_root/"hands-off-grant-lifecycle.json"
-    if not path.exists():
-        return None
-    try:
-        grants=json.loads(path.read_text(encoding="utf-8")).get("grants",{})
-    except (OSError,json.JSONDecodeError,TypeError):
-        raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
-    target=(execution_slice.get("capability_id"),execution_slice.get("slice_id"),
-            execution_slice.get("repository"),execution_slice.get("exact_head"))
-    for grant_id,record in grants.items():
-        if not isinstance(record,dict):
-            continue
-        if record.get("state") not in {"ISSUED","CLAIMED","QUARANTINED"} and not record.get("recovery_generation"):
-            continue
-        authority=record.get("execution_slice") or {}
-        if repo in record.get("authorized_repositories",[]) and slice_paths_conflict(execution_slice,authority):
-            return {"grant_id":grant_id,"state":record.get("state"),
-                    "worker":record.get("worker"),"execution_slice":authority}
-    return None
+    return _conflicting_nonterminal_grant(state_root,repo,execution_slice,slice_paths_conflict)
 
 def _acquire_os_file_lock(handle)->bool:
     """Acquire a nonblocking kernel-owned one-byte lock."""
@@ -891,45 +879,7 @@ def release_supervisor_instance_lock(lock:dict)->None:
             handle.close()
 
 def acquire_grant_issue_lock(state_root:Path)->dict:
-    """Acquire a crash-safe kernel-owned single-writer fence for grant issuance."""
-    state_root.mkdir(parents=True,exist_ok=True)
-    path=state_root/"grant-issuance.lock"
-    handle=path.open("a+b",buffering=0)
-    if not _acquire_os_file_lock(handle):
-        handle.close()
-        raise RuntimeError("GRANT_ISSUANCE_BUSY")
-    worker={"host":socket.gethostname(),"pid":os.getpid(),
-            "incarnation_id":uuid.uuid4().hex,
-            "process_start_fingerprint":process_start_fingerprint(),
-            "lease_token":uuid.uuid4().hex}
-    lock_id=str(uuid.uuid4())
-    metadata=state_root/"grant-issuance.lock.json"
-    atomic(metadata,{"schema_version":2,"lock_id":lock_id,"worker":worker,
-                     "created_at_utc":datetime.now(UTC).isoformat()})
-    return {"path":path,"metadata_path":metadata,"handle":handle,
-            "lock_id":lock_id,"worker":worker}
-
-def release_grant_issue_lock(lock:dict)->None:
-    """Release only this process's kernel-owned issuance fence."""
-    handle=lock["handle"]; metadata=lock["metadata_path"]
-    error=None
-    try:
-        if metadata.exists():
-            try:
-                current=json.loads(metadata.read_text(encoding="utf-8"))
-                if current.get("lock_id")!=lock.get("lock_id"):
-                    error=RuntimeError("GRANT_ISSUANCE_LOCK_OWNERSHIP_LOST")
-                else:
-                    metadata.unlink()
-            except (OSError,json.JSONDecodeError,TypeError):
-                error=RuntimeError("GRANT_ISSUANCE_LOCK_METADATA_UNREADABLE")
-    finally:
-        try:
-            _release_os_file_lock(handle)
-        finally:
-            handle.close()
-    if error is not None:
-        raise error
+    return _acquire_grant_issue_lock(state_root,process_start_fingerprint())
 
 def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
                           planned_target:tuple[str,str,dict]|None=None)->Path:
@@ -976,81 +926,12 @@ def write_execution_grant(repo_root:Path,state_root:Path,products:list[str],
             name:{"repositories":activation["products"][name]["repositories"]}
             for name in selected_products},
                "execution_slice":execution_slice}
-        path=state_root/"hands-off-execution-grants"/f"{grant_id}.json"
-        atomic(path,grant)
-        lifecycle=state_root/"hands-off-grant-lifecycle.json"
-        lifecycle_lock=_acquire_lifecycle_lock(lifecycle)
-        try:
-            try:
-                payload=json.loads(lifecycle.read_text(encoding="utf-8")) if lifecycle.exists() else {"schema_version":1,"grants":{}}
-                grants=payload.setdefault("grants",{})
-            except (OSError,json.JSONDecodeError,TypeError):
-                raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE")
-            for existing_id,existing in grants.items():
-                if not isinstance(existing,dict):
-                    continue
-                owns=existing.get("state") in {"ISSUED","CLAIMED","QUARANTINED"} or bool(existing.get("recovery_generation"))
-                existing_repos=set(existing.get("authorized_repositories",[]))
-                if existing.get("repository"):
-                    existing_repos.add(existing["repository"])
-                existing_slice=existing.get("execution_slice") or {}
-                if owns and repo in existing_repos and slice_paths_conflict(execution_slice,existing_slice):
-                    raise RuntimeError(f"EXECUTION_SLICE_ALREADY_OWNED:{existing_id}:{existing.get('state')}")
-            issued=datetime.now(UTC).isoformat()
-            authorized_repositories=sorted({
-                granted_repo
-                for value in grant["products"].values()
-                for granted_repo in value["repositories"]
-            })
-            grants[grant_id]={"state":"ISSUED","issued_at":issued,
-                          "authorized_repositories":authorized_repositories,"expected_sha":exact_head,
-                          "capability_id":execution_slice["capability_id"],
-                          "slice_id":execution_slice["slice_id"],
-                          "runner_id":runner_id,"execution_runtime":runtime_id,
-                          "execution_slice":execution_slice,
-                          "planner_decision_id":planner_id,
-                              "issuer":lock["worker"]}
-            atomic(lifecycle,payload)
-        finally:
-            _release_lifecycle_lock(lifecycle_lock)
-        return path
+        return reserve_execution_grant(
+            state_root,grant,repo,exact_head,execution_slice,runner_id,runtime_id,
+            planner_id,lock["worker"],slice_paths_conflict,
+        )
     finally:
         release_grant_issue_lock(lock)
-
-def finalize_unclaimed_grant(grant_path:Path,returncode:int,builder_state:Path|None=None)->bool:
-    lifecycle=grant_path.with_name("hands-off-grant-lifecycle.json")
-    if grant_path.parent.name=="hands-off-execution-grants":
-        lifecycle=grant_path.parent.parent/"hands-off-grant-lifecycle.json"
-    lifecycle_lock=_acquire_lifecycle_lock(lifecycle)
-    try:
-        """Terminalize an issued grant when the builder exits before claiming it."""
-        try:
-            grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
-            payload=json.loads(lifecycle.read_text(encoding="utf-8"))
-            record=payload["grants"][grant_id]
-        except (OSError,json.JSONDecodeError,KeyError,TypeError):
-            return False
-        if record.get("state")!="ISSUED":
-            return False
-        record["state"]="ABANDONED"
-        record["finished_at"]=datetime.now(UTC).isoformat()
-        failure_status=None
-        failure_class=None
-        if builder_state is not None:
-            try:
-                builder=json.loads(builder_state.read_text(encoding="utf-8"))
-                failure_status=builder.get("status")
-                failure_class=builder.get("error_class")
-            except (OSError,json.JSONDecodeError,TypeError):
-                pass
-        suffix=f":{failure_status}" if failure_status else ""
-        if failure_class:
-            suffix+=f":{failure_class}"
-        record["result_status"]=f"BUILDER_EXITED_WITHOUT_CLAIM:{returncode}{suffix}"
-        atomic(lifecycle,payload)
-        return True
-    finally:
-        _release_lifecycle_lock(lifecycle_lock)
 
 def mark_builder_running(builder_state:Path,builder_output:Path,*,invocation_id:str,
                          grant_path:Path,worker_id:str|None,runner_id:str,runtime_id:str)->dict:
