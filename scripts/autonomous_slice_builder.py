@@ -1067,18 +1067,18 @@ def main()->int:
     args=parser.parse_args()
     state=Path(args.state)
     invocation_id=args.invocation_id or uuid.uuid4().hex
+    worker_identity=invocation_id
+    if args.execution_grant:
+        try:
+            worker_identity=json.loads(Path(args.execution_grant).read_text(encoding="utf-8")).get("worker_id") or invocation_id
+        except (OSError,json.JSONDecodeError,TypeError):
+            worker_identity=invocation_id
     try:
         global ACTIVE_RUNTIME_ID,ACTIVE_RUNTIME_FENCE,ACTIVE_RESOURCE_FENCES
         ACTIVE_RUNTIME_ID=args.runtime_id or "native-windows"
         if args.runtime_lease_id:
             if not args.runtime_lease_state:
                 raise RuntimeError("RUNTIME_LEASE_STATE_REQUIRED")
-            worker_identity=invocation_id
-            if args.execution_grant:
-                try:
-                    worker_identity=json.loads(Path(args.execution_grant).read_text(encoding="utf-8")).get("worker_id") or invocation_id
-                except (OSError,json.JSONDecodeError,TypeError):
-                    raise RuntimeError("RUNTIME_LEASE_FENCE_REJECTED")
             lease_pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,Path(args.runtime_lease_state))
             ACTIVE_RUNTIME_FENCE=(lease_pool,worker_identity,args.runtime_lease_id)
             lease_pool.assert_fence(worker_identity,args.runtime_lease_id)
@@ -1119,7 +1119,7 @@ def main()->int:
         else:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
-        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant,invocation_id)
+        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant,worker_identity)
         result={**result,"invocation_id":invocation_id}
         atomic_json(state,result)
         if args.execution_grant:

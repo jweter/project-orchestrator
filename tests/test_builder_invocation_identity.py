@@ -65,9 +65,13 @@ def test_runtime_fence_uses_granted_worker_identity(tmp_path,monkeypatch):
 def test_early_builder_return_overwrites_prior_state_with_current_invocation(tmp_path,monkeypatch):
     state=tmp_path/"builder.json"
     state.write_text(json.dumps({"status":"PR_OPEN","invocation_id":"prior"}),encoding="utf-8")
-    grant=tmp_path/"grant.json"; grant.write_text(json.dumps({"schema_version":5,"execution_slice":{"runner_id":"aider-ollama","execution_runtime":"native-windows","runtime_lease_id":"lease-test"}}),encoding="utf-8")
+    grant=tmp_path/"grant.json"; grant.write_text(json.dumps({"schema_version":5,"worker_id":"knowledge-engine-worker-1","execution_slice":{"runner_id":"aider-ollama","execution_runtime":"native-windows","runtime_lease_id":"lease-test"}}),encoding="utf-8")
     monkeypatch.setattr(builder,"granted_repositories",lambda *a,**k:{"jweter/repo":"head"})
-    monkeypatch.setattr(builder,"build_once",lambda *a,**k:{"status":"USER_ACTIVE","idle_seconds":0})
+    captured={}
+    def fake_build_once(*args,**kwargs):
+        captured["worker_id"]=args[-1]
+        return {"status":"USER_ACTIVE","idle_seconds":0}
+    monkeypatch.setattr(builder,"build_once",fake_build_once)
     monkeypatch.setattr(builder,"finish_grant_lifecycle",lambda *a,**k:None)
     monkeypatch.setattr(sys,"argv",[
         "autonomous_slice_builder.py","--workspace-root",str(tmp_path),
@@ -78,6 +82,7 @@ def test_early_builder_return_overwrites_prior_state_with_current_invocation(tmp
     payload=json.loads(state.read_text())
     assert payload["status"]=="USER_ACTIVE"
     assert payload["invocation_id"]=="current-invocation"
+    assert captured["worker_id"]=="knowledge-engine-worker-1"
 
 
 def test_builder_exception_persists_current_invocation(tmp_path,monkeypatch):
