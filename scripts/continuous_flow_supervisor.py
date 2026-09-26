@@ -1491,9 +1491,29 @@ def adaptive_runner_score(manifest,history:dict[str,dict[str,int]],running:dict[
     return (utilization + (1.0-blended) + productivity_penalty(manifest.runner_id,productivity or {}),
             manifest.priority,manifest.runner_id)
 
+def runner_capacity_cooldowns(state_root:Path,now:datetime|None=None,cooldown_seconds:int=1800)->set[str]:
+    try:
+        grants=json.loads((state_root/"hands-off-grant-lifecycle.json").read_text(encoding="utf-8")).get("grants",{})
+    except (OSError,json.JSONDecodeError,TypeError):
+        return set()
+    current=now or datetime.now(UTC); cooled=set()
+    for record in grants.values():
+        if not isinstance(record,dict) or record.get("result_status")!="RUNNER_CAPACITY_DEFERRED":
+            continue
+        runner=record.get("runner_id") or (record.get("execution_slice") or {}).get("runner_id")
+        try:
+            finished=datetime.fromisoformat(record.get("finished_at",""))
+            if finished.tzinfo is None: finished=finished.replace(tzinfo=UTC)
+        except (TypeError,ValueError):
+            continue
+        if isinstance(runner,str) and 0 <= (current-finished).total_seconds() < cooldown_seconds:
+            cooled.add(runner)
+    return cooled
+
 def select_adaptive_runner(task:dict,state_root:Path,registry:RunnerRegistry,
                            running:dict[str,int])->str:
-    candidates=registry.eligible(runner_requirements_for_task(task),running)
+    cooled=runner_capacity_cooldowns(state_root)
+    candidates=[m for m in registry.eligible(runner_requirements_for_task(task),running) if m.runner_id not in cooled]
     if not candidates:
         raise RuntimeError("NO_ELIGIBLE_RUNNER")
     history=runner_verified_history(state_root)
