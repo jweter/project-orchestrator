@@ -11,21 +11,37 @@ def terminal(runner,status,seconds,task_class="repair",state="COMPLETED"):
       "execution_slice":{"task_class":task_class}}
 
 def test_productivity_history_measures_verified_advancement_per_time(tmp_path):
-    payload={"grants":{"a":terminal("claude-code","GREEN",60),"b":terminal("claude-code","GREEN",120)}}
+    a=terminal("claude-code","GREEN",60); a["outcome_quality"]="MERGED_VERIFIED"
+    b=terminal("claude-code","GREEN",120); b["outcome_quality"]="PRODUCT_REALITY_VERIFIED"
+    payload={"grants":{"a":a,"b":b}}
     (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps(payload),encoding="utf-8")
     row=supervisor.runner_productivity_history(tmp_path,"repair")["claude-code"]
-    assert row=={"verified_advancement":2.0,"seconds":180.0,"failures":0.0,"samples":2.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}
+    assert row=={"verified_advancement":2.0,"successful_execution":2.0,"seconds":180.0,
+                "failures":0.0,"samples":2.0,"repair_attempts":0.0,
+                "merged_verified":2.0,"product_reality_verified":1.0}
 
 def test_productivity_ignores_records_without_duration(tmp_path):
     payload={"grants":{"a":{"state":"COMPLETED","runner_id":"claude-code","result_status":"GREEN","execution_slice":{"task_class":"repair"}}}}
     (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps(payload),encoding="utf-8")
     assert supervisor.runner_productivity_history(tmp_path,"repair")=={}
 
+def test_no_op_is_successful_execution_but_not_verified_advancement(tmp_path):
+    item=terminal("aider-ollama","NO_OP",30)
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(
+        json.dumps({"grants":{"a":item}}),encoding="utf-8")
+    row=supervisor.runner_productivity_history(tmp_path,"repair")["aider-ollama"]
+    assert row["successful_execution"]==1.0
+    assert row["verified_advancement"]==0.0
+    assert row["merged_verified"]==0.0
+    assert row["failures"]==0.0
+
 def test_productivity_can_prefer_faster_equally_reliable_runner(tmp_path):
     grants={}
     for i in range(2):
         grants[f"c{i}"]=terminal("claude-code","GREEN",600)
         grants[f"a{i}"]=terminal("aider-ollama","GREEN",60)
+        grants[f"c{i}"]["outcome_quality"]="MERGED_VERIFIED"
+        grants[f"a{i}"]["outcome_quality"]="MERGED_VERIFIED"
     (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":grants}),encoding="utf-8")
     registry=RunnerRegistry([
       RunnerManifest("claude-code",frozenset({"code","local","windows","offline"}),2,20),

@@ -1290,19 +1290,26 @@ def runner_productivity_history(state_root:Path,task_class:str|None=None)->dict[
                 seconds=max((finished-started).total_seconds(),1.0)
         except (TypeError,ValueError):
             continue
-        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"seconds":0.0,"failures":0.0,"samples":0.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0})
+        row=stats.setdefault(runner_id,{"verified_advancement":0.0,"successful_execution":0.0,
+                                        "seconds":0.0,"failures":0.0,"samples":0.0,
+                                        "repair_attempts":0.0,"merged_verified":0.0,
+                                        "product_reality_verified":0.0})
         status=str(record.get("result_status") or "")
-        success=record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}
-        row["verified_advancement"]+=1.0 if success else 0.0
-        row["failures"]+=0.0 if success else 1.0
+        execution_success=record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {
+            "PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"
+        }
+        quality=record.get("outcome_quality")
+        verified=quality in {"MERGED_VERIFIED","PRODUCT_REALITY_VERIFIED"}
+        row["successful_execution"]+=1.0 if execution_success else 0.0
+        row["verified_advancement"]+=1.0 if verified else 0.0
+        row["failures"]+=0.0 if execution_success else 1.0
         row["seconds"]+=seconds
         row["samples"]+=1.0
         try:
             row["repair_attempts"]+=max(float(record.get("repair_attempts",0)),0.0)
         except (TypeError,ValueError):
             pass
-        quality=record.get("outcome_quality")
-        if quality in {"MERGED_VERIFIED","PRODUCT_REALITY_VERIFIED"}:
+        if verified:
             row["merged_verified"]+=1.0
         if quality=="PRODUCT_REALITY_VERIFIED":
             row["product_reality_verified"]+=1.0
