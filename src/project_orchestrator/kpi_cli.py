@@ -24,8 +24,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-kpi")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="project-orchestrator kpi")
     parser.add_argument("--event-ledger", type=Path, default=DEFAULT_EVENT_LEDGER)
     parser.add_argument("--snapshot-ledger", type=Path, default=DEFAULT_SNAPSHOT_LEDGER)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -48,7 +48,7 @@ def main() -> int:
     finalize.add_argument("--run-id", required=True)
     finalize.add_argument("--at", default=None, help="ISO-8601 snapshot time; defaults to current UTC time")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "validate":
         events = load_events(args.event_ledger)
         snapshots = load_snapshots(args.snapshot_ledger)

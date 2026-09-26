@@ -243,12 +243,12 @@ A cycle is closed only when every stage is explicitly `COMPLETE` or `NOT_APPLICA
 The deterministic planner is exposed as:
 
 ```text
-project-orchestrator-scientist experiment-record <input.json>
-project-orchestrator-scientist compare-hypotheses <experiments.json>
-project-orchestrator-scientist resource-schedule <input.json>
-project-orchestrator-scientist opportunity-sweep <input.json>
-project-orchestrator-scientist pattern-distill <input.json>
-project-orchestrator-scientist validate-cycle <input.json>
+project-orchestrator scientist experiment-record <input.json>
+project-orchestrator scientist compare-hypotheses <experiments.json>
+project-orchestrator scientist resource-schedule <input.json>
+project-orchestrator scientist opportunity-sweep <input.json>
+project-orchestrator scientist pattern-distill <input.json>
+project-orchestrator scientist validate-cycle <input.json>
 ```
 
 All commands are pure planning/validation operations. They do not execute shell commands, mutate product repositories, launch experiments, merge PRs, delete branches, spend money, or claim Product Reality.

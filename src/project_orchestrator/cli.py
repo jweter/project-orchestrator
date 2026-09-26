@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import sys
 from pathlib import Path
 
 from .area_learning import retrieve_learning
@@ -46,12 +48,35 @@ from .timeseries import (
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INVENTORY = ROOT / "engineering" / "portfolio.json"
 DEFAULT_KE_COMPATIBILITY = ROOT / "engineering" / "knowledge-engine-compatibility.json"
-DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "learning-memory.json"
-DEFAULT_LEARNING_EFFECTIVENESS = ROOT / "engineering" / "learning-effectiveness.json"
-DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "compounding-timeseries.json"
-DEFAULT_PROCESS_EXPERIMENTS = ROOT / "engineering" / "process-experiments.json"
-DEFAULT_RETAINED_LEARNING = ROOT / "engineering" / "retained-learning.json"
+DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "state" / "learning-memory.json"
+DEFAULT_LEARNING_EFFECTIVENESS = ROOT / "engineering" / "state" / "learning-effectiveness.json"
+DEFAULT_TIMESERIES_STORE = ROOT / "engineering" / "state" / "compounding-timeseries.json"
+DEFAULT_PROCESS_EXPERIMENTS = ROOT / "engineering" / "state" / "process-experiments.json"
+DEFAULT_RETAINED_LEARNING = ROOT / "engineering" / "state" / "retained-learning.json"
 DEFAULT_JEV_LEDGER = ROOT / "telemetry" / "jev-shadow" / "decisions.jsonl"
+
+TOOL_DELEGATES = {
+    "throughput": "project_orchestrator.throughput_guard_cli",
+    "evolve": "project_orchestrator.evolution_cli",
+    "scientist": "project_orchestrator.scientist_cli",
+    "kpi": "project_orchestrator.kpi_cli",
+    "loop-audit": "project_orchestrator.loop_audit",
+    "harness-audit": "project_orchestrator.harness_audit",
+    "harness-security": "project_orchestrator.harness_security",
+    "agent-eval": "project_orchestrator.agent_eval",
+    "agent-eval-runner": "project_orchestrator.agent_eval_runner",
+    "skill": "project_orchestrator.skill_extraction",
+    "learning-candidate": "project_orchestrator.learning_candidates",
+    "handoff-memory": "project_orchestrator.transient_memory",
+}
+
+
+def delegated_tool_main(tool: str, argv: list[str]) -> int:
+    module_name = TOOL_DELEGATES[tool]
+    module = importlib.import_module(module_name)
+    return int(module.main(argv))
+
+
 
 
 def validate() -> int:
@@ -489,8 +514,15 @@ def branch_reconcile_execute(execution_path: Path) -> int:
     return 0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator")
+def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in TOOL_DELEGATES:
+        return delegated_tool_main(argv[0], argv[1:])
+
+    parser = argparse.ArgumentParser(
+        prog="project-orchestrator",
+        epilog="Namespaced tools: " + ", ".join(sorted(TOOL_DELEGATES)),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("validate")
     unattended_parser = sub.add_parser("unattended-cycle")
@@ -622,7 +654,7 @@ def main() -> int:
     decompose_parser=sub.add_parser("decompose-work")
     decompose_parser.add_argument("item",type=Path)
     decompose_parser.add_argument("--snapshot",type=Path,default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "validate":
         return validate()
     if args.command == "unattended-cycle":

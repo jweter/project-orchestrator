@@ -68,11 +68,11 @@ Control-plane events from `jweter/project-orchestrator` are retained in the ledg
 The installed CLI is:
 
 ```text
-project-orchestrator-kpi validate
-project-orchestrator-kpi record-event path/to/event.json
-project-orchestrator-kpi report
-project-orchestrator-kpi report --at 2026-09-16T01:00:00Z
-project-orchestrator-kpi finalize-run --run-id <run-id>
+project-orchestrator kpi validate
+project-orchestrator kpi record-event path/to/event.json
+project-orchestrator kpi report
+project-orchestrator kpi report --at 2026-09-16T01:00:00Z
+project-orchestrator kpi finalize-run --run-id <run-id>
 ```
 
 `report` always returns 24-hour, 7-day, and 30-day windows. `finalize-run` appends one per-run snapshot containing run-scoped metrics plus those three rolling reports.

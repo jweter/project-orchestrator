@@ -11,7 +11,7 @@ The first question is current-run execution. The second requires historical evid
 
 The scorecard does **not** create a second metrics database. It projects existing authoritative evidence from:
 
-- `engineering/compounding-timeseries.json` through `project_orchestrator.timeseries`;
+- `engineering/state/compounding-timeseries.json` through `project_orchestrator.timeseries`;
 - explicit current-run rework evidence through `project_orchestrator.throughput_guard.compute_rework_kpis`;
 - measured bottleneck ranking through `project_orchestrator.throughput_optimizer`.
 

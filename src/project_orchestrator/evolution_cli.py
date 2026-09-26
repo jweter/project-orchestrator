@@ -22,7 +22,7 @@ def _load_json(path: str) -> dict[str, Any]:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="project-orchestrator-evolve",
+        prog="project-orchestrator evolve",
         description="Build governed Fix_It-style engineering evolution plans from verified evidence.",
     )
     sub = parser.add_subparsers(dest="command", required=True)

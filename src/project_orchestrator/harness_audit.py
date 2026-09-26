@@ -519,7 +519,7 @@ def _parse_repo_root(value: str) -> tuple[str, Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-harness-audit")
+    parser = argparse.ArgumentParser(prog="project-orchestrator harness-audit")
     parser.add_argument(
         "--policy",
         type=Path,

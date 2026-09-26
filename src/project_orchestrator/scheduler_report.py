@@ -25,7 +25,7 @@ ADVANCEMENT_ACTORS = {
 
 KPI_PERSISTENCE_STATES = {"HEALTHY", "FAILED", "UNKNOWN"}
 
-DEFAULT_TIMESERIES_STORE = Path(__file__).resolve().parents[2] / "engineering" / "compounding-timeseries.json"
+DEFAULT_TIMESERIES_STORE = Path(__file__).resolve().parents[2] / "engineering" / "state" / "compounding-timeseries.json"
 
 
 def build_scheduler_executive_report(

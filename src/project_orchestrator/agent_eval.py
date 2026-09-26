@@ -802,7 +802,7 @@ def _load_json(path: str | Path) -> dict[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-agent-eval")
+    parser = argparse.ArgumentParser(prog="project-orchestrator agent-eval")
     sub = parser.add_subparsers(dest="command", required=True)
 
     validate_suite_cmd = sub.add_parser("validate-suite")

@@ -86,7 +86,7 @@ The planner also records forbidden boundary shortcuts already documented by the 
 
 ## Compounding evidence store
 
-`project_orchestrator.timeseries` and `engineering/compounding-timeseries.json` are the deterministic record of whether the development loop is actually compounding, answering the question the "Exponential-development hypothesis" section above raises but does not settle.
+`project_orchestrator.timeseries` and `engineering/state/compounding-timeseries.json` are the deterministic record of whether the development loop is actually compounding, answering the question the "Exponential-development hypothesis" section above raises but does not settle.
 
 An **evidence window** is scoped to a project (or the portfolio as a whole) and one of the five product repositories or `jweter/project-orchestrator`, spans an explicit `window_start`/`window_end`, and records a fixed set of development-loop metrics: PR creation-to-green time, failure-to-repair time, merge cycle time, CI failure/repeat-failure counts, preflight failures prevented, roadmap slices completed, Product Reality debt created/resolved, cross-repo dependency incidents, blocked/waiting time, and autonomous vs. Jeremy-required interventions.
 
@@ -122,7 +122,7 @@ Every metric is either `MEASURED` (a numeric value, a fixed per-metric unit, a s
 
 ## Sanitized learning memory
 
-`engineering/learning-memory.json` is the durable portfolio-level record of lessons that are both resolved and verified. It is deliberately narrower than raw CI logs, review payloads, or Product Reality evidence.
+`engineering/state/learning-memory.json` is the durable portfolio-level record of lessons that are both resolved and verified. It is deliberately narrower than raw CI logs, review payloads, or Product Reality evidence.
 
 A persisted lesson records the project/repository, source type/reference, symptom, root cause, fix, verification, regression protection, and residual risk. Entries must have `evidence_state=VERIFIED`; pending theories cannot become durable learning. A content-derived `lesson_id` makes repeated ingestion idempotent.
 

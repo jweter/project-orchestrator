@@ -1,0 +1,60 @@
+schema_version = 1
+canonical_cli = "project-orchestrator"
+
+[json]
+authority = [
+  "agent-action-guard.json",
+  "agent-eval-suite.json",
+  "autonomous-engineering-scientist.json",
+  "autonomy-loop-contract.json",
+  "control-plane.json",
+  "development-team-runtime.json",
+  "emerging-compute-policy.json",
+  "evolution-engine.json",
+  "evolution-worker-handoff.json",
+  "exponential-engine.json",
+  "external-capability-wave1.json",
+  "flow-signal-quality.json",
+  "foreman.json",
+  "hands-off-evolution.json",
+  "harness-audit.json",
+  "harness-security.json",
+  "knowledge-engine-compatibility.json",
+  "learning-engine.json",
+  "portfolio.json",
+  "regression-prevention.json",
+  "repository-skills.json",
+  "specialist-lanes.json",
+  "steward.json",
+  "throughput-guard.json",
+  "throughput-optimizer.json",
+  "tooling-capabilities.json",
+  "work-decomposition.json",
+]
+schema = [
+  "schemas/flow-signal-quality.schema.json",
+  "schemas/run-report.schema.json",
+]
+example = [
+  "examples/agent-eval-runner.example.json",
+  "examples/flow-signal-quality.example.json",
+]
+fixture = [
+  "fixtures/regression-prevention-smoke-events.json",
+  "fixtures/regression-prevention-smoke-policies.json",
+]
+authoritative_state = [
+  "state/closed-loop-product-run.json",
+  "state/compounding-timeseries.json",
+  "state/context-compression-corpus.json",
+  "state/headroom-benchmark-result.json",
+  "state/jev-shadow-decision.json",
+  "state/learning-candidates.json",
+  "state/learning-effectiveness.json",
+  "state/learning-memory.json",
+  "state/pre-change-risk.json",
+  "state/process-experiments.json",
+  "state/product-reality-debt.json",
+  "state/retained-learning.json",
+  "state/scheduler-run-report.json",
+]

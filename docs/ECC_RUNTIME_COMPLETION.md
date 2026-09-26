@@ -38,7 +38,7 @@ The audit never auto-fixes configuration. Missing local repository roots are `UN
 
 `observation -> CANDIDATE / NON_AUTHORITATIVE -> independent verification -> promotion packet -> explicit VERIFIED-memory promotion`
 
-Candidate confidence is never authority. A candidate cannot mark itself VERIFIED, cannot infer Product Reality, cannot use its source harness as its own independent verifier, and cannot mutate `engineering/learning-memory.json` automatically. The promotion packet is validated through the existing `validate_lesson` contract so there is still exactly one authoritative durable-learning schema.
+Candidate confidence is never authority. A candidate cannot mark itself VERIFIED, cannot infer Product Reality, cannot use its source harness as its own independent verifier, and cannot mutate `engineering/state/learning-memory.json` automatically. The promotion packet is validated through the existing `validate_lesson` contract so there is still exactly one authoritative durable-learning schema.
 
 ## Cross-harness transient memory
 

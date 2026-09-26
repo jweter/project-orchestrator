@@ -95,13 +95,13 @@ otherwise -> READY
 Build and normalize an action context:
 
 ```text
-project-orchestrator-throughput action-context action-context.json
+project-orchestrator throughput action-context action-context.json
 ```
 
 Evaluate the context plus resource envelope against explicit policy:
 
 ```text
-project-orchestrator-throughput action-gate action-gate.json
+project-orchestrator throughput action-gate action-gate.json
 ```
 
 `action-gate.json` contains:

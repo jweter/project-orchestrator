@@ -4,12 +4,13 @@
   "repository": "jweter/project-orchestrator",
   "repository_role": "portfolio-control-plane",
   "source_of_truth": "live GitHub evidence plus per-repository governing documents",
+  "control_surface_registry": "engineering/control-surface.toml",
   "authoritative_documents": [
     "DoWork.txt",
     "engineering/portfolio.json",
     "engineering/knowledge-engine-compatibility.json",
-    "engineering/learning-memory.json",
-    "engineering/compounding-timeseries.json",
+    "engineering/state/learning-memory.json",
+    "engineering/state/compounding-timeseries.json",
     "engineering/tooling-capabilities.json",
     "n8n/workflow-manifest.json",
     "docs/ARCHITECTURE.md",
@@ -26,12 +27,12 @@
     "engineering/regression-prevention.json",
     "engineering/throughput-optimizer.json",
     "docs/AUTONOMOUS_ENGINEERING_AGENT.md",
-    "engineering/learning-effectiveness.json",
-    "engineering/scheduler-run-report.json",
-    "engineering/product-reality-debt.json",
-    "engineering/closed-loop-product-run.json",
-    "engineering/pre-change-risk.json",
-    "engineering/process-experiments.json"
+    "engineering/state/learning-effectiveness.json",
+    "engineering/state/scheduler-run-report.json",
+    "engineering/state/product-reality-debt.json",
+    "engineering/state/closed-loop-product-run.json",
+    "engineering/state/pre-change-risk.json",
+    "engineering/state/process-experiments.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -150,7 +151,7 @@
     "rule": "identify direct and transitive consumers before shared-contract changes; prepare dependents first for breaking changes and never knowingly leave the Knowledge Engine family broken"
   },
   "learning_memory": {
-    "path": "engineering/learning-memory.json",
+    "path": "engineering/state/learning-memory.json",
     "executable": "project-orchestrator memory-validate",
     "persist_rule": "verified, sanitized lessons only; never persist secrets, credentials, raw private Product Reality payloads, or unverified conclusions",
     "deduplication": "content-derived lesson_id"
@@ -447,7 +448,7 @@
     "module": "project_orchestrator.area_learning",
     "cli": "project-orchestrator learning-retrieve",
     "timing": "before repository mutation after candidate scope is known",
-    "source": "engineering/learning-memory.json VERIFIED entries only",
+    "source": "engineering/state/learning-memory.json VERIFIED entries only",
     "inputs": [
       "repository",
       "changed_paths",
@@ -526,7 +527,7 @@
   "learning_effectiveness": {
     "schema_version": 1,
     "module": "project_orchestrator.learning_effectiveness",
-    "store": "engineering/learning-effectiveness.json",
+    "store": "engineering/state/learning-effectiveness.json",
     "record_cli": "project-orchestrator learning-effectiveness-record",
     "report_cli": "project-orchestrator learning-effectiveness-report",
     "success_memory_source_type": "success_pattern",
@@ -550,7 +551,7 @@
   },
   "scheduler_executive_reporting": {
     "schema_version": 1,
-    "contract": "engineering/scheduler-run-report.json",
+    "contract": "engineering/state/scheduler-run-report.json",
     "module": "project_orchestrator.scheduler_report",
     "cli": "project-orchestrator scheduler-run-report",
     "target_product_advancement_rate": 1,
@@ -561,7 +562,7 @@
   },
   "product_reality_debt": {
     "schema_version": 1,
-    "contract": "engineering/product-reality-debt.json",
+    "contract": "engineering/state/product-reality-debt.json",
     "module": "project_orchestrator.product_reality",
     "cli": "project-orchestrator product-reality-report",
     "storage_mode": "sanitized_metadata_only",
@@ -582,7 +583,7 @@
   },
   "closed_loop_product_run": {
     "schema_version": 1,
-    "contract": "engineering/closed-loop-product-run.json",
+    "contract": "engineering/state/closed-loop-product-run.json",
     "module": "project_orchestrator.closed_loop",
     "cli": "project-orchestrator closed-loop-report",
     "stages": [
@@ -610,7 +611,7 @@
   },
   "pre_change_risk_predictor": {
     "schema_version": 1,
-    "contract": "engineering/pre-change-risk.json",
+    "contract": "engineering/state/pre-change-risk.json",
     "module": "project_orchestrator.risk_predictor",
     "cli": "project-orchestrator pre-change-risk",
     "timing": "after candidate scope is known and before repository mutation",
@@ -634,7 +635,7 @@
   },
   "process_experiments": {
     "module": "project_orchestrator.process_experiments",
-    "store": "engineering/process-experiments.json",
+    "store": "engineering/state/process-experiments.json",
     "cli": [
       "project-orchestrator process-experiment-create",
       "project-orchestrator process-experiment-activate",

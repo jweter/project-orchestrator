@@ -51,11 +51,11 @@ def main()->int:
             "latency_ms":round((time.perf_counter()-start)*1000,3),
         })
         return flatten_messages(result.messages)
-    report=benchmark_suite(load_cases(ROOT/"engineering"/"context-compression-corpus.json"),compressor)
+    report=benchmark_suite(load_cases(ROOT/"engineering"/"state"/"context-compression-corpus.json"),compressor)
     report["headroom_native"]=native
     report["decision"]=promotion_decision(report)
     report["status"]="PASS"
-    out=ROOT/"engineering"/"headroom-benchmark-result.json"
+    out=ROOT/"engineering"/"state"/"headroom-benchmark-result.json"
     out.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     print(json.dumps(report,indent=2,sort_keys=True))
     return 0

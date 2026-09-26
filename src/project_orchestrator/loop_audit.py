@@ -215,7 +215,7 @@ def _nonempty_list(value: Any) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-loop-audit")
+    parser = argparse.ArgumentParser(prog="project-orchestrator loop-audit")
     parser.add_argument(
         "contract",
         nargs="?",

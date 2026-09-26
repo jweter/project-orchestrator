@@ -32,7 +32,7 @@
   },
   "portfolio_kpis": {
     "module": "project_orchestrator.portfolio_kpis",
-    "history_source": "engineering/compounding-timeseries.json",
+    "history_source": "engineering/state/compounding-timeseries.json",
     "rework_source": "explicit current-run rework evidence fields interpreted by project_orchestrator.throughput_guard.compute_rework_kpis",
     "bottleneck_source": "project_orchestrator.throughput_optimizer",
     "required_sections": [
@@ -58,7 +58,7 @@
     },
     "durable_flow_telemetry": {
       "module": "project_orchestrator.kpi_telemetry",
-      "cli": "project-orchestrator-kpi",
+      "cli": "project-orchestrator kpi",
       "event_ledger": "engineering/kpi-events.jsonl",
       "run_snapshot_ledger": "engineering/kpi-run-snapshots.jsonl",
       "event_entities": ["pr", "ci", "branch", "issue"],
@@ -106,7 +106,7 @@
   "learning_evolution": {
     "preventable_repeat_failure_target": 0,
     "unknown_policy": "UNKNOWN is preferred to invented evidence",
-    "learning_effectiveness_source": "engineering/learning-effectiveness.json"
+    "learning_effectiveness_source": "engineering/state/learning-effectiveness.json"
   },
   "rules": [
     "orchestrator-only control-plane work never counts as product advancement",

@@ -1,6 +1,6 @@
 """Automatic Portfolio Evidence Collector.
 
-Populates ``engineering/compounding-timeseries.json`` from reproducible
+Populates ``engineering/state/compounding-timeseries.json`` from reproducible
 GitHub evidence (merged pull requests and their check-run history) instead
 of requiring a human to hand-write evidence windows.
 

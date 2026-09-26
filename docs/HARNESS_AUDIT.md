@@ -52,13 +52,13 @@ Canonical preflight fails only on RED. A YELLOW harness report remains visible e
 Audit the orchestrator checkout only:
 
 ```bash
-project-orchestrator-harness-audit
+project-orchestrator harness-audit
 ```
 
 Audit a full local portfolio workspace:
 
 ```bash
-project-orchestrator-harness-audit \
+project-orchestrator harness-audit \
   --repo jweter/project-orchestrator=/path/to/project-orchestrator \
   --repo jweter/knowledge-engine-core=/path/to/knowledge-engine-core \
   --repo jweter/knowledge-engine-web=/path/to/knowledge-engine-web \

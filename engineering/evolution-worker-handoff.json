@@ -49,6 +49,6 @@
   "learning_memory_rule": "persist only sanitized independently VERIFIED repair lessons",
   "evolution_rule": "reassess stable pattern_id against verified recurrence, prevention, learning effect, and comparable before/after measurements",
   "project_isolation": true,
-  "cli": "project-orchestrator-evolve worker-handoff",
+  "cli": "project-orchestrator evolve worker-handoff",
   "documentation": "docs/EVOLUTION_WORKER_HANDOFF.md"
 }

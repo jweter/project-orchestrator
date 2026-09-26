@@ -83,6 +83,6 @@
     "product_reality",
     "project_isolation"
   ],
-  "cli": "project-orchestrator-evolve",
+  "cli": "project-orchestrator evolve",
   "documentation": "docs/EVOLUTION_ENGINE.md"
 }

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "purpose": "Require exact context and a bounded resource/cost envelope before autonomous engineering or experiment-like work fans out.",
-  "executable": "project-orchestrator-throughput action-gate",
-  "context_executable": "project-orchestrator-throughput action-context",
+  "executable": "project-orchestrator throughput action-gate",
+  "context_executable": "project-orchestrator throughput action-context",
   "states": [
     "READY",
     "GATHER_CONTEXT",

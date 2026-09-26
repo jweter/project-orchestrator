@@ -32,8 +32,8 @@ def _print(value) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-throughput")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="project-orchestrator throughput")
     sub = parser.add_subparsers(dest="command", required=True)
 
     fast = sub.add_parser("fast-gate-plan")
@@ -78,7 +78,7 @@ def main() -> int:
     kpis = sub.add_parser("rework-kpis")
     kpis.add_argument("records", type=Path)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.command == "fast-gate-plan":
         control_plane = _load(args.control_plane)
         if not isinstance(control_plane, dict):

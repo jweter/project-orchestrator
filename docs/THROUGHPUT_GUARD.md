@@ -65,7 +65,7 @@ For compatibility with the existing portfolio, `preflight.checks[]` entries alre
 Example:
 
 ```text
-project-orchestrator-throughput fast-gate-plan \
+project-orchestrator throughput fast-gate-plan \
   --repository jweter/rocksmith-cdlc-generator \
   --control-plane engineering/control-plane.json \
   --changed-path src/rocksmith_cdlc_generator/song_workspace.py
@@ -118,7 +118,7 @@ Required update points are implementation start, preflight result, PR open, CI r
 
 ## Rework KPIs
 
-`project-orchestrator-throughput rework-kpis <records.json>` computes only from explicit evidence:
+`project-orchestrator throughput rework-kpis <records.json>` computes only from explicit evidence:
 
 1. **first-pass preflight rate** — one-attempt preflights / records with attempt evidence; target `>= 0.90`;
 2. **merge-race count** — explicitly observed merge/external-completion races; target `0`;
