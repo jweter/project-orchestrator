@@ -76,7 +76,8 @@ class NativeWindowsRuntime:
                         raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
                     if deadline is not None and time.monotonic()>=deadline:
                         self._terminate_tree(process)
-                        raise subprocess.TimeoutExpired(request.argv,request.timeout_seconds)
+                        assert request.timeout_seconds is not None
+                        raise subprocess.TimeoutExpired(request.argv,float(request.timeout_seconds))
                     time.sleep(interval)
                 process.wait()
                 stdout_file.seek(0); stderr_file.seek(0)
@@ -140,7 +141,7 @@ class LaptopActorRuntime(NativeWindowsRuntime):
 
 class ExecutionRuntimeRegistry:
     def __init__(self,runtimes:Sequence[object]):
-        self._runtimes={}
+        self._runtimes: dict[str, object] = {}
         for runtime in runtimes:
             runtime_id=getattr(runtime,"runtime_id",None)
             if not isinstance(runtime_id,str) or not runtime_id:
