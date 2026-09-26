@@ -1069,7 +1069,7 @@ def main()->int:
             worker_identity=invocation_id
             if args.execution_grant:
                 try:
-                    worker_identity=json.loads(Path(args.execution_grant).read_text(encoding="utf-8")).get("worker") or invocation_id
+                    worker_identity=json.loads(Path(args.execution_grant).read_text(encoding="utf-8")).get("worker_id") or invocation_id
                 except (OSError,json.JSONDecodeError,TypeError):
                     raise RuntimeError("RUNTIME_LEASE_FENCE_REJECTED")
             lease_pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,Path(args.runtime_lease_state))

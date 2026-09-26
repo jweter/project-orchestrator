@@ -39,6 +39,26 @@ def test_run_builder_passes_and_returns_same_invocation_id(tmp_path,monkeypatch)
     assert invocation_id
 
 
+def test_runtime_fence_uses_granted_worker_identity(tmp_path,monkeypatch):
+    from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
+    lease_state=tmp_path/"leases.json"
+    pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,lease_state)
+    lease=pool.acquire("native-windows","rocksmith-worker-1")
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"schema_version":5,"worker_id":"rocksmith-worker-1",
+        "execution_slice":{"runner_id":"aider-ollama","execution_runtime":"native-windows"}}),encoding="utf-8")
+    state=tmp_path/"builder.json"
+    monkeypatch.setattr(builder,"granted_repositories",lambda *a,**k:{})
+    monkeypatch.setattr(sys,"argv",[
+        "autonomous_slice_builder.py","--workspace-root",str(tmp_path),"--state",str(state),
+        "--execution-grant",str(grant),"--invocation-id","different-invocation",
+        "--runner-id","aider-ollama","--runtime-id","native-windows",
+        "--runtime-lease-id",lease.lease_id,"--runtime-lease-state",str(lease_state),
+    ])
+    assert builder.main()==0
+    assert json.loads(state.read_text())["status"]=="NO_ELIGIBLE_REPOSITORY"
+
+
 def test_early_builder_return_overwrites_prior_state_with_current_invocation(tmp_path,monkeypatch):
     state=tmp_path/"builder.json"
     state.write_text(json.dumps({"status":"PR_OPEN","invocation_id":"prior"}),encoding="utf-8")
