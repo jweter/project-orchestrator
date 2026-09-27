@@ -117,3 +117,17 @@ section{margin-top:22px}
 .install-card b{font-size:15px}.install-card span{color:var(--muted);font-size:12px;line-height:1.4}
 .hidden{display:none!important}
 @media(max-width:390px){.mode-grid{grid-template-columns:1fr 1fr}.mode-button{padding:12px;min-height:78px}}
+
+.recovery-card{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;padding:16px;border:1px solid #354154;border-radius:20px;background:linear-gradient(145deg,#151c29,#111720)}
+.recovery-card>div{min-width:0}.recovery-card b{display:block;font-size:16px;margin-top:4px}.recovery-card>div>span:last-child{display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:5px}
+.wake-button{min-height:48px;border-radius:15px;border:1px solid #456ca6;background:#1b2b43;color:#dceaff;padding:0 15px;font-weight:800}
+.wake-button:disabled{opacity:.42;filter:saturate(.4)}.wake-button:not(:disabled):active{transform:scale(.97)}
+dialog{width:min(92vw,440px);border:1px solid #344054;border-radius:20px;background:#111722;color:#f6f8fb;padding:0;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+dialog::backdrop{background:rgba(0,0,0,.65);backdrop-filter:blur(4px)}
+.dialog-body{padding:18px}.dialog-body h3{margin:0 0 6px;font-size:19px}.dialog-body p{margin:0 0 16px;color:var(--muted);font-size:12px;line-height:1.45}
+.field{display:block;margin:12px 0}.field span{display:block;color:#b8c0ce;font-size:12px;margin-bottom:6px}
+.field input{width:100%;border:1px solid #344054;border-radius:12px;background:#0c1119;color:#f7f9fc;padding:12px;font-size:14px;outline:none}
+.field input:focus{border-color:#5d85be;box-shadow:0 0 0 2px rgba(120,167,255,.12)}
+.dialog-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.dialog-actions button{border:1px solid #344054;border-radius:11px;background:#19212e;color:#f4f7fb;padding:10px 13px;font-weight:700}.dialog-actions .danger-lite{color:#ff9ca4;border-color:#663942;background:#24161a}
+.offline-only{display:none}body.dashboard-offline .offline-only{display:block}body.dashboard-offline #control button,body.dashboard-offline #mode-control button{opacity:.45;pointer-events:none}
+@media(max-width:390px){.recovery-card{grid-template-columns:1fr}.wake-button{width:100%}}
