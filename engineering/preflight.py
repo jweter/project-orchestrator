@@ -104,6 +104,13 @@ def run_check(name: str, argv: list[str]) -> dict:
         stdout = completed.stdout[-4000:]
         stderr = completed.stderr[-4000:]
         timed_out = False
+        interrupted = False
+    except KeyboardInterrupt:
+        returncode = 130
+        stdout = ""
+        stderr = f"PREFLIGHT_CHECK_INTERRUPTED:{name}"
+        timed_out = False
+        interrupted = True
     except subprocess.TimeoutExpired as exc:
         returncode = 124
         stdout = (exc.stdout or "")
@@ -118,6 +125,7 @@ def run_check(name: str, argv: list[str]) -> dict:
             + f"\nPREFLIGHT_CHECK_TIMEOUT:{name}:{timeout_seconds}s"
         )
         timed_out = True
+        interrupted = False
     return {
         "name": name,
         "argv": argv,
@@ -125,6 +133,7 @@ def run_check(name: str, argv: list[str]) -> dict:
         "stdout": stdout,
         "stderr": stderr,
         "timed_out": timed_out,
+        "interrupted": interrupted,
         "timeout_seconds": timeout_seconds,
         "duration_seconds": round(time.monotonic() - started, 3),
     }
@@ -154,8 +163,10 @@ def main() -> int:
             ok = False
             break
 
+    interrupted = any(result.get("interrupted") for result in results)
+    final_status = "INTERRUPTED" if interrupted else ("GREEN" if ok else "FAILED")
     write_evidence(
-        status="GREEN" if ok else "FAILED",
+        status=final_status,
         results=results,
         active_check=None,
         started_at=started_at,
@@ -163,7 +174,9 @@ def main() -> int:
 
     for result in results:
         outcome = "PASS" if result["returncode"] == 0 else (
-            "TIMEOUT" if result["timed_out"] else "FAIL"
+            "INTERRUPTED" if result.get("interrupted") else (
+                "TIMEOUT" if result["timed_out"] else "FAIL"
+            )
         )
         print(
             f"{result['name']}: {outcome} "
@@ -173,7 +186,7 @@ def main() -> int:
             print(result["stdout"])
             print(result["stderr"], file=sys.stderr)
 
-    return 0 if ok else 1
+    return 130 if interrupted else (0 if ok else 1)
 
 
 if __name__ == "__main__":

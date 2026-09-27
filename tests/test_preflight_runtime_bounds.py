@@ -45,3 +45,45 @@ def test_incremental_evidence_records_active_check(tmp_path, monkeypatch):
     assert payload["active_check"] == "tests"
     assert payload["head_sha"] == "abc123"
     assert payload["results"][0]["name"] == "control_plane"
+
+
+def test_run_check_classifies_keyboard_interrupt_as_interrupted(monkeypatch):
+    def interrupt(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(preflight.subprocess, "run", interrupt)
+    result = preflight.run_check("tests", ["python", "-m", "pytest", "-q"])
+
+    assert result["returncode"] == 130
+    assert result["interrupted"] is True
+    assert result["timed_out"] is False
+    assert result["stderr"] == "PREFLIGHT_CHECK_INTERRUPTED:tests"
+
+
+def test_main_finalizes_interrupted_evidence(tmp_path, monkeypatch):
+    evidence = tmp_path / "preflight-evidence.json"
+    monkeypatch.setattr(preflight, "EVIDENCE", evidence)
+    monkeypatch.setattr(preflight, "checks", [("tests", ["pytest"])])
+    monkeypatch.setattr(preflight, "git_head", lambda root: "deadbeef")
+    monkeypatch.setattr(
+        preflight,
+        "run_check",
+        lambda name, argv: {
+            "name": name,
+            "argv": argv,
+            "returncode": 130,
+            "stdout": "",
+            "stderr": "PREFLIGHT_CHECK_INTERRUPTED:tests",
+            "timed_out": False,
+            "interrupted": True,
+            "timeout_seconds": 900,
+            "duration_seconds": 1.0,
+        },
+    )
+
+    assert preflight.main() == 130
+    payload = json.loads(evidence.read_text(encoding="utf-8"))
+    assert payload["status"] == "INTERRUPTED"
+    assert payload["active_check"] is None
+    assert payload["head_sha"] == "deadbeef"
+    assert payload["results"][0]["interrupted"] is True
