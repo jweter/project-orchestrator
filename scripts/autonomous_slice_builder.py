@@ -164,6 +164,14 @@ def promote_verified_repairs(state_path:Path)->dict[str,Any]:
     atomic_json(capabilities_path,payload)
     return payload
 
+def manual_human_mode_enabled(state_path:Path)->bool:
+    marker=state_path.parent/"human-mode.json"
+    try:
+        payload=json.loads(marker.read_text(encoding="utf-8-sig"))
+        return bool(payload.get("enabled")) if isinstance(payload,dict) else False
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        return False
+
 def windows_idle_seconds()->float|None:
     if os.name!="nt": return None
     class LASTINPUTINFO(ctypes.Structure):
@@ -839,6 +847,8 @@ def refresh_base_before_publish(ws:Path,main_branch:str,expected_base:str)->dict
 
 def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
                execution_grant:Path|None=None,worker_id:str|None=None)->dict[str,Any]:
+    if manual_human_mode_enabled(state_path):
+        return {"status":"USER_ACTIVE","manual_human_mode":True}
     idle=windows_idle_seconds()
     if idle is not None and idle<MIN_IDLE_SECONDS:
         return {"status":"USER_ACTIVE","idle_seconds":idle}

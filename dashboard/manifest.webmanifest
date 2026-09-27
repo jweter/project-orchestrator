@@ -1,1 +1,11 @@
-{"name":"Azathoth Foundry","short_name":"Azathoth","start_url":"/","display":"standalone","background_color":"#090b10","theme_color":"#090b10","description":"Read-only Azathoth Foundry development dashboard"}
+{
+  "name":"Azathoth Control Center",
+  "short_name":"Azathoth",
+  "start_url":"/",
+  "scope":"/",
+  "display":"standalone",
+  "background_color":"#090b10",
+  "theme_color":"#090b10",
+  "description":"Secure control and health dashboard for Azathoth Foundry",
+  "categories":["developer tools","utilities"]
+}

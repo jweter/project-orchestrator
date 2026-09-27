@@ -71,3 +71,13 @@ def test_reboot_is_fixed_command_with_audit_reason():
     text = source()
     assert 'shutdown.exe /r /t 15 /d p:4:1 /c "Azathoth authenticated control-plane reboot"' in text
     assert 'status="REBOOT_ACCEPTED"' in text
+
+
+def test_phone_control_records_progress_history_and_human_mode():
+    text = source()
+    for status in ("ACKNOWLEDGED", "EXECUTING"):
+        assert f'Write-Progress $c.command_id $c.action "{status}"' in text
+    assert "Append-History" in text
+    assert '"HUMAN_MODE"' in text and '"FULL_POWER"' in text
+    assert 'Set-Content -Encoding UTF8 $humanMode' in text
+    assert 'Remove-Item -Force $humanMode' in text

@@ -655,3 +655,19 @@ def test_atomic_json_falls_back_to_copy_after_windows_rename_denied(tmp_path,mon
     builder.atomic_json(path,{"grants":{"g":{"state":"RUNNING"}}})
     assert json.loads(path.read_text())["grants"]["g"]["state"]=="RUNNING"
     assert list(tmp_path.glob("*.tmp.*"))==[]
+
+
+def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch):
+    state=tmp_path/"builder.json"
+    (tmp_path/"human-mode.json").write_text('{"enabled":true}',encoding="utf-8")
+    monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
+    result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
+    assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
+
+
+def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
+    state=tmp_path/"builder.json"
+    monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
+    result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
+    assert result["status"]=="USER_ACTIVE"
+    assert result["idle_seconds"]==0

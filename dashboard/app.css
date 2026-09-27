@@ -86,3 +86,34 @@ section{margin-top:22px}
   #products,#workers,#recent{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .card{margin-bottom:0}
 }
+
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mode-button{
+  min-height:82px;border-radius:18px;border:1px solid #344054;background:var(--panel-2);color:#f7f9fc;
+  padding:14px;text-align:left;display:grid;grid-template-columns:auto 1fr;column-gap:10px;
+  grid-template-areas:"icon title" "icon sub";align-content:center
+}
+.mode-button>span{grid-area:icon;font-size:22px;align-self:center}
+.mode-button>b{grid-area:title;font-size:15px}
+.mode-button>small{grid-area:sub;color:var(--muted);font-size:11px;margin-top:2px}
+.mode-button.selected{border-color:#4f78b4;background:linear-gradient(145deg,#1e3048,#18263a);box-shadow:0 0 0 1px rgba(120,167,255,.15) inset}
+.mode-button:active{transform:scale(.98)}
+.machine-grid .metric small{display:block;margin-top:4px;color:#6f7a8d;font-size:9px;line-height:1.25}
+.alert{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;margin-top:10px;border-radius:14px;border:1px solid}
+.alert b{font-size:11px;min-width:64px}
+.alert span{font-size:13px;line-height:1.35}
+.alert-warn{background:#2a2414;border-color:#66552a;color:#f3d481}
+.alert-bad{background:#2b171b;border-color:#713b45;color:#ff9da5}
+.progress-row{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:4px}
+.history-row{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;
+  border-radius:14px;background:#0f141d;border:1px solid #222a38
+}
+.history-row>div{min-width:0}
+.history-row b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.history-row div span{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.text-button{appearance:none;border:0;background:transparent;color:var(--accent);font-size:12px;padding:4px 0}
+.install-card{display:flex;flex-direction:column;gap:5px;padding:15px;border-radius:18px;border:1px solid #3b4d68;background:#131c29}
+.install-card b{font-size:15px}.install-card span{color:var(--muted);font-size:12px;line-height:1.4}
+.hidden{display:none!important}
+@media(max-width:390px){.mode-grid{grid-template-columns:1fr 1fr}.mode-button{padding:12px;min-height:78px}}
