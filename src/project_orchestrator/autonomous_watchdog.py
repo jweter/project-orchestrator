@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import json,time
 from pathlib import Path
 from typing import Any,Callable
@@ -33,5 +33,3 @@ def run_persistent_watchdog(*,lane_provider:Callable[[],dict[str,dict[str,Any]]]
   iteration+=1
   if max_iterations is None or iteration<max_iterations: sleep(interval_seconds)
  return results
-
-\n

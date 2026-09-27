@@ -1,4 +1,4 @@
-﻿import json
+import json
 from scripts.hands_off_completion_certificate import evaluate
 
 def write(root,name,payload):
@@ -36,7 +36,3 @@ def test_missing_physical_supervisor_identity_fails(tmp_path):
     valid(tmp_path)
     write(tmp_path,"supervisor.json",{"burst_id":"b"})
     assert evaluate(tmp_path)["status"]=="FAIL"
-
-
-
-\n

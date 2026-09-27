@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any,Callable
@@ -26,5 +26,3 @@ def ingest_production_results(*,pending_dir:Path,results_dir:Path,processed_dir:
   event={"job_id":job_id,"repository":repo,"worker_status":status,"outcome":outcome}
   tmp=marker.with_suffix(".tmp");tmp.write_text(json.dumps(event,sort_keys=True,indent=2)+chr(10),encoding="utf-8");tmp.replace(marker);events.append(event)
  return events
-
-\n

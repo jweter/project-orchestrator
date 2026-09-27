@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import json
@@ -238,5 +238,3 @@ def measure_team_flow(events: list[dict[str, Any]]) -> dict[str, Any]:
             else "HOLD_AND_MEASURE"
         ),
     }
-
-\n

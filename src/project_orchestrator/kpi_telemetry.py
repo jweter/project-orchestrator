@@ -1,4 +1,4 @@
-﻿"""Durable event-sourced KPI telemetry for portfolio flow.
+"""Durable event-sourced KPI telemetry for portfolio flow.
 
 The event ledger is append-only.  Flow reports and per-run snapshots are
 projections of recorded transitions, never reconstructions from prose or guessed
@@ -481,5 +481,3 @@ def build_run_snapshot(events: list[dict[str, Any]], *, run_id: str, generated_a
             "rolling_reports": build_rolling_reports(normalized, end=generated_at),
         }
     )
-
-\n

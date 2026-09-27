@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import re
@@ -312,5 +312,3 @@ def validate_workflow_directory(root: Path) -> list[str]:
         validated.append(filename)
 
     return validated
-
-\n

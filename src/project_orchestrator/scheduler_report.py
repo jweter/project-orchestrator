@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
@@ -365,10 +365,3 @@ def _bottom_line(
     if no_advancement:
         return "Portfolio advanced, but at least one eligible product did not advance through this orchestrator run; inspect its recorded reason and exact next gate."
     return "No complete eligible-project denominator was proven; do not claim full portfolio utilization."
-
-
-
-
-
-
-\n

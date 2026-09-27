@@ -1,4 +1,4 @@
-﻿# Durable KPI telemetry
+# Durable KPI telemetry
 
 ## Purpose
 
@@ -80,5 +80,3 @@ project-orchestrator-kpi finalize-run --run-id <run-id>
 ## Operating requirement
 
 Future scheduler/agent integrations should call the telemetry recorder at the same transition point where the ledger/comment/status change is made, then finalize one snapshot at the end of the run. This makes KPI collection part of the state machine instead of a later analytics reconstruction step.
-
-\n

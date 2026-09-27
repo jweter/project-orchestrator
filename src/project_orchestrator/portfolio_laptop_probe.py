@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from .execution_dispatch import execute_actor_selection
@@ -21,5 +21,3 @@ def enqueue_portfolio_probes(*,heads:dict[str,str],workspace_root:str,pending_di
    "prompt":"Perform a bounded exact-head repository checkout and identity probe. Do not modify product files."}
   results.append(execute_actor_selection(task,claude_state_dir=claude_state_dir,laptop_queue_dir=pending_dir))
  return results
-
-\n

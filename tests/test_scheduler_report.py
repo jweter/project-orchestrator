@@ -287,11 +287,3 @@ def test_cli_scheduler_report_passes_previous_no_advancement_reasons(tmp_path, m
     monkeypatch.setattr(cli, "build_report", lambda *_: {"learning_effectiveness_rate": None})
     with pytest.raises(ValueError, match="P1 orchestration defect"):
         cli.scheduler_run_report(path)
-
-
-
-
-
-
-
-\n

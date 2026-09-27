@@ -1,4 +1,4 @@
-﻿import json
+import json
 from project_orchestrator.autonomous_loop import run_autonomous_cycle
 SHA="a"*40
 def lane(repo,project,key):
@@ -21,7 +21,3 @@ def test_cycle_persists_liveness_telemetry(tmp_path):
  path=tmp_path/"telemetry.jsonl"
  out=run_autonomous_cycle(lanes={},claude_state_dir=tmp_path/"c",laptop_queue_dir=tmp_path/"q",telemetry_path=path)
  saved=json.loads(path.read_text().splitlines()[-1]); assert saved["liveness"]=="HEALTHY"; assert saved["dispatches"]==0
-
-
-
-\n

@@ -1,4 +1,4 @@
-﻿"""Current-user continuous engineering supervisor; no admin Task Scheduler required."""
+"""Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
 import argparse, atexit, hashlib, json, os, shutil, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
@@ -3366,9 +3366,3 @@ def main()->int:
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
         time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
-
-
-
-
-
-\n

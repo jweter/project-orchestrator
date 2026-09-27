@@ -1,4 +1,4 @@
-﻿# Autonomous Completion Path
+# Autonomous Completion Path
 
 ## Directive
 Continue this plan until the four products are complete. Zero open product PRs is a build trigger, never an idle condition. The portfolio is four independent products spanning six repositories: Knowledge Engine (Core/Web/AI), Rocksmith CDLC Generator, Project Everward, and VoiceStudio. Every safe unattended cycle must inspect all eligible product lanes and attempt substantive advancement without waiting for Jeremy for routine engineering, testing, repair, or verification.
@@ -63,5 +63,3 @@ Do not declare the portfolio complete because infrastructure is mature or PR que
 3. Exercise unattended advancement on real Knowledge Engine, Rocksmith, and Everward slices and measure outcomes.
 4. Close current product roadmap debt, not just control-plane debt.
 5. Continue the Engineering Gym only from idle capacity and compile proven capabilities back into production planning.
-
-\n

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Fail-closed machine certificate for Project Hands-Off Evolution."""
 from __future__ import annotations
 import argparse,json
@@ -45,6 +45,3 @@ def main()->int:
     return 0 if result["status"]=="PASS" else 1
 
 if __name__=="__main__": raise SystemExit(main())
-
-
-\n

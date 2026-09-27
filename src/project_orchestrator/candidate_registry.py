@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import json
@@ -168,5 +168,3 @@ def load_registry(path: str | Path) -> dict[str, Any]:
 def write_registry(path: str | Path, registry: dict[str, Any]) -> None:
     normalized = validate_registry(registry)
     Path(path).write_text(json.dumps(normalized, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-\n

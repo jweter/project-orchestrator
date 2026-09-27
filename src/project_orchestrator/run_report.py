@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
@@ -106,6 +106,3 @@ def build_run_report(
 def write_run_report(path: Path, report: dict[str, Any]) -> None:
     validated = validate_run_report(report)
     path.write_text(json.dumps(validated, indent=2, sort_keys=False) + "\n", encoding="utf-8")
-
-
-\n

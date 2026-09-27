@@ -335,12 +335,3 @@ def test_jev_v2_harvests_next_slice_and_repair_selection():
     assert "portfolio:allocation" in harvest
     assert plan["jev_decision_harvest_count"] == 3
     assert all(v["decision"]["execution_authority"] is False for v in harvest.values())
-
-
-
-
-
-
-
-
-\n

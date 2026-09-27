@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -28,6 +28,3 @@ if "merge_pull_requests" not in data.get("specialist_forbidden",[]):
     raise SystemExit("specialist lanes must explicitly forbid merges")
 
 print("SPECIALIST LANES: PASS")
-
-
-\n

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections import Counter
 import re
@@ -582,5 +582,3 @@ def evaluate_material_review_gate(
         "reason": "current-head review has no unresolved material finding",
         "blocking_finding_ids": [],
     }
-
-\n

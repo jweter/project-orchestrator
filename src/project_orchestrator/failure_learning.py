@@ -54,4 +54,3 @@ def verified_failure_lesson(
 def persist_verified_failure(memory: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     validate_memory(memory)
     return add_lesson(memory, verified_failure_lesson(**kwargs))
-\n

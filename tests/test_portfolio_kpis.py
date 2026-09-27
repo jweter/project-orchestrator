@@ -159,9 +159,3 @@ def test_scheduler_report_embeds_scorecard_and_extracts_current_run_rework_evide
     assert "portfolio_kpis" in report
     assert report["portfolio_kpis"]["rework_quality"]["first_pass_preflight_rate"]["value"] == 1.0
     assert report["portfolio_kpis"]["evidence_coverage"]["product_windows"] == 0
-
-
-
-
-
-\n

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any
 
@@ -206,5 +206,3 @@ def _make_missing_eligible_projects_visible(
             "evidence_refs": [],
         }
     return {**bottlenecks, "projects": [rows[key] for key in sorted(rows)]}
-
-\n

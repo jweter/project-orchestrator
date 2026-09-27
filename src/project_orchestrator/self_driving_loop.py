@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import json,time
 from pathlib import Path
 from typing import Any,Callable
@@ -60,5 +60,3 @@ def run_self_driving_loop(*,lane_provider:Callable[[],dict[str,dict[str,Any]]],r
    persist_readiness(state,state_dir/"self-driving-state.json")
   i+=1
   if max_iterations is None or i<max_iterations: sleep(interval_seconds)
-
-\n

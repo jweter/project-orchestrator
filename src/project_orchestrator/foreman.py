@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from collections import Counter
 from typing import Any
@@ -389,7 +389,3 @@ def build_foreman_plan(
             "Jev shadow observes independently eligible candidates but cannot alter Foreman selection or dispatch",
         ],
     }
-
-
-
-\n

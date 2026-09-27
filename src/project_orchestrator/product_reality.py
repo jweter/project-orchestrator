@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import json
@@ -127,5 +127,3 @@ def project_debt_summaries(entries: list[dict[str, Any]]) -> dict[str, list[str]
             for item in data["items"]
         ]
     return result
-
-\n

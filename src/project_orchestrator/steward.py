@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any
 
@@ -328,5 +328,3 @@ def govern_dispatch(
         "next_fairness_cursor": cursor,
         "health_deferral_is_product_blocker": False,
     }
-
-\n

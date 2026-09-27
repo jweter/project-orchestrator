@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import hashlib
 import json
@@ -141,5 +141,3 @@ def write_memory(path: str | Path, memory: dict[str, Any]) -> None:
         json.dumps(normalized, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-
-\n

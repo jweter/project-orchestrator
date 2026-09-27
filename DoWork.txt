@@ -1,4 +1,4 @@
-﻿PROJECT ORCHESTRATOR â€” AUTHORITATIVE OPERATING CONTRACT
+PROJECT ORCHESTRATOR â€” AUTHORITATIVE OPERATING CONTRACT
 
 SCOPE
 Manage four independent projects across six repositories:
@@ -153,8 +153,3 @@ Highest-value correct COMPOUNDING progress, not maximum commits. Keep every elig
 
 JEV SHADOW DECISION FABRIC
 When deterministic policy has already produced two or more explicit legal candidates for the same bounded decision, the scheduler may request Jev shadow advice through project_orchestrator.jev_shadow. Deterministic code always defines legality first. Jev is advisory only and has no execution, merge, promotion, Product Reality, security/privacy, licensing/provenance, destructive-action, or release authority. Zero legal candidates and singleton legal sets make no neural call. Out-of-set or malformed provider output fails closed. Ordinary runs must not create external spend: live calls require an explicit --live invocation plus JEV_SHADOW_LIVE=1 and TYPESAFE_API_KEY. Until comparable evidence earns promotion, Jev recommendations are recorded for shadow evaluation and MUST NOT override deterministic scheduling. Use the initial pilot for P5 candidate ordering, false-idle challenge, and retry/rotate judgment only after all applicable deterministic gates have already been resolved.
-
-
-
-
-\n

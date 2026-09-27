@@ -423,4 +423,3 @@ def compile_verified_capability(
         "source_head_sha": result["head_sha"],
         "measurement_summary": list(evolution_plan.get("measurement_summary", [])),
     }
-\n

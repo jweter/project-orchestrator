@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import json,time
 from pathlib import Path
 from typing import Any,Callable
@@ -26,6 +26,3 @@ def run_autonomous_cycle(*,lanes:dict[str,dict[str,Any]],claude_state_dir:Path,l
  with telemetry_path.open("a",encoding="utf-8") as f:
   f.write(json.dumps(snapshot,sort_keys=True)+chr(10))
  return snapshot
-
-
-\n

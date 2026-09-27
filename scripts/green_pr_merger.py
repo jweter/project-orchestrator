@@ -1,4 +1,4 @@
-﻿"""Conservative always-on green-PR merger for the portfolio."""
+"""Conservative always-on green-PR merger for the portfolio."""
 from __future__ import annotations
 import json, re, subprocess
 from dataclasses import dataclass
@@ -146,5 +146,3 @@ if __name__=="__main__":
     parser.add_argument("--dry-run",action="store_true")
     args=parser.parse_args()
     print(json.dumps(cycle(args.dry_run),indent=2))
-
-\n

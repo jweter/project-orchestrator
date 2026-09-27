@@ -559,4 +559,3 @@ def collect_portfolio_windows(
         if dispatch_window is not None:
             windows.append(dispatch_window)
     return windows
-\n
