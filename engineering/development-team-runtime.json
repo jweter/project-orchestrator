@@ -3,7 +3,12 @@
   "name": "DevelopmentTeamRuntime",
   "controller": "Foreman",
   "objective": "maximize verified product advancement per hour without weakening repository authority or verification gates",
-  "projects": ["knowledge-engine", "rocksmith", "everward"],
+  "projects": [
+    "knowledge-engine",
+    "rocksmith",
+    "everward",
+    "voicestudio"
+  ],
   "roles": {
     "team_director": "Foreman",
     "implementation_workers_per_product_initial_cap": 2,

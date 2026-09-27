@@ -1,6 +1,7 @@
 import json
 import threading
 import scripts.autonomous_slice_builder as builder
+import project_orchestrator.grant_lifecycle as lifecycle
 
 def test_concurrent_grant_mutations_preserve_both_records(tmp_path):
     lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
@@ -38,7 +39,7 @@ def test_concurrent_first_lock_initialization_is_atomic(tmp_path):
     def initialize():
         barrier.wait()
         try:
-            builder._ensure_lifecycle_lock_file(lock_path)
+            lifecycle.ensure_lifecycle_lock_file(lock_path)
         except Exception as exc:
             errors.append(exc)
     threads=[threading.Thread(target=initialize) for _ in range(8)]

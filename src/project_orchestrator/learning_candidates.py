@@ -10,9 +10,9 @@ from typing import Any
 from project_orchestrator.learning import validate_lesson
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_STORE = ROOT / "engineering" / "learning-candidates.json"
+DEFAULT_STORE = ROOT / "engineering" / "state" / "learning-candidates.json"
 
-ALLOWED_PROJECTS = {"portfolio", "knowledge-engine", "rocksmith", "everward"}
+ALLOWED_PROJECTS = {"portfolio", "knowledge-engine", "rocksmith", "everward", "voicestudio"}
 ALLOWED_VERIFICATION_AUTHORITIES = {
     "DETERMINISTIC_CI",
     "REPOSITORY_NATIVE_TESTS",

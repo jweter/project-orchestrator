@@ -1,7 +1,7 @@
 # Autonomous Completion Path
 
 ## Directive
-Continue this plan until the three products are complete. Zero open product PRs is a build trigger, never an idle condition. The portfolio is three independent products spanning five repositories: Knowledge Engine (Core/Web/AI), Rocksmith CDLC Generator, and Project Everward. Every safe unattended cycle must inspect all eligible product lanes and attempt substantive advancement without waiting for Jeremy for routine engineering, testing, repair, or verification.
+Continue this plan until the four products are complete. Zero open product PRs is a build trigger, never an idle condition. The portfolio is four independent products spanning six repositories: Knowledge Engine (Core/Web/AI), Rocksmith CDLC Generator, Project Everward, and VoiceStudio Singing. Every safe unattended cycle must inspect all eligible product lanes and attempt substantive advancement without waiting for Jeremy for routine engineering, testing, repair, or verification.
 
 This document is durable execution authority for Daedalus, the Laptop Actor, Claude specialist lanes, and future development agents. It does not grant merge, release, credential, paid-service, destructive-migration, security/privacy-boundary, or Product Reality authority beyond existing policy.
 

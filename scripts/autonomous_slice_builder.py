@@ -7,6 +7,15 @@ from typing import Any
 from project_orchestrator.execution_runtime import DEFAULT_EXECUTION_RUNTIMES, RuntimeRequest
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
 from project_orchestrator.independent_verdict import review_candidate, bind_preflight_evidence
+from project_orchestrator.grant_lifecycle import (
+    acquire_lifecycle_lock as _acquire_lifecycle_lock,
+    grant_state_root,
+    lifecycle_path_for_grant,
+    mutate_grant_lifecycle,
+    release_lifecycle_lock as _release_lifecycle_lock,
+)
+from project_orchestrator.state_io import atomic_json
+from project_orchestrator.builder_promotion import promote_candidate
 
 ACTIVE_RUNTIME_ID="native-windows"
 ACTIVE_RUNTIME_FENCE=None
@@ -296,82 +305,6 @@ def worker_incarnation()->dict[str,Any]:
             "process_start_fingerprint":process_start_fingerprint(),
             "lease_token":uuid.uuid4().hex}
 
-def grant_state_root(path:Path)->Path:
-    """Return the durable state root for legacy or unique per-grant files."""
-    if path.parent.name=="hands-off-execution-grants":
-        return path.parent.parent
-    return path.parent
-
-def lifecycle_path_for_grant(path:Path)->Path:
-    return grant_state_root(path)/"hands-off-grant-lifecycle.json"
-
-def _lifecycle_lock_path(lifecycle:Path)->Path:
-    return lifecycle.with_name(lifecycle.name+".lock")
-
-def _ensure_lifecycle_lock_file(lock_path:Path)->None:
-    """Create the one-byte lock target exactly once across threads/processes."""
-    while True:
-        try:
-            fd=os.open(lock_path,os.O_CREAT|os.O_EXCL|os.O_WRONLY)
-        except FileExistsError:
-            try:
-                if lock_path.stat().st_size>=1:
-                    return
-            except FileNotFoundError:
-                continue
-            time.sleep(0.01)
-            continue
-        try:
-            os.write(fd,b"0")
-        finally:
-            os.close(fd)
-        return
-
-def _acquire_lifecycle_lock(lifecycle:Path):
-    """Kernel-owned cross-process lock for lifecycle read-modify-write transactions."""
-    lock_path=_lifecycle_lock_path(lifecycle)
-    _ensure_lifecycle_lock_file(lock_path)
-    handle=lock_path.open("r+b",buffering=0)
-    handle.seek(0)
-    if os.name=="nt":
-        import msvcrt
-        while True:
-            try:
-                msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
-                break
-            except OSError:
-                time.sleep(0.01)
-    else:
-        import fcntl
-        fcntl.flock(handle.fileno(),fcntl.LOCK_EX)
-    return handle
-
-def _release_lifecycle_lock(handle)->None:
-    handle.seek(0)
-    if os.name=="nt":
-        import msvcrt
-        msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
-    else:
-        import fcntl
-        fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
-    handle.close()
-
-def mutate_grant_lifecycle(lifecycle:Path,grant_id:str,mutator)->bool:
-    """Serialize one grant-record mutation without losing concurrent grant updates."""
-    handle=_acquire_lifecycle_lock(lifecycle)
-    try:
-        try:
-            state=json.loads(lifecycle.read_text(encoding="utf-8"))
-            record=state["grants"][grant_id]
-        except (OSError,json.JSONDecodeError,KeyError,TypeError):
-            return False
-        if not mutator(record):
-            return False
-        atomic_json(lifecycle,state)
-        return True
-    finally:
-        _release_lifecycle_lock(handle)
-
 def heartbeat_grant(grant_path:Path,stop:threading.Event,interval:int=HEARTBEAT_SECONDS,worker:dict[str,Any]|None=None)->None:
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
@@ -633,7 +566,15 @@ def prompt_for(repo:str,state_path:Path|None=None)->str:
     owned=open_pr_paths(repo)
     avoid=sorted({p for lease in owned for p in lease.paths})
     avoid_text=", ".join(avoid[:80]) if avoid else "none"
+    voice_authority=(
+        "VoiceStudio active product authority: docs/projects/singing-mode.md. "
+        "Advance the first unchecked S0-S8 milestone, starting with S0. "
+        "The MVP is singing voice conversion with explicit pitch/timing preservation; "
+        "the superseded OmniVoice singing ADR is not the active melody-preserving design.\n"
+        if repo=="jweter/VoiceStudio" else ""
+    )
     return f"""You are the autonomous laptop builder for {repo}.
+{voice_authority}
 {WORKER_PROMPT_VOICE}
 Read the repository's AGENTS.md, README, roadmap/milestone, architecture, and engineering/control-plane files before editing.
 Choose exactly ONE small, high-value, authorized P4/P5 slice that is independent of Product Reality and does not require a human decision.
@@ -668,7 +609,9 @@ def _acquire_ollama_lock()->Path:
         except FileExistsError:
             try:
                 owner_pid=int((lock/"owner").read_text(encoding="utf-8").splitlines()[0])
-                os.kill(owner_pid,0)
+                if process_start_fingerprint(owner_pid) is None:
+                    shutil.rmtree(lock,ignore_errors=True)
+                    continue
             except (FileNotFoundError,ValueError,IndexError):
                 # mkdir() publishes the lease before its owner metadata can be written.
                 # A contender must not steal a freshly-created lease while that tiny
@@ -681,11 +624,6 @@ def _acquire_ollama_lock()->Path:
                 if stale:
                     shutil.rmtree(lock,ignore_errors=True)
                     continue
-            except ProcessLookupError:
-                shutil.rmtree(lock,ignore_errors=True)
-                continue
-            except PermissionError:
-                pass
             if time.monotonic()>=deadline:
                 raise TimeoutError("timed out waiting for exclusive local Ollama builder slot")
             time.sleep(1)
@@ -873,28 +811,32 @@ def run_exact_head_preflight(ws:Path,expected_head:str)->tuple[subprocess.Comple
     after=run(["git","rev-parse","HEAD"],ws).stdout.strip()
     return result,after,after==expected_head
 
-def atomic_json(path:Path,payload:dict[str,Any])->None:
-    """Persist JSON without sharing one predictable temp path across workers.
+def refresh_base_before_publish(ws:Path,main_branch:str,expected_base:str)->dict[str,str]:
+    """Refresh and reconcile the unpublished candidate with the live default branch.
 
-    Windows can transiently deny rename-over-open-file. Use a per-writer temp
-    file, bounded retry, then copy-overwrite as a compatibility fallback. The
-    lifecycle lock still serializes lifecycle read-modify-write transactions.
+    The autonomous worker must never open a PR from a base known to be stale. A
+    successful rebase invalidates prior exact-head verification, so callers must
+    rerun canonical preflight and independent review before publishing.
     """
-    path.parent.mkdir(parents=True,exist_ok=True)
-    tmp=path.with_name(f"{path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
-    try:
-        tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
-        for attempt in range(5):
-            try:
-                tmp.replace(path)
-                return
-            except PermissionError:
-                if attempt == 4:
-                    shutil.copyfile(tmp,path)
-                    return
-                time.sleep(0.1 * (attempt + 1))
-    finally:
-        tmp.unlink(missing_ok=True)
+    fetched=run(["git","fetch","origin",main_branch],ws)
+    if fetched.returncode:
+        head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+        return {"status":"FETCH_FAILED","base_sha":expected_base,"head_sha":head}
+    latest_result=run(["git","rev-parse",f"origin/{main_branch}"],ws)
+    latest_base=latest_result.stdout.strip() if latest_result.returncode==0 else ""
+    head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    if not latest_base:
+        return {"status":"FETCH_FAILED","base_sha":expected_base,"head_sha":head}
+    if latest_base==expected_base:
+        return {"status":"UNCHANGED","base_sha":expected_base,"head_sha":head}
+    rebased=run(["git","rebase",latest_base],ws)
+    if rebased.returncode:
+        run(["git","rebase","--abort"],ws)
+        return {"status":"CONFLICT","base_sha":latest_base,"head_sha":head}
+    new_head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+    return {"status":"REBASED","base_sha":latest_base,"head_sha":new_head}
+
+
 def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
                execution_grant:Path|None=None,worker_id:str|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
@@ -1022,65 +964,30 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         result={"status":"COMMIT_FAILED","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
-    preflight,verified_head,head_stable=run_exact_head_preflight(ws,head)
-    if preflight.returncode!=0 or not head_stable:
-        reset_workspace(ws,base)
-        detail=(preflight.stderr or preflight.stdout or
-                (f"HEAD_CHANGED_DURING_PREFLIGHT:{head}:{verified_head}" if verified_head!=head
-                 else f"returncode={preflight.returncode}"))
-        lesson=retain_failure_lesson(state_path,"preflight",detail,"PREFLIGHT_FAILED")
-        result={"status":"PREFLIGHT_FAILED","repository":repo,"returncode":preflight.returncode,
-                "verified_head_sha":verified_head,"expected_head_sha":head,
-                "failure_fingerprint":lesson["fingerprint"],"last_repo_index":idx,"last_repository":repo}
-        atomic_json(state_path,result); return result
-    if execution_grant is not None:
-        try:
-            grant_id=json.loads(execution_grant.read_text(encoding="utf-8"))["grant_id"]
-            evidence_binding=bind_preflight_evidence(ws,base,head,grant_id)
-        except (OSError,json.JSONDecodeError,KeyError,TypeError,RuntimeError) as exc:
-            reset_workspace(ws,base)
-            result={"status":"PREFLIGHT_EVIDENCE_REJECTED","repository":repo,
-                    "review_reason":str(exc),"head_sha":head,
-                    "last_repo_index":idx,"last_repository":repo}
-            atomic_json(state_path,result); return result
-        verdict=review_candidate(ws,base,head,slice_authority,paths,preflight.returncode,
-                                 evidence_binding=evidence_binding,grant_id=grant_id)
-        if verdict.status!="APPROVE":
-            reset_workspace(ws,base)
-            result={"status":"INDEPENDENT_REVIEW_REJECTED","repository":repo,
-                    "review_reason":verdict.reason,"head_sha":head,
-                    "last_repo_index":idx,"last_repository":repo}
-            atomic_json(state_path,result); return result
-        advance_grant_stage(execution_grant,"INDEPENDENT_REVIEW_APPROVED",repository=repo,
-                            base_sha=base,branch=branch,head_sha=head,reviewer="deterministic-verdict-v2",
-                            preflight_evidence_binding=evidence_binding)
-        advance_grant_stage(execution_grant,"COMMITTED",repository=repo,base_sha=base,branch=branch,head_sha=head)
-    push=run(["git","push","-u","origin",branch],ws)
-    if push.returncode:
-        result={"status":"PUSH_FAILED","repository":repo,"head":head,"last_repo_index":idx,"last_repository":repo}
-        atomic_json(state_path,result); return result
-    if execution_grant is not None:
-        advance_grant_stage(execution_grant,"PUSHED",repository=repo,base_sha=base,branch=branch,head_sha=head,remote_head_sha=head)
-    linear_id=os.environ.get("EXPONENTIAL_LINEAR_ID","").strip()
-    linear_ref=f" Linear: {linear_id}." if linear_id else ""
-    body=("Autonomous laptop-actor bounded slice. Local Ollama/Aider produced the change; "
-          "canonical exact-head preflight passed. Merge authority remains external and fail-closed."
-          +linear_ref)
-    created=run(["gh","pr","create","--repo",repo,"--base",main,"--head",branch,
-                 "--title","AUTO: bounded autonomous engineering slice","--body",body],ws)
-    status="PR_OPEN" if created.returncode==0 else "PR_CREATE_FAILED"
-    pr_url=created.stdout.strip()
-    pr_number=pr_number_from_url(pr_url) if created.returncode==0 else None
-    if created.returncode==0 and pr_number is None:
-        status="PR_IDENTITY_UNPROVEN"
-    if execution_grant is not None and status=="PR_OPEN":
-        advance_grant_stage(execution_grant,"PR_OPEN",repository=repo,base_sha=base,branch=branch,head_sha=head,remote_head_sha=head,
-                            pr_url=pr_url,pr_number=pr_number)
-    result={"status":status,"repository":repo,"branch":branch,"base_sha":base,
-            "head_sha":head,"changed_paths":paths,"pr_url":pr_url,"pr_number":pr_number,
-            "last_repo_index":idx,"last_repository":repo}
-    atomic_json(state_path,result)
-    return result
+    return promote_candidate(
+        ws=ws,
+        state_path=state_path,
+        repo=repo,
+        idx=idx,
+        main_branch=main,
+        branch=branch,
+        base=base,
+        head=head,
+        paths=paths,
+        slice_authority=slice_authority,
+        execution_grant=execution_grant,
+        run_exact_head_preflight_fn=run_exact_head_preflight,
+        reset_workspace_fn=reset_workspace,
+        retain_failure_lesson_fn=retain_failure_lesson,
+        bind_preflight_evidence_fn=bind_preflight_evidence,
+        review_candidate_fn=review_candidate,
+        advance_grant_stage_fn=advance_grant_stage,
+        refresh_base_before_publish_fn=refresh_base_before_publish,
+        changed_paths_fn=changed_paths,
+        generated_change_failure_fn=generated_change_failure,
+        run_fn=run,
+        pr_number_from_url_fn=pr_number_from_url,
+    )
 
 def pr_number_from_url(value:str)->int|None:
     """Extract durable PR identity from the canonical gh create output."""

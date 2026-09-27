@@ -1,7 +1,12 @@
 {
   "schema_version": 1,
   "artifact": "scheduler-run-report",
-  "canonical_projects": ["knowledge-engine", "rocksmith", "everward"],
+  "canonical_projects": [
+    "knowledge-engine",
+    "rocksmith",
+    "everward",
+    "voicestudio"
+  ],
   "required_project_fields": [
     "promotion_state",
     "implementation_verification",

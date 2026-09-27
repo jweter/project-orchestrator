@@ -11,7 +11,7 @@ The first question is current-run execution. The second requires historical evid
 
 The scorecard does **not** create a second metrics database. It projects existing authoritative evidence from:
 
-- `engineering/compounding-timeseries.json` through `project_orchestrator.timeseries`;
+- `engineering/state/compounding-timeseries.json` through `project_orchestrator.timeseries`;
 - explicit current-run rework evidence through `project_orchestrator.throughput_guard.compute_rework_kpis`;
 - measured bottleneck ranking through `project_orchestrator.throughput_optimizer`.
 
@@ -23,7 +23,7 @@ The scorecard does **not** create a second metrics database. It projects existin
 
 The existing scheduler KPIs remain the first layer:
 
-- independent projects inspected: target `3/3`;
+- independent projects inspected: target `4/4`;
 - product repositories inspected: target `5/5`;
 - eligible projects;
 - projects materially advanced by the current orchestrator run;
@@ -48,7 +48,7 @@ These KPIs are computed only from explicit records supplied to the run. Missing 
 
 ### 3. Delivery progress
 
-Historical progress comes from the canonical compounding time-series store. The report shows the same curated metrics at three scopes: portfolio, independent product project, and each product repository. Product-portfolio aggregation includes only the three independent product projects / five product repositories and excludes orchestrator-only windows.
+Historical progress comes from the canonical compounding time-series store. The report shows the same curated metrics at three scopes: portfolio, independent product project, and each product repository. Product-portfolio aggregation includes only the four independent product projects / six product repositories and excludes orchestrator-only windows.
 
 | Metric | Direction / target |
 | --- | --- |

@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,8 @@ EVIDENCE = ROOT / "preflight-evidence.json"
 SRC = ROOT / "src"
 PREFLIGHT_ENV = os.environ.copy()
 PREFLIGHT_ENV["PYTHONPATH"] = str(SRC) + os.pathsep + PREFLIGHT_ENV.get("PYTHONPATH", "")
+DEFAULT_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_CHECK_TIMEOUT_SECONDS", "180"))
+TEST_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_TEST_TIMEOUT_SECONDS", "900"))
 
 
 def git_head(root: Path) -> str:
@@ -26,15 +29,19 @@ def git_head(root: Path) -> str:
 
 checks = [
     ("control_plane", [sys.executable, "engineering/validate_control_plane.py"]),
+    ("control_surface", [sys.executable, "engineering/validate_control_surface.py"]),
+    ("supervisor_architecture", [sys.executable, "engineering/validate_supervisor_architecture.py"]),
+    ("builder_architecture", [sys.executable, "engineering/validate_builder_architecture.py"]),
+    ("authority_tree", [sys.executable, "engineering/validate_authority_tree.py"]),
     ("portfolio_inventory", [sys.executable, "engineering/validate_portfolio.py"]),
     ("autonomy_loop", [sys.executable, "-m", "project_orchestrator.loop_audit", "engineering/autonomy-loop-contract.json"]),
     ("harness_context_audit", [sys.executable, "-m", "project_orchestrator.harness_audit", "--policy", "engineering/harness-audit.json"]),
     ("harness_security", [sys.executable, "-m", "project_orchestrator.harness_security", "--policy", "engineering/harness-security.json"]),
     ("agent_eval_suite", [sys.executable, "-m", "project_orchestrator.agent_eval", "validate-suite", "engineering/agent-eval-suite.json"]),
-    ("agent_eval_runner_config", [sys.executable, "-m", "project_orchestrator.agent_eval_runner", "validate-config", "engineering/agent-eval-runner.example.json"]),
+    ("agent_eval_runner_config", [sys.executable, "-m", "project_orchestrator.agent_eval_runner", "validate-config", "engineering/examples/agent-eval-runner.example.json"]),
     ("specialist_lanes", [sys.executable, "engineering/validate_specialist_lanes.py"]),
     ("work_decomposition", [sys.executable, "engineering/validate_work_decomposition.py"]),
-    ("regression_prevention", [sys.executable, "-m", "project_orchestrator.cli", "regression-prevention", "--events", "engineering/regression-prevention-smoke-events.json", "--policies", "engineering/regression-prevention-smoke-policies.json"]),
+    ("regression_prevention", [sys.executable, "-m", "project_orchestrator.cli", "regression-prevention", "--events", "engineering/fixtures/regression-prevention-smoke-events.json", "--policies", "engineering/fixtures/regression-prevention-smoke-policies.json"]),
     ("throughput_optimizer", [sys.executable, "-m", "project_orchestrator.cli", "throughput-optimize"]),
     ("learning_memory", [sys.executable, "engineering/validate_learning_memory.py"]),
     ("learning_candidates", [sys.executable, "-m", "project_orchestrator.learning_candidates", "validate"]),
@@ -49,35 +56,185 @@ checks = [
     ("reinvestment_plan_smoke", [sys.executable, "-m", "project_orchestrator.cli", "reinvestment-plan"]),
 ]
 
-results = []
-ok = True
-for name, argv in checks:
-    completed = subprocess.run(argv, cwd=ROOT, text=True, capture_output=True, env=PREFLIGHT_ENV)
-    results.append({
+def write_evidence(
+    *,
+    status: str,
+    results: list[dict],
+    active_check: str | None,
+    started_at: str,
+    head_sha: str | None = None,
+) -> None:
+    EVIDENCE.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "repository": "jweter/project-orchestrator",
+                "head_sha": head_sha or git_head(ROOT),
+                "mode": "FULL",
+                "started_at": started_at,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "status": status,
+                "active_check": active_check,
+                "results": results,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def timeout_for_check(name: str) -> int:
+    return TEST_CHECK_TIMEOUT_SECONDS if name == "tests" else DEFAULT_CHECK_TIMEOUT_SECONDS
+
+
+def exact_head_fence_result(expected_head: str, observed_head: str) -> dict:
+    return {
+        "name": "exact_head_fence",
+        "argv": [],
+        "returncode": 125,
+        "stdout": "",
+        "stderr": (
+            f"PREFLIGHT_HEAD_MOVED:expected={expected_head}:observed={observed_head}"
+        ),
+        "timed_out": False,
+        "interrupted": False,
+        "timeout_seconds": 0,
+        "duration_seconds": 0.0,
+        "expected_head_sha": expected_head,
+        "observed_head_sha": observed_head,
+    }
+
+
+def run_check(name: str, argv: list[str]) -> dict:
+    timeout_seconds = timeout_for_check(name)
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            env=PREFLIGHT_ENV,
+            timeout=timeout_seconds,
+        )
+        returncode = completed.returncode
+        stdout = completed.stdout[-4000:]
+        stderr = completed.stderr[-4000:]
+        timed_out = False
+        interrupted = False
+    except KeyboardInterrupt:
+        returncode = 130
+        stdout = ""
+        stderr = f"PREFLIGHT_CHECK_INTERRUPTED:{name}"
+        timed_out = False
+        interrupted = True
+    except subprocess.TimeoutExpired as exc:
+        returncode = 124
+        stdout = (exc.stdout or "")
+        stderr = (exc.stderr or "")
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode(errors="replace")
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode(errors="replace")
+        stdout = stdout[-4000:]
+        stderr = (
+            stderr[-3500:]
+            + f"\nPREFLIGHT_CHECK_TIMEOUT:{name}:{timeout_seconds}s"
+        )
+        timed_out = True
+        interrupted = False
+    return {
         "name": name,
         "argv": argv,
-        "returncode": completed.returncode,
-        "stdout": completed.stdout[-4000:],
-        "stderr": completed.stderr[-4000:],
-    })
-    if completed.returncode != 0:
-        ok = False
-        break
+        "returncode": returncode,
+        "stdout": stdout,
+        "stderr": stderr,
+        "timed_out": timed_out,
+        "interrupted": interrupted,
+        "timeout_seconds": timeout_seconds,
+        "duration_seconds": round(time.monotonic() - started, 3),
+    }
 
-EVIDENCE.write_text(json.dumps({
-    "schema_version": 2,
-    "repository": "jweter/project-orchestrator",
-    "head_sha": git_head(ROOT),
-    "mode": "FULL",
-    "generated_at": datetime.now(timezone.utc).isoformat(),
-    "status": "GREEN" if ok else "FAILED",
-    "results": results,
-}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-for result in results:
-    print(f"{result['name']}: {'PASS' if result['returncode'] == 0 else 'FAIL'}")
-    if result["returncode"]:
-        print(result["stdout"])
-        print(result["stderr"], file=sys.stderr)
+def main() -> int:
+    results: list[dict] = []
+    started_at = datetime.now(timezone.utc).isoformat()
+    expected_head = git_head(ROOT)
+    if not expected_head or expected_head == "UNKNOWN":
+        results.append(exact_head_fence_result("KNOWN_HEAD_REQUIRED", expected_head))
+        write_evidence(
+            status="FAILED",
+            results=results,
+            active_check=None,
+            started_at=started_at,
+            head_sha=expected_head,
+        )
+        return 1
 
-raise SystemExit(0 if ok else 1)
+    write_evidence(
+        status="RUNNING",
+        results=results,
+        active_check=None,
+        started_at=started_at,
+        head_sha=expected_head,
+    )
+
+    ok = True
+    for name, argv in checks:
+        observed_before = git_head(ROOT)
+        if observed_before != expected_head:
+            results.append(exact_head_fence_result(expected_head, observed_before))
+            ok = False
+            break
+
+        write_evidence(
+            status="RUNNING",
+            results=results,
+            active_check=name,
+            started_at=started_at,
+            head_sha=expected_head,
+        )
+        result = run_check(name, argv)
+        results.append(result)
+
+        observed_after = git_head(ROOT)
+        if observed_after != expected_head:
+            results.append(exact_head_fence_result(expected_head, observed_after))
+            ok = False
+            break
+
+        if result["returncode"] != 0:
+            ok = False
+            break
+
+    interrupted = any(result.get("interrupted") for result in results)
+    final_status = "INTERRUPTED" if interrupted else ("GREEN" if ok else "FAILED")
+    write_evidence(
+        status=final_status,
+        results=results,
+        active_check=None,
+        started_at=started_at,
+        head_sha=expected_head,
+    )
+
+    for result in results:
+        outcome = "PASS" if result["returncode"] == 0 else (
+            "INTERRUPTED" if result.get("interrupted") else (
+                "TIMEOUT" if result["timed_out"] else "FAIL"
+            )
+        )
+        print(
+            f"{result['name']}: {outcome} "
+            f"({result['duration_seconds']:.3f}s)"
+        )
+        if result["returncode"]:
+            print(result["stdout"])
+            print(result["stderr"], file=sys.stderr)
+
+    return 130 if interrupted else (0 if ok else 1)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

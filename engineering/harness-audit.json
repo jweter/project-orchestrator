@@ -64,11 +64,12 @@
         "AGENTS.md",
         "DoWork.txt",
         "engineering/control-plane.json",
+        "docs/EXECUTION_AUTHORITY.md",
         "engineering/portfolio.json",
         "engineering/throughput-guard.json",
         "engineering/autonomy-loop-contract.json"
       ],
-      "authoritative_paths": ["DoWork.txt", "engineering/control-plane.json"],
+      "authoritative_paths": ["DoWork.txt", "engineering/control-plane.json", "docs/EXECUTION_AUTHORITY.md"],
       "advisory_paths": ["AGENTS.md"]
     },
     {

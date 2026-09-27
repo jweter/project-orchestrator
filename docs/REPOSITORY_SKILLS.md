@@ -16,7 +16,7 @@ The selector/validator is:
 
 A repository skill is valid only when all of the following hold:
 
-- every `source_lesson_id` already exists in `engineering/learning-memory.json` as `VERIFIED`;
+- every `source_lesson_id` already exists in `engineering/state/learning-memory.json` as `VERIFIED`;
 - the source lesson belongs to the exact same repository and project as the skill;
 - each `history_ref` is an exact 40-character commit SHA (optionally prefixed `commit:`);
 - repository scope is explicit;
@@ -66,19 +66,19 @@ The next real application is the open `knowledge-engine-ai#129` citation-integri
 Validate the catalog:
 
 ```bash
-project-orchestrator-skill-extract validate
+project-orchestrator skill validate
 ```
 
 Report catalog state:
 
 ```bash
-project-orchestrator-skill-extract report
+project-orchestrator skill report
 ```
 
 Select relevant advisory skills before an edit:
 
 ```bash
-project-orchestrator-skill-extract select \
+project-orchestrator skill select \
   --repository jweter/knowledge-engine-ai \
   --path knowledge_engine_ai/copilot/research_report.py \
   --task-summary "strengthen Research Report citation integrity"

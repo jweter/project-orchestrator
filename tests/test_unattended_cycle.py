@@ -7,6 +7,7 @@ def inventory():
             {"id": "knowledge-engine", "repositories": [{"name": "jweter/knowledge-engine-core"}]},
             {"id": "rocksmith", "repositories": [{"name": "jweter/rocksmith-cdlc-generator"}]},
             {"id": "everward", "repositories": [{"name": "jweter/Project-Everward"}]},
+            {"id": "voicestudio", "repositories": [{"name": "jweter/VoiceStudio"}]},
         ]
     }
 
@@ -17,6 +18,7 @@ def snapshot():
             {"repository": "jweter/knowledge-engine-core", "default_head": "ke", "active_work": []},
             {"repository": "jweter/rocksmith-cdlc-generator", "default_head": "rs", "active_work": []},
             {"repository": "jweter/Project-Everward", "default_head": "ev", "active_work": []},
+            {"repository": "jweter/VoiceStudio", "default_head": "vs", "active_work": []},
         ]
     }
 

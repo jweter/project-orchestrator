@@ -87,7 +87,7 @@ This includes test failures, security, dependencies, typing, governance, provena
 
 ## Safe repair execution
 
-`project-orchestrator-evolve worker-handoff --execute-safe-repair` may execute only an already-approved deterministic repair plan against an explicit local repo root.
+`project-orchestrator evolve worker-handoff --execute-safe-repair` may execute only an already-approved deterministic repair plan against an explicit local repo root.
 
 After commands run, the result is **not PASS**. The next state is `VERIFY_REPAIR`.
 
@@ -128,7 +128,7 @@ Reserved boundaries remain those in the portfolio governance: fundamental produc
 After an independently verified repair, use:
 
 ```text
-project-orchestrator-evolve record-verified-lesson --input <lesson.json>
+project-orchestrator evolve record-verified-lesson --input <lesson.json>
 ```
 
 The lesson must include:
@@ -174,13 +174,13 @@ Earlier learning can also be marked `PREVENTED`, `SHORTENED`, `NO_CHANGE`, or `U
 Build a worker handoff:
 
 ```text
-project-orchestrator-evolve worker-handoff --input worker.json
+project-orchestrator evolve worker-handoff --input worker.json
 ```
 
 Execute only an already-approved deterministic safe repair:
 
 ```text
-project-orchestrator-evolve worker-handoff \
+project-orchestrator evolve worker-handoff \
   --input worker.json \
   --execute-safe-repair \
   --repo-root <local-checkout>
@@ -189,7 +189,7 @@ project-orchestrator-evolve worker-handoff \
 Record a verified lesson into JSON output:
 
 ```text
-project-orchestrator-evolve record-verified-lesson --input lesson.json
+project-orchestrator evolve record-verified-lesson --input lesson.json
 ```
 
 ## DoWork integration

@@ -8,6 +8,7 @@ PORTFOLIO=(
  ("knowledge-engine-ai","jweter/knowledge-engine-ai"),
  ("rocksmith","jweter/rocksmith-cdlc-generator"),
  ("everward","jweter/Project-Everward"),
+ ("voicestudio","jweter/VoiceStudio"),
 )
 def enqueue_portfolio_probes(*,heads:dict[str,str],workspace_root:str,pending_dir:Path,claude_state_dir:Path)->list[dict[str,Any]]:
  results=[]

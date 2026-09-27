@@ -24,8 +24,8 @@ def _print(value) -> None:
     print(json.dumps(value, indent=2, sort_keys=True))
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-scientist")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="project-orchestrator scientist")
     sub = parser.add_subparsers(dest="command", required=True)
 
     for command in (
@@ -43,7 +43,7 @@ def main() -> int:
         child = sub.add_parser(command)
         child.add_argument("input", type=Path)
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     payload = _load(args.input)
 
     if args.command == "experiment-record":

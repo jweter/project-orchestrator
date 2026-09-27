@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-PROJECTS = ("knowledge-engine", "rocksmith", "everward")
+PROJECTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 REQUEUE_EVENTS = {
     "worker_completion",
     "verification_completion",

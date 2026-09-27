@@ -32,9 +32,9 @@ LVN dispatch is not a boolean. The selector reasons across multiple dimensions:
 
 ## Request envelope
 
-`project-orchestrator-scientist lvn-select INPUT.json` produces deterministic queue decisions.
+`project-orchestrator scientist lvn-select INPUT.json` produces deterministic queue decisions.
 
-`project-orchestrator-scientist lvn-request INPUT.json` converts one selected item into a deterministic read-only request containing:
+`project-orchestrator scientist lvn-request INPUT.json` converts one selected item into a deterministic read-only request containing:
 
 - request id;
 - repository / PR / branch / exact SHA;

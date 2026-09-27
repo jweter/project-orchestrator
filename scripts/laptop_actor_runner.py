@@ -6,11 +6,12 @@ import os
 import shlex
 import shutil
 import subprocess
-import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from project_orchestrator.failure_envelope import build_failure_envelope
 
 ALLOWED_REPOSITORIES = {
     "jweter/knowledge-engine-core",
@@ -18,6 +19,7 @@ ALLOWED_REPOSITORIES = {
     "jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator",
     "jweter/Project-Everward",
+    "jweter/VoiceStudio",
 }
 KNOWLEDGE_ENGINE_CORE = "jweter/knowledge-engine-core"
 KNOWLEDGE_ENGINE_ADAPTER = "knowledge_engine_core"
@@ -152,7 +154,17 @@ def _run_generic_verification(
             capture_output=True,
             check=False,
         )
-        verification.append({"command": command, "returncode": proc.returncode})
+        record: dict[str, Any] = {"command": command, "returncode": proc.returncode}
+        if proc.returncode != 0:
+            record["failure_envelope"] = build_failure_envelope(
+                repository=job["repository"],
+                exact_head_sha=str(job.get("base_sha", "")),
+                stage=f"verification:{len(verification) + 1}",
+                log_text=(proc.stdout or "") + "\n" + (proc.stderr or ""),
+                failure_class="TEST_FAILURE",
+                environment_identity="azathoth-laptop-actor",
+            )
+        verification.append(record)
         passed = passed and proc.returncode == 0
     return ("PASS" if passed else "FAIL"), verification, (None if passed else "TEST_FAILURE")
 
@@ -328,21 +340,62 @@ def execute(job_path: Path, workspace_root: Path, outbox: Path) -> None:
         result["failure_class"] = failure_class
         result["exact_head_sha"] = head.stdout.strip()
         result["changed_paths"] = _changed_paths(workspace, base_sha)
+        if failure_class:
+            envelope = next(
+                (
+                    item.get("failure_envelope")
+                    for item in verification
+                    if isinstance(item, dict) and item.get("failure_envelope")
+                ),
+                None,
+            )
+            result["failure_envelope"] = envelope or build_failure_envelope(
+                repository=job["repository"],
+                exact_head_sha=result["exact_head_sha"],
+                stage="native_worker" if adapter else "verification",
+                log_text=str(failure_class),
+                failure_class=str(failure_class),
+                environment_identity="azathoth-laptop-actor",
+            )
     except subprocess.TimeoutExpired:
         result["status"] = "ENVIRONMENT_FAILURE"
         result["exact_head_sha"] = str(job.get("base_sha", ""))
         result["failure_class"] = "WORKER_TIMEOUT"
         result["verification"] = [{"runner_error_code": "WORKER_TIMEOUT"}]
+        result["failure_envelope"] = build_failure_envelope(
+            repository=job["repository"],
+            exact_head_sha=result["exact_head_sha"],
+            stage="worker_execution",
+            log_text="WORKER_TIMEOUT",
+            failure_class="WORKER_TIMEOUT",
+            environment_identity="azathoth-laptop-actor",
+        )
     except ActorEnvironmentError as exc:
         result["status"] = "ENVIRONMENT_FAILURE"
         result["exact_head_sha"] = str(job.get("base_sha", ""))
         result["failure_class"] = exc.code
         result["verification"] = [{"runner_error_code": exc.code}]
+        result["failure_envelope"] = build_failure_envelope(
+            repository=job["repository"],
+            exact_head_sha=result["exact_head_sha"],
+            stage="worker_environment",
+            log_text=exc.code,
+            failure_class=exc.code,
+            environment_identity="azathoth-laptop-actor",
+        )
     except Exception:
         result["status"] = "ENVIRONMENT_FAILURE"
         result["exact_head_sha"] = str(job.get("base_sha", ""))
         result["failure_class"] = "UNEXPECTED_RUNNER_FAILURE"
         result["verification"] = [{"runner_error_code": "UNEXPECTED_RUNNER_FAILURE"}]
+        result["failure_envelope"] = build_failure_envelope(
+            repository=job["repository"],
+            exact_head_sha=result["exact_head_sha"],
+            stage="worker_execution",
+            log_text="UNEXPECTED_RUNNER_FAILURE",
+            failure_class="UNEXPECTED_RUNNER_FAILURE",
+            environment_identity="azathoth-laptop-actor",
+        )
     finally:
         atomic_json(outbox / f"{job['job_id']}.result.json", result)
         done = Path(str(claimed_path).removesuffix(".running") + ".done")

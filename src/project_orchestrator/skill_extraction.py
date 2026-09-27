@@ -11,7 +11,7 @@ from typing import Any
 from .learning import _contains_secret, load_memory, validate_memory
 
 SCHEMA_VERSION = 1
-DEFAULT_MEMORY = Path("engineering/learning-memory.json")
+DEFAULT_MEMORY = Path("engineering/state/learning-memory.json")
 DEFAULT_CATALOG = Path("engineering/repository-skills.json")
 ALLOWED_STATUSES = frozenset({"PILOT_READY", "ACTIVE_ADVISORY"})
 AUTHORITY = "ADVISORY_ONLY"
@@ -222,7 +222,7 @@ def build_report(catalog: dict[str, Any], memory: dict[str, Any]) -> dict[str, A
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-skill-extract")
+    parser = argparse.ArgumentParser(prog="project-orchestrator skill")
     parser.add_argument("--memory", type=Path, default=DEFAULT_MEMORY)
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
     sub = parser.add_subparsers(dest="command", required=True)

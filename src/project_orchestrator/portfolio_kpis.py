@@ -7,7 +7,7 @@ from .throughput_guard import compute_rework_kpis
 from .throughput_optimizer import MIN_WINDOWS_PER_PROJECT, optimize_throughput
 from .timeseries import build_reinvestment_snapshot
 
-PROJECT_KEYS = ("knowledge-engine", "rocksmith", "everward")
+PROJECT_KEYS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 
 DELIVERY_METRICS: dict[str, dict[str, Any]] = {
     "pr_creation_to_green_seconds": {"unit": "seconds", "target": "trend_down"},

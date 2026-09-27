@@ -8,8 +8,8 @@ def valid(root):
     write(root,"continuation-current-burst.json",{"burst_id":"b","pass_count":3})
     write(root,"continuation-history.json",{"pass_count":3})
     write(root,"autonomous-burst-proof.json",{"burst_id":"b","multi_repository_proven":True})
-    write(root,"portfolio-product-advancement-proof.json",{"burst_id":"b","all_three_products_proven":True,
-        "advanced_products":["everward","knowledge-engine","rocksmith"]})
+    write(root,"portfolio-product-advancement-proof.json",{"burst_id":"b","all_products_proven":True,
+        "advanced_products":["everward","knowledge-engine","rocksmith","voicestudio"]})
     write(root,"supervisor.json",{"burst_id":"b","process_instance_id":"p"})
 
 def test_complete_live_evidence_passes(tmp_path):
@@ -18,8 +18,8 @@ def test_complete_live_evidence_passes(tmp_path):
 
 def test_missing_product_fails_closed(tmp_path):
     valid(tmp_path)
-    write(tmp_path,"portfolio-product-advancement-proof.json",{"burst_id":"b","all_three_products_proven":False,
-        "advanced_products":["knowledge-engine","rocksmith"]})
+    write(tmp_path,"portfolio-product-advancement-proof.json",{"burst_id":"b","all_products_proven":False,
+        "advanced_products":["everward","knowledge-engine","rocksmith"]})
     assert evaluate(tmp_path)["status"]=="FAIL"
 
 def test_cross_burst_evidence_cannot_be_stitched(tmp_path):

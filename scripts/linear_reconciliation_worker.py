@@ -15,7 +15,7 @@ from src.project_orchestrator.linear_reconciliation import GithubWorkState, reco
 REPOS=(
  "jweter/knowledge-engine-core","jweter/knowledge-engine-web",
  "jweter/knowledge-engine-ai","jweter/rocksmith-cdlc-generator",
- "jweter/Project-Everward","jweter/project-orchestrator",
+ "jweter/Project-Everward","jweter/VoiceStudio","jweter/project-orchestrator",
 )
 
 def gh_json(args:list[str])->object:

@@ -5,7 +5,7 @@ import json
 from collections import Counter
 from typing import Any
 
-PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward")
+PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 IMPLEMENTATION_ROLES = ("implementation-primary", "implementation-secondary")
 REVIEW_ROLES = ("qa-review",)
 TERMINAL_STATES = {"MERGED", "PASS", "REJECTED", "CANCELLED", "ABANDONED"}

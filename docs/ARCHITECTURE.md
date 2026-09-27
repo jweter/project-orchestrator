@@ -86,9 +86,9 @@ The planner also records forbidden boundary shortcuts already documented by the 
 
 ## Compounding evidence store
 
-`project_orchestrator.timeseries` and `engineering/compounding-timeseries.json` are the deterministic record of whether the development loop is actually compounding, answering the question the "Exponential-development hypothesis" section above raises but does not settle.
+`project_orchestrator.timeseries` and `engineering/state/compounding-timeseries.json` are the deterministic record of whether the development loop is actually compounding, answering the question the "Exponential-development hypothesis" section above raises but does not settle.
 
-An **evidence window** is scoped to a project (or the portfolio as a whole) and one of the five product repositories or `jweter/project-orchestrator`, spans an explicit `window_start`/`window_end`, and records a fixed set of development-loop metrics: PR creation-to-green time, failure-to-repair time, merge cycle time, CI failure/repeat-failure counts, preflight failures prevented, roadmap slices completed, Product Reality debt created/resolved, cross-repo dependency incidents, blocked/waiting time, and autonomous vs. Jeremy-required interventions.
+An **evidence window** is scoped to a project (or the portfolio as a whole) and one of the six product repositories or `jweter/project-orchestrator`, spans an explicit `window_start`/`window_end`, and records a fixed set of development-loop metrics: PR creation-to-green time, failure-to-repair time, merge cycle time, CI failure/repeat-failure counts, preflight failures prevented, roadmap slices completed, Product Reality debt created/resolved, cross-repo dependency incidents, blocked/waiting time, and autonomous vs. Jeremy-required interventions.
 
 Every metric is either `MEASURED` (a numeric value, a fixed per-metric unit, a sample count, and non-empty `evidence_refs` pointing at the reproducible source — a PR URL, run ID, or similar) or explicitly `UNKNOWN`/`INSUFFICIENT_DATA` with a reason. A window can never omit a metric key to imply it silently; the schema requires all thirteen keys be present, so absence of evidence is always visible rather than absent. `window_id` is content-derived, so replaying the same evidence is idempotent and byte-deterministic on write.
 
@@ -98,7 +98,7 @@ Every metric is either `MEASURED` (a numeric value, a fixed per-metric unit, a s
 
 ## Automatic Portfolio Evidence Collector
 
-`project_orchestrator.evidence_collector` populates the store above from reproducible GitHub evidence instead of a human hand-writing windows. `project-orchestrator collect-evidence [--repository R] [--since ISO] [--dry-run]` is its CLI; with no `--repository` it walks every collectible repository (the five product repositories plus `jweter/project-orchestrator` itself).
+`project_orchestrator.evidence_collector` populates the store above from reproducible GitHub evidence instead of a human hand-writing windows. `project-orchestrator collect-evidence [--repository R] [--since ISO] [--dry-run]` is its CLI; with no `--repository` it walks every collectible repository (the six product repositories plus `jweter/project-orchestrator` itself).
 
 **Merged-PR evidence** (`collect_repository_window`): for each newly-merged pull request, walks its commit history's check-runs (capped at the last 20 commits per PR) to compute `merge_cycle_seconds` (always, from `created_at`/`merged_at`), `pr_creation_to_green_seconds` only from the exact reviewed PR head and only when **every returned head check is completed successfully**, `ci_failure_count` (every failed check-run across the PR's commits), `ci_repeat_failure_count` (occurrences beyond the first time the *same-named* check failed — a systemic/recurring signal, not just "many checks failed once"), and `failure_to_repair_seconds` (first failure to eventual exact-head green, only when both exist). `roadmap_slices_completed_count` is credited **only** to `jweter/project-orchestrator` (one merged PR there is, by this session's own established pattern, one completed roadmap gate); crediting it to a product repository's PR would assume that repository's roadmap semantics, which this collector cannot know.
 
@@ -122,7 +122,7 @@ Every metric is either `MEASURED` (a numeric value, a fixed per-metric unit, a s
 
 ## Sanitized learning memory
 
-`engineering/learning-memory.json` is the durable portfolio-level record of lessons that are both resolved and verified. It is deliberately narrower than raw CI logs, review payloads, or Product Reality evidence.
+`engineering/state/learning-memory.json` is the durable portfolio-level record of lessons that are both resolved and verified. It is deliberately narrower than raw CI logs, review payloads, or Product Reality evidence.
 
 A persisted lesson records the project/repository, source type/reference, symptom, root cause, fix, verification, regression protection, and residual risk. Entries must have `evidence_state=VERIFIED`; pending theories cannot become durable learning. A content-derived `lesson_id` makes repeated ingestion idempotent.
 
@@ -151,14 +151,14 @@ The daily 02:00 reboot remains the reset boundary. LaptopActor performs bounded 
 
 ## Foreman portfolio lane controller
 
-`project_orchestrator.foreman` is the single portfolio lane controller for the three independent products. It does not replace live ownership authority; it projects GitHub ownership, worker evidence, and already-authorized candidates into exactly three parent lanes: Knowledge Engine, Rocksmith, and Everward. Terminal execution history is compacted out of normal scheduling while explicitly actionable quarantines remain visible.
+`project_orchestrator.foreman` is the single portfolio lane controller for the four independent products. It does not replace live ownership authority; it projects GitHub ownership, worker evidence, and already-authorized candidates into exactly four parent lanes: Knowledge Engine, Rocksmith, Everward, and VoiceStudio. Terminal execution history is compacted out of normal scheduling while explicitly actionable quarantines remain visible.
 
 Foreman emits at most one substantial dispatch-ready slice per independent product per run. Asynchronous waits remain lane-scoped and do not consume another product's execution opportunity. Selection and dispatch are not counted as product advancement; only verified mutation/promotion evidence can establish Product Advancement Rate. Foreman never merges and never infers Product Reality. The executable surface is `project-orchestrator foreman-plan` and the contract is `engineering/foreman.json`.
 
 
 ## Parallel Specialist Execution Lanes
 
-`project_orchestrator.specialist_lanes` converts live GitHub ownership plus candidate work into ephemeral specialist reservations. The three independent product lanes are Knowledge Engine, Rocksmith, and Everward. Knowledge Engine is one coordinated parent lane with Core/Web/AI sub-lanes; one substantial coordinated slice per project per run remains the hard cap.
+`project_orchestrator.specialist_lanes` converts live GitHub ownership plus candidate work into ephemeral specialist reservations. The four independent product lanes are Knowledge Engine, Rocksmith, Everward, and VoiceStudio. Knowledge Engine is one coordinated parent lane with Core/Web/AI sub-lanes; one substantial coordinated slice per project per run remains the hard cap.
 
 Reservations are not stored as a manual ownership database. They are recomputed from live PRs, issues, branches, changed-file ownership, and current default-branch heads. File/issue overlap blocks competing lanes. A default-head mismatch makes the reservation `STALE`; a candidate that requires unverified Product Reality is `BLOCKED`.
 

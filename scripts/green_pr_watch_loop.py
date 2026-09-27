@@ -14,6 +14,10 @@ try:
 except ModuleNotFoundError:
     from green_pr_merger import cycle
 
+from project_orchestrator.activation_capability import merge_watcher_advanced
+from project_orchestrator.kpi_telemetry import append_event, load_events
+from project_orchestrator.planning_dispatch import product_for_repository
+
 
 def acquire_singleton(state: Path) -> BinaryIO | None:
     """Hold one OS-level lock for the watcher lifetime; duplicates exit cleanly."""
@@ -63,6 +67,95 @@ def atomic(path: Path, payload: dict) -> None:
     tmp.replace(path)
 
 
+def _project_for_repository(repository: str) -> str:
+    project = product_for_repository(repository)
+    if project is not None:
+        return project
+    if repository == "jweter/project-orchestrator":
+        return "portfolio"
+    raise ValueError(f"unsupported promotion repository: {repository}")
+
+
+def kpi_events(results: list[dict], observed_at_utc: str, run_id: str) -> list[dict]:
+    """Project verified promotion actions into the canonical KPI event contract."""
+    events: list[dict] = []
+    for result in results:
+        repository = result.get("repository")
+        pr = result.get("pr")
+        head = result.get("head")
+        if not isinstance(repository, str) or not isinstance(pr, int) or not isinstance(head, str):
+            continue
+        if result.get("merged") is True:
+            from_state, to_state = "GREEN", "MERGED"
+        elif result.get("promoted") is True:
+            from_state, to_state = "DRAFT", "GREEN"
+        else:
+            continue
+        events.append(
+            {
+                "observed_at": observed_at_utc,
+                "run_id": run_id,
+                "project": _project_for_repository(repository),
+                "repository": repository,
+                "entity_type": "pr",
+                "entity_id": str(pr),
+                "from_state": from_state,
+                "to_state": to_state,
+                "transition_class": "PROMOTION",
+                "actor": "ORCHESTRATOR",
+                "evidence_refs": [f"github://{repository}/pull/{pr}@{head}"],
+                "metadata": {
+                    "source": "green_pr_watch_loop",
+                    "exact_head_sha": head,
+                },
+            }
+        )
+    return events
+
+
+def append_kpi_events(path: Path, events: list[dict]) -> int:
+    if not events:
+        return 0
+    before = len(load_events(path))
+    for event in events:
+        append_event(path, event)
+    return len(load_events(path)) - before
+
+
+def process_cycle(state: Path, results: list[dict], error: str | None, started: float) -> dict:
+    observed_at = datetime.now(UTC).isoformat()
+    payload = {
+        "updated_at_utc": observed_at,
+        "duration_seconds": round(time.time() - started, 3),
+        "error_class": error,
+        "results": results,
+    }
+    atomic(state, payload)
+
+    state_root = state.parent
+    run_id = f"green-pr-watcher:{observed_at}"
+    events = kpi_events(results, observed_at, run_id)
+    event_count = append_kpi_events(state_root / "kpi-events.jsonl", events)
+
+    reconciliation_advanced = False
+    if any(event["to_state"] == "MERGED" for event in events):
+        reconciliation_advanced = merge_watcher_advanced(state_root)
+        if reconciliation_advanced:
+            atomic(
+                state_root / "continuation-request.json",
+                {
+                    "requested_at_utc": datetime.now(UTC).isoformat(),
+                    "reason": "MERGE_RECONCILED_EVENT",
+                },
+            )
+
+    payload["kpi_events_emitted"] = event_count
+    payload["flow_events_emitted"] = event_count  # compatibility alias during migration
+    payload["reconciliation_advanced"] = reconciliation_advanced
+    atomic(state, payload)
+    return payload
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--state", required=True)
@@ -82,15 +175,7 @@ def main() -> int:
             except Exception as exc:
                 results = []
                 error = type(exc).__name__
-            atomic(
-                state,
-                {
-                    "updated_at_utc": datetime.now(UTC).isoformat(),
-                    "duration_seconds": round(time.time() - started, 3),
-                    "error_class": error,
-                    "results": results,
-                },
-            )
+            process_cycle(state, results, error, started)
             if a.once:
                 return 0 if error is None else 1
             time.sleep(max(30, a.poll_seconds))

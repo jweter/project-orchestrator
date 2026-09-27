@@ -21,7 +21,7 @@
   "branch_hygiene": {
     "module": "project_orchestrator.branch_lifecycle",
     "executable": "project-orchestrator branch-lifecycle",
-    "scope": "all non-default branches across the five product repositories plus project-orchestrator",
+    "scope": "all non-default branches across the six product repositories plus project-orchestrator",
     "run_points": [
       "daily_bottleneck_review",
       "periodic_DoWork_housekeeping",
@@ -75,7 +75,7 @@
   },
   "fast_gate": {
     "mode": "repository_opt_in_only",
-    "executable": "project-orchestrator-throughput fast-gate-plan",
+    "executable": "project-orchestrator throughput fast-gate-plan",
     "command_authority": "target repository engineering/control-plane.json fast_gate.commands",
     "selection": "changed path extensions/prefixes plus explicitly-declared always commands",
     "fail_fast": true,
@@ -102,7 +102,7 @@
     ]
   },
   "promotion_failure_classifier": {
-    "executable": "project-orchestrator-throughput classify-failure",
+    "executable": "project-orchestrator throughput classify-failure",
     "classes": [
       "CODE_FAILURE",
       "TEST_FAILURE",
@@ -119,7 +119,7 @@
     "repair_engine_relationship": "classification routes the scheduler; deterministic repair.py remains the lower-level formatter/import/lint repair authority"
   },
   "issue_execution_ledger": {
-    "executable": "project-orchestrator-throughput issue-ledger",
+    "executable": "project-orchestrator throughput issue-ledger",
     "actor": "ORCHESTRATOR",
     "required_fields": [
       "promotion_state",
@@ -145,7 +145,7 @@
     "rule": "Issue comments are the human-visible execution ledger; repository code/CI/governing docs remain product authority."
   },
   "rework_kpis": {
-    "executable": "project-orchestrator-throughput rework-kpis",
+    "executable": "project-orchestrator throughput rework-kpis",
     "metrics": {
       "first_pass_preflight_rate": {
         "definition": "records with exactly one preflight attempt divided by records with explicit preflight-attempt evidence",

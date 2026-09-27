@@ -149,7 +149,7 @@ The Evolution Engine is an outer learning/promotion state machine. It does not r
 It reuses:
 
 - `repair.py` for repository-authorized deterministic repair planning;
-- `learning.py` / `engineering/learning-memory.json` for verified sanitized engineering memory;
+- `learning.py` / `engineering/state/learning-memory.json` for verified sanitized engineering memory;
 - `self_improvement.py` for evidence-backed recurring-friction proposals;
 - throughput and timeseries metrics for measured before/after outcomes;
 - per-repository control-plane policy for allowed commands and boundaries;
@@ -162,13 +162,13 @@ The implementation should increasingly connect these existing pieces rather than
 Build an Evolution plan from a JSON input:
 
 ```text
-project-orchestrator-evolve plan --input evolution-input.json
+project-orchestrator evolve plan --input evolution-input.json
 ```
 
 Evaluate normalized current-head review evidence:
 
 ```text
-project-orchestrator-evolve review-gate --input review-input.json
+project-orchestrator evolve review-gate --input review-input.json
 ```
 
 Both commands emit machine-readable JSON.

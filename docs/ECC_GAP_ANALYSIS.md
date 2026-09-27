@@ -22,7 +22,7 @@ This repository now adapts those concepts into an original deterministic control
 
 - `engineering/autonomy-loop-contract.json` — versioned contract for DoWork Hourly;
 - `project_orchestrator.loop_audit` — deterministic auditor;
-- `project-orchestrator-loop-audit` — CLI surface;
+- `project-orchestrator loop-audit` — CLI surface;
 - canonical preflight executes the audit;
 - tests exercise runaway retry, Goodhart pressure, self-judging, stale context, authority overlap, Product Reality inference, and bad regulator/no-op semantics.
 

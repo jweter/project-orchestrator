@@ -16,12 +16,12 @@
     "VERIFY_IMPROVEMENT"
   ],
   "inputs": [
-    "engineering/learning-memory.json",
-    "engineering/learning-effectiveness.json",
-    "engineering/compounding-timeseries.json",
+    "engineering/state/learning-memory.json",
+    "engineering/state/learning-effectiveness.json",
+    "engineering/state/compounding-timeseries.json",
     "engineering/regression-prevention.json",
     "engineering/throughput-optimizer.json",
-    "engineering/pre-change-risk.json",
+    "engineering/state/pre-change-risk.json",
     "engineering/hourly-status/*.jsonl",
     "sanitized deterministic worker results",
     "GitHub PR/check/workflow/issue evidence"

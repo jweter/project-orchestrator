@@ -1,6 +1,6 @@
 """Automatic Portfolio Evidence Collector.
 
-Populates ``engineering/compounding-timeseries.json`` from reproducible
+Populates ``engineering/state/compounding-timeseries.json`` from reproducible
 GitHub evidence (merged pull requests and their check-run history) instead
 of requiring a human to hand-write evidence windows.
 
@@ -50,13 +50,14 @@ DISPATCH_NOTES_PREFIX = "automatically collected from orchestrator-observe.yml"
 
 # Repository -> portfolio project id, matching engineering/portfolio.json,
 # plus the orchestrator's own repository under the synthetic "portfolio"
-# project (it is not one of the five product repositories).
+# project (it is not one of the six product repositories).
 _REPO_TO_PROJECT: dict[str, str] = {
     "jweter/knowledge-engine-core": "knowledge-engine",
     "jweter/knowledge-engine-web": "knowledge-engine",
     "jweter/knowledge-engine-ai": "knowledge-engine",
     "jweter/rocksmith-cdlc-generator": "rocksmith",
     "jweter/Project-Everward": "everward",
+    "jweter/VoiceStudio": "voicestudio",
     "jweter/project-orchestrator": "portfolio",
 }
 COLLECTIBLE_REPOSITORIES = frozenset(_REPO_TO_PROJECT)

@@ -12,6 +12,7 @@ _PROJECT_BY_REPO = {
     "jweter/knowledge-engine-ai": "knowledge-engine",
     "jweter/rocksmith-cdlc-generator": "rocksmith",
     "jweter/Project-Everward": "everward",
+    "jweter/VoiceStudio": "voicestudio",
 }
 
 

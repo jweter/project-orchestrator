@@ -48,7 +48,7 @@ Runner configuration is local JSON with this schema:
 }
 ```
 
-The committed `engineering/agent-eval-runner.example.json` is syntax-only. It intentionally does not assume that any particular external agent CLI is installed.
+The committed `engineering/examples/agent-eval-runner.example.json` is syntax-only. It intentionally does not assume that any particular external agent CLI is installed.
 
 ### Command restrictions
 
@@ -71,7 +71,7 @@ The same values are also provided through `AGENT_EVAL_*` environment variables f
 ## Validate configuration
 
 ```bash
-project-orchestrator-agent-eval-runner validate-config engineering/agent-eval-runner.example.json
+project-orchestrator agent-eval-runner validate-config engineering/examples/agent-eval-runner.example.json
 ```
 
 Validation confirms the schema, bounded timeout, argv-only execution, and non-authoritative safety properties. It does not claim the external executable exists.
@@ -81,7 +81,7 @@ Validation confirms the schema, bounded timeout, argv-only execution, and non-au
 For the current project-orchestrator suite:
 
 ```bash
-project-orchestrator-agent-eval-runner run \
+project-orchestrator agent-eval-runner run \
   --config private/agent-eval-local.json \
   --repo jweter/project-orchestrator=/path/to/project-orchestrator
 ```
@@ -93,7 +93,7 @@ Use repeated `--repo owner/name=/path` arguments when a future suite contains ta
 Run only selected tasks with repeated `--task`:
 
 ```bash
-project-orchestrator-agent-eval-runner run \
+project-orchestrator agent-eval-runner run \
   --config private/agent-eval-local.json \
   --repo jweter/project-orchestrator=/path/to/project-orchestrator \
   --task loop-self-judging \
@@ -112,7 +112,7 @@ Each attempt produces local JSON evidence for:
 - the normalized Phase C attempt record;
 - a runner manifest.
 
-A matrix summary records pass/fail/invalid-benchmark counts. Durable comparison still uses the existing `project-orchestrator-agent-eval report` layer, which only marks agent configurations comparable when suite, baseline, measurement contract, and task coverage match.
+A matrix summary records pass/fail/invalid-benchmark counts. Durable comparison still uses the existing `project-orchestrator agent-eval report` layer, which only marks agent configurations comparable when suite, baseline, measurement contract, and task coverage match.
 
 No missing observation is converted to zero or PASS.
 

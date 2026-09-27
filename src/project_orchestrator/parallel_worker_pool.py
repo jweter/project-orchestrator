@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
-PRODUCTS = ("knowledge-engine", "rocksmith", "everward")
+PRODUCTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 
 
 @dataclass(frozen=True)

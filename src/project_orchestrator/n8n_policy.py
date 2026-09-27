@@ -12,6 +12,7 @@ PORTFOLIO_REPOSITORIES = frozenset(
         "jweter/knowledge-engine-ai",
         "jweter/rocksmith-cdlc-generator",
         "jweter/Project-Everward",
+        "jweter/VoiceStudio",
     }
 )
 KNOWLEDGE_ENGINE_REPOSITORIES = frozenset(

@@ -494,7 +494,7 @@ def _print(value: Any) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="project-orchestrator-agent-eval-runner")
+    parser = argparse.ArgumentParser(prog="project-orchestrator agent-eval-runner")
     sub = parser.add_subparsers(dest="command", required=True)
 
     validate = sub.add_parser("validate-config")

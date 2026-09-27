@@ -2,7 +2,7 @@
   "schema_version": 1,
   "artifact": "autonomous-engineering-scientist",
   "purpose": "Turn autonomous engineering work into bounded, evidence-driven experiments with lineage, controlled resource allocation, evidence-only opportunity discovery, and verified cross-repo learning.",
-  "cli": "project-orchestrator-scientist",
+  "cli": "project-orchestrator scientist",
   "scientific_loop": [
     "OBSERVE",
     "FORMULATE_HYPOTHESIS",

@@ -10,25 +10,29 @@ requires-python = ">=3.12"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=9.0", "hypothesis>=6.0"]
+dev = ["pytest>=9.0", "hypothesis>=6.0", "ruff>=0.13", "mypy>=1.18"]
 
 [project.scripts]
 project-orchestrator = "project_orchestrator.cli:main"
-project-orchestrator-throughput = "project_orchestrator.throughput_guard_cli:main"
-project-orchestrator-evolve = "project_orchestrator.evolution_cli:main"
-project-orchestrator-scientist = "project_orchestrator.scientist_cli:main"
-project-orchestrator-kpi = "project_orchestrator.kpi_cli:main"
-project-orchestrator-loop-audit = "project_orchestrator.loop_audit:main"
-project-orchestrator-harness-audit = "project_orchestrator.harness_audit:main"
-project-orchestrator-harness-security = "project_orchestrator.harness_security:main"
-project-orchestrator-agent-eval = "project_orchestrator.agent_eval:main"
-project-orchestrator-agent-eval-runner = "project_orchestrator.agent_eval_runner:main"
-project-orchestrator-skill-extract = "project_orchestrator.skill_extraction:main"
-project-orchestrator-learning-candidate = "project_orchestrator.learning_candidates:main"
-project-orchestrator-handoff-memory = "project_orchestrator.transient_memory:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+files = [
+  "src/project_orchestrator/runtime_leases.py",
+  "src/project_orchestrator/execution_runtime.py",
+  "src/project_orchestrator/branch_lifecycle.py",
+  "src/project_orchestrator/branch_reconciliation.py",
+]

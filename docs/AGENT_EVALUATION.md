@@ -64,25 +64,25 @@ The evaluator does not launch paid agents and does not require an external servi
 Validate the suite and committed fault fixtures:
 
 ```bash
-project-orchestrator-agent-eval validate-suite
+project-orchestrator agent-eval validate-suite
 ```
 
 Validate a transient attempt record without writing it:
 
 ```bash
-project-orchestrator-agent-eval validate-attempt attempt.json
+project-orchestrator agent-eval validate-attempt attempt.json
 ```
 
 Record one completed or partial attempt into the canonical KPI ledger:
 
 ```bash
-project-orchestrator-agent-eval record attempt.json
+project-orchestrator agent-eval record attempt.json
 ```
 
 Generate an advisory report from recorded events:
 
 ```bash
-project-orchestrator-agent-eval report \
+project-orchestrator agent-eval report \
   --start 2026-09-16T00:00:00Z \
   --end 2026-09-17T00:00:00Z
 ```
