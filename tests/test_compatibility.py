@@ -24,6 +24,9 @@ def contract() -> dict:
                 "contract_kinds": ["cli_json", "provenance_contract"],
                 "boundary": "knowledge_engine_ai.ke_client",
                 "rule": "AI wraps Core CLI.",
+                "verification_commands": [
+                    ["poetry", "run", "pytest", "-q", "tests/test_ke_client.py"]
+                ],
             },
             {
                 "producer": "core",
@@ -31,6 +34,9 @@ def contract() -> dict:
                 "contract_kinds": ["database_schema", "provenance_contract"],
                 "boundary": "read_only_sqlalchemy_reflection",
                 "rule": "Web reflects Core database.",
+                "verification_commands": [
+                    ["poetry", "run", "pytest", "-q", "tests/test_build_alpha_snapshot.py"]
+                ],
             },
             {
                 "producer": "ai",
@@ -38,6 +44,9 @@ def contract() -> dict:
                 "contract_kinds": ["typed_model", "research_report_contract"],
                 "boundary": "knowledge_engine_ai_python_package",
                 "rule": "Web imports AI.",
+                "verification_commands": [
+                    ["poetry", "run", "pytest", "-q", "tests/test_ai_orchestration.py"]
+                ],
             },
         ],
         "forbidden_boundaries": [
@@ -126,3 +135,37 @@ def test_unlisted_boundary_does_not_override_repository_authority() -> None:
     result = validate_boundary("ai", "core", "documented_cli_call", contract())
     assert result["allowed"] is True
     assert "governing documents remain authoritative" in result["reason"]
+
+
+def test_core_cli_change_emits_direct_and_transitive_consumer_commands() -> None:
+    plan = plan_change(
+        {"producer_role": "core", "contract_kinds": ["cli_json"], "breaking": False},
+        contract(),
+    )
+    verify = {
+        action["repository_role"]: action["verification_commands"]
+        for action in plan["actions"]
+        if action["action"] in {"verify_direct_consumer", "verify_transitive_consumer"}
+    }
+    assert verify["ai"] == [
+        ["poetry", "run", "pytest", "-q", "tests/test_ke_client.py"]
+    ]
+    assert verify["web"] == [
+        ["poetry", "run", "pytest", "-q", "tests/test_ai_orchestration.py"]
+    ]
+
+
+def test_missing_verification_commands_fail_closed() -> None:
+    payload = contract()
+    del payload["edges"][0]["verification_commands"]
+    with pytest.raises(CompatibilityError, match="verification_commands"):
+        validate_contract(payload)
+
+
+def test_verification_commands_must_be_argv_lists() -> None:
+    payload = contract()
+    payload["edges"][0]["verification_commands"] = [
+        "poetry run pytest tests/test_ke_client.py"
+    ]
+    with pytest.raises(CompatibilityError, match="argv-only"):
+        validate_contract(payload)

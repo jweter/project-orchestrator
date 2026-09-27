@@ -55,6 +55,20 @@ def validate_contract(payload: dict[str, Any]) -> None:
             isinstance(kind, str) and kind for kind in kinds
         ):
             raise CompatibilityError(f"{producer}->{consumer} requires contract_kinds")
+        commands = edge.get("verification_commands")
+        if (
+            not isinstance(commands, list)
+            or not commands
+            or any(
+                not isinstance(argv, list)
+                or not argv
+                or any(not isinstance(part, str) or not part for part in argv)
+                for argv in commands
+            )
+        ):
+            raise CompatibilityError(
+                f"{producer}->{consumer} requires argv-only verification_commands"
+            )
 
     forbidden = payload.get("forbidden_boundaries")
     if not isinstance(forbidden, list):
@@ -88,6 +102,45 @@ def _transitive_consumers(contract: dict[str, Any], roots: set[str]) -> set[str]
     return discovered - roots
 
 
+def _downstream_edges(contract: dict[str, Any], roots: set[str]) -> list[dict[str, Any]]:
+    """Return dependency edges reachable from directly affected consumers."""
+    discovered = set(roots)
+    frontier = list(roots)
+    selected: list[dict[str, Any]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    while frontier:
+        producer = frontier.pop()
+        for edge in contract["edges"]:
+            if edge["producer"] != producer:
+                continue
+            pair = (edge["producer"], edge["consumer"])
+            if pair not in seen_pairs:
+                selected.append(edge)
+                seen_pairs.add(pair)
+            if edge["consumer"] not in discovered:
+                discovered.add(edge["consumer"])
+                frontier.append(edge["consumer"])
+    return selected
+
+
+def _verification_commands_by_consumer(
+    edges: list[dict[str, Any]],
+) -> dict[str, list[list[str]]]:
+    grouped: dict[str, list[list[str]]] = {}
+    seen: dict[str, set[tuple[str, ...]]] = {}
+    for edge in edges:
+        consumer = edge["consumer"]
+        bucket = grouped.setdefault(consumer, [])
+        fingerprints = seen.setdefault(consumer, set())
+        for argv in edge["verification_commands"]:
+            key = tuple(argv)
+            if key in fingerprints:
+                continue
+            fingerprints.add(key)
+            bucket.append(list(argv))
+    return grouped
+
+
 def plan_change(change: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]:
     validate_contract(contract)
     producer = change.get("producer_role")
@@ -112,8 +165,12 @@ def plan_change(change: dict[str, Any], contract: dict[str, Any]) -> dict[str, A
 
     direct_edges = _direct_edges(contract, producer, unique_kinds)
     direct_consumers = {edge["consumer"] for edge in direct_edges}
+    downstream_edges = _downstream_edges(contract, direct_consumers)
     transitive_consumers = _transitive_consumers(contract, direct_consumers)
     all_consumers = direct_consumers | transitive_consumers
+    verification_by_consumer = _verification_commands_by_consumer(
+        [*direct_edges, *downstream_edges]
+    )
 
     actions: list[CompatibilityAction] = []
     order = 10
@@ -202,7 +259,24 @@ def plan_change(change: dict[str, Any], contract: dict[str, Any]) -> dict[str, A
         "affected_repositories": [
             contract["roles"][role] for role in sorted({producer, *all_consumers})
         ],
-        "actions": [action.__dict__ for action in actions],
+        "actions": [
+            {
+                **action.__dict__,
+                **(
+                    {
+                        "verification_commands": verification_by_consumer.get(
+                            action.repository_role, []
+                        )
+                    }
+                    if action.action in {
+                        "verify_direct_consumer",
+                        "verify_transitive_consumer",
+                    }
+                    else {}
+                ),
+            }
+            for action in actions
+        ],
         "merge_rule": (
             contract["breaking_change_rule"]
             if breaking

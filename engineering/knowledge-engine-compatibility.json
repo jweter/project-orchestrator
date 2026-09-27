@@ -18,7 +18,18 @@
         "provenance_contract"
       ],
       "boundary": "knowledge_engine_ai.ke_client",
-      "rule": "AI owns the one supported subprocess boundary to Core's ke CLI; AI must parse structured machine-readable output and sanitize failures."
+      "rule": "AI owns the one supported subprocess boundary to Core's ke CLI; AI must parse structured machine-readable output and sanitize failures.",
+      "verification_commands": [
+        [
+          "poetry",
+          "run",
+          "pytest",
+          "-q",
+          "tests/test_ke_client.py",
+          "tests/test_ke_client_working_directory.py",
+          "tests/test_models.py"
+        ]
+      ]
     },
     {
       "producer": "core",
@@ -29,7 +40,17 @@
         "provenance_contract"
       ],
       "boundary": "read_only_sqlalchemy_reflection",
-      "rule": "Web may reflect Core's persisted database read-only; Web must not import the knowledge_engine Python package."
+      "rule": "Web may reflect Core's persisted database read-only; Web must not import the knowledge_engine Python package.",
+      "verification_commands": [
+        [
+          "poetry",
+          "run",
+          "pytest",
+          "-q",
+          "tests/test_build_alpha_snapshot.py",
+          "tests/test_about_snapshot_provenance.py"
+        ]
+      ]
     },
     {
       "producer": "ai",
@@ -42,7 +63,18 @@
         "provenance_contract"
       ],
       "boundary": "knowledge_engine_ai_python_package",
-      "rule": "Web consumes the pinned AI package revision and typed contracts; semantic fields must not be recovered by scraping narrative prose."
+      "rule": "Web consumes the pinned AI package revision and typed contracts; semantic fields must not be recovered by scraping narrative prose.",
+      "verification_commands": [
+        [
+          "poetry",
+          "run",
+          "pytest",
+          "-q",
+          "tests/test_ai_orchestration.py",
+          "tests/test_research_report_backend.py",
+          "tests/test_ai_integration.py"
+        ]
+      ]
     }
   ],
   "forbidden_boundaries": [
