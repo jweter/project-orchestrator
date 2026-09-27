@@ -1,7 +1,7 @@
 {
-  "action": "STATUS_SNAPSHOT",
-  "command_id": "1fd30086-8d2b-4e55-bc7c-e92cacab11ae",
-  "expires_at": "2026-09-27T23:17:02.343539+00:00",
-  "issued_at": "2026-09-27T23:12:02.343539+00:00",
+  "action": "HUMAN_MODE",
+  "command_id": "5698026b-0098-4c20-a348-2d4f59495b4a",
+  "expires_at": "2026-09-27T23:48:18.168525+00:00",
+  "issued_at": "2026-09-27T23:43:18.168525+00:00",
   "source": "iphone-dashboard"
 }
