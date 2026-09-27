@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from .grant_lifecycle import record_claimed_candidate_verification
 from .state_io import atomic_json
 
 
@@ -107,15 +109,24 @@ def promote_candidate(
             }
             atomic_json(state_path, result)
             return result
-        _record_verified_candidate(
+        if not _record_verified_candidate(
             execution_grant,
             repo,
             base,
             branch,
             head,
             evidence_binding,
-            advance_grant_stage_fn,
-        )
+        ):
+            return _persist(
+                state_path,
+                {
+                    "status": "GRANT_VERIFICATION_EVIDENCE_REJECTED",
+                    "repository": repo,
+                    "head_sha": head,
+                    "last_repo_index": idx,
+                    "last_repository": repo,
+                },
+            )
 
     refresh = refresh_base_before_publish_fn(ws, main_branch, base)
     if refresh["status"] == "FETCH_FAILED":
@@ -251,15 +262,24 @@ def promote_candidate(
                         "last_repository": repo,
                     },
                 )
-            _record_verified_candidate(
+            if not _record_verified_candidate(
                 execution_grant,
                 repo,
                 base,
                 branch,
                 head,
                 evidence_binding,
-                advance_grant_stage_fn,
-            )
+            ):
+                return _persist(
+                    state_path,
+                    {
+                        "status": "GRANT_VERIFICATION_EVIDENCE_REJECTED",
+                        "repository": repo,
+                        "head_sha": head,
+                        "last_repo_index": idx,
+                        "last_repository": repo,
+                    },
+                )
 
     push = run_fn(["git", "push", "-u", "origin", branch], ws)
     if push.returncode:
@@ -274,15 +294,25 @@ def promote_candidate(
             },
         )
 
-    if execution_grant is not None:
-        advance_grant_stage_fn(
-            execution_grant,
-            "PUSHED",
-            repository=repo,
-            base_sha=base,
-            branch=branch,
-            head_sha=head,
-            remote_head_sha=head,
+    if execution_grant is not None and not advance_grant_stage_fn(
+        execution_grant,
+        "PUSHED",
+        repository=repo,
+        base_sha=base,
+        branch=branch,
+        head_sha=head,
+        remote_head_sha=head,
+    ):
+        return _persist(
+            state_path,
+            {
+                "status": "GRANT_STAGE_TRANSITION_REJECTED",
+                "repository": repo,
+                "attempted_stage": "PUSHED",
+                "head_sha": head,
+                "last_repo_index": idx,
+                "last_repository": repo,
+            },
         )
 
     linear_id = os.environ.get("EXPONENTIAL_LINEAR_ID", "").strip()
@@ -317,17 +347,29 @@ def promote_candidate(
     )
     if created.returncode == 0 and pr_number is None:
         status = "PR_IDENTITY_UNPROVEN"
-    if execution_grant is not None and status == "PR_OPEN":
-        advance_grant_stage_fn(
-            execution_grant,
-            "PR_OPEN",
-            repository=repo,
-            base_sha=base,
-            branch=branch,
-            head_sha=head,
-            remote_head_sha=head,
-            pr_url=pr_url,
-            pr_number=pr_number,
+    if execution_grant is not None and status == "PR_OPEN" and not advance_grant_stage_fn(
+        execution_grant,
+        "PR_OPEN",
+        repository=repo,
+        base_sha=base,
+        branch=branch,
+        head_sha=head,
+        remote_head_sha=head,
+        pr_url=pr_url,
+        pr_number=pr_number,
+    ):
+        return _persist(
+            state_path,
+            {
+                "status": "GRANT_STAGE_TRANSITION_REJECTED",
+                "repository": repo,
+                "attempted_stage": "PR_OPEN",
+                "head_sha": head,
+                "pr_url": pr_url,
+                "pr_number": pr_number,
+                "last_repo_index": idx,
+                "last_repository": repo,
+            },
         )
 
     return _persist(
@@ -354,25 +396,16 @@ def _record_verified_candidate(
     branch: str,
     head: str,
     evidence_binding: dict[str, Any],
-    advance_grant_stage_fn: Callable,
-) -> None:
-    advance_grant_stage_fn(
+) -> bool:
+    return record_claimed_candidate_verification(
         execution_grant,
-        "INDEPENDENT_REVIEW_APPROVED",
         repository=repo,
         base_sha=base,
         branch=branch,
         head_sha=head,
         reviewer="deterministic-verdict-v2",
         preflight_evidence_binding=evidence_binding,
-    )
-    advance_grant_stage_fn(
-        execution_grant,
-        "COMMITTED",
-        repository=repo,
-        base_sha=base,
-        branch=branch,
-        head_sha=head,
+        recorded_at_utc=datetime.now(UTC).isoformat(),
     )
 
 

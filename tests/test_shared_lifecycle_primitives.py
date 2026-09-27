@@ -198,3 +198,85 @@ def test_normal_stage_sequence_same_stage_is_idempotent(tmp_path):
         updated_at="2026-09-27T00:00:00+00:00",
     )
     assert json.loads(path.read_text())["grants"]["g"]["last_heartbeat_at"]=="new"
+
+
+def test_candidate_verification_evidence_is_separate_from_execution_stage(tmp_path):
+    grants=tmp_path/"hands-off-execution-grants"; grants.mkdir()
+    grant=grants/"g.json"
+    grant.write_text(json.dumps({"grant_id":"g"}),encoding="utf-8")
+    lifecycle_path=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle_path.write_text(json.dumps({"grants":{"g":{
+        "state":"CLAIMED","execution_stage":"EXECUTION_FINISHED"
+    }}}),encoding="utf-8")
+
+    assert lifecycle.record_claimed_candidate_verification(
+        grant,
+        repository="o/r",
+        base_sha="base",
+        branch="actor/x",
+        head_sha="head-1",
+        reviewer="deterministic-verdict-v2",
+        preflight_evidence_binding={"head_sha":"head-1","evidence":"ok"},
+        recorded_at_utc="2026-09-27T00:00:00+00:00",
+    )
+
+    record=json.loads(lifecycle_path.read_text())["grants"]["g"]
+    assert record["execution_stage"]=="EXECUTION_FINISHED"
+    assert record["candidate_verification"]["status"]=="APPROVED"
+    assert record["candidate_verification"]["head_sha"]=="head-1"
+
+
+def test_candidate_reverification_replaces_exact_head_after_rebase(tmp_path):
+    grants=tmp_path/"hands-off-execution-grants"; grants.mkdir()
+    grant=grants/"g.json"
+    grant.write_text(json.dumps({"grant_id":"g"}),encoding="utf-8")
+    lifecycle_path=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle_path.write_text(json.dumps({"grants":{"g":{
+        "state":"CLAIMED","execution_stage":"EXECUTION_FINISHED"
+    }}}),encoding="utf-8")
+
+    common=dict(
+        grant_path=grant,
+        repository="o/r",
+        branch="actor/x",
+        reviewer="deterministic-verdict-v2",
+    )
+    assert lifecycle.record_claimed_candidate_verification(
+        **common,
+        base_sha="base-1",
+        head_sha="head-1",
+        preflight_evidence_binding={"head_sha":"head-1"},
+        recorded_at_utc="2026-09-27T00:00:00+00:00",
+    )
+    assert lifecycle.record_claimed_candidate_verification(
+        **common,
+        base_sha="base-2",
+        head_sha="head-2",
+        preflight_evidence_binding={"head_sha":"head-2"},
+        recorded_at_utc="2026-09-27T00:01:00+00:00",
+    )
+
+    record=json.loads(lifecycle_path.read_text())["grants"]["g"]
+    assert record["execution_stage"]=="EXECUTION_FINISHED"
+    assert record["candidate_verification"]["base_sha"]=="base-2"
+    assert record["candidate_verification"]["head_sha"]=="head-2"
+    assert record["candidate_verification"]["preflight_evidence_binding"]=={"head_sha":"head-2"}
+
+
+def test_candidate_verification_evidence_refuses_terminal_grant(tmp_path):
+    grants=tmp_path/"hands-off-execution-grants"; grants.mkdir()
+    grant=grants/"g.json"
+    grant.write_text(json.dumps({"grant_id":"g"}),encoding="utf-8")
+    lifecycle_path=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle_path.write_text(json.dumps({"grants":{"g":{"state":"COMPLETED"}}}),encoding="utf-8")
+
+    assert lifecycle.record_claimed_candidate_verification(
+        grant,
+        repository="o/r",
+        base_sha="base",
+        branch="actor/x",
+        head_sha="head",
+        reviewer="deterministic-verdict-v2",
+        preflight_evidence_binding={"head_sha":"head"},
+        recorded_at_utc="2026-09-27T00:00:00+00:00",
+    ) is False

@@ -248,3 +248,44 @@ def advance_claimed_execution_stage(
         return True
 
     return mutate_grant_lifecycle(lifecycle, grant_id, update)
+
+def record_claimed_candidate_verification(
+    grant_path: Path,
+    *,
+    repository: str,
+    base_sha: str,
+    branch: str,
+    head_sha: str,
+    reviewer: str,
+    preflight_evidence_binding: dict[str, Any],
+    recorded_at_utc: str,
+) -> bool:
+    """Persist exact-head candidate verification without abusing execution_stage."""
+    fields = (repository, base_sha, branch, head_sha, reviewer, recorded_at_utc)
+    if any(not isinstance(value, str) or not value for value in fields):
+        return False
+    if not isinstance(preflight_evidence_binding, dict) or not preflight_evidence_binding:
+        return False
+    try:
+        grant_id = json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return False
+    lifecycle = lifecycle_path_for_grant(grant_path)
+    verification = {
+        "status": "APPROVED",
+        "repository": repository,
+        "base_sha": base_sha,
+        "branch": branch,
+        "head_sha": head_sha,
+        "reviewer": reviewer,
+        "preflight_evidence_binding": preflight_evidence_binding,
+        "recorded_at_utc": recorded_at_utc,
+    }
+
+    def update(record: dict[str, Any]) -> bool:
+        if record.get("state") != "CLAIMED":
+            return False
+        record["candidate_verification"] = verification
+        return True
+
+    return mutate_grant_lifecycle(lifecycle, grant_id, update)

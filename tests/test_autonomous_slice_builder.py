@@ -653,3 +653,111 @@ def test_atomic_json_falls_back_to_copy_after_windows_rename_denied(tmp_path,mon
     builder.atomic_json(path,{"grants":{"g":{"state":"RUNNING"}}})
     assert json.loads(path.read_text())["grants"]["g"]["state"]=="RUNNING"
     assert list(tmp_path.glob("*.tmp.*"))==[]
+
+
+def test_build_once_stops_when_base_stage_cannot_persist(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+
+    repo="jweter/rocksmith-cdlc-generator"
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
+    monkeypatch.setattr(builder,"select_repo",lambda *a,**k:repo)
+    monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
+
+    class Result:
+        returncode=0
+        stderr=""
+        def __init__(self,stdout=""):
+            self.stdout=stdout
+
+    def fake_run(argv,*args,**kwargs):
+        if argv==["git","status","--porcelain"]:
+            return Result("")
+        if argv[:3]==["git","checkout","--detach"]:
+            return Result("")
+        if argv==["git","rev-parse","HEAD"]:
+            return Result("authorized\n")
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(builder,"run",fake_run)
+    monkeypatch.setattr(builder,"execution_slice_authority",lambda *a,**k:{
+        "capability_id":"C1","slice_id":"S1","runner_id":"aider-ollama"
+    })
+    monkeypatch.setattr(builder,"claim_execution_grant",lambda *a,**k:True)
+    monkeypatch.setattr(builder,"worker_incarnation",lambda:{"worker":"w"})
+    stop_calls=[]
+    monkeypatch.setattr(builder,"start_grant_heartbeat",lambda *a,**k:("stop","thread"))
+    monkeypatch.setattr(builder,"stop_grant_heartbeat",lambda stop,thread:stop_calls.append((stop,thread)))
+    monkeypatch.setattr(builder,"advance_grant_stage",lambda *a,**k:False)
+    monkeypatch.setattr(builder,"run_builder",lambda *a,**k:(_ for _ in ()).throw(
+        AssertionError("worker must not run after rejected durable stage")
+    ))
+
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"grant_id":"g"}),encoding="utf-8")
+    result=builder.build_once(
+        tmp_path,tmp_path/"state.json",
+        eligible_repos={repo:"authorized"},
+        execution_grant=grant,
+    )
+
+    assert result["status"]=="GRANT_STAGE_TRANSITION_REJECTED"
+    assert result["attempted_stage"]=="BASE_VERIFIED"
+    assert stop_calls==[("stop","thread")]
+
+
+def test_build_once_later_stage_rejection_stops_heartbeat_in_finally(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+
+    repo="jweter/rocksmith-cdlc-generator"
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
+    monkeypatch.setattr(builder,"select_repo",lambda *a,**k:repo)
+    monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
+
+    class Result:
+        returncode=0
+        stderr=""
+        def __init__(self,stdout=""):
+            self.stdout=stdout
+
+    def fake_run(argv,*args,**kwargs):
+        if argv==["git","status","--porcelain"]:
+            return Result("")
+        if argv[:3]==["git","checkout","--detach"]:
+            return Result("")
+        if argv==["git","rev-parse","HEAD"]:
+            return Result("authorized\n")
+        if argv[:3]==["git","checkout","-B"]:
+            return Result("")
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(builder,"run",fake_run)
+    monkeypatch.setattr(builder,"execution_slice_authority",lambda *a,**k:{
+        "capability_id":"C1","slice_id":"S1","runner_id":"aider-ollama"
+    })
+    monkeypatch.setattr(builder,"claim_execution_grant",lambda *a,**k:True)
+    monkeypatch.setattr(builder,"worker_incarnation",lambda:{"worker":"w"})
+    stop_calls=[]
+    monkeypatch.setattr(builder,"start_grant_heartbeat",lambda *a,**k:("stop","thread"))
+    monkeypatch.setattr(builder,"stop_grant_heartbeat",lambda stop,thread:stop_calls.append((stop,thread)))
+    stages=[]
+    def stage(_grant,stage,**evidence):
+        stages.append(stage)
+        return stage=="BASE_VERIFIED"
+    monkeypatch.setattr(builder,"advance_grant_stage",stage)
+
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"grant_id":"g"}),encoding="utf-8")
+    result=builder.build_once(
+        tmp_path,tmp_path/"state.json",
+        eligible_repos={repo:"authorized"},
+        execution_grant=grant,
+    )
+
+    assert result["status"]=="GRANT_STAGE_TRANSITION_REJECTED"
+    assert result["attempted_stage"]=="BRANCH_CREATED"
+    assert stages==["BASE_VERIFIED","BRANCH_CREATED"]
+    assert stop_calls==[("stop","thread")]

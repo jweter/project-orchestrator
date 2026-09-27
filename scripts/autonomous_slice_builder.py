@@ -830,6 +830,16 @@ def refresh_base_before_publish(ws:Path,main_branch:str,expected_base:str)->dict
     return {"status":"REBASED","base_sha":latest_base,"head_sha":new_head}
 
 
+def grant_stage_transition_rejected(repo:str,stage:str,idx:int)->dict[str,Any]:
+    return {
+        "status":"GRANT_STAGE_TRANSITION_REJECTED",
+        "repository":repo,
+        "attempted_stage":stage,
+        "last_repo_index":idx,
+        "last_repository":repo,
+    }
+
+
 def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
                execution_grant:Path|None=None,worker_id:str|None=None)->dict[str,Any]:
     idle=windows_idle_seconds()
@@ -877,110 +887,119 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         if not claim_execution_grant(execution_grant,repo,expected,worker=worker):
             return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
         heartbeat_stop,heartbeat_thread=start_grant_heartbeat(execution_grant,worker)
-        advance_grant_stage(execution_grant,"BASE_VERIFIED",repository=repo,base_sha=base,
-                            capability_id=slice_authority["capability_id"],slice_id=slice_authority["slice_id"])
+        if not advance_grant_stage(execution_grant,"BASE_VERIFIED",repository=repo,base_sha=base,
+                                   capability_id=slice_authority["capability_id"],slice_id=slice_authority["slice_id"]):
+            stop_grant_heartbeat(heartbeat_stop,heartbeat_thread)
+            return grant_stage_transition_rejected(repo,"BASE_VERIFIED",idx)
     else:
         slice_authority=None
         heartbeat_stop=heartbeat_thread=None
-    stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
-    if run(["git","checkout","-B",branch,base],ws).returncode:
-        raise RuntimeError("branch creation failed")
-    if execution_grant is not None:
-        advance_grant_stage(execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch)
+    try:
+        stamp=datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        branch=f"actor/autonomous-{repo.split('/')[-1].lower()}-{stamp}"
+        if run(["git","checkout","-B",branch,base],ws).returncode:
+            raise RuntimeError("branch creation failed")
+        if execution_grant is not None and not advance_grant_stage(
+                execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch):
+            return grant_stage_transition_rejected(repo,"BRANCH_CREATED",idx)
 
-    task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)
-    selected_runner=(slice_authority or {}).get("runner_id") if slice_authority is not None else None
-    execution_started_at=datetime.now(UTC)
-    if execution_grant is not None:
-        advance_grant_stage(execution_grant,"EXECUTING",execution_started_at=execution_started_at.isoformat())
-    builder=run_builder(ws,task_prompt,selected_runner)
-    execution_finished_at=datetime.now(UTC)
-    if execution_grant is not None:
-        advance_grant_stage(execution_grant,"EXECUTION_FINISHED",
-                            execution_started_at=execution_started_at.isoformat(),
-                            execution_finished_at=execution_finished_at.isoformat(),
-                            execution_seconds=max((execution_finished_at-execution_started_at).total_seconds(),0.0))
-    cleanup_aider_artifacts(ws)
-    paths=changed_paths(ws,base)
-    if builder.returncode!=0:
-        reset_workspace(ws,base)
-        detail=builder.stderr or builder.stdout or f"returncode={builder.returncode}"
-        capacity_limited=selected_runner=="claude-code" and any(
-            marker in detail.lower() for marker in ("session limit","usage limit","rate limit")
-        )
-        outcome="RUNNER_CAPACITY_DEFERRED" if capacity_limited else "BUILDER_FAILED"
-        result={"status":outcome,"repository":repo,"runner_id":selected_runner,
-                "returncode":builder.returncode,"last_repo_index":idx,"last_repository":repo}
-        if not capacity_limited:
-            lesson=retain_failure_lesson(
-                state_path,f"{selected_runner or 'aider-ollama'}_execution",detail,outcome
-            )
-            result["failure_fingerprint"]=lesson["fingerprint"]
-        atomic_json(state_path,result); return result
-    if not paths:
-        result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
-        atomic_json(state_path,result); return result
-    initial_failure=generated_change_failure(ws,base,paths,slice_authority)
-    if initial_failure:
-        repair_started_at=datetime.now(UTC)
-        repair=run_builder(ws,repair_prompt(repo,initial_failure,paths),selected_runner)
-        repair_finished_at=datetime.now(UTC)
-        repair_seconds=max((repair_finished_at-repair_started_at).total_seconds(),0.0)
-        if execution_grant is not None:
-            advance_grant_stage(execution_grant,"REPAIR_FINISHED",
-                                repair_attempts=1,repair_seconds=repair_seconds,
-                                execution_seconds=max((execution_finished_at-execution_started_at).total_seconds(),0.0)+repair_seconds)
+        task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)
+        selected_runner=(slice_authority or {}).get("runner_id") if slice_authority is not None else None
+        execution_started_at=datetime.now(UTC)
+        if execution_grant is not None and not advance_grant_stage(
+                execution_grant,"EXECUTING",execution_started_at=execution_started_at.isoformat()):
+            return grant_stage_transition_rejected(repo,"EXECUTING",idx)
+        builder=run_builder(ws,task_prompt,selected_runner)
+        execution_finished_at=datetime.now(UTC)
+        if execution_grant is not None and not advance_grant_stage(
+                execution_grant,"EXECUTION_FINISHED",
+                execution_started_at=execution_started_at.isoformat(),
+                execution_finished_at=execution_finished_at.isoformat(),
+                execution_seconds=max((execution_finished_at-execution_started_at).total_seconds(),0.0)):
+            return grant_stage_transition_rejected(repo,"EXECUTION_FINISHED",idx)
         cleanup_aider_artifacts(ws)
         paths=changed_paths(ws,base)
-        if repair.returncode!=0:
+        if builder.returncode!=0:
             reset_workspace(ws,base)
-            result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
-                    "initial_failure":initial_failure,"final_failure":"repair_execution_failed",
-                    "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
+            detail=builder.stderr or builder.stdout or f"returncode={builder.returncode}"
+            capacity_limited=selected_runner=="claude-code" and any(
+                marker in detail.lower() for marker in ("session limit","usage limit","rate limit")
+            )
+            outcome="RUNNER_CAPACITY_DEFERRED" if capacity_limited else "BUILDER_FAILED"
+            result={"status":outcome,"repository":repo,"runner_id":selected_runner,
+                    "returncode":builder.returncode,"last_repo_index":idx,"last_repository":repo}
+            if not capacity_limited:
+                lesson=retain_failure_lesson(
+                    state_path,f"{selected_runner or 'aider-ollama'}_execution",detail,outcome
+                )
+                result["failure_fingerprint"]=lesson["fingerprint"]
             atomic_json(state_path,result); return result
         if not paths:
-            result={"status":"SELF_REPAIRED_TO_NO_OP","repository":repo,
-                    "initial_failure":initial_failure,"repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
+            result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
-        final_failure=generated_change_failure(ws,base,paths,slice_authority)
-        if final_failure:
+        initial_failure=generated_change_failure(ws,base,paths,slice_authority)
+        if initial_failure:
+            repair_started_at=datetime.now(UTC)
+            repair=run_builder(ws,repair_prompt(repo,initial_failure,paths),selected_runner)
+            repair_finished_at=datetime.now(UTC)
+            repair_seconds=max((repair_finished_at-repair_started_at).total_seconds(),0.0)
+            if execution_grant is not None and not advance_grant_stage(
+                    execution_grant,"REPAIR_FINISHED",
+                    repair_attempts=1,repair_seconds=repair_seconds,
+                    execution_seconds=max((execution_finished_at-execution_started_at).total_seconds(),0.0)+repair_seconds):
+                return grant_stage_transition_rejected(repo,"REPAIR_FINISHED",idx)
+            cleanup_aider_artifacts(ws)
+            paths=changed_paths(ws,base)
+            if repair.returncode!=0:
+                reset_workspace(ws,base)
+                result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
+                        "initial_failure":initial_failure,"final_failure":"repair_execution_failed",
+                        "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
+                atomic_json(state_path,result); return result
+            if not paths:
+                result={"status":"SELF_REPAIRED_TO_NO_OP","repository":repo,
+                        "initial_failure":initial_failure,"repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
+                atomic_json(state_path,result); return result
+            final_failure=generated_change_failure(ws,base,paths,slice_authority)
+            if final_failure:
+                reset_workspace(ws,base)
+                result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
+                        "initial_failure":initial_failure,"final_failure":final_failure,
+                        "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
+                atomic_json(state_path,result); return result
+        run(["git","add","-A"],ws)
+        commit=run(["git","commit","-m",f"actor autonomous bounded slice {stamp}"],ws)
+        if commit.returncode:
             reset_workspace(ws,base)
-            result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
-                    "initial_failure":initial_failure,"final_failure":final_failure,
-                    "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
+            result={"status":"COMMIT_FAILED","repository":repo,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
-    run(["git","add","-A"],ws)
-    commit=run(["git","commit","-m",f"actor autonomous bounded slice {stamp}"],ws)
-    if commit.returncode:
-        reset_workspace(ws,base)
-        result={"status":"COMMIT_FAILED","repository":repo,"last_repo_index":idx,"last_repository":repo}
-        atomic_json(state_path,result); return result
-    head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
-    return promote_candidate(
-        ws=ws,
-        state_path=state_path,
-        repo=repo,
-        idx=idx,
-        main_branch=main,
-        branch=branch,
-        base=base,
-        head=head,
-        paths=paths,
-        slice_authority=slice_authority,
-        execution_grant=execution_grant,
-        run_exact_head_preflight_fn=run_exact_head_preflight,
-        reset_workspace_fn=reset_workspace,
-        retain_failure_lesson_fn=retain_failure_lesson,
-        bind_preflight_evidence_fn=bind_preflight_evidence,
-        review_candidate_fn=review_candidate,
-        advance_grant_stage_fn=advance_grant_stage,
-        refresh_base_before_publish_fn=refresh_base_before_publish,
-        changed_paths_fn=changed_paths,
-        generated_change_failure_fn=generated_change_failure,
-        run_fn=run,
-        pr_number_from_url_fn=pr_number_from_url,
-    )
+        head=run(["git","rev-parse","HEAD"],ws).stdout.strip()
+        return promote_candidate(
+            ws=ws,
+            state_path=state_path,
+            repo=repo,
+            idx=idx,
+            main_branch=main,
+            branch=branch,
+            base=base,
+            head=head,
+            paths=paths,
+            slice_authority=slice_authority,
+            execution_grant=execution_grant,
+            run_exact_head_preflight_fn=run_exact_head_preflight,
+            reset_workspace_fn=reset_workspace,
+            retain_failure_lesson_fn=retain_failure_lesson,
+            bind_preflight_evidence_fn=bind_preflight_evidence,
+            review_candidate_fn=review_candidate,
+            advance_grant_stage_fn=advance_grant_stage,
+            refresh_base_before_publish_fn=refresh_base_before_publish,
+            changed_paths_fn=changed_paths,
+            generated_change_failure_fn=generated_change_failure,
+            run_fn=run,
+            pr_number_from_url_fn=pr_number_from_url,
+        )
+    finally:
+        stop_grant_heartbeat(heartbeat_stop,heartbeat_thread)
 
 def pr_number_from_url(value:str)->int|None:
     """Extract durable PR identity from the canonical gh create output."""
