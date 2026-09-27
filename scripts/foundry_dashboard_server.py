@@ -4,6 +4,54 @@ from datetime import datetime,timedelta,timezone
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 
+def _read_json(path:Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError,json.JSONDecodeError,TypeError,ValueError):
+        return None
+
+def _health_snapshot(state_root:Path,control_repo:Path|None)->dict:
+    now=datetime.now(timezone.utc)
+    dashboard=_read_json(state_root/"telemetry"/"foundry-dashboard.json") or {}
+    recorded=dashboard.get("recorded_at")
+    age_seconds=None
+    if isinstance(recorded,str):
+        try:
+            stamp=datetime.fromisoformat(recorded.replace("Z","+00:00"))
+            if stamp.tzinfo is None: stamp=stamp.replace(tzinfo=timezone.utc)
+            age_seconds=max((now-stamp.astimezone(timezone.utc)).total_seconds(),0.0)
+        except ValueError:
+            pass
+    snapshot_status="LIVE" if age_seconds is not None and age_seconds<=120 else "STALE" if age_seconds is not None else "UNKNOWN"
+    processes={"supervisor":False,"guardian":False,"mailbox_watcher":False,"remote_control":False,"boot":None}
+    if os.name=="nt":
+        ps_script="""$p=Get-CimInstance Win32_Process; [ordered]@{
+supervisor=[bool]($p|Where-Object{$_.CommandLine -like '*continuous_flow_supervisor.py*'}|Select-Object -First 1)
+guardian=[bool]($p|Where-Object{$_.CommandLine -like '*Guard-GitHubMailbox.ps1*'}|Select-Object -First 1)
+mailbox_watcher=[bool]($p|Where-Object{$_.CommandLine -like '*Watch-GitHubMailbox.ps1*'}|Select-Object -First 1)
+remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine -match 'desktop-commander' -and $_.CommandLine -match 'remote'}|Select-Object -First 1)
+boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
+}|ConvertTo-Json -Compress"""
+        try:
+            probe=subprocess.run(["powershell.exe","-NoProfile","-Command",ps_script],capture_output=True,text=True,timeout=8,check=True)
+            processes.update(json.loads(probe.stdout))
+        except (OSError,subprocess.SubprocessError,json.JSONDecodeError,TypeError):
+            pass
+    receipt=_read_json(control_repo/"control"/"receipt.json") if control_repo else None
+    def state(value): return "LIVE" if value else "OFFLINE"
+    return {
+        "recorded_at":now.isoformat(),
+        "subsystems":{
+            "windows":{"status":"LIVE" if os.name=="nt" else "UNKNOWN","boot":processes.get("boot")},
+            "dashboard_snapshot":{"status":snapshot_status,"recorded_at":recorded,"age_seconds":age_seconds},
+            "foundry_supervisor":{"status":state(processes.get("supervisor")) if os.name=="nt" else "UNKNOWN"},
+            "github_guardian":{"status":state(processes.get("guardian") and processes.get("mailbox_watcher")) if os.name=="nt" else "UNKNOWN",
+                               "guardian":bool(processes.get("guardian")),"mailbox_watcher":bool(processes.get("mailbox_watcher"))},
+            "remote_control":{"status":state(processes.get("remote_control")) if os.name=="nt" else "UNKNOWN"},
+        },
+        "last_control_receipt":receipt,
+    }
+
 def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_token:str|None=None):
     class Handler(BaseHTTPRequestHandler):
         def _json(self,status,payload):
@@ -42,6 +90,8 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
             self._json(202,{"status":"REQUESTED","command_id":command_id,"action":action})
         def do_GET(self):
             path=self.path.split("?",1)[0]
+            if path=="/api/health":
+                self._json(200,_health_snapshot(state_root,control_repo)); return
             if path=="/api/dashboard":
                 target=state_root/"telemetry"/"foundry-dashboard.json"
                 try: data=target.read_bytes()

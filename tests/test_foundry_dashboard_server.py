@@ -21,6 +21,9 @@ def test_dashboard_server_serves_snapshot_and_pwa(tmp_path):
         assert "Azathoth Foundry" in html and "manifest.webmanifest" in html
         manifest=json.load(urlopen(base+"/manifest.webmanifest"))
         assert manifest["display"]=="standalone"
+        health=json.load(urlopen(base+"/api/health"))
+        assert set(health["subsystems"])=={"windows","dashboard_snapshot","foundry_supervisor","github_guardian","remote_control"}
+        assert all(row["status"] in {"LIVE","STALE","OFFLINE","UNKNOWN"} for row in health["subsystems"].values())
     finally: httpd.shutdown()
 
 
