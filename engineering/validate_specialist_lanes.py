@@ -17,8 +17,8 @@ if reservation.get("persistent_manual_ownership_database") is not False:
 if reservation.get("default_head_change_state")!="STALE":
     raise SystemExit("default-head changes must stale specialist lanes")
 lanes=data.get("lanes",{})
-if set(lanes)!={"knowledge-engine","rocksmith","everward"}:
-    raise SystemExit("specialist lanes must match the canonical three independent product projects")
+if set(lanes)!={"knowledge-engine","rocksmith","everward","voicestudio"}:
+    raise SystemExit("specialist lanes must match the canonical four independent product projects")
 for lane_id,lane in lanes.items():
     if lane.get("max_substantial_slices_per_run")!=1:
         raise SystemExit(f"{lane_id} must remain capped at one substantial slice per run")

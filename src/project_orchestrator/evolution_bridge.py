@@ -25,6 +25,7 @@ PROJECT_REPOSITORIES = {
     },
     "rocksmith": {"jweter/rocksmith-cdlc-generator"},
     "everward": {"jweter/Project-Everward"},
+    "voicestudio": {"jweter/VoiceStudio"},
 }
 
 NEXT_ACTIONS = {
@@ -86,7 +87,7 @@ def _contains_secret(value: Any) -> bool:
 def normalize_worker_result(raw: dict[str, Any]) -> dict[str, Any]:
     """Validate one sanitized exact-head unattended-worker result.
 
-    The bridge deliberately accepts only the three product project contexts.
+    The bridge deliberately accepts only product project contexts declared by the portfolio bridge.
     It never guesses project/repository identity from a worker name or path.
     """
 

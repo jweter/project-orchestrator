@@ -15,7 +15,18 @@ def ingest_production_results(*,pending_dir:Path,results_dir:Path,processed_dir:
   status=str(result.get("status","UNKNOWN")).upper()
   if status not in TERMINAL: status="UNKNOWN"
   repo=result.get("repository");ctx=lane_context.get(str(repo),{})
-  worker={"status":status,"project":ctx.get("project") or ({"jweter/Project-Everward":"everward","jweter/rocksmith-cdlc-generator":"rocksmith"}.get(str(repo),"knowledge-engine")),"repository":repo,
+  inferred_project={
+      "jweter/knowledge-engine-core":"knowledge-engine",
+      "jweter/knowledge-engine-web":"knowledge-engine",
+      "jweter/knowledge-engine-ai":"knowledge-engine",
+      "jweter/rocksmith-cdlc-generator":"rocksmith",
+      "jweter/Project-Everward":"everward",
+      "jweter/VoiceStudio":"voicestudio",
+  }.get(str(repo))
+  project=ctx.get("project") or inferred_project
+  if project is None:
+      raise ValueError("worker repository is outside the canonical product portfolio")
+  worker={"status":status,"project":project,"repository":repo,
    "head_sha":result.get("exact_head_sha") or result.get("base_sha") or "0"*40,"probe_id":job_id,
    "pattern_id":str(result.get("failure_class") or f"worker-{status.lower()}"),
    "evidence_ref":result.get("evidence_ref") or f"worker://{job_id}","observed_at":ctx.get("observed_at","1970-01-01T00:00:00+00:00"),

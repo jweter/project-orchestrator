@@ -5,7 +5,7 @@ import json
 from project_orchestrator.planning_dispatch import select_execution_target
 
 
-PRODUCTS = ["knowledge-engine", "rocksmith", "everward"]
+PRODUCTS = ["knowledge-engine", "rocksmith", "everward", "voicestudio"]
 ACTIVATION = {
     "products": {
         "knowledge-engine": {
@@ -23,6 +23,11 @@ ACTIVATION = {
         "everward": {
             "repositories": {
                 "jweter/Project-Everward": "e" * 40,
+            }
+        },
+        "voicestudio": {
+            "repositories": {
+                "jweter/VoiceStudio": "f" * 40,
             }
         },
     }
@@ -46,7 +51,7 @@ def test_all_eligible_products_receive_turn_before_knowledge_engine_repeats(tmp_
             load_execution_slice_fn=_ready,
             conflict_check_fn=_unowned,
         )
-        for _ in range(4)
+        for _ in range(5)
     ]
 
     picked_products = []
@@ -61,11 +66,12 @@ def test_all_eligible_products_receive_turn_before_knowledge_engine_repeats(tmp_
         "jweter/knowledge-engine-web": "knowledge-engine",
         "jweter/rocksmith-cdlc-generator": "rocksmith",
         "jweter/Project-Everward": "everward",
+        "jweter/VoiceStudio": "voicestudio",
     }
     picked_products = [repo_to_product[repo] for repo, _ in picks]
 
-    assert picked_products[:3] == PRODUCTS
-    assert picked_products[3] == "knowledge-engine"
+    assert picked_products[:4] == PRODUCTS
+    assert picked_products[4] == "knowledge-engine"
 
 
 def test_knowledge_engine_subrepositories_rotate_across_product_rounds(tmp_path):
@@ -77,7 +83,7 @@ def test_knowledge_engine_subrepositories_rotate_across_product_rounds(tmp_path)
             load_execution_slice_fn=_ready,
             conflict_check_fn=_unowned,
         )
-        for _ in range(7)
+        for _ in range(9)
     ]
 
     ke_repositories = [

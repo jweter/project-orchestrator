@@ -21,7 +21,7 @@ Its ledger is an ephemeral scheduling projection. GitHub and repository-local
 governance remain authoritative.
 ## Canonical lane model
 
-Every plan contains exactly three parent lanes:
+Every plan contains exactly four parent lanes:
 
 - `knowledge-engine` — coordinated Core/Web/AI family;
 - `rocksmith` — Rocksmith CDLC Generator;

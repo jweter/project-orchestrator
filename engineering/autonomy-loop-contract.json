@@ -7,7 +7,7 @@
   "goal": {
     "machine_decidable": true,
     "acceptance_criteria": [
-      "inspect all five product repositories plus project-orchestrator before portfolio decisions",
+      "inspect all six product repositories plus project-orchestrator before portfolio decisions",
       "apply P0-P6 priority and anti-stall rotation from current authority",
       "attempt concrete product advancement when safe eligible work exists",
       "never promote or merge through failed, pending, missing-required-check, conflicted, or materially uncertain gates",

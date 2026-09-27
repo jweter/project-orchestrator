@@ -566,7 +566,15 @@ def prompt_for(repo:str,state_path:Path|None=None)->str:
     owned=open_pr_paths(repo)
     avoid=sorted({p for lease in owned for p in lease.paths})
     avoid_text=", ".join(avoid[:80]) if avoid else "none"
+    voice_authority=(
+        "VoiceStudio active product authority: docs/projects/singing-mode.md. "
+        "Advance the first unchecked S0-S8 milestone, starting with S0. "
+        "The MVP is singing voice conversion with explicit pitch/timing preservation; "
+        "the superseded OmniVoice singing ADR is not the active melody-preserving design.\n"
+        if repo=="jweter/VoiceStudio" else ""
+    )
     return f"""You are the autonomous laptop builder for {repo}.
+{voice_authority}
 {WORKER_PROMPT_VOICE}
 Read the repository's AGENTS.md, README, roadmap/milestone, architecture, and engineering/control-plane files before editing.
 Choose exactly ONE small, high-value, authorized P4/P5 slice that is independent of Product Reality and does not require a human decision.

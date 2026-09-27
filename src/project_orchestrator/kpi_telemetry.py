@@ -19,7 +19,7 @@ from typing import Any, Iterable
 from .inventory import EXPECTED_REPOSITORIES
 
 SCHEMA_VERSION = 1
-PRODUCT_PROJECTS = frozenset({"knowledge-engine", "rocksmith", "everward"})
+PRODUCT_PROJECTS = frozenset({"knowledge-engine", "rocksmith", "everward", "voicestudio"})
 ALLOWED_PROJECTS = PRODUCT_PROJECTS | {"portfolio"}
 ALLOWED_REPOSITORIES = frozenset(EXPECTED_REPOSITORIES) | {"jweter/project-orchestrator"}
 ENTITY_TYPES = frozenset({"pr", "ci", "branch", "issue"})

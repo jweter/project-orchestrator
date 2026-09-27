@@ -9,6 +9,7 @@ PORTFOLIO_REPOS=(
     "jweter/project-orchestrator","jweter/knowledge-engine-core",
     "jweter/knowledge-engine-web","jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator","jweter/Project-Everward",
+    "jweter/VoiceStudio",
 )
 PASS_CONCLUSIONS={"SUCCESS","NEUTRAL","SKIPPED"}
 ALLOWED_AUTHORS={"jweter","dependabot[bot]"}

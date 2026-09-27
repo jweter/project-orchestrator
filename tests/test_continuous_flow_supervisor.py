@@ -68,10 +68,61 @@ def test_new_merge_event_advances_after_previous_consumed(tmp_path):
     flow.reconcile_merge_feedback=original
 
 def test_refresh_readiness_fails_closed_for_incomplete_workspace(tmp_path):
+    import json
     from scripts.continuous_flow_supervisor import refresh_readiness
+    engineering=tmp_path/"engineering"; engineering.mkdir()
+    (engineering/"hands-off-evolution.json").write_text(
+        json.dumps({"products":{"voicestudio":["jweter/VoiceStudio"]}}),
+        encoding="utf-8",
+    )
     ok,reason=refresh_readiness(tmp_path,tmp_path/"workspace",tmp_path/"state")
     assert ok is False
     assert reason=="READINESS_WORKSPACE_INCOMPLETE"
+
+
+def test_refresh_readiness_uses_contract_declared_voicestudio_workspace(tmp_path, monkeypatch):
+    import json
+    from pathlib import Path
+    import scripts.continuous_flow_supervisor as supervisor
+
+    engineering=tmp_path/"engineering"; engineering.mkdir()
+    (engineering/"hands-off-evolution.json").write_text(
+        json.dumps({"products":{"voicestudio":["jweter/VoiceStudio"]}}),
+        encoding="utf-8",
+    )
+    workspace=tmp_path/"workspace"; voice=workspace/"VoiceStudio"; voice.mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir()
+    captured={}
+
+    class Result:
+        returncode=0
+        stdout=""
+        stderr=""
+
+    def run(cmd,**kwargs):
+        captured["cmd"]=cmd
+        activation=Path(cmd[cmd.index("--activation-state")+1])
+        activation.write_text(
+            json.dumps({
+                "products":{
+                    "voicestudio":{
+                        "enabled":True,
+                        "repositories":{"jweter/VoiceStudio":"voice-head"},
+                    }
+                }
+            }),
+            encoding="utf-8",
+        )
+        return Result()
+
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.refresh_readiness(tmp_path,workspace,state)==(
+        True,"READINESS_REFRESHED"
+    )
+    assert str(voice) in captured["cmd"]
+    assert json.loads((state/"hands-off-expected-heads.json").read_text())=={
+        "jweter/VoiceStudio":"voice-head"
+    }
 
 def test_evolution_authorized_returns_only_gate_current_products(tmp_path, monkeypatch):
     import json

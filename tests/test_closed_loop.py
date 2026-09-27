@@ -44,23 +44,25 @@ def payload(**overrides):
             "jweter/knowledge-engine-ai",
             "jweter/rocksmith-cdlc-generator",
             "jweter/Project-Everward",
+            "jweter/VoiceStudio",
         ],
         "projects": {
             "knowledge-engine": project(),
             "rocksmith": project(),
             "everward": project(),
+            "voicestudio": project(),
         },
     }
     value.update(overrides)
     return value
 
 
-def test_fresh_complete_run_closes_all_three_learning_loops():
+def test_fresh_complete_run_closes_all_four_learning_loops():
     result = validate_closed_loop_run(payload(), now=NOW)
     assert result["evidence_fresh"] is True
     assert result["run_closed"] is True
     assert result["kpis"]["product_advancement_rate"]["value"] == 1.0
-    assert result["kpis"]["closed_learning_loops"] == 3
+    assert result["kpis"]["closed_learning_loops"] == 4
 
 
 def test_stale_evidence_blocks_trend_claims():
@@ -105,7 +107,7 @@ def test_unknown_learning_stage_does_not_close_run():
     projects["knowledge-engine"] = project(stages=bad)
     result = validate_closed_loop_run(payload(projects=projects), now=NOW)
     assert result["run_closed"] is False
-    assert result["kpis"]["closed_learning_loops"] == 2
+    assert result["kpis"]["closed_learning_loops"] == 3
 
 
 def test_no_safe_work_can_close_without_fake_advancement():
@@ -116,7 +118,7 @@ def test_no_safe_work_can_close_without_fake_advancement():
     projects = payload()["projects"]
     projects["rocksmith"] = item
     result = validate_closed_loop_run(payload(projects=projects), now=NOW)
-    assert result["kpis"]["product_advancement_rate"]["denominator"] == 2
+    assert result["kpis"]["product_advancement_rate"]["denominator"] == 3
 
 
 def test_eligible_project_requires_pre_change_risk_profile():
@@ -164,7 +166,7 @@ def test_non_ready_action_guard_can_block_without_fake_advancement():
     projects["rocksmith"] = item
     result = validate_closed_loop_run(payload(projects=projects), now=NOW)
     assert result["projects"]["rocksmith"]["agent_action_guard_state"] == "APPROVAL_REQUIRED"
-    assert result["kpis"]["eligible_projects_advanced"] == 2
+    assert result["kpis"]["eligible_projects_advanced"] == 3
 
 
 def test_advancement_requires_explicit_execution_reference():
@@ -200,6 +202,12 @@ def test_closed_loop_applies_retained_learning_to_real_scheduler_context():
         policy_input={
             "repository": "jweter/Project-Everward",
             "changed_paths": ["tools/worker.py"],
+        }
+    )
+    projects["voicestudio"] = project(
+        policy_input={
+            "repository": "jweter/VoiceStudio",
+            "changed_paths": ["backend/services/singing.py"],
         }
     )
     store = {

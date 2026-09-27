@@ -10,7 +10,7 @@ from .capability_applicability import (
     match_applicable_capabilities,
 )
 
-PROJECTS = {"knowledge-engine", "rocksmith", "everward"}
+PROJECTS = {"knowledge-engine", "rocksmith", "everward", "voicestudio"}
 SOURCE_TYPES = {"issue", "pull_request", "decomposition", "verified_learning", "product_reality_debt"}
 TERMINAL_SOURCE_STATES = {"CLOSED", "MERGED", "REMOVED", "CANCELLED"}
 REQUIRED = {"project", "repository", "source_type", "source_ref", "source_revision", "source_state", "priority"}

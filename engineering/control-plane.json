@@ -675,7 +675,7 @@
     "schema_version": 1,
     "contract": "engineering/foreman.json",
     "executable": "project-orchestrator foreman-plan",
-    "role": "single portfolio lane controller over exactly three independent products",
+    "role": "single portfolio lane controller over exactly four independent products",
     "ownership_source": "live GitHub PRs/issues/branches/commits plus terminal worker evidence",
     "manual_ownership_database": false,
     "history_policy": "terminal execution history is bounded archival evidence and does not participate in normal scheduling",

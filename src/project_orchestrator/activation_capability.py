@@ -60,12 +60,22 @@ def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path,*,ob
     return p.returncode==0 and bool(products),reason,products,stale
 
 def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path,run_fn=subprocess.run)->tuple[bool,str]:
-    """Regenerate exact-head activation evidence without conversational intervention."""
-    repos=[
-        workspace_root/"knowledge-engine-core", workspace_root/"knowledge-engine-web",
-        workspace_root/"knowledge-engine-ai", workspace_root/"rocksmith-cdlc-generator",
-        workspace_root/"Project-Everward",
-    ]
+    """Regenerate exact-head activation evidence from contract-declared repositories."""
+    try:
+        contract=json.loads((repo_root/"engineering"/"hands-off-evolution.json").read_text(encoding="utf-8"))
+        products=contract.get("products",{})
+        repo_ids=sorted({
+            repo
+            for declared in products.values()
+            if isinstance(declared,list)
+            for repo in declared
+            if isinstance(repo,str) and "/" in repo
+        })
+    except (OSError,json.JSONDecodeError,TypeError,AttributeError):
+        return False,"READINESS_CONTRACT_UNREADABLE"
+    if not repo_ids:
+        return False,"READINESS_CONTRACT_UNREADABLE"
+    repos=[workspace_root/repo.split("/",1)[-1] for repo in repo_ids]
     if not all(path.is_dir() for path in repos):
         return False,"READINESS_WORKSPACE_INCOMPLETE"
     activation=state_root/"hands-off-activation.json"

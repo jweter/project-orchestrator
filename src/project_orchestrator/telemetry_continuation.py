@@ -240,9 +240,12 @@ def record_product_identity_advancement(state_root:Path,*,repository:str|None,bu
     events.append({"sequence":sequence,"repository":repository,"product":product,"builder_status":builder_status,
                    "lifecycle_advanced":lifecycle_advanced,"advanced":advanced,"process_instance_id":process_instance_id,
                    "recorded_at_utc":datetime.now(UTC).isoformat()})
-    products=sorted({e.get("product") for e in events if isinstance(e,dict) and e.get("advanced") is True and e.get("product") in {"knowledge-engine","rocksmith","everward"}})
-    proof={"schema_version":1,"burst_id":burst_id,"advanced_products":products,"advanced_product_count":len(products),
-           "all_three_products_proven":len(products)==3,"events":events[-100:]}
+    products=sorted({e.get("product") for e in events if isinstance(e,dict) and e.get("advanced") is True and e.get("product") in {"knowledge-engine","rocksmith","everward","voicestudio"}})
+    all_products_proven=len(products)==4
+    proof={"schema_version":2,"burst_id":burst_id,"advanced_products":products,"advanced_product_count":len(products),
+           "all_products_proven":all_products_proven,
+           "all_three_products_proven":all_products_proven,
+           "events":events[-100:]}
     atomic_json(path,proof); return proof
 
 def selected_builder_repository(state_root:Path,expected_invocation_id:str|None)->str|None:

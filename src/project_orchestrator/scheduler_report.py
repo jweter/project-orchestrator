@@ -81,8 +81,8 @@ def build_scheduler_executive_report(
     """
     if isinstance(product_repositories_inspected, bool) or not isinstance(product_repositories_inspected, int):
         raise ValueError("product_repositories_inspected must be an integer")
-    if not 0 <= product_repositories_inspected <= 5:
-        raise ValueError("product_repositories_inspected must be between 0 and 5")
+    if not 0 <= product_repositories_inspected <= 6:
+        raise ValueError("product_repositories_inspected must be between 0 and 6")
 
     previous_reasons = _validate_previous_no_advancement_reasons(previous_no_advancement_reasons or {})
     canonical_projects: dict[str, dict[str, Any]] = {}
@@ -215,11 +215,11 @@ def build_scheduler_executive_report(
     learning = learning_evolution or {}
 
     kpis = {
-        "independent_projects_inspected": {"value": 3, "target": 3, "status": "GREEN"},
+        "independent_projects_inspected": {"value": 4, "target": 4, "status": "GREEN"},
         "product_repositories_inspected": {
             "value": product_repositories_inspected,
-            "target": 5,
-            "status": "GREEN" if product_repositories_inspected == 5 else "RED",
+            "target": 6,
+            "status": "GREEN" if product_repositories_inspected == 6 else "RED",
         },
         "eligible_projects": len(eligible),
         "projects_materially_advanced": len(orchestrator_advanced),

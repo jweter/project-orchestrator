@@ -49,7 +49,7 @@
 
 ## v1 completion criterion
 
-The orchestrator can consume live evidence for all five repositories, deterministically select the next action under DoWork, preserve ownership and dependency boundaries, produce machine-readable evidence, and prove its own changes through preflight + fresh PR CI.
+The orchestrator can consume live evidence for all six product repositories, deterministically select the next action under DoWork, preserve ownership and dependency boundaries, produce machine-readable evidence, and prove its own changes through preflight + fresh PR CI.
 
 The n8n layer is considered **repository-integrated** when its versioned workflows and policy validators pass preflight, and **operationally activated** once the user-approved HTTPS ingress, least-privilege runtime credential, security audit, and a real webhook route have been verified. Both are now true for **both** canonical workflows: PR #12 verified `ciFailureRouter` (outbound GitHub API TLS validates normally, all five product repositories have a registered `check_suite` webhook returning HTTP 200, each GitHub Trigger node's webhook secret persists and survives a full container restart). A later fix verified `keImpactRouter` the same way, plus a real (non-ping) `push` to `main` on `knowledge-engine-core` was observed flowing through the classifier and dispatch node into a successful `orchestrator-observe.yml` run — the first fully end-to-end verification of either router against a real event rather than a ping.
 
@@ -71,7 +71,7 @@ Selective ECC adoption is governed by `docs/ECC_GAP_ANALYSIS.md`. The first adop
 - [ ] Replace global stall accounting with per-product two-cycle liveness enforcement
 - [ ] Add bounded persistent history/state compaction
 - [ ] Wire live production lane and result providers into the persistent loop
-- [ ] Prove unattended product advancement -> verification -> feedback -> next advancement on all three products
+- [ ] Prove unattended product advancement -> verification -> feedback -> next advancement on all four products
 - [ ] Drive Knowledge Engine, Rocksmith, and Everward roadmaps continuously until their authoritative completion criteria are met
 
 The full durable execution contract is docs/AUTONOMOUS_COMPLETION_PATH.md. Zero open PRs is explicitly a build trigger. Product work outranks governance expansion except when a P0/P1 control-plane defect prevents safe product execution. The existing execution schedule/processes continue this plan; do not create duplicate schedules.
@@ -107,7 +107,7 @@ The Gym is an explicit post-v1 capability path. It uses otherwise-idle Laptop Ac
 - [ ] Prove degrading capabilities can be demoted or quarantined.
 
 ### Phase 1 — real-history replay
-- [ ] Mine verified failures, repairs, CI failures, review findings, and regression fixes from all five product repositories.
+- [ ] Mine verified failures, repairs, CI failures, review findings, and regression fixes from all six product repositories.
 - [ ] Build sanitized challenge episodes with pre-fix state, acceptance contract, authoritative verification, and hidden verified outcome.
 - [ ] Replay challenges in disposable worktrees without exposing the historical fix.
 - [ ] Measure first-pass success, repair iterations, elapsed cycle time, unnecessary churn, regression escapes, and Jeremy intervention.

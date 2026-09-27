@@ -11,6 +11,7 @@ EXPECTED_REPOSITORIES = {
     "jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator",
     "jweter/Project-Everward",
+    "jweter/VoiceStudio",
 }
 
 

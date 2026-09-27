@@ -106,6 +106,9 @@
     ],
     "everward": [
       "jweter/Project-Everward"
+    ],
+    "voicestudio": [
+      "jweter/VoiceStudio"
     ]
   },
   "project_intake": {

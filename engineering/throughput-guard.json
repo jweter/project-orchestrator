@@ -21,7 +21,7 @@
   "branch_hygiene": {
     "module": "project_orchestrator.branch_lifecycle",
     "executable": "project-orchestrator branch-lifecycle",
-    "scope": "all non-default branches across the five product repositories plus project-orchestrator",
+    "scope": "all non-default branches across the six product repositories plus project-orchestrator",
     "run_points": [
       "daily_bottleneck_review",
       "periodic_DoWork_housekeeping",

@@ -10,7 +10,7 @@ Foreman decides which product work is eligible. Steward decides how much of that
 
 ## Operating bands
 
-- GREEN: normal execution; up to three independent product lanes may run.
+- GREEN: normal execution; up to four independent product lanes may run.
 - YELLOW: reduced concurrency; avoid unnecessary heavy-tool overlap.
 - ORANGE: one LIGHT/STANDARD lane; HEAVY work is deferred.
 - RED: no new engineering jobs; preserve state and recover machine capacity.

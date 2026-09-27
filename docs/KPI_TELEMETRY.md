@@ -61,7 +61,7 @@ The existing first-pass **preflight** target remains the authoritative rework KP
 
 No-event and incomplete-pair cases remain `UNKNOWN`. They are not converted to zero. Examples: a merge without a recorded open transition cannot produce cycle time; a success without a recorded preceding failure cannot produce repair latency.
 
-Control-plane events from `jweter/project-orchestrator` are retained in the ledger for auditability but excluded from product-flow reports so the control plane cannot make the three products look healthier.
+Control-plane events from `jweter/project-orchestrator` are retained in the ledger for auditability but excluded from product-flow reports so the control plane cannot make the four products look healthier.
 
 ## Querying
 

@@ -5,7 +5,7 @@ from typing import Any
 STEWARD_NAME = "Steward"
 BANDS = ("GREEN", "YELLOW", "ORANGE", "RED", "CRITICAL")
 BAND_RANK = {band: index for index, band in enumerate(BANDS)}
-PROJECT_ORDER = ("knowledge-engine", "rocksmith", "everward")
+PROJECT_ORDER = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 
 DEFAULT_POLICY: dict[str, Any] = {
     "memory_percent": {"YELLOW": 70.0, "ORANGE": 85.0, "RED": 95.0, "CRITICAL": 98.0},

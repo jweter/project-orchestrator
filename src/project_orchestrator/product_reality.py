@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-ALLOWED_PROJECTS = {"knowledge-engine", "rocksmith", "everward"}
+ALLOWED_PROJECTS = {"knowledge-engine", "rocksmith", "everward", "voicestudio"}
 ALLOWED_STATES = {"PENDING", "VERIFIED", "FAILED", "SUPERSEDED"}
 ALLOWED_KINDS = {
     "packaged_app",

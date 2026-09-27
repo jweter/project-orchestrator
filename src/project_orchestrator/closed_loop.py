@@ -6,7 +6,7 @@ from typing import Any
 from .scheduler_policy import apply_retained_policy
 from .claude_dispatch import select_actor
 
-PROJECTS = ("knowledge-engine", "rocksmith", "everward")
+PROJECTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 LOOP_STAGES = ("SENSE", "REMEMBER", "DECIDE", "ACT", "VERIFY", "LEARN", "ADAPT")
 ACTION_GUARD_STATES = {"READY", "GATHER_CONTEXT", "APPROVAL_REQUIRED", "FORBIDDEN"}
 ADVANCEMENTS = {
@@ -48,12 +48,12 @@ def validate_closed_loop_run(
     evidence_fresh = age_seconds <= max_age
 
     repos = payload.get("repositories_inspected")
-    if not isinstance(repos, list) or len(repos) != 5 or len(set(repos)) != 5:
-        raise ValueError("repositories_inspected must contain exactly five unique product repositories")
+    if not isinstance(repos, list) or len(repos) != 6 or len(set(repos)) != 6:
+        raise ValueError("repositories_inspected must contain exactly six unique product repositories")
 
     projects = payload.get("projects")
     if not isinstance(projects, dict) or tuple(projects) != PROJECTS:
-        raise ValueError("projects must contain the three independent product projects in canonical order")
+        raise ValueError("projects must contain the four independent product projects in canonical order")
 
     normalized_projects: dict[str, Any] = {}
     eligible = 0
@@ -223,12 +223,12 @@ def validate_closed_loop_run(
             "eligible_projects_advanced": eligible_advanced,
             "product_advancement_rate": advancement_rate,
             "closed_learning_loops": closed_projects,
-            "closed_learning_loop_target": 3,
+            "closed_learning_loop_target": len(PROJECTS),
             "prior_lessons_reused": lessons_reused,
             "lessons_recorded": lessons_recorded,
         },
         "trend_claim_authorized": evidence_fresh,
-        "run_closed": evidence_fresh and closed_projects == 3,
+        "run_closed": evidence_fresh and closed_projects == len(PROJECTS),
         "rules": [
             "fresh evidence is required before trend or compounding claims",
             "ELIGIBLE projects require SENSE, REMEMBER, DECIDE, explicit pre-change risk evidence, and Agent Action Guard evidence before ACT",

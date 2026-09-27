@@ -34,22 +34,24 @@ def _window(project, repository, index):
 def test_missing_projects_and_repositories_remain_visible():
     scorecard = build_portfolio_kpi_scorecard(
         {"schema_version": 1, "windows": []},
-        eligible_projects=["knowledge-engine", "rocksmith", "everward"],
+        eligible_projects=["knowledge-engine", "rocksmith", "everward", "voicestudio"],
     )
 
     assert scorecard["delivery_progress"]["by_project"]["knowledge-engine"]["status"] == "INSUFFICIENT_DATA"
     assert scorecard["delivery_progress"]["by_project"]["rocksmith"]["metrics"]["merge_cycle_seconds"]["status"] == "UNKNOWN"
-    assert len(scorecard["delivery_progress"]["by_repository"]) == 5
+    assert len(scorecard["delivery_progress"]["by_repository"]) == 6
     assert scorecard["evidence_coverage"]["missing_product_projects"] == [
         "everward",
         "knowledge-engine",
         "rocksmith",
+        "voicestudio",
     ]
-    assert len(scorecard["evidence_coverage"]["missing_product_repositories"]) == 5
+    assert len(scorecard["evidence_coverage"]["missing_product_repositories"]) == 6
     assert {row["project_id"] for row in scorecard["bottlenecks"]["projects"]} == {
         "knowledge-engine",
         "rocksmith",
         "everward",
+        "voicestudio",
     }
     assert scorecard["bottlenecks"]["selection_state"] == "INSUFFICIENT_DATA"
 
@@ -60,7 +62,7 @@ def test_orchestrator_only_windows_do_not_make_product_portfolio_look_measured()
             "schema_version": 1,
             "windows": [_window("portfolio", "jweter/project-orchestrator", 1)],
         },
-        eligible_projects=["knowledge-engine", "rocksmith", "everward"],
+        eligible_projects=["knowledge-engine", "rocksmith", "everward", "voicestudio"],
     )
 
     assert scorecard["delivery_progress"]["portfolio"]["status"] == "INSUFFICIENT_DATA"
@@ -71,6 +73,7 @@ def test_orchestrator_only_windows_do_not_make_product_portfolio_look_measured()
         "everward",
         "knowledge-engine",
         "rocksmith",
+        "voicestudio",
     ]
 
 
@@ -126,7 +129,7 @@ def test_scheduler_report_embeds_scorecard_and_extracts_current_run_rework_evide
             "next_gate": "preflight",
             "product_reality_debt": [],
         }
-        for name in ("knowledge-engine", "rocksmith", "everward")
+        for name in ("knowledge-engine", "rocksmith", "everward", "voicestudio")
     }
     projects["knowledge-engine"].update(
         {
@@ -147,7 +150,7 @@ def test_scheduler_report_embeds_scorecard_and_extracts_current_run_rework_evide
             "NEEDS_JEREMY": [],
         },
         project_orchestrator={"state": "GREEN", "next_gate": "product execution"},
-        product_repositories_inspected=5,
+        product_repositories_inspected=6,
         timeseries_store={"schema_version": 1, "windows": []},
         generated_at="2026-09-15T14:00:00Z",
     )

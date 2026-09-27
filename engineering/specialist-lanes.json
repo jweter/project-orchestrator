@@ -17,6 +17,11 @@
       "project_id": "everward",
       "coordination": "standalone",
       "max_substantial_slices_per_run": 1
+    },
+    "voicestudio": {
+      "project_id": "voicestudio",
+      "coordination": "standalone",
+      "max_substantial_slices_per_run": 1
     }
   },
   "reservation": {

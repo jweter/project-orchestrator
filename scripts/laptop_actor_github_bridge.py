@@ -21,6 +21,7 @@ ALLOWED_REPOSITORIES = {
     "jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator",
     "jweter/Project-Everward",
+    "jweter/VoiceStudio",
 }
 ALLOWED_EXECUTION_ADAPTERS = {"knowledge_engine_core"}
 KNOWLEDGE_ENGINE_CORE = "jweter/knowledge-engine-core"

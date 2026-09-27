@@ -8,7 +8,7 @@ from .jev_shadow import evaluate_shadow
 from .steward import assess_machine_health, govern_dispatch
 
 FOREMAN_NAME = "Foreman"
-PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward")
+PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 TERMINAL_STATES = {
     "PASS",
     "FAIL",
@@ -209,11 +209,11 @@ def build_foreman_plan(
     machine_health: dict[str, Any] | None = None,
     steward_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Project live evidence into exactly three work-conserving portfolio lanes."""
+    """Project live evidence into the canonical work-conserving portfolio lanes."""
     projects = _project_repositories(inventory)
     if set(projects) != set(PROJECT_IDS):
         raise ValueError(
-            "Foreman requires exactly Knowledge Engine, Rocksmith, and Everward"
+            "Foreman requires exactly Knowledge Engine, Rocksmith, Everward, and VoiceStudio"
         )
 
     compacted = compact_execution_records(inventory, execution_records or [])
@@ -380,7 +380,7 @@ def build_foreman_plan(
         "safety_boundaries": [
             "GitHub and repository-local governing documents remain ownership authority",
             "Foreman never creates a competing manual ownership database",
-            "exactly three independent product lanes are represented",
+            "all canonical independent product lanes are represented",
             "one substantial new slice per independent product per run",
             "waiting gates are asynchronous and never consume another product lane",
             "Product Reality is never inferred",

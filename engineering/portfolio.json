@@ -6,22 +6,57 @@
       "name": "Knowledge Engine",
       "coordination": "cross-repo-family",
       "repositories": [
-        {"name": "jweter/knowledge-engine-core", "role": "core"},
-        {"name": "jweter/knowledge-engine-web", "role": "web"},
-        {"name": "jweter/knowledge-engine-ai", "role": "ai"}
+        {
+          "name": "jweter/knowledge-engine-core",
+          "role": "core"
+        },
+        {
+          "name": "jweter/knowledge-engine-web",
+          "role": "web"
+        },
+        {
+          "name": "jweter/knowledge-engine-ai",
+          "role": "ai"
+        }
       ]
     },
     {
       "id": "rocksmith",
       "name": "Rocksmith Song DLC Generator",
       "coordination": "standalone",
-      "repositories": [{"name": "jweter/rocksmith-cdlc-generator", "role": "standalone"}]
+      "repositories": [
+        {
+          "name": "jweter/rocksmith-cdlc-generator",
+          "role": "standalone"
+        }
+      ]
     },
     {
       "id": "everward",
       "name": "Everward",
       "coordination": "standalone",
-      "repositories": [{"name": "jweter/Project-Everward", "role": "standalone"}]
+      "repositories": [
+        {
+          "name": "jweter/Project-Everward",
+          "role": "standalone"
+        }
+      ]
+    },
+    {
+      "id": "voicestudio",
+      "name": "VoiceStudio Singing",
+      "coordination": "standalone",
+      "repositories": [
+        {
+          "name": "jweter/VoiceStudio",
+          "role": "standalone"
+        }
+      ],
+      "authority_docs": [
+        "docs/projects/singing-mode.md"
+      ],
+      "initial_milestone": "S0",
+      "product_goal": "Add first-class Singing Mode; MVP is singing voice conversion with explicit pitch/timing preservation."
     }
   ]
 }

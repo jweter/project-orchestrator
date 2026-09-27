@@ -15,6 +15,7 @@ PRODUCT_BY_REPOSITORY = {
     "jweter/knowledge-engine-ai": "knowledge-engine",
     "jweter/rocksmith-cdlc-generator": "rocksmith",
     "jweter/Project-Everward": "everward",
+    "jweter/VoiceStudio": "voicestudio",
 }
 
 
@@ -518,7 +519,7 @@ def product_convergence(
 ) -> dict:
     authorized = {
         p for p in authorized_products
-        if p in {"knowledge-engine", "rocksmith", "everward"}
+        if p in {"knowledge-engine", "rocksmith", "everward", "voicestudio"}
     }
     active = {}
     try:
@@ -617,7 +618,7 @@ def record_eligible_idle_streaks(
     """Turn repeated authorized-but-unscheduled products into explicit P1 defects."""
     authorized = {
         p for p in authorized_products
-        if p in {"knowledge-engine", "rocksmith", "everward"}
+        if p in {"knowledge-engine", "rocksmith", "everward", "voicestudio"}
     }
     try:
         previous = json.loads((state_root / "eligible-idle-streaks.json").read_text(encoding="utf-8"))

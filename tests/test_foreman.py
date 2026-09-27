@@ -22,6 +22,10 @@ def inventory():
                 "id": "everward",
                 "repositories": [{"name": "jweter/Project-Everward"}],
             },
+            {
+                "id": "voicestudio",
+                "repositories": [{"name": "jweter/VoiceStudio"}],
+            },
         ]
     }
 
@@ -52,6 +56,11 @@ def snapshot():
             {
                 "repository": "jweter/Project-Everward",
                 "default_head_sha": "ever-head",
+                "active_work": [],
+            },
+            {
+                "repository": "jweter/VoiceStudio",
+                "default_head_sha": "voice-head",
                 "active_work": [],
             },
         ]
@@ -87,6 +96,15 @@ def candidates():
             "priority": 1,
             "paths": ["Source/Ever.cpp"],
         },
+        {
+            "project_id": "voicestudio",
+            "repository": "jweter/VoiceStudio",
+            "base_sha": "voice-head",
+            "branch": "feature/singing-s0",
+            "title": "VoiceStudio singing S0",
+            "priority": 1,
+            "paths": ["backend/services/singing.py"],
+        },
     ]
 
 
@@ -94,11 +112,12 @@ def test_foreman_dispatches_one_lane_for_each_product():
     plan = build_foreman_plan(inventory(), snapshot(), candidates())
 
     assert plan["controller"] == "Foreman"
-    assert len(plan["projects"]) == 3
+    assert len(plan["projects"]) == 4
     assert plan["dispatchable_product_projects"] == [
         "knowledge-engine",
         "rocksmith",
         "everward",
+        "voicestudio",
     ]
     assert all(row["state"] == "DISPATCH_READY" for row in plan["projects"])
     assert plan["immediate_continuation"] is True
@@ -111,7 +130,7 @@ def test_blocked_product_does_not_consume_other_product_lanes():
 
     plan = build_foreman_plan(inventory(), snapshot(), work)
 
-    assert plan["dispatchable_product_projects"] == ["rocksmith", "everward"]
+    assert plan["dispatchable_product_projects"] == ["rocksmith", "everward", "voicestudio"]
     states = {row["project_id"]: row["state"] for row in plan["projects"]}
     assert states["knowledge-engine"] == "BLOCKED"
     assert states["rocksmith"] == "DISPATCH_READY"
@@ -255,6 +274,8 @@ def test_steward_yellow_health_admits_two_with_fair_rotation():
 
     assert plan["steward"]["assessment"]["band"] == "YELLOW"
     assert plan["dispatchable_product_projects"] == ["rocksmith", "everward"]
+    voice = next(row for row in plan["projects"] if row["project_id"] == "voicestudio")
+    assert voice["state"] == "DISPATCH_READY"
 
 
 def test_foreman_records_jev_shadow_without_changing_authoritative_selection():
@@ -290,7 +311,7 @@ def test_jev_v2_harvests_cross_repo_allocation():
     harvest = plan["jev_decision_harvest"]
     assert "portfolio:allocation" in harvest
     assert harvest["portfolio:allocation"]["decision"]["state"] == "SHADOW_PENDING"
-    assert len(harvest["portfolio:allocation"]["deterministic_legal_candidate_ids"]) == 3
+    assert len(harvest["portfolio:allocation"]["deterministic_legal_candidate_ids"]) == 4
     assert plan["jev_decision_harvest_count"] == 1
 
 
