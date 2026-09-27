@@ -86,3 +86,50 @@ def test_canonical_job_projection_maps_legacy_combinations_fail_closed(record, e
 def test_canonical_job_projection_rejects_non_record_input():
     with pytest.raises(TypeError, match="grant record"):
         lifecycle.canonical_job_projection(None)
+
+
+def test_shared_stage_authority_rejects_unknown_normal_stage(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED"}}}),encoding="utf-8")
+
+    assert lifecycle.advance_claimed_execution_stage(
+        path,
+        "g",
+        "BUILDING",
+        evidence={"head_sha":"abc"},
+        updated_at="2026-09-27T00:00:00+00:00",
+    ) is False
+
+    assert "execution_stage" not in json.loads(path.read_text())["grants"]["g"]
+
+
+def test_shared_stage_authority_persists_only_normal_claimed_stage(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED"}}}),encoding="utf-8")
+
+    assert lifecycle.advance_claimed_execution_stage(
+        path,
+        "g",
+        "EXECUTING",
+        evidence={"head_sha":"abc","empty":"","none":None},
+        updated_at="2026-09-27T00:00:00+00:00",
+    )
+
+    record=json.loads(path.read_text())["grants"]["g"]
+    assert record["execution_stage"]=="EXECUTING"
+    assert record["stage_updated_at"]=="2026-09-27T00:00:00+00:00"
+    assert record["head_sha"]=="abc"
+    assert "empty" not in record and "none" not in record
+
+
+def test_shared_stage_authority_refuses_nonclaimed_grant(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"COMPLETED"}}}),encoding="utf-8")
+
+    assert lifecycle.advance_claimed_execution_stage(
+        path,
+        "g",
+        "PR_OPEN",
+        evidence={},
+        updated_at="2026-09-27T00:00:00+00:00",
+    ) is False

@@ -9,6 +9,7 @@ from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIM
 from project_orchestrator.independent_verdict import review_candidate, bind_preflight_evidence
 from project_orchestrator.grant_lifecycle import (
     acquire_lifecycle_lock as _acquire_lifecycle_lock,
+    advance_claimed_execution_stage,
     grant_state_root,
     lifecycle_path_for_grant,
     mutate_grant_lifecycle,
@@ -474,22 +475,19 @@ def claim_execution_grant(path:Path,repo:str,expected_sha:str,lifecycle_path:Pat
         _release_lifecycle_lock(handle)
 
 def advance_grant_stage(grant_path:Path,stage:str,**evidence:Any)->bool:
-    """Durably record execution progress without clobbering another grant."""
+    """Delegate normal execution-stage authority to the shared lifecycle module."""
     lifecycle=lifecycle_path_for_grant(grant_path)
     try:
         grant_id=json.loads(grant_path.read_text(encoding="utf-8"))["grant_id"]
     except (OSError,json.JSONDecodeError,KeyError,TypeError):
         return False
-    def update(record):
-        if record.get("state")!="CLAIMED":
-            return False
-        record["execution_stage"]=stage
-        record["stage_updated_at"]=datetime.now(UTC).isoformat()
-        for key,value in evidence.items():
-            if value not in (None,""):
-                record[key]=value
-        return True
-    return mutate_grant_lifecycle(lifecycle,grant_id,update)
+    return advance_claimed_execution_stage(
+        lifecycle,
+        grant_id,
+        stage,
+        evidence=evidence,
+        updated_at=datetime.now(UTC).isoformat(),
+    )
 
 def start_grant_heartbeat(grant_path:Path,worker:dict[str,Any])->tuple[threading.Event,threading.Thread]:
     stop=threading.Event()

@@ -11,6 +11,16 @@ from .state_io import atomic_json
 GrantMutator = Callable[[dict[str, Any]], bool]
 
 
+NORMAL_EXECUTION_STAGES = frozenset({
+    "BASE_VERIFIED",
+    "BRANCH_CREATED",
+    "EXECUTING",
+    "EXECUTION_FINISHED",
+    "REPAIR_FINISHED",
+    "PR_OPEN",
+})
+
+
 CANONICAL_JOB_STATES = frozenset({
     "QUEUED",
     "CLAIMED",
@@ -190,3 +200,31 @@ def mutate_grant_lifecycle(lifecycle: Path, grant_id: str, mutator: GrantMutator
         return True
     finally:
         release_lifecycle_lock(handle)
+
+def advance_claimed_execution_stage(
+    lifecycle: Path,
+    grant_id: str,
+    stage: str,
+    *,
+    evidence: dict[str, Any] | None = None,
+    updated_at: str,
+) -> bool:
+    """Advance a normal claimed grant using the shared stage vocabulary.
+
+    Recovery-stage authority intentionally remains outside this function.
+    """
+    if stage not in NORMAL_EXECUTION_STAGES:
+        return False
+    supplied = evidence or {}
+
+    def update(record: dict[str, Any]) -> bool:
+        if record.get("state") != "CLAIMED":
+            return False
+        record["execution_stage"] = stage
+        record["stage_updated_at"] = updated_at
+        for key, value in supplied.items():
+            if value not in (None, ""):
+                record[key] = value
+        return True
+
+    return mutate_grant_lifecycle(lifecycle, grant_id, update)

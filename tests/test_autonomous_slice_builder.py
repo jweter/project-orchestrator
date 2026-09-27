@@ -468,7 +468,6 @@ def test_worker_prompt_receives_prior_failure_experience(tmp_path):
     assert "evidence, not permission to bypass gates" in prompt
 
 def test_verified_repair_attribution_requires_repeated_success_for_promotion(tmp_path):
-    import json
     import scripts.autonomous_slice_builder as builder
     state=tmp_path/"state.json"
     lesson=builder.retain_failure_lesson(state,"preflight","TypeError: expected mapping","PREFLIGHT_FAILED")
@@ -485,7 +484,6 @@ def test_verified_repair_does_not_invent_unknown_failure(tmp_path):
     assert builder.record_verified_repair(tmp_path/"state.json","unknown","anything","passed")=={}
 
 def test_promote_verified_repairs_materializes_only_repeated_verified_candidates(tmp_path):
-    import json
     import scripts.autonomous_slice_builder as builder
     state=tmp_path/"state.json"
     lesson=builder.retain_failure_lesson(state,"preflight","known","PREFLIGHT_FAILED")
@@ -566,15 +564,15 @@ def test_stale_worker_cannot_heartbeat_new_incarnation(tmp_path, monkeypatch):
     builder.heartbeat_grant(grant,stop,interval=0,worker=old)
     assert json.loads(lifecycle.read_text())["grants"]["g"]["last_heartbeat_at"]=="before"
 
-def test_advance_grant_stage_persists_recovery_evidence(tmp_path):
+def test_advance_grant_stage_persists_normal_stage_evidence(tmp_path):
     import json
     import scripts.autonomous_slice_builder as builder
     grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
     grant.write_text(json.dumps({"grant_id":"g"}))
     lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g":{"state":"CLAIMED"}}}))
-    assert builder.advance_grant_stage(grant,"COMMITTED",repository="o/r",base_sha="base",branch="actor/x",head_sha="head")
+    assert builder.advance_grant_stage(grant,"REPAIR_FINISHED",repository="o/r",base_sha="base",branch="actor/x",head_sha="head")
     saved=json.loads(lifecycle.read_text())["grants"]["g"]
-    assert saved["execution_stage"]=="COMMITTED"
+    assert saved["execution_stage"]=="REPAIR_FINISHED"
     assert saved["repository"]=="o/r"
     assert saved["base_sha"]=="base"
     assert saved["branch"]=="actor/x"
