@@ -1,9 +1,69 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#090b10"><meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="app.css"><title>Azathoth Foundry</title></head>
-<body><header><div><small>AZATHOTH FOUNDRY</small><h1>Development Mine</h1></div><span id="live">CONNECTING</span></header>
-<main><section id="summary" class="summary"></section><section><h2>System health</h2><div id="health"></div></section><section><h2>Products</h2><div id="products"></div></section>
-<section><h2>Azathoth Control</h2><div id="control" class="control"><button data-action="STATUS_SNAPSHOT">Refresh machine</button><button data-action="RESTART_REMOTE_CONTROL">Restart remote</button><button data-action="RECOVER_CONTROL_PLANE">Recover</button><button class="danger" data-action="REBOOT_WINDOWS" data-confirm="true">Reboot Windows</button></div><div id="control-result" class="muted"></div></section><section><h2>Active workers</h2><div id="workers"></div></section><section><h2>Recent work</h2><div id="recent"></div></section></main>
-<script src="app.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b10">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css?v=3">
+  <title>Azathoth Foundry</title>
+</head>
+<body>
+  <header>
+    <div>
+      <small>AZATHOTH FOUNDRY</small>
+      <h1>Control Center</h1>
+    </div>
+    <div id="live" class="pill warn">CONNECTING</div>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <span class="eyebrow">AZATHOTH STATUS</span>
+        <strong id="hero-state">Checking systems…</strong>
+        <span id="hero-detail">Waiting for live telemetry</span>
+      </div>
+      <button id="refresh-now" class="icon-button" aria-label="Refresh">↻</button>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>System health</h2><span id="last-refresh" class="muted"></span></div>
+      <div id="health" class="health-grid"></div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Control</h2><span class="muted">Authenticated</span></div>
+      <div id="control" class="control-grid">
+        <button class="control-button primary" data-action="STATUS_SNAPSHOT"><span>↻</span><b>Refresh</b><small>Machine status</small></button>
+        <button class="control-button" data-action="RESTART_REMOTE_CONTROL"><span>⌁</span><b>Remote</b><small>Restart control</small></button>
+        <button class="control-button" data-action="RECOVER_CONTROL_PLANE"><span>⚙</span><b>Recover</b><small>Repair control plane</small></button>
+        <button class="control-button danger" data-action="REBOOT_WINDOWS" data-confirm="true"><span>⏻</span><b>Reboot</b><small>Restart Windows</small></button>
+      </div>
+      <div id="control-result" class="command-card muted">No recent command</div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Today</h2><span class="muted">Foundry flow</span></div>
+      <div id="summary" class="summary"></div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Products</h2><span class="muted">Queue state</span></div>
+      <div id="products"></div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Active workers</h2><span class="muted">Live lanes</span></div>
+      <div id="workers"></div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Recent work</h2><span class="muted">Latest outcomes</span></div>
+      <div id="recent"></div>
+    </section>
+  </main>
+  <script src="app.js?v=3"></script>
+</body>
+</html>
