@@ -9,5 +9,3 @@ inventory = load_inventory(ROOT / "engineering" / "portfolio.json")
 assert len(inventory["projects"]) == 4
 assert sum(len(project["repositories"]) for project in inventory["projects"]) == 6
 print("PORTFOLIO INVENTORY: PASS")
-
-\n
