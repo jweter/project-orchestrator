@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse,json,mimetypes,os,secrets,subprocess,uuid
+import argparse,json,mimetypes,os,secrets,subprocess,time,uuid
 from datetime import datetime,timedelta,timezone
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
@@ -9,6 +9,66 @@ def _read_json(path:Path):
         return json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError):
         return None
+
+def _write_json(path:Path,payload:dict):
+    path.parent.mkdir(parents=True,exist_ok=True)
+    tmp=path.with_suffix(path.suffix+".tmp")
+    tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+    tmp.replace(path)
+
+def _fallback_root(state_root:Path)->Path:
+    return state_root.parent/"FallbackControl"
+
+_MACHINE_CACHE={"at":0.0,"value":None}
+def _machine_probe()->dict:
+    if _MACHINE_CACHE["value"] is not None and time.monotonic()-_MACHINE_CACHE["at"]<10:
+        return dict(_MACHINE_CACHE["value"])
+    default={"cpu_percent":None,"memory_percent":None,"memory_used_gb":None,"memory_total_gb":None,
+             "disk_free_gb":None,"disk_total_gb":None,"battery_percent":None,"battery_status":None,
+             "pending_reboot":None,"boot":None,"wake_magic_enabled":None,"wake_armed":None,
+             "wake_external_relay_required":True}
+    if os.name!="nt":
+        return default
+    script=r"""$os=Get-CimInstance Win32_OperatingSystem
+$cpu=(Get-CimInstance Win32_Processor|Measure-Object -Property LoadPercentage -Average).Average
+$disk=Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
+$b=Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue|Select-Object -First 1
+$wifi=Get-NetAdapter -Physical -ErrorAction SilentlyContinue|Where-Object{$_.Status -eq 'Up'}|Select-Object -First 1
+$wakeMagic=$false
+$wakeArmed=$false
+if($wifi){
+  $wakeProp=Get-NetAdapterAdvancedProperty -Name $wifi.Name -ErrorAction SilentlyContinue|Where-Object{$_.DisplayName -eq 'Wake on Magic Packet'}|Select-Object -First 1
+  $wakeMagic=[bool]($wakeProp -and $wakeProp.DisplayValue -eq 'Enabled')
+  $armedText=(powercfg /devicequery wake_armed 2>$null)-join "\n"
+  $wakeArmed=[bool]($armedText -match [regex]::Escape($wifi.InterfaceDescription) -or $armedText -match [regex]::Escape($wifi.Name))
+}
+$pending=(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending') -or
+         (Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired') -or
+         (Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations')
+$used=[double]$os.TotalVisibleMemorySize-[double]$os.FreePhysicalMemory
+[ordered]@{
+ cpu_percent=[math]::Round([double]$cpu,1)
+ memory_percent=[math]::Round(($used/[double]$os.TotalVisibleMemorySize)*100,1)
+ memory_used_gb=[math]::Round($used/1MB,1)
+ memory_total_gb=[math]::Round([double]$os.TotalVisibleMemorySize/1MB,1)
+ disk_free_gb=[math]::Round([double]$disk.FreeSpace/1GB,1)
+ disk_total_gb=[math]::Round([double]$disk.Size/1GB,1)
+ battery_percent=if($b){[int]$b.EstimatedChargeRemaining}else{$null}
+ battery_status=if($b){[int]$b.BatteryStatus}else{$null}
+ pending_reboot=[bool]$pending
+ boot=$os.LastBootUpTime.ToUniversalTime().ToString('o')
+ wake_magic_enabled=[bool]$wakeMagic
+ wake_armed=[bool]$wakeArmed
+ wake_external_relay_required=$true
+}|ConvertTo-Json -Compress"""
+    try:
+        p=subprocess.run(["powershell.exe","-NoProfile","-Command",script],capture_output=True,text=True,timeout=8,check=True)
+        row=json.loads(p.stdout)
+        default.update(row)
+    except (OSError,subprocess.SubprocessError,json.JSONDecodeError,TypeError,ValueError):
+        pass
+    _MACHINE_CACHE["at"]=time.monotonic(); _MACHINE_CACHE["value"]=dict(default)
+    return default
 
 def _health_snapshot(state_root:Path,control_repo:Path|None)->dict:
     now=datetime.now(timezone.utc)
@@ -23,34 +83,48 @@ def _health_snapshot(state_root:Path,control_repo:Path|None)->dict:
         except ValueError:
             pass
     snapshot_status="LIVE" if age_seconds is not None and age_seconds<=120 else "STALE" if age_seconds is not None else "UNKNOWN"
-    processes={"supervisor":False,"guardian":False,"mailbox_watcher":False,"remote_control":False,"boot":None}
+    processes={"supervisor":False,"guardian":False,"mailbox_watcher":False,"remote_control":False}
     if os.name=="nt":
-        ps_script="""$p=Get-CimInstance Win32_Process; [ordered]@{
+        probe_script=r"""$p=Get-CimInstance Win32_Process; [ordered]@{
 supervisor=[bool]($p|Where-Object{$_.CommandLine -like '*continuous_flow_supervisor.py*'}|Select-Object -First 1)
 guardian=[bool]($p|Where-Object{$_.CommandLine -like '*Guard-GitHubMailbox.ps1*'}|Select-Object -First 1)
 mailbox_watcher=[bool]($p|Where-Object{$_.CommandLine -like '*Watch-GitHubMailbox.ps1*'}|Select-Object -First 1)
 remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine -match 'desktop-commander' -and $_.CommandLine -match 'remote'}|Select-Object -First 1)
-boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o')
 }|ConvertTo-Json -Compress"""
         try:
-            probe=subprocess.run(["powershell.exe","-NoProfile","-Command",ps_script],capture_output=True,text=True,timeout=8,check=True)
-            processes.update(json.loads(probe.stdout))
-        except (OSError,subprocess.SubprocessError,json.JSONDecodeError,TypeError):
+            p=subprocess.run(["powershell.exe","-NoProfile","-Command",probe_script],capture_output=True,text=True,timeout=8,check=True)
+            processes.update(json.loads(p.stdout))
+        except (OSError,subprocess.SubprocessError,json.JSONDecodeError,TypeError,ValueError):
             pass
+    machine=_machine_probe()
+    fallback=_fallback_root(state_root)
     receipt=_read_json(control_repo/"control"/"receipt.json") if control_repo else None
+    progress=_read_json(fallback/"progress.json")
+    history=_read_json(fallback/"history.json") or {"commands":[]}
+    human=_read_json(state_root/"human-mode.json") or {"enabled":False}
     def state(value): return "LIVE" if value else "OFFLINE"
-    return {
-        "recorded_at":now.isoformat(),
-        "subsystems":{
-            "windows":{"status":"LIVE" if os.name=="nt" else "UNKNOWN","boot":processes.get("boot")},
-            "dashboard_snapshot":{"status":snapshot_status,"recorded_at":recorded,"age_seconds":age_seconds},
-            "foundry_supervisor":{"status":state(processes.get("supervisor")) if os.name=="nt" else "UNKNOWN"},
-            "github_guardian":{"status":state(processes.get("guardian") and processes.get("mailbox_watcher")) if os.name=="nt" else "UNKNOWN",
-                               "guardian":bool(processes.get("guardian")),"mailbox_watcher":bool(processes.get("mailbox_watcher"))},
-            "remote_control":{"status":state(processes.get("remote_control")) if os.name=="nt" else "UNKNOWN"},
-        },
-        "last_control_receipt":receipt,
+    subsystems={
+        "windows":{"status":"LIVE" if os.name=="nt" else "UNKNOWN","boot":machine.get("boot")},
+        "dashboard_snapshot":{"status":snapshot_status,"recorded_at":recorded,"age_seconds":age_seconds},
+        "foundry_supervisor":{"status":state(processes.get("supervisor")) if os.name=="nt" else "UNKNOWN"},
+        "github_guardian":{"status":state(processes.get("guardian") and processes.get("mailbox_watcher")) if os.name=="nt" else "UNKNOWN",
+                           "guardian":bool(processes.get("guardian")),"mailbox_watcher":bool(processes.get("mailbox_watcher"))},
+        "remote_control":{"status":state(processes.get("remote_control")) if os.name=="nt" else "UNKNOWN"},
     }
+    alerts=[]
+    for name,row in subsystems.items():
+        if row["status"]=="OFFLINE": alerts.append({"severity":"CRITICAL","code":name.upper()+"_OFFLINE","message":name.replace("_"," ").title()+" is offline"})
+        elif row["status"]=="STALE": alerts.append({"severity":"WARNING","code":name.upper()+"_STALE","message":name.replace("_"," ").title()+" telemetry is stale"})
+    if machine.get("pending_reboot") is True:
+        alerts.append({"severity":"WARNING","code":"WINDOWS_REBOOT_PENDING","message":"Windows is waiting for a reboot"})
+    if isinstance(machine.get("disk_free_gb"),(int,float)) and machine["disk_free_gb"]<15:
+        alerts.append({"severity":"WARNING","code":"DISK_LOW","message":f"C: has {machine['disk_free_gb']:.1f} GB free"})
+    if isinstance(machine.get("memory_percent"),(int,float)) and machine["memory_percent"]>=90:
+        alerts.append({"severity":"WARNING","code":"MEMORY_HIGH","message":f"Memory usage is {machine['memory_percent']:.0f}%"})
+    return {"recorded_at":now.isoformat(),"subsystems":subsystems,"machine":machine,"alerts":alerts,
+            "human_mode":{"enabled":bool(human.get("enabled")),"since":human.get("since")},
+            "command_progress":progress,"control_history":list(history.get("commands",[]))[-20:],
+            "last_control_receipt":receipt}
 
 def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_token:str|None=None):
     class Handler(BaseHTTPRequestHandler):
@@ -71,17 +145,18 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
                 body=json.loads(self.rfile.read(min(length,4096)) or b"{}")
             except (ValueError,json.JSONDecodeError):
                 self._json(400,{"status":"INVALID_JSON"}); return
-            allowed={"STATUS_SNAPSHOT","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS"}
+            allowed={"STATUS_SNAPSHOT","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS","HUMAN_MODE","FULL_POWER"}
             action=body.get("action")
             if action not in allowed:
                 self._json(400,{"status":"REJECTED_ACTION"}); return
-            command_id=str(uuid.uuid4())
-            now=datetime.now(timezone.utc)
-            mailbox={"command_id":command_id,"action":action,"issued_at":now.isoformat(),"expires_at":(now+timedelta(minutes=5)).isoformat(),"source":"iphone-dashboard"}
-            target=control_repo/"control"/"mailbox.json"
+            command_id=str(uuid.uuid4()); now=datetime.now(timezone.utc)
+            mailbox={"command_id":command_id,"action":action,"issued_at":now.isoformat(),
+                     "expires_at":(now+timedelta(minutes=5)).isoformat(),"source":"iphone-dashboard"}
             try:
-                target.write_text(json.dumps(mailbox,indent=2,sort_keys=True)+"\
-",encoding="utf-8")
+                _write_json(_fallback_root(state_root)/"progress.json",
+                            {"command_id":command_id,"action":action,"status":"REQUESTED","at":now.isoformat()})
+                target=control_repo/"control"/"mailbox.json"
+                target.write_text(json.dumps(mailbox,indent=2,sort_keys=True)+"\n",encoding="utf-8")
                 subprocess.run(["git","-C",str(control_repo),"add","control/mailbox.json"],check=True,capture_output=True)
                 subprocess.run(["git","-C",str(control_repo),"commit","-m",f"control: {action.lower()} {command_id}"],check=True,capture_output=True)
                 subprocess.run(["git","-C",str(control_repo),"push","origin","azathoth-control"],check=True,capture_output=True)
@@ -112,7 +187,10 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
     return Handler
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("--state-root",type=Path,required=True); p.add_argument("--host",default="127.0.0.1"); p.add_argument("--port",type=int,default=8765); p.add_argument("--control-repo",type=Path); p.add_argument("--control-token-env",default="AZATHOTH_DASHBOARD_CONTROL_TOKEN")
+    p=argparse.ArgumentParser(); p.add_argument("--state-root",type=Path,required=True)
+    p.add_argument("--host",default="127.0.0.1"); p.add_argument("--port",type=int,default=8765)
+    p.add_argument("--control-repo",type=Path); p.add_argument("--control-token-env",default="AZATHOTH_DASHBOARD_CONTROL_TOKEN")
     a=p.parse_args(); assets=Path(__file__).resolve().parents[1]/"dashboard"
-    token=os.environ.get(a.control_token_env); ThreadingHTTPServer((a.host,a.port),handler_for(a.state_root,assets,a.control_repo,token)).serve_forever()
+    token=os.environ.get(a.control_token_env)
+    ThreadingHTTPServer((a.host,a.port),handler_for(a.state_root,assets,a.control_repo,token)).serve_forever()
 if __name__=="__main__": main()

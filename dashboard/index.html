@@ -7,25 +7,25 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="app.css?v=3">
-  <title>Azathoth Foundry</title>
+  <link rel="stylesheet" href="app.css?v=4">
+  <title>Azathoth Foundry Control</title>
 </head>
 <body>
-  <header>
-    <div>
-      <small>AZATHOTH FOUNDRY</small>
-      <h1>Control Center</h1>
-    </div>
-    <div id="live" class="pill warn">CONNECTING</div>
-  </header>
+  <header><div><small>AZATHOTH FOUNDRY</small><h1>Control Center</h1></div><div id="live" class="pill warn">CONNECTING</div></header>
   <main>
     <section class="hero">
-      <div>
-        <span class="eyebrow">AZATHOTH STATUS</span>
-        <strong id="hero-state">Checking systems…</strong>
-        <span id="hero-detail">Waiting for live telemetry</span>
-      </div>
+      <div><span class="eyebrow">AZATHOTH STATUS</span><strong id="hero-state">Checking systems…</strong><span id="hero-detail">Waiting for live telemetry</span></div>
       <button id="refresh-now" class="icon-button" aria-label="Refresh">↻</button>
+    </section>
+
+    <div id="alerts"></div>
+
+    <section>
+      <div class="section-head"><h2>Work mode</h2><span id="mode-label" class="muted">Checking…</span></div>
+      <div id="mode-control" class="mode-grid">
+        <button class="mode-button" data-action="HUMAN_MODE"><span>⌨</span><b>Human Mode</b><small>Yield laptop resources</small></button>
+        <button class="mode-button primary" data-action="FULL_POWER"><span>⚡</span><b>Full Power</b><small>Resume autonomous work</small></button>
+      </div>
     </section>
 
     <section>
@@ -34,7 +34,12 @@
     </section>
 
     <section>
-      <div class="section-head"><h2>Control</h2><span class="muted">Authenticated</span></div>
+      <div class="section-head"><h2>Machine</h2><span class="muted">Live telemetry</span></div>
+      <div id="machine" class="summary machine-grid"></div>
+    </section>
+
+    <section>
+      <div class="section-head"><h2>Control</h2><button id="auth-settings" class="text-button">Token settings</button></div>
       <div id="control" class="control-grid">
         <button class="control-button primary" data-action="STATUS_SNAPSHOT"><span>↻</span><b>Refresh</b><small>Machine status</small></button>
         <button class="control-button" data-action="RESTART_REMOTE_CONTROL"><span>⌁</span><b>Remote</b><small>Restart control</small></button>
@@ -45,25 +50,19 @@
     </section>
 
     <section>
-      <div class="section-head"><h2>Today</h2><span class="muted">Foundry flow</span></div>
-      <div id="summary" class="summary"></div>
+      <div class="section-head"><h2>Command history</h2><span class="muted">Last 20</span></div>
+      <div id="history"></div>
     </section>
 
-    <section>
-      <div class="section-head"><h2>Products</h2><span class="muted">Queue state</span></div>
-      <div id="products"></div>
-    </section>
+    <section><div class="section-head"><h2>Today</h2><span class="muted">Foundry flow</span></div><div id="summary" class="summary"></div></section>
+    <section><div class="section-head"><h2>Products</h2><span class="muted">Queue state</span></div><div id="products"></div></section>
+    <section><div class="section-head"><h2>Active workers</h2><span class="muted">Live lanes</span></div><div id="workers"></div></section>
+    <section><div class="section-head"><h2>Recent work</h2><span class="muted">Latest outcomes</span></div><div id="recent"></div></section>
 
-    <section>
-      <div class="section-head"><h2>Active workers</h2><span class="muted">Live lanes</span></div>
-      <div id="workers"></div>
-    </section>
-
-    <section>
-      <div class="section-head"><h2>Recent work</h2><span class="muted">Latest outcomes</span></div>
-      <div id="recent"></div>
+    <section id="install-card" class="install-card hidden">
+      <b>Install on iPhone</b><span>Add this page to your Home Screen for full-screen app behavior.</span>
     </section>
   </main>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

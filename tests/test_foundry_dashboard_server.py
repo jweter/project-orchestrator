@@ -24,6 +24,7 @@ def test_dashboard_server_serves_snapshot_and_pwa(tmp_path):
         health=json.load(urlopen(base+"/api/health"))
         assert set(health["subsystems"])=={"windows","dashboard_snapshot","foundry_supervisor","github_guardian","remote_control"}
         assert all(row["status"] in {"LIVE","STALE","OFFLINE","UNKNOWN"} for row in health["subsystems"].values())
+        assert set(("machine","alerts","human_mode","command_progress","control_history")) <= set(health)
     finally: httpd.shutdown()
 
 
@@ -47,7 +48,9 @@ def test_control_endpoint_requires_token_and_rejects_unallowlisted_action(tmp_pa
 def test_dashboard_exposes_only_bounded_control_actions():
     js=(ROOT/"dashboard"/"app.js").read_text(encoding="utf-8")
     html=(ROOT/"dashboard"/"index.html").read_text(encoding="utf-8")
-    for action in ("STATUS_SNAPSHOT","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS"):
+    for action in ("STATUS_SNAPSHOT","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS","HUMAN_MODE","FULL_POWER"):
         assert action in html
     assert "Authorization" in js and "Bearer " in js
     assert "ARBITRARY_SHELL" not in html
+    sw=(ROOT/"dashboard"/"sw.js").read_text(encoding="utf-8")
+    assert 'url.pathname.startsWith("/api/")' in sw

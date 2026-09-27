@@ -6,7 +6,10 @@ param(
 $ErrorActionPreference="Stop"
 $root=Join-Path $env:LOCALAPPDATA "ExponentialEngine\FallbackControl"
 $state=Join-Path $root "state.json"
-$allowed=@("NO_OP","STATUS_SNAPSHOT","SYNC_ACTOR_MAIN","KICK_SUPERVISOR","RESTART_SUPERVISOR","DEPLOY_MAIN_SAFE","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS")
+$progress=Join-Path $root "progress.json"
+$history=Join-Path $root "history.json"
+$humanMode=Join-Path $StateRoot "human-mode.json"
+$allowed=@("NO_OP","STATUS_SNAPSHOT","SYNC_ACTOR_MAIN","KICK_SUPERVISOR","RESTART_SUPERVISOR","DEPLOY_MAIN_SAFE","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS","HUMAN_MODE","FULL_POWER")
 
 function Get-ActiveProductWorkers {
   @(Get-CimInstance Win32_Process|Where-Object{
@@ -14,9 +17,39 @@ function Get-ActiveProductWorkers {
   })
 }
 
+function Write-Progress($commandId,$action,$status){
+  @{command_id=$commandId;action=$action;status=$status;at=[DateTimeOffset]::UtcNow.ToString("o")} |
+    ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 $progress
+}
+
+function Append-History($o){
+  $payload=@{schema_version=1;commands=@()}
+  if(Test-Path $history){
+    try{$payload=Get-Content $history -Raw|ConvertFrom-Json}catch{}
+  }
+  $commands=@($payload.commands)
+  $last=$commands|Select-Object -Last 1
+  if(-not ($last -and $last.command_id -eq $o.command_id -and $last.status -eq $o.status -and $last.action -eq $o.action)){
+    $commands += $o
+  }
+  @{schema_version=1;commands=@($commands|Select-Object -Last 20)} |
+    ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $history
+}
+
+function Set-WorkerTasksEnabled([bool]$Enabled){
+  foreach($taskName in @("ExponentialEngine-LaptopActor","Portfolio Idle Worker")){
+    $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if(-not $task){continue}
+    if($Enabled){Enable-ScheduledTask -TaskName $taskName|Out-Null}
+    else{Disable-ScheduledTask -TaskName $taskName|Out-Null}
+  }
+}
+
 function Publish($o,[bool]$Consume=$true){
   $json=$o|ConvertTo-Json -Depth 8
   if($Consume){$json|Set-Content -Encoding UTF8 $state}
+  Write-Progress $o.command_id $o.action $o.status
+  Append-History $o
   $receiptPath=Join-Path $ControlRepo "control\receipt.json"
   $publishRemote=$true
   if(Test-Path $receiptPath){
@@ -126,6 +159,7 @@ while($true){
     $prior=$null;if(Test-Path $state){$prior=Get-Content $state -Raw|ConvertFrom-Json}
     if($c.command_id -and $c.command_id -ne $prior.command_id){
       $now=[DateTimeOffset]::UtcNow;$exp=[DateTimeOffset]::Parse($c.expires_at)
+      Write-Progress $c.command_id $c.action "ACKNOWLEDGED"
       if($now -gt $exp){
         Publish @{command_id=$c.command_id;action=$c.action;status="REJECTED_EXPIRED";at=$now.ToString("o")}
       }
@@ -133,6 +167,7 @@ while($true){
         Publish @{command_id=$c.command_id;action=$c.action;status="REJECTED_ACTION";at=$now.ToString("o")}
       }
       else{
+        Write-Progress $c.command_id $c.action "EXECUTING"
         $result=@{status="COMPLETED";consume=$true;worker_count=0}
         switch($c.action){
           "NO_OP" {}
@@ -154,6 +189,17 @@ while($true){
           "DEPLOY_MAIN_SAFE" {$result=Invoke-SafeMainDeploy}
           "RESTART_REMOTE_CONTROL" {$result=Invoke-RemoteControlRestart}
           "RECOVER_CONTROL_PLANE" {$result=Invoke-ControlPlaneRecovery}
+          "HUMAN_MODE" {
+            @{enabled=$true;since=[DateTimeOffset]::UtcNow.ToString("o");source="iphone-dashboard"} |
+              ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $humanMode
+            Set-WorkerTasksEnabled $false
+            $result=@{status="COMPLETED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+          }
+          "FULL_POWER" {
+            Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
+            Set-WorkerTasksEnabled $true
+            $result=@{status="COMPLETED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+          }
           "REBOOT_WINDOWS" {
             $result=@{status="REBOOT_ACCEPTED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
             shutdown.exe /r /t 15 /d p:4:1 /c "Azathoth authenticated control-plane reboot"
