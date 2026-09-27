@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 import argparse
-import hashlib
 import json
 import os
 import time
@@ -16,6 +15,8 @@ except ModuleNotFoundError:
     from green_pr_merger import cycle
 
 from project_orchestrator.activation_capability import merge_watcher_advanced
+from project_orchestrator.kpi_telemetry import append_event, load_events
+from project_orchestrator.planning_dispatch import product_for_repository
 
 
 def acquire_singleton(state: Path) -> BinaryIO | None:
@@ -66,64 +67,59 @@ def atomic(path: Path, payload: dict) -> None:
     tmp.replace(path)
 
 
-def _event_id(event_type: str, result: dict) -> str:
-    material = "\0".join(
-        (
-            event_type,
-            str(result.get("repository") or ""),
-            str(result.get("pr") or ""),
-            str(result.get("head") or ""),
-        )
-    )
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+def _project_for_repository(repository: str) -> str:
+    project = product_for_repository(repository)
+    if project is not None:
+        return project
+    if repository == "jweter/project-orchestrator":
+        return "portfolio"
+    raise ValueError(f"unsupported promotion repository: {repository}")
 
 
-def lifecycle_events(results: list[dict], observed_at_utc: str) -> list[dict]:
+def kpi_events(results: list[dict], observed_at_utc: str, run_id: str) -> list[dict]:
+    """Project verified promotion actions into the canonical KPI event contract."""
     events: list[dict] = []
     for result in results:
-        event_type = None
-        if result.get("merged") is True:
-            event_type = "PR_MERGED"
-        elif result.get("promoted") is True:
-            event_type = "PR_READY"
-        if event_type is None:
+        repository = result.get("repository")
+        pr = result.get("pr")
+        head = result.get("head")
+        if not isinstance(repository, str) or not isinstance(pr, int) or not isinstance(head, str):
             continue
-        event = {
-            "schema_version": 1,
-            "event_type": event_type,
-            "event_id": _event_id(event_type, result),
-            "repository": result.get("repository"),
-            "pr": result.get("pr"),
-            "head": result.get("head"),
-            "observed_at_utc": observed_at_utc,
-        }
-        events.append(event)
+        if result.get("merged") is True:
+            from_state, to_state = "GREEN", "MERGED"
+        elif result.get("promoted") is True:
+            from_state, to_state = "DRAFT", "GREEN"
+        else:
+            continue
+        events.append(
+            {
+                "observed_at": observed_at_utc,
+                "run_id": run_id,
+                "project": _project_for_repository(repository),
+                "repository": repository,
+                "entity_type": "pr",
+                "entity_id": str(pr),
+                "from_state": from_state,
+                "to_state": to_state,
+                "transition_class": "PROMOTION",
+                "actor": "ORCHESTRATOR",
+                "evidence_refs": [f"github://{repository}/pull/{pr}@{head}"],
+                "metadata": {
+                    "source": "green_pr_watch_loop",
+                    "exact_head_sha": head,
+                },
+            }
+        )
     return events
 
 
-def append_events(path: Path, events: list[dict]) -> int:
+def append_kpi_events(path: Path, events: list[dict]) -> int:
     if not events:
         return 0
-    path.parent.mkdir(parents=True, exist_ok=True)
-    existing_ids: set[str] = set()
-    if path.exists():
-        for raw in path.read_text(encoding="utf-8").splitlines():
-            try:
-                payload = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            event_id = payload.get("event_id")
-            if isinstance(event_id, str):
-                existing_ids.add(event_id)
-    written = 0
-    with path.open("a", encoding="utf-8", newline="\n") as handle:
-        for event in events:
-            if event["event_id"] in existing_ids:
-                continue
-            handle.write(json.dumps(event, sort_keys=True) + "\n")
-            existing_ids.add(event["event_id"])
-            written += 1
-    return written
+    before = len(load_events(path))
+    for event in events:
+        append_event(path, event)
+    return len(load_events(path)) - before
 
 
 def process_cycle(state: Path, results: list[dict], error: str | None, started: float) -> dict:
@@ -137,11 +133,12 @@ def process_cycle(state: Path, results: list[dict], error: str | None, started: 
     atomic(state, payload)
 
     state_root = state.parent
-    events = lifecycle_events(results, observed_at)
-    event_count = append_events(state_root / "flow-events.jsonl", events)
+    run_id = f"green-pr-watcher:{observed_at}"
+    events = kpi_events(results, observed_at, run_id)
+    event_count = append_kpi_events(state_root / "kpi-events.jsonl", events)
 
     reconciliation_advanced = False
-    if any(event["event_type"] == "PR_MERGED" for event in events):
+    if any(event["to_state"] == "MERGED" for event in events):
         reconciliation_advanced = merge_watcher_advanced(state_root)
         if reconciliation_advanced:
             atomic(
@@ -152,7 +149,8 @@ def process_cycle(state: Path, results: list[dict], error: str | None, started: 
                 },
             )
 
-    payload["flow_events_emitted"] = event_count
+    payload["kpi_events_emitted"] = event_count
+    payload["flow_events_emitted"] = event_count  # compatibility alias during migration
     payload["reconciliation_advanced"] = reconciliation_advanced
     atomic(state, payload)
     return payload

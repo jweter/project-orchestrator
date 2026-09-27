@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .planning_dispatch import PRODUCT_BY_REPOSITORY, product_for_repository
+from .kpi_telemetry import KpiTelemetryError, build_rolling_reports, load_events
 from .state_io import atomic_json
 
 def planner_decision_quality(state_root:Path)->dict[str,dict[str,float]]:
@@ -78,6 +79,16 @@ def write_dashboard_snapshot(state_root:Path)->dict:
     dispatch=load_json(state_root/"dispatch-decision.json",{})
     rotations=load_json(state_root/"async-gate-rotation-history.json",{})
     ci=load_json(state_root/"dashboard-ci.json",{})
+    try:
+        kpi_events=load_events(state_root/"kpi-events.jsonl")
+        kpi_rolling=build_rolling_reports(
+            kpi_events,
+            end=datetime.now(UTC).isoformat(),
+        )
+        kpi_state={"status":"MEASURED" if kpi_events else "UNKNOWN",
+                   "event_count":len(kpi_events),"rolling_reports":kpi_rolling}
+    except (KpiTelemetryError,OSError,ValueError) as exc:
+        kpi_state={"status":"FAILED","event_count":None,"reason":str(exc),"rolling_reports":{}}
     active=[{"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
              "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
              "planner_decision_id":r.get("planner_decision_id")}
@@ -137,7 +148,8 @@ def write_dashboard_snapshot(state_root:Path)->dict:
              "active_worker_pool":observed_pool,
              "recent_completed_work":terminal[:20],"outcome_counters":counters,
              "flow":{"verified_advancement_per_worker_hour":advancement_per_hour,
-                     "measured_worker_seconds":elapsed_seconds},
+                     "measured_worker_seconds":elapsed_seconds,
+                     "kpi":kpi_state},
              "github":{"pull_requests":[row for row in terminal if row.get("pr_number") is not None],
                        "ci":ci.get("pull_requests",[]),
                        "promotion_gates":[{"repository":row.get("repository"),"pr_number":row.get("pr_number"),

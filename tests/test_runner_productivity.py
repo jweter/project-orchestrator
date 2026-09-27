@@ -1,6 +1,7 @@
 import json
 from datetime import UTC,datetime,timedelta
 from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+from project_orchestrator.kpi_telemetry import append_event
 import scripts.continuous_flow_supervisor as supervisor
 
 def terminal(runner,status,seconds,task_class="repair",state="COMPLETED"):
@@ -181,3 +182,39 @@ def test_dashboard_snapshot_counts_and_orders_terminal_outcomes(tmp_path):
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}}
     assert supervisor.productivity_penalty("x",stats)==0.0
+
+
+def test_dashboard_snapshot_projects_runtime_promotion_latency(tmp_path):
+    ledger=tmp_path/"kpi-events.jsonl"
+    common={
+        "project":"knowledge-engine",
+        "repository":"jweter/knowledge-engine-ai",
+        "entity_type":"pr",
+        "entity_id":"73",
+        "transition_class":"PROMOTION",
+        "actor":"ORCHESTRATOR",
+        "evidence_refs":["github://jweter/knowledge-engine-ai/pull/73@"+"a"*40],
+    }
+    append_event(ledger,{
+        **common,
+        "observed_at":"2026-09-26T10:00:00+00:00",
+        "run_id":"ready",
+        "from_state":"DRAFT",
+        "to_state":"GREEN",
+    })
+    append_event(ledger,{
+        **common,
+        "observed_at":"2026-09-26T10:05:00+00:00",
+        "run_id":"merged",
+        "from_state":"GREEN",
+        "to_state":"MERGED",
+    })
+
+    snapshot=supervisor.write_dashboard_snapshot(tmp_path)
+
+    kpi=snapshot["flow"]["kpi"]
+    assert kpi["status"]=="MEASURED"
+    assert kpi["event_count"]==2
+    metric=kpi["rolling_reports"]["24h"]["metrics"]["promotion_latency_seconds"]
+    assert metric["status"]=="MEASURED"
+    assert metric["value"]==300.0
