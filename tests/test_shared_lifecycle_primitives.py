@@ -7,13 +7,13 @@ import scripts.autonomous_slice_builder as builder
 import scripts.continuous_flow_supervisor as supervisor
 
 
-def test_builder_and_supervisor_share_lifecycle_primitives():
+def test_builder_uses_shared_lifecycle_primitives_and_supervisor_does_not_reown_them():
     assert builder.mutate_grant_lifecycle is lifecycle.mutate_grant_lifecycle
     assert builder._acquire_lifecycle_lock is lifecycle.acquire_lifecycle_lock
     assert builder._release_lifecycle_lock is lifecycle.release_lifecycle_lock
-    assert supervisor.mutate_grant_lifecycle is lifecycle.mutate_grant_lifecycle
-    assert supervisor._acquire_lifecycle_lock is lifecycle.acquire_lifecycle_lock
-    assert supervisor._release_lifecycle_lock is lifecycle.release_lifecycle_lock
+    assert not hasattr(supervisor, "mutate_grant_lifecycle")
+    assert not hasattr(supervisor, "_acquire_lifecycle_lock")
+    assert not hasattr(supervisor, "_release_lifecycle_lock")
 
 
 def test_builder_and_supervisor_share_atomic_json_writer():
