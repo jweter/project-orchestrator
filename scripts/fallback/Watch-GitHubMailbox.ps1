@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference="Stop"
 $root=Join-Path $env:LOCALAPPDATA "ExponentialEngine\FallbackControl"
 $state=Join-Path $root "state.json"
-$allowed=@("NO_OP","STATUS_SNAPSHOT","SYNC_ACTOR_MAIN","KICK_SUPERVISOR","RESTART_SUPERVISOR","DEPLOY_MAIN_SAFE")
+$allowed=@("NO_OP","STATUS_SNAPSHOT","SYNC_ACTOR_MAIN","KICK_SUPERVISOR","RESTART_SUPERVISOR","DEPLOY_MAIN_SAFE","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS")
 
 function Get-ActiveProductWorkers {
   @(Get-CimInstance Win32_Process|Where-Object{
@@ -91,6 +91,26 @@ function Invoke-SafeSupervisorRestart {
   return @{status="COMPLETED";consume=$true;worker_count=0}
 }
 
+function Invoke-RemoteControlRestart {
+  $tasks=@(Get-ScheduledTask|Where-Object{
+    $_.TaskName -match 'Azathoth.*Remote|Remote.*Desktop.*Commander|Desktop.*Commander'
+  })
+  if($tasks.Count -eq 0){return @{status="REMOTE_TASK_NOT_FOUND";consume=$true;worker_count=0}}
+  foreach($task in $tasks){
+    Enable-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath|Out-Null
+    Stop-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath -ErrorAction SilentlyContinue
+    Start-ScheduledTask -TaskName $task.TaskName -TaskPath $task.TaskPath
+  }
+  return @{status="COMPLETED";consume=$true;worker_count=0}
+}
+
+function Invoke-ControlPlaneRecovery {
+  $remote=Invoke-RemoteControlRestart
+  if($remote.status -ne "COMPLETED"){return $remote}
+  & (Join-Path $env:LOCALAPPDATA "ExponentialEngine\\Watch-ContinuousFlow.ps1")|Out-Null
+  return @{status="COMPLETED";consume=$true;worker_count=0}
+}
+
 function Invoke-SafeMainDeploy {
   $sync=Invoke-SafeActorSync
   if($sync.status -ne "COMPLETED"){return $sync}
@@ -132,6 +152,12 @@ while($true){
           "KICK_SUPERVISOR" {& (Join-Path $env:LOCALAPPDATA "ExponentialEngine\Watch-ContinuousFlow.ps1")|Out-Null}
           "RESTART_SUPERVISOR" {$result=Invoke-SafeSupervisorRestart}
           "DEPLOY_MAIN_SAFE" {$result=Invoke-SafeMainDeploy}
+          "RESTART_REMOTE_CONTROL" {$result=Invoke-RemoteControlRestart}
+          "RECOVER_CONTROL_PLANE" {$result=Invoke-ControlPlaneRecovery}
+          "REBOOT_WINDOWS" {
+            $result=@{status="REBOOT_ACCEPTED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+            shutdown.exe /r /t 15 /d p:4:1 /c "Azathoth authenticated control-plane reboot"
+          }
         }
         $receipt=@{
           command_id=$c.command_id;action=$c.action;status=$result.status;

@@ -50,3 +50,24 @@ def test_atomic_safe_deploy_is_allowlisted():
     body = between(text, "function Invoke-SafeMainDeploy", "while($true)")
     assert "Invoke-SafeActorSync" in body
     assert "Invoke-SafeSupervisorRestart" in body
+
+
+def test_phone_control_actions_are_explicitly_allowlisted():
+    text = source()
+    for action in ("RESTART_REMOTE_CONTROL", "RECOVER_CONTROL_PLANE", "REBOOT_WINDOWS"):
+        assert f'"{action}"' in text
+
+
+def test_remote_restart_uses_scheduled_task_not_arbitrary_shell():
+    text = source()
+    body = between(text, "function Invoke-RemoteControlRestart", "function Invoke-ControlPlaneRecovery")
+    assert "Get-ScheduledTask" in body
+    assert "Enable-ScheduledTask" in body
+    assert "Start-ScheduledTask" in body
+    assert "Invoke-Expression" not in body
+
+
+def test_reboot_is_fixed_command_with_audit_reason():
+    text = source()
+    assert 'shutdown.exe /r /t 15 /d p:4:1 /c "Azathoth authenticated control-plane reboot"' in text
+    assert 'status="REBOOT_ACCEPTED"' in text
