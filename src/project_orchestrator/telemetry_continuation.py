@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .planning_dispatch import PRODUCT_BY_REPOSITORY, product_for_repository
 from .kpi_telemetry import KpiTelemetryError, build_rolling_reports, load_events
+from .grant_lifecycle import canonical_job_projection
 from .state_io import atomic_json
 
 def planner_decision_quality(state_root:Path)->dict[str,dict[str,float]]:
@@ -89,10 +90,16 @@ def write_dashboard_snapshot(state_root:Path)->dict:
                    "event_count":len(kpi_events),"rolling_reports":kpi_rolling}
     except (KpiTelemetryError,OSError,ValueError) as exc:
         kpi_state={"status":"FAILED","event_count":None,"reason":str(exc),"rolling_reports":{}}
-    active=[{"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
-             "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
-             "planner_decision_id":r.get("planner_decision_id")}
-            for gid,r in lifecycle.items() if isinstance(r,dict) and r.get("state") in {"ISSUED","CLAIMED","QUARANTINED"}]
+    active=[]
+    for gid,r in lifecycle.items():
+        if not isinstance(r,dict) or r.get("state") not in {"ISSUED","CLAIMED","RUNNING","QUARANTINED","DEFERRED"}:
+            continue
+        projection=canonical_job_projection(r)
+        active.append({"grant_id":gid,
+                       "repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
+                       "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),
+                       "state":r.get("state"),"job_state":projection["job_state"],
+                       "planner_decision_id":r.get("planner_decision_id")})
     terminal=[]
     counters={"completed":0,"failed":0,"merged_verified":0,"product_reality_verified":0,"repairs":0}
     for gid,r in lifecycle.items():
@@ -106,8 +113,10 @@ def write_dashboard_snapshot(state_root:Path)->dict:
         counters["product_reality_verified"]+=1 if outcome=="PRODUCT_REALITY_VERIFIED" else 0
         try: counters["repairs"]+=max(int(r.get("repair_attempts",0)),0)
         except (TypeError,ValueError): pass
+        projection=canonical_job_projection(r)
         terminal.append({"grant_id":gid,"repository":r.get("repository") or (r.get("execution_slice") or {}).get("repository"),
                          "slice_id":r.get("slice_id"),"runner_id":r.get("runner_id"),"state":r.get("state"),
+                         "job_state":projection["job_state"],
                          "result_status":status,"outcome_quality":outcome,"finished_at":r.get("finished_at"),
                          "pr_number":r.get("pr_number"),"pr_url":r.get("pr_url"),
                          "head_sha":r.get("head_sha"),"execution_stage":r.get("execution_stage")})

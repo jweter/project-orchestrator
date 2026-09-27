@@ -116,6 +116,7 @@ def test_dashboard_snapshot_projects_active_work_and_planner_state(tmp_path):
     snapshot=supervisor.write_dashboard_snapshot(tmp_path)
     assert snapshot["active_count"]==1
     assert snapshot["active_work"][0]["repository"]=="jweter/repo"
+    assert snapshot["active_work"][0]["job_state"]=="CLAIMED"
     assert snapshot["queue"]["decisions"]==[]
     assert snapshot["products"]["rocksmith"]["candidate_count"]==3
     assert snapshot["outcome_counters"]=={"completed":0,"failed":0,"merged_verified":0,"product_reality_verified":0,"repairs":0}
@@ -178,6 +179,7 @@ def test_dashboard_snapshot_counts_and_orders_terminal_outcomes(tmp_path):
     assert snapshot["github"]["pull_requests"][0]["pr_number"]==42
     assert snapshot["github"]["promotion_gates"][0]=={"repository":None,"pr_number":42,"head_sha":"abc","stage":"CI_PENDING","result_status":"GREEN"}
     assert [row["grant_id"] for row in snapshot["recent_completed_work"]]==["bad","new","old"]
+    assert [row["job_state"] for row in snapshot["recent_completed_work"]]==["ABANDONED","COMPLETE","COMPLETE"]
 
 def test_productivity_penalty_requires_multiple_samples():
     stats={"x":{"verified_advancement":1.0,"seconds":1.0,"failures":0.0,"samples":1.0,"repair_attempts":0.0,"merged_verified":0.0,"product_reality_verified":0.0}}

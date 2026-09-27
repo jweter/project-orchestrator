@@ -11,6 +11,104 @@ from .state_io import atomic_json
 GrantMutator = Callable[[dict[str, Any]], bool]
 
 
+CANONICAL_JOB_STATES = frozenset({
+    "QUEUED",
+    "CLAIMED",
+    "PREPARING",
+    "IMPLEMENTING",
+    "VERIFYING",
+    "PR_OPEN",
+    "CI",
+    "REVIEW",
+    "PROMOTING",
+    "COMPLETE",
+    "FAILED",
+    "ABANDONED",
+    "BLOCKED",
+    "UNKNOWN",
+})
+
+_PREPARING_STAGES = frozenset({"BASE_VERIFIED", "BRANCH_CREATED"})
+_IMPLEMENTING_STAGES = frozenset({"EXECUTING"})
+_VERIFYING_STAGES = frozenset({"EXECUTION_FINISHED", "REPAIR_FINISHED", "COMMITTED"})
+_CI_STATUSES = frozenset({"CI_PENDING"})
+_REVIEW_STATUSES = frozenset({"REVIEW_BLOCKED", "PR_BLOCKED"})
+_PROMOTING_STATUSES = frozenset({"GREEN", "PREFLIGHT_GREEN"})
+_COMPLETE_OUTCOMES = frozenset({"MERGED_VERIFIED", "PRODUCT_REALITY_VERIFIED"})
+_COMPLETE_RESULT_STATUSES = frozenset({
+    "MERGED",
+    "PRODUCT_REALITY_VERIFIED",
+    "NO_OP",
+    "SELF_REPAIRED_TO_NO_OP",
+    "DRY_RUN",
+    "NO_ELIGIBLE_REPOSITORY",
+})
+
+
+def canonical_job_projection(record: dict[str, Any]) -> dict[str, Any]:
+    """Project legacy grant fields into one observational job-state vocabulary.
+
+    Active ownership and its execution stage outrank stale result-status residue.
+    This is deliberately read-only: lifecycle/recovery authority remains in the
+    existing raw fields until each writer is migrated explicitly.
+    """
+    if not isinstance(record, dict):
+        raise TypeError("grant record must be a dict")
+
+    lifecycle_state = record.get("state")
+    execution_stage = record.get("execution_stage")
+    result_status = record.get("result_status")
+    outcome_quality = record.get("outcome_quality")
+
+    if lifecycle_state == "QUARANTINED":
+        job_state = "BLOCKED"
+    elif lifecycle_state == "ABANDONED":
+        job_state = "ABANDONED"
+    elif lifecycle_state == "FAILED":
+        job_state = "FAILED"
+    elif execution_stage == "PR_OPEN":
+        job_state = "PR_OPEN"
+    elif execution_stage in _VERIFYING_STAGES:
+        job_state = "VERIFYING"
+    elif execution_stage in _IMPLEMENTING_STAGES:
+        job_state = "IMPLEMENTING"
+    elif execution_stage in _PREPARING_STAGES:
+        job_state = "PREPARING"
+    elif lifecycle_state == "RUNNING":
+        job_state = "IMPLEMENTING"
+    elif lifecycle_state == "CLAIMED":
+        job_state = "CLAIMED"
+    elif lifecycle_state in {"ISSUED", "DEFERRED"}:
+        # DEFERRED is retryable capacity/user-activity wait, not a terminal block.
+        job_state = "QUEUED"
+    elif outcome_quality in _COMPLETE_OUTCOMES:
+        job_state = "COMPLETE"
+    elif result_status in _COMPLETE_RESULT_STATUSES:
+        job_state = "COMPLETE"
+    elif result_status in _CI_STATUSES:
+        job_state = "CI"
+    elif result_status in _REVIEW_STATUSES:
+        job_state = "REVIEW"
+    elif result_status in _PROMOTING_STATUSES:
+        job_state = "PROMOTING"
+    elif result_status == "PR_OPEN":
+        job_state = "PR_OPEN"
+    elif lifecycle_state == "COMPLETED":
+        # A legacy completed record without a recognized result remains unknown;
+        # do not infer verified advancement from lifecycle completion alone.
+        job_state = "UNKNOWN"
+    else:
+        job_state = "UNKNOWN"
+
+    return {
+        "job_state": job_state,
+        "lifecycle_state": lifecycle_state,
+        "execution_stage": execution_stage,
+        "result_status": result_status,
+        "outcome_quality": outcome_quality,
+    }
+
+
 def grant_state_root(path: Path) -> Path:
     """Return the durable state root for legacy or unique per-grant files."""
     if path.parent.name == "hands-off-execution-grants":
