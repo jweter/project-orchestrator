@@ -1,7 +1,7 @@
-﻿{
-    "expires_at":  "2026-09-27T14:04:32.8620927+00:00",
-    "issued_at":  "2026-09-27T13:59:32.8620927+00:00",
-    "source":  "commissioning-test",
-    "action":  "FULL_POWER",
-    "command_id":  "7cb68416-f5cb-415c-97e8-2ef83b03a44e"
+{
+  "action": "STATUS_SNAPSHOT",
+  "command_id": "471326f2-ddd0-447a-87e3-105925601fce",
+  "expires_at": "2026-09-27T16:45:31.309215+00:00",
+  "issued_at": "2026-09-27T16:40:31.309215+00:00",
+  "source": "iphone-dashboard"
 }
