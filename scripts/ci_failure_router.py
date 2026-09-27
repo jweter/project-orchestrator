@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse, hashlib, json, re, subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from project_orchestrator.repair import build_repair_plan, fingerprint_failure
+from project_orchestrator.repair import fingerprint_failure
+from project_orchestrator.failure_envelope import build_failure_envelope, first_meaningful_diagnostic
 
 CLOSED_CLASSES={"TEST_FAILURE","SECURITY","DEPENDENCY","TYPE_CHECK","GOVERNANCE",
                 "PROVENANCE","PRODUCT_REALITY","ENVIRONMENT","UNKNOWN"}
@@ -16,10 +17,7 @@ def gh_json(args:list[str]):
     return json.loads(p.stdout or "null")
 
 def first_meaningful_failure(log:str)->str:
-    fp=fingerprint_failure(log)
-    if fp.evidence:
-        return fp.evidence[0][:1200]
-    return "UNKNOWN: no meaningful failure line found"
+    return first_meaningful_diagnostic(log)
 
 def classify(log_or_line:str)->str:
     return fingerprint_failure(log_or_line).failure_class
@@ -43,8 +41,15 @@ def build_packet(repo:str,pr:int)->dict:
     lp=subprocess.run(["gh","run","view",str(run["databaseId"]),"--repo",repo,
                        "--job",str(job["databaseId"]),"--log"],text=True,capture_output=True,check=False)
     if lp.returncode: raise RuntimeError(lp.stderr.strip() or "job log unavailable")
-    failure=first_meaning_failure=first_meaningful_failure(lp.stdout)
-    fp=fingerprint_failure(lp.stdout); cls=fp.failure_class
+    envelope=build_failure_envelope(
+        repository=repo,
+        exact_head_sha=head,
+        stage=f"ci:{job['name']}",
+        log_text=lp.stdout,
+        environment_identity="github-actions",
+    )
+    failure=envelope["first_meaningful_diagnostic"]
+    cls=envelope["failure_class"]
     # Classification is evidence only. Mutation authority is repository-local
     # and is checked by project_orchestrator.repair before any command executes.
     return {"schema_version":1,"status":"REPAIR_PACKET_READY","repository":repo,
@@ -56,7 +61,8 @@ def build_packet(repo:str,pr:int)->dict:
             "deterministic_auto_repair_eligible":False,
             "repair_authority_status":"REQUIRES_REPOSITORY_POLICY_CHECK",
             "fail_closed":True,
-            "failure_fingerprint":fingerprint(repo,head,job["name"],cls,failure),
+            "failure_fingerprint":envelope["failure_fingerprint"],
+            "failure_envelope":envelope,
             "observed_at_utc":datetime.now(UTC).isoformat()}
 
 def main()->int:
