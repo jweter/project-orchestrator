@@ -569,7 +569,7 @@ def test_advance_grant_stage_persists_normal_stage_evidence(tmp_path):
     import scripts.autonomous_slice_builder as builder
     grant=tmp_path/"grant.json"; lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
     grant.write_text(json.dumps({"grant_id":"g"}))
-    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g":{"state":"CLAIMED"}}}))
+    lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"g":{"state":"CLAIMED","execution_stage":"EXECUTION_FINISHED"}}}))
     assert builder.advance_grant_stage(grant,"REPAIR_FINISHED",repository="o/r",base_sha="base",branch="actor/x",head_sha="head")
     saved=json.loads(lifecycle.read_text())["grants"]["g"]
     assert saved["execution_stage"]=="REPAIR_FINISHED"

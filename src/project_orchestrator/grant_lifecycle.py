@@ -17,6 +17,7 @@ NORMAL_EXECUTION_STAGES = frozenset({
     "EXECUTING",
     "EXECUTION_FINISHED",
     "REPAIR_FINISHED",
+    "PUSHED",
     "PR_OPEN",
 })
 
@@ -41,6 +42,7 @@ CANONICAL_JOB_STATES = frozenset({
 _PREPARING_STAGES = frozenset({"BASE_VERIFIED", "BRANCH_CREATED"})
 _IMPLEMENTING_STAGES = frozenset({"EXECUTING"})
 _VERIFYING_STAGES = frozenset({"EXECUTION_FINISHED", "REPAIR_FINISHED", "COMMITTED"})
+_PROMOTING_STAGES = frozenset({"PUSHED"})
 _CI_STATUSES = frozenset({"CI_PENDING"})
 _REVIEW_STATUSES = frozenset({"REVIEW_BLOCKED", "PR_BLOCKED"})
 _PROMOTING_STATUSES = frozenset({"GREEN", "PREFLIGHT_GREEN"})
@@ -78,6 +80,8 @@ def canonical_job_projection(record: dict[str, Any]) -> dict[str, Any]:
         job_state = "FAILED"
     elif execution_stage == "PR_OPEN":
         job_state = "PR_OPEN"
+    elif execution_stage in _PROMOTING_STAGES:
+        job_state = "PROMOTING"
     elif execution_stage in _VERIFYING_STAGES:
         job_state = "VERIFYING"
     elif execution_stage in _IMPLEMENTING_STAGES:
@@ -209,16 +213,32 @@ def advance_claimed_execution_stage(
     evidence: dict[str, Any] | None = None,
     updated_at: str,
 ) -> bool:
-    """Advance a normal claimed grant using the shared stage vocabulary.
+    """Advance a claimed grant through the monotonic normal execution path.
 
     Recovery-stage authority intentionally remains outside this function.
+    Re-applying the current stage is idempotent; regressions and skips fail closed.
     """
     if stage not in NORMAL_EXECUTION_STAGES:
         return False
     supplied = evidence or {}
+    allowed_next = {
+        None: {"BASE_VERIFIED"},
+        "BASE_VERIFIED": {"BRANCH_CREATED"},
+        "BRANCH_CREATED": {"EXECUTING"},
+        "EXECUTING": {"EXECUTION_FINISHED"},
+        "EXECUTION_FINISHED": {"REPAIR_FINISHED", "PUSHED"},
+        "REPAIR_FINISHED": {"PUSHED"},
+        "PUSHED": {"PR_OPEN"},
+        "PR_OPEN": set(),
+    }
 
     def update(record: dict[str, Any]) -> bool:
         if record.get("state") != "CLAIMED":
+            return False
+        current = record.get("execution_stage")
+        if current == stage:
+            pass
+        elif current not in allowed_next or stage not in allowed_next[current]:
             return False
         record["execution_stage"] = stage
         record["stage_updated_at"] = updated_at

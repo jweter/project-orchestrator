@@ -63,6 +63,7 @@ def test_shared_lifecycle_mutation_preserves_concurrent_records(tmp_path):
         ({"state": "COMPLETED", "execution_stage": "PR_OPEN", "result_status": "PR_OPEN"}, "PR_OPEN"),
         ({"state": "COMPLETED", "result_status": "CI_PENDING"}, "CI"),
         ({"state": "COMPLETED", "result_status": "REVIEW_BLOCKED"}, "REVIEW"),
+        ({"state": "CLAIMED", "execution_stage": "PUSHED"}, "PROMOTING"),
         ({"state": "COMPLETED", "result_status": "GREEN"}, "PROMOTING"),
         ({"state": "COMPLETED", "result_status": "NO_OP"}, "COMPLETE"),
         ({"state": "COMPLETED", "outcome_quality": "MERGED_VERIFIED"}, "COMPLETE"),
@@ -110,13 +111,13 @@ def test_shared_stage_authority_persists_only_normal_claimed_stage(tmp_path):
     assert lifecycle.advance_claimed_execution_stage(
         path,
         "g",
-        "EXECUTING",
+        "BASE_VERIFIED",
         evidence={"head_sha":"abc","empty":"","none":None},
         updated_at="2026-09-27T00:00:00+00:00",
     )
 
     record=json.loads(path.read_text())["grants"]["g"]
-    assert record["execution_stage"]=="EXECUTING"
+    assert record["execution_stage"]=="BASE_VERIFIED"
     assert record["stage_updated_at"]=="2026-09-27T00:00:00+00:00"
     assert record["head_sha"]=="abc"
     assert "empty" not in record and "none" not in record
@@ -133,3 +134,67 @@ def test_shared_stage_authority_refuses_nonclaimed_grant(tmp_path):
         evidence={},
         updated_at="2026-09-27T00:00:00+00:00",
     ) is False
+
+
+def test_normal_stage_sequence_is_monotonic_with_optional_repair(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"CLAIMED"}}}),encoding="utf-8")
+    stamp="2026-09-27T00:00:00+00:00"
+
+    for stage in (
+        "BASE_VERIFIED",
+        "BRANCH_CREATED",
+        "EXECUTING",
+        "EXECUTION_FINISHED",
+        "REPAIR_FINISHED",
+        "PUSHED",
+        "PR_OPEN",
+    ):
+        assert lifecycle.advance_claimed_execution_stage(
+            path,"g",stage,evidence={},updated_at=stamp
+        )
+
+    assert json.loads(path.read_text())["grants"]["g"]["execution_stage"]=="PR_OPEN"
+
+
+def test_normal_stage_sequence_allows_skipping_optional_repair(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{
+        "state":"CLAIMED","execution_stage":"EXECUTION_FINISHED"
+    }}}),encoding="utf-8")
+
+    assert lifecycle.advance_claimed_execution_stage(
+        path,"g","PUSHED",evidence={},updated_at="2026-09-27T00:00:00+00:00"
+    )
+
+
+def test_normal_stage_sequence_rejects_skip_and_regression(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{
+        "state":"CLAIMED","execution_stage":"BRANCH_CREATED"
+    }}}),encoding="utf-8")
+    stamp="2026-09-27T00:00:00+00:00"
+
+    assert lifecycle.advance_claimed_execution_stage(
+        path,"g","PUSHED",evidence={},updated_at=stamp
+    ) is False
+    assert lifecycle.advance_claimed_execution_stage(
+        path,"g","BASE_VERIFIED",evidence={},updated_at=stamp
+    ) is False
+    assert json.loads(path.read_text())["grants"]["g"]["execution_stage"]=="BRANCH_CREATED"
+
+
+def test_normal_stage_sequence_same_stage_is_idempotent(tmp_path):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{
+        "state":"CLAIMED","execution_stage":"EXECUTING"
+    }}}),encoding="utf-8")
+
+    assert lifecycle.advance_claimed_execution_stage(
+        path,
+        "g",
+        "EXECUTING",
+        evidence={"last_heartbeat_at":"new"},
+        updated_at="2026-09-27T00:00:00+00:00",
+    )
+    assert json.loads(path.read_text())["grants"]["g"]["last_heartbeat_at"]=="new"

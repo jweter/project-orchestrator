@@ -27,9 +27,9 @@ def test_stage_update_preserves_other_grant(tmp_path):
     lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
     lifecycle.write_text(json.dumps({"schema_version":1,"grants":{
         "a":{"state":"CLAIMED"},"b":{"state":"CLAIMED","marker":"keep"}}}),encoding="utf-8")
-    assert builder.advance_grant_stage(grant,"EXECUTING",head_sha="abc")
+    assert builder.advance_grant_stage(grant,"BASE_VERIFIED",head_sha="abc")
     state=json.loads(lifecycle.read_text())
-    assert state["grants"]["a"]["execution_stage"]=="EXECUTING"
+    assert state["grants"]["a"]["execution_stage"]=="BASE_VERIFIED"
     assert state["grants"]["b"]["marker"]=="keep"
 
 def test_concurrent_first_lock_initialization_is_atomic(tmp_path):
