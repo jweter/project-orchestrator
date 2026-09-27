@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import argparse,json,mimetypes,os,secrets,subprocess,uuid\nfrom datetime import datetime,timedelta,timezone
+import argparse,json,mimetypes,os,secrets,subprocess,uuid
+from datetime import datetime,timedelta,timezone
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 
@@ -31,7 +32,8 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
             mailbox={"command_id":command_id,"action":action,"issued_at":now.isoformat(),"expires_at":(now+timedelta(minutes=5)).isoformat(),"source":"iphone-dashboard"}
             target=control_repo/"control"/"mailbox.json"
             try:
-                target.write_text(json.dumps(mailbox,indent=2,sort_keys=True)+"\\n",encoding="utf-8")
+                target.write_text(json.dumps(mailbox,indent=2,sort_keys=True)+"\
+",encoding="utf-8")
                 subprocess.run(["git","-C",str(control_repo),"add","control/mailbox.json"],check=True,capture_output=True)
                 subprocess.run(["git","-C",str(control_repo),"commit","-m",f"control: {action.lower()} {command_id}"],check=True,capture_output=True)
                 subprocess.run(["git","-C",str(control_repo),"push","origin","azathoth-control"],check=True,capture_output=True)

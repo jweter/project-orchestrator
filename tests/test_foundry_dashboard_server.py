@@ -1,6 +1,7 @@
 import importlib.util,json
 from pathlib import Path
-from urllib.request import Request,urlopen\nfrom urllib.error import HTTPError
+from urllib.request import Request,urlopen
+from urllib.error import HTTPError
 from threading import Thread
 from http.server import ThreadingHTTPServer
 
