@@ -601,7 +601,9 @@ def _acquire_ollama_lock()->Path:
         except FileExistsError:
             try:
                 owner_pid=int((lock/"owner").read_text(encoding="utf-8").splitlines()[0])
-                os.kill(owner_pid,0)
+                if process_start_fingerprint(owner_pid) is None:
+                    shutil.rmtree(lock,ignore_errors=True)
+                    continue
             except (FileNotFoundError,ValueError,IndexError):
                 # mkdir() publishes the lease before its owner metadata can be written.
                 # A contender must not steal a freshly-created lease while that tiny
@@ -614,11 +616,6 @@ def _acquire_ollama_lock()->Path:
                 if stale:
                     shutil.rmtree(lock,ignore_errors=True)
                     continue
-            except ProcessLookupError:
-                shutil.rmtree(lock,ignore_errors=True)
-                continue
-            except PermissionError:
-                pass
             if time.monotonic()>=deadline:
                 raise TimeoutError("timed out waiting for exclusive local Ollama builder slot")
             time.sleep(1)

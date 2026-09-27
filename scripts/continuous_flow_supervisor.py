@@ -14,6 +14,10 @@ from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
+from project_orchestrator.grant_lifecycle import (
+    acquire_lifecycle_lock,
+    release_lifecycle_lock,
+)
 from project_orchestrator.grant_issuance import (
     acquire_grant_issue_lock as _acquire_grant_issue_lock,
     conflicting_nonterminal_grant as _conflicting_nonterminal_grant,
@@ -30,6 +34,16 @@ from project_orchestrator import supervisor_runtime as _supervisor_runtime
 
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
+
+def _acquire_lifecycle_lock(path:Path):
+    """Compatibility facade over the extracted lifecycle lock authority."""
+    return acquire_lifecycle_lock(path)
+
+
+def _release_lifecycle_lock(handle)->None:
+    """Compatibility facade over the extracted lifecycle lock authority."""
+    release_lifecycle_lock(handle)
+
 
 def load_runtime_leases_with_recovery(state_path:Path=RUNTIME_LEASE_STATE)->tuple[RuntimeLeasePool,dict|None]:
     """Self-heal invalid lease authority once, but never displace a provable live owner."""
@@ -387,7 +401,11 @@ classify_orphan_branch = _workspace_recovery.classify_orphan_branch
 resume_orphan_branch = _workspace_recovery.resume_orphan_branch
 builder_artifacts_only = _workspace_recovery.builder_artifacts_only
 preserved_work_evidence = _workspace_recovery.preserved_work_evidence
-revalidate_preserved_work = _workspace_recovery.revalidate_preserved_work
+
+def revalidate_preserved_work(ws:Path,record:dict)->str:
+    return _workspace_recovery.revalidate_preserved_work(
+        ws,record,evidence_fn=preserved_work_evidence,
+    )
 issue_preserved_recovery_capability = _workspace_recovery.issue_preserved_recovery_capability
 reconcile_consumed_recovery = _workspace_recovery.reconcile_consumed_recovery
 reconcile_consumed_staged_work = _workspace_recovery.reconcile_consumed_staged_work

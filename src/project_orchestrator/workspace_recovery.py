@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import secrets
 import socket
 import subprocess
 import sys
@@ -141,13 +139,14 @@ def preserved_work_evidence(ws:Path,base_sha:str)->dict:
         "repair_eligible":not bool(untracked_records),
     }
 
-def revalidate_preserved_work(ws:Path,record:dict)->str:
+def revalidate_preserved_work(ws:Path,record:dict,evidence_fn=None)->str:
     """Prove quarantined local work is byte-identical before any future repair."""
+    evidence_fn = evidence_fn or preserved_work_evidence
     expected=record.get("preserved_work_evidence")
     base=record.get("base_sha")
     if not isinstance(expected,dict) or expected.get("capture_status")!="CAPTURED" or not base:
         return "PRESERVED_EVIDENCE_MISSING"
-    current=preserved_work_evidence(ws,base)
+    current=evidence_fn(ws,base)
     if current.get("capture_status")!="CAPTURED":
         return "PRESERVED_WORK_UNREADABLE"
     identity=("branch","head_sha","status_porcelain","changed_paths","diff_sha256","diff_bytes","untracked","repair_eligible")
