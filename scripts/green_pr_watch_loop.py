@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 import os
 import time
@@ -13,6 +14,8 @@ try:
     from scripts.green_pr_merger import cycle
 except ModuleNotFoundError:
     from green_pr_merger import cycle
+
+from project_orchestrator.activation_capability import merge_watcher_advanced
 
 
 def acquire_singleton(state: Path) -> BinaryIO | None:
@@ -63,6 +66,98 @@ def atomic(path: Path, payload: dict) -> None:
     tmp.replace(path)
 
 
+def _event_id(event_type: str, result: dict) -> str:
+    material = "\0".join(
+        (
+            event_type,
+            str(result.get("repository") or ""),
+            str(result.get("pr") or ""),
+            str(result.get("head") or ""),
+        )
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
+
+
+def lifecycle_events(results: list[dict], observed_at_utc: str) -> list[dict]:
+    events: list[dict] = []
+    for result in results:
+        event_type = None
+        if result.get("merged") is True:
+            event_type = "PR_MERGED"
+        elif result.get("promoted") is True:
+            event_type = "PR_READY"
+        if event_type is None:
+            continue
+        event = {
+            "schema_version": 1,
+            "event_type": event_type,
+            "event_id": _event_id(event_type, result),
+            "repository": result.get("repository"),
+            "pr": result.get("pr"),
+            "head": result.get("head"),
+            "observed_at_utc": observed_at_utc,
+        }
+        events.append(event)
+    return events
+
+
+def append_events(path: Path, events: list[dict]) -> int:
+    if not events:
+        return 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing_ids: set[str] = set()
+    if path.exists():
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            event_id = payload.get("event_id")
+            if isinstance(event_id, str):
+                existing_ids.add(event_id)
+    written = 0
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        for event in events:
+            if event["event_id"] in existing_ids:
+                continue
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+            existing_ids.add(event["event_id"])
+            written += 1
+    return written
+
+
+def process_cycle(state: Path, results: list[dict], error: str | None, started: float) -> dict:
+    observed_at = datetime.now(UTC).isoformat()
+    payload = {
+        "updated_at_utc": observed_at,
+        "duration_seconds": round(time.time() - started, 3),
+        "error_class": error,
+        "results": results,
+    }
+    atomic(state, payload)
+
+    state_root = state.parent
+    events = lifecycle_events(results, observed_at)
+    event_count = append_events(state_root / "flow-events.jsonl", events)
+
+    reconciliation_advanced = False
+    if any(event["event_type"] == "PR_MERGED" for event in events):
+        reconciliation_advanced = merge_watcher_advanced(state_root)
+        if reconciliation_advanced:
+            atomic(
+                state_root / "continuation-request.json",
+                {
+                    "requested_at_utc": datetime.now(UTC).isoformat(),
+                    "reason": "MERGE_RECONCILED_EVENT",
+                },
+            )
+
+    payload["flow_events_emitted"] = event_count
+    payload["reconciliation_advanced"] = reconciliation_advanced
+    atomic(state, payload)
+    return payload
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--state", required=True)
@@ -82,15 +177,7 @@ def main() -> int:
             except Exception as exc:
                 results = []
                 error = type(exc).__name__
-            atomic(
-                state,
-                {
-                    "updated_at_utc": datetime.now(UTC).isoformat(),
-                    "duration_seconds": round(time.time() - started, 3),
-                    "error_class": error,
-                    "results": results,
-                },
-            )
+            process_cycle(state, results, error, started)
             if a.once:
                 return 0 if error is None else 1
             time.sleep(max(30, a.poll_seconds))
