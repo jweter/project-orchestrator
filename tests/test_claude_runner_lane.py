@@ -33,3 +33,10 @@ def test_unknown_runner_fails_closed(tmp_path):
     import pytest
     with pytest.raises(RuntimeError,match="UNSUPPORTED_RUNNER"):
         builder.run_builder(tmp_path,"x","unknown")
+
+
+def test_disable_env_forces_claude_runner_off(monkeypatch):
+    monkeypatch.setenv("AZATHOTH_DISABLE_CLAUDE","1")
+    assert not registry.claude_code_healthy()
+    manifests=registry.default_runner_registry()._manifests
+    assert manifests["claude-code"].enabled is False

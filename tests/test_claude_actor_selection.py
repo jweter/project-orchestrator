@@ -29,3 +29,18 @@ def test_dispatch_if_warranted_records_routed_session(tmp_path,monkeypatch):
     assert out["dispatched"] is True
     assert out["routine"] == "adversarial_reviewer"
     assert out["session_id"] == "cse_routed"
+
+
+def test_disable_env_routes_claude_work_to_laptop(monkeypatch):
+    monkeypatch.setenv("AZATHOTH_DISABLE_CLAUDE","1")
+    decision=select_actor({"kind":"DEEP_ARCHITECTURE"})
+    assert decision["actor"]=="LAPTOP_ACTOR"
+    assert decision["routine"] is None
+
+
+def test_disable_env_blocks_direct_claude_dispatch(tmp_path,monkeypatch):
+    monkeypatch.setenv("AZATHOTH_DISABLE_CLAUDE","1")
+    task={"kind":"DEEP_ARCHITECTURE","repository":"o/r","task_key":"k","prompt":"x"}
+    result=dispatch_if_warranted(task,tmp_path)
+    assert result["dispatched"] is False
+    assert result["actor"]=="LAPTOP_ACTOR"

@@ -5,13 +5,16 @@ import json
 import os
 import time
 import urllib.request
-from datetime import datetime, timezone
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable
 
 API_VERSION = "2023-06-01"
 BETA = "experimental-cc-routine-2026-04-01"
+def claude_disabled() -> bool:
+    return os.environ.get("AZATHOTH_DISABLE_CLAUDE","").strip().lower() in {"1","true","yes","on"}
+
+
 ROUTINES = {
     "portfolio_builder": ("https://api.anthropic.com/v1/claude_code/routines/trig_016m1YeMU9qCeZaEPA5Y6ezH/fire", "CLAUDE_ROUTINE_PORTFOLIO_BUILDER_TOKEN"),
     "repair_rescue": ("https://api.anthropic.com/v1/claude_code/routines/trig_014bWbUvStgR1ZPDTirXBbMT/fire", "CLAUDE_ROUTINE_REPAIR_RESCUE_TOKEN"),
@@ -35,6 +38,8 @@ def _dispatch_id(routine: str, repository: str, task_key: str) -> str:
     return hashlib.sha256(raw).hexdigest()[:20]
 
 def dispatch(routine: str, repository: str, task_key: str, text: str, state_dir: Path, *, opener: Callable = urllib.request.urlopen) -> DispatchRecord:
+    if claude_disabled():
+        raise RuntimeError("CLAUDE_DISABLED")
     if routine not in ROUTINES:
         raise ValueError(f"unknown Claude routine: {routine}")
     url, env_name = ROUTINES[routine]
@@ -167,6 +172,8 @@ def select_actor(task: dict, scorecard: dict | None = None) -> dict:
     kind = str(task.get("kind", "")).upper()
     if task.get("requires_human") or task.get("reserved_human_boundary"):
         return {"actor": "HUMAN", "reason": "reserved human boundary", "routine": None}
+    if claude_disabled():
+        return {"actor": "LAPTOP_ACTOR", "reason": "Claude explicitly disabled", "routine": None}
     if task.get("local_capability_verified") and kind in {"DETERMINISTIC_FAILURE","CI_FAILURE","QUALITY_FAILURE","PRODUCT_SLICE"}:
         return {"actor": "LAPTOP_ACTOR", "reason": "verified local capability available", "routine": None}
     routine = TASK_ROUTING.get(kind)

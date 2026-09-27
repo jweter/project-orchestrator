@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping
-import json, shutil, subprocess
+import json, os, shutil, subprocess
 
 @dataclass(frozen=True)
 class RunnerManifest:
@@ -50,6 +50,8 @@ class RunnerRegistry:
 
 def claude_code_healthy(timeout_seconds:int=10)->bool:
     """Check installed/authenticated CLI state without consuming a model turn."""
+    if os.environ.get("AZATHOTH_DISABLE_CLAUDE","").strip().lower() in {"1","true","yes","on"}:
+        return False
     if not shutil.which("claude"):
         return False
     try:
