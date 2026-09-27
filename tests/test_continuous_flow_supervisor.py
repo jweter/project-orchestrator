@@ -1270,7 +1270,7 @@ def test_parallel_dispatch_assigns_independent_product_slots(tmp_path, monkeypat
     import scripts.continuous_flow_supervisor as supervisor
     from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
     from tests.test_parallel_worker_pool import ManualExecutor
-    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=3,executor_factory=ManualExecutor)
+    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=4,executor_factory=ManualExecutor)
     monkeypatch.setattr(supervisor,"RUNTIME_LEASES",
                         supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
     monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,activation,product,limit:[
@@ -1283,12 +1283,13 @@ def test_parallel_dispatch_assigns_independent_product_slots(tmp_path, monkeypat
         RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20),
     ])
     workers=supervisor.dispatch_parallel_builders(
-        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","everward"],runners)
+        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","everward","voicestudio"],runners)
     assert workers==[
-        "knowledge-engine-worker-1","rocksmith-worker-1","everward-worker-1"]
+        "knowledge-engine-worker-1","rocksmith-worker-1","everward-worker-1",
+        "voicestudio-worker-1"]
     snapshot=pool.snapshot()
     assert snapshot["running_by_product"]=={
-        "knowledge-engine":1,"rocksmith":1,"everward":1}
+        "knowledge-engine":1,"rocksmith":1,"everward":1,"voicestudio":1}
 
 
 def test_parallel_dispatch_records_runner_block_for_convergence(tmp_path, monkeypatch):

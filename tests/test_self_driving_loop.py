@@ -3,7 +3,7 @@ from project_orchestrator.portfolio_laptop_probe import PORTFOLIO
 def ready(now=1000): return [{"repository":r,"status":"PASS","completed_at":now} for _,r in PORTFOLIO]
 def test_not_ready_becomes_p1_before_product_dispatch(tmp_path):
  rows=ready()[:-1];out=run_self_driving_iteration(lanes={},portfolio_results=rows,state_dir=tmp_path/"s",claude_state_dir=tmp_path/"c",laptop_queue_dir=tmp_path/"q",now=1000)
- assert out["status"]=="P1_REPAIR_REQUIRED";assert out["dispatches"]==0;assert out["repair"]["missing"]==["jweter/Project-Everward"]
+ assert out["status"]=="P1_REPAIR_REQUIRED";assert out["dispatches"]==0;assert out["repair"]["missing"]==["jweter/VoiceStudio"]
 def test_ready_portfolio_enters_scheduler(tmp_path):
  out=run_self_driving_iteration(lanes={},portfolio_results=ready(),state_dir=tmp_path/"s",claude_state_dir=tmp_path/"c",laptop_queue_dir=tmp_path/"q",now=1000)
  assert out["readiness"]["healthy"] is True;assert out["status"]=="HEALTHY"
