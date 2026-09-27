@@ -1,0 +1,28 @@
+{
+  "observed_at": "2026-09-27T06:28:55-05:00",
+  "eligible_product_projects": [
+    "knowledge-engine",
+    "rocksmith",
+    "everward",
+    "voicestudio"
+  ],
+  "materially_advanced_product_projects": [],
+  "external_state_changes": {
+    "knowledge_engine": "Core PR 530 exact-head green and mergeable; merge mutation safety-rejected. AI PR 174 remains P1 and syntax repair mutation safety-rejected.",
+    "rocksmith": "No open PR; issue 612 remains current milestone after PR 732 merged.",
+    "everward": "PR 326 open; P2 thread outdated after process-tree fix; review-thread mutation safety-rejected.",
+    "voicestudio": "No open PR; S1 remains first unchecked singing milestone; fresh reconciliation branches exist."
+  },
+  "environment": {
+    "azathoth": "offline",
+    "last_seen": "2026-09-27T05:34:50.644Z"
+  },
+  "reusable_capabilities_created_or_reused": [
+    "Knowledge Engine Core POSIX termination boundary already fixed on current main via dynamic attribute resolution"
+  ],
+  "product_advancement_rate": "0/4",
+  "blockers": [
+    "repository mutation safety boundary",
+    "Azathoth offline"
+  ]
+}
