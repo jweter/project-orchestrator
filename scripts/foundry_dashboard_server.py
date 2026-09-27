@@ -70,6 +70,16 @@ $used=[double]$os.TotalVisibleMemorySize-[double]$os.FreePhysicalMemory
     _MACHINE_CACHE["at"]=time.monotonic(); _MACHINE_CACHE["value"]=dict(default)
     return default
 
+CONTROL_PLANE_SUBSYSTEMS=("windows","foundry_supervisor","github_guardian","remote_control")
+
+def _overall_control_status(subsystems:dict)->str:
+    states=[subsystems.get(name,{}).get("status","UNKNOWN") for name in CONTROL_PLANE_SUBSYSTEMS]
+    if any(status=="OFFLINE" for status in states):
+        return "DEGRADED"
+    if states and all(status=="LIVE" for status in states):
+        return "LIVE"
+    return "CHECKING"
+
 def _health_snapshot(state_root:Path,control_repo:Path|None)->dict:
     now=datetime.now(timezone.utc)
     dashboard=_read_json(state_root/"telemetry"/"foundry-dashboard.json") or {}
@@ -111,17 +121,22 @@ remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine
                            "guardian":bool(processes.get("guardian")),"mailbox_watcher":bool(processes.get("mailbox_watcher"))},
         "remote_control":{"status":state(processes.get("remote_control")) if os.name=="nt" else "UNKNOWN"},
     }
+    overall_status=_overall_control_status(subsystems)
     alerts=[]
     for name,row in subsystems.items():
-        if row["status"]=="OFFLINE": alerts.append({"severity":"CRITICAL","code":name.upper()+"_OFFLINE","message":name.replace("_"," ").title()+" is offline"})
-        elif row["status"]=="STALE": alerts.append({"severity":"WARNING","code":name.upper()+"_STALE","message":name.replace("_"," ").title()+" telemetry is stale"})
+        if row["status"]=="OFFLINE":
+            alerts.append({"severity":"CRITICAL","code":name.upper()+"_OFFLINE","message":name.replace("_"," ").title()+" is offline"})
+        elif row["status"]=="STALE":
+            severity="INFO" if name=="dashboard_snapshot" else "WARNING"
+            alerts.append({"severity":severity,"code":name.upper()+"_STALE","message":name.replace("_"," ").title()+" telemetry is stale"})
     if machine.get("pending_reboot") is True:
         alerts.append({"severity":"WARNING","code":"WINDOWS_REBOOT_PENDING","message":"Windows is waiting for a reboot"})
     if isinstance(machine.get("disk_free_gb"),(int,float)) and machine["disk_free_gb"]<15:
         alerts.append({"severity":"WARNING","code":"DISK_LOW","message":f"C: has {machine['disk_free_gb']:.1f} GB free"})
     if isinstance(machine.get("memory_percent"),(int,float)) and machine["memory_percent"]>=90:
         alerts.append({"severity":"WARNING","code":"MEMORY_HIGH","message":f"Memory usage is {machine['memory_percent']:.0f}%"})
-    return {"recorded_at":now.isoformat(),"subsystems":subsystems,"machine":machine,"alerts":alerts,
+    return {"recorded_at":now.isoformat(),"overall_status":overall_status,
+            "subsystems":subsystems,"machine":machine,"alerts":alerts,
             "human_mode":{"enabled":bool(human.get("enabled")),"since":human.get("since")},
             "command_progress":progress,"control_history":list(history.get("commands",[]))[-20:],
             "last_control_receipt":receipt}

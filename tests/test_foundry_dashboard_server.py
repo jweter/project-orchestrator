@@ -24,8 +24,23 @@ def test_dashboard_server_serves_snapshot_and_pwa(tmp_path):
         health=json.load(urlopen(base+"/api/health"))
         assert set(health["subsystems"])=={"windows","dashboard_snapshot","foundry_supervisor","github_guardian","remote_control"}
         assert all(row["status"] in {"LIVE","STALE","OFFLINE","UNKNOWN"} for row in health["subsystems"].values())
-        assert set(("machine","alerts","human_mode","command_progress","control_history")) <= set(health)
+        assert set(("machine","alerts","human_mode","command_progress","control_history","overall_status")) <= set(health)
     finally: httpd.shutdown()
+
+
+def test_overall_control_status_ignores_stale_dashboard_snapshot():
+    subsystems={
+        "windows":{"status":"LIVE"},
+        "dashboard_snapshot":{"status":"STALE"},
+        "foundry_supervisor":{"status":"LIVE"},
+        "github_guardian":{"status":"LIVE"},
+        "remote_control":{"status":"LIVE"},
+    }
+    assert server._overall_control_status(subsystems)=="LIVE"
+    subsystems["remote_control"]["status"]="OFFLINE"
+    assert server._overall_control_status(subsystems)=="DEGRADED"
+    subsystems["remote_control"]["status"]="UNKNOWN"
+    assert server._overall_control_status(subsystems)=="CHECKING"
 
 
 def test_control_endpoint_requires_token_and_rejects_unallowlisted_action(tmp_path):
@@ -52,5 +67,8 @@ def test_dashboard_exposes_only_bounded_control_actions():
         assert action in html
     assert "Authorization" in js and "Bearer " in js
     assert "ARBITRARY_SHELL" not in html
+    assert "Wake Azathoth" in html and "Wake relay settings" in html
+    assert "azathothWakeRelayUrl" in js and "azathothWakeRelayToken" in js
     sw=(ROOT/"dashboard"/"sw.js").read_text(encoding="utf-8")
     assert 'url.pathname.startsWith("/api/")' in sw
+    assert "url.origin!==self.location.origin" in sw
