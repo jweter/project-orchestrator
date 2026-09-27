@@ -246,6 +246,13 @@ def ready_task_batch(
     return selected
 
 
+def _rotate_after(items: list[str], previous: str | None) -> list[str]:
+    if not items or previous not in items:
+        return items
+    index = items.index(previous) + 1
+    return items[index:] + items[:index]
+
+
 def select_execution_target(
     state_root: Path,
     activation: dict,
@@ -254,21 +261,42 @@ def select_execution_target(
     load_execution_slice_fn: Callable,
     conflict_check_fn: Callable,
 ) -> tuple[str, str]:
+    """Allocate one execution target with independent-product fairness.
+
+    Portfolio capacity is reserved by product first, not by repository.  This
+    prevents Knowledge Engine's three repositories from consuming consecutive
+    portfolio turns while Rocksmith or Everward has eligible work.  Repository
+    rotation happens only inside the selected product lane.
+    """
     reserved = reserved_quarantine_repositories(state_root)
-    candidates = sorted(
-        (repo, head)
-        for name in products
-        for repo, head in activation["products"][name]["repositories"].items()
-        if head and repo not in reserved
-    )
-    if not candidates:
+    product_repositories: dict[str, list[tuple[str, str]]] = {}
+    for product in products:
+        repositories = activation.get("products", {}).get(product, {}).get("repositories", {})
+        ready_repositories = sorted(
+            (repo, head)
+            for repo, head in repositories.items()
+            if head and repo not in reserved
+        )
+        if ready_repositories:
+            product_repositories[product] = ready_repositories
+
+    if not product_repositories:
         raise RuntimeError("NO_EXECUTION_TARGET")
 
     cursor_path = state_root / "execution-target-cursor.json"
     try:
-        previous = json.loads(cursor_path.read_text(encoding="utf-8")).get("repository")
+        cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
+        previous_product = cursor.get("product")
+        previous_repository = cursor.get("repository")
+        repository_cursors = cursor.get("repositories", {})
+        if not isinstance(repository_cursors, dict):
+            repository_cursors = {}
+        if previous_product and previous_repository and previous_product not in repository_cursors:
+            repository_cursors[previous_product] = previous_repository
     except (OSError, json.JSONDecodeError, TypeError):
-        previous = None
+        previous_product = None
+        previous_repository = None
+        repository_cursors = {}
 
     atomic_json(
         state_root / "decision-learning-hint.json",
@@ -280,63 +308,114 @@ def select_execution_target(
         },
     )
 
-    ordered = candidates
-    if previous:
-        after = [item for item in candidates if item[0] > previous]
-        before = [item for item in candidates if item[0] <= previous]
-        ordered = after + before
+    product_order = _rotate_after(
+        [product for product in products if product in product_repositories],
+        previous_product,
+    )
+    blocked: list[str] = []
+    decisions: list[dict] = []
 
-    blocked = []
-    decisions = []
-    for repo, head in ordered:
-        product = product_for_repository(repo)
-        try:
-            execution = load_execution_slice_fn(state_root, repo, head)
-        except RuntimeError as exc:
-            reason = str(exc)
+    for product in product_order:
+        repositories = product_repositories[product]
+        repository_names = [repo for repo, _ in repositories]
+        product_previous_repository = repository_cursors.get(product)
+        if product_previous_repository in repository_names:
+            ordered_names = _rotate_after(repository_names, product_previous_repository)
+            by_name = {repo: head for repo, head in repositories}
+            ordered_repositories = [(repo, by_name[repo]) for repo in ordered_names]
+        else:
+            ordered_repositories = repositories
+
+        product_had_ready_slice = False
+        for repo, head in ordered_repositories:
+            try:
+                execution = load_execution_slice_fn(state_root, repo, head)
+            except RuntimeError as exc:
+                reason = str(exc)
+                decisions.append({
+                    "repository": repo,
+                    "product": product,
+                    "head_sha": head,
+                    "outcome": "NOT_READY",
+                    "reason": reason,
+                })
+                blocked.append(f"{repo}={reason}")
+                continue
+            if execution.get("status") == "NO_WORK":
+                decisions.append({
+                    "repository": repo,
+                    "product": product,
+                    "head_sha": head,
+                    "outcome": "NO_AUTHORIZED_SLICE",
+                    "reason": "NO_WORK",
+                })
+                blocked.append(f"{repo}=NO_WORK")
+                continue
+            product_had_ready_slice = True
+            conflict = conflict_check_fn(state_root, repo, execution)
+            if conflict:
+                decisions.append({
+                    "repository": repo,
+                    "product": product,
+                    "head_sha": head,
+                    "outcome": "ALREADY_OWNED",
+                    "reason": "NONTERMINAL_GRANT",
+                    "grant_id": conflict.get("grant_id"),
+                    "grant_state": conflict.get("state"),
+                })
+                blocked.append(f"{repo}=ALREADY_OWNED:{conflict.get('grant_id')}")
+                continue
+
             decisions.append({
-                "repository": repo, "product": product, "head_sha": head,
-                "outcome": "NOT_READY", "reason": reason,
+                "repository": repo,
+                "product": product,
+                "head_sha": head,
+                "outcome": "SELECTED",
+                "reason": "READY_EXECUTION_SLICE",
             })
-            blocked.append(f"{repo}={reason}")
-            continue
-        if execution.get("status") == "NO_WORK":
+            atomic_json(
+                state_root / "dispatch-decision.json",
+                {
+                    "schema_version": 2,
+                    "allocation_policy": "PRODUCT_FIRST_FAIR_SHARE",
+                    "recorded_at_utc": datetime.now(UTC).isoformat(),
+                    "selected_repository": repo,
+                    "selected_product": product,
+                    "decisions": decisions,
+                },
+            )
+            repository_cursors[product] = repo
+            atomic_json(
+                cursor_path,
+                {
+                    "schema_version": 2,
+                    "product": product,
+                    "repository": repo,
+                    "repositories": repository_cursors,
+                },
+            )
+            return repo, head
+
+        if product_had_ready_slice:
             decisions.append({
-                "repository": repo, "product": product, "head_sha": head,
-                "outcome": "NO_AUTHORIZED_SLICE", "reason": "NO_WORK",
+                "repository": None,
+                "product": product,
+                "head_sha": None,
+                "outcome": "PRODUCT_CAPACITY_OCCUPIED",
+                "reason": "ALL_READY_SLICES_OWNED",
             })
-            blocked.append(f"{repo}=NO_WORK")
-            continue
-        conflict = conflict_check_fn(state_root, repo, execution)
-        if conflict:
-            decisions.append({
-                "repository": repo, "product": product, "head_sha": head,
-                "outcome": "ALREADY_OWNED", "reason": "NONTERMINAL_GRANT",
-                "grant_id": conflict.get("grant_id"), "grant_state": conflict.get("state"),
-            })
-            blocked.append(f"{repo}=ALREADY_OWNED:{conflict.get('grant_id')}")
-            continue
-        decisions.append({
-            "repository": repo, "product": product, "head_sha": head,
-            "outcome": "SELECTED", "reason": "READY_EXECUTION_SLICE",
-        })
-        atomic_json(state_root / "dispatch-decision.json", {
-            "schema_version": 1,
+
+    atomic_json(
+        state_root / "dispatch-decision.json",
+        {
+            "schema_version": 2,
+            "allocation_policy": "PRODUCT_FIRST_FAIR_SHARE",
             "recorded_at_utc": datetime.now(UTC).isoformat(),
-            "selected_repository": repo,
-            "selected_product": product,
+            "selected_repository": None,
+            "selected_product": None,
             "decisions": decisions,
-        })
-        atomic_json(cursor_path, {"repository": repo})
-        return repo, head
-
-    atomic_json(state_root / "dispatch-decision.json", {
-        "schema_version": 1,
-        "recorded_at_utc": datetime.now(UTC).isoformat(),
-        "selected_repository": None,
-        "selected_product": None,
-        "decisions": decisions,
-    })
+        },
+    )
     if blocked and all(item.endswith("=NO_WORK") for item in blocked):
         raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
     detail = ";".join(blocked) or "UNKNOWN"
