@@ -35,3 +35,20 @@ def test_stale_final_evidence_still_requests_direction(tmp_path):
     request=json.loads((tmp_path/"direction-requests"/"o__r.json").read_text())
     assert request["status"]=="DIRECTION_REQUIRED"
     assert request["reason"]=="DIRECTION_REQUIRED"
+
+
+def test_verified_completion_emits_authorized_candidate_refresh_request(tmp_path):
+    graph_path=tmp_path/"capability-graphs"/"o__r.json"; write(graph_path,graph())
+    root=tmp_path/"product-completion-evidence"
+    write(root/"o__r__acceptance.json",[{"name":"final","status":"PASS","exact_head":HEAD,"evidence_ref":"artifact://accept"}])
+    write(root/"o__r__product-reality.json",[{"kind":"packaged_app","state":"VERIFIED","exact_head":HEAD,"source_ref":"artifact://reality"}])
+
+    result=flow.load_execution_slice(tmp_path,REPO,HEAD)
+
+    assert result["status"]=="NO_WORK"
+    assert result["reason"]=="ROADMAP_EXHAUSTED"
+    request=json.loads((tmp_path/"continuation-request.json").read_text())
+    assert request["reason"]=="REFRESH_AUTHORIZED_CANDIDATES"
+    assert request["trigger"]=="ROADMAP_EXHAUSTED"
+    assert request["repository"]==REPO
+    assert request["exact_head"]==HEAD

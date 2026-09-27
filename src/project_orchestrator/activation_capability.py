@@ -6,7 +6,6 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
 from .grant_lifecycle import mutate_grant_lifecycle
 from .state_io import atomic_json
@@ -439,7 +438,24 @@ def load_execution_slice(state_root:Path,repo:str,exact_head:str,*,derive_fn=der
     request_path=state_root/"direction-requests"/f"{repo.replace('/','__')}.json"
     if derived.get("status")=="NO_WORK":
         request_path.unlink(missing_ok=True)
-        return {"status":"NO_WORK","repository":repo,"exact_head":exact_head}
+        reason = derived.get("reason") or "NO_WORK"
+        if reason == "ROADMAP_EXHAUSTED":
+            atomic_json(
+                state_root / "continuation-request.json",
+                {
+                    "requested_at_utc": datetime.now(UTC).isoformat(),
+                    "reason": "REFRESH_AUTHORIZED_CANDIDATES",
+                    "repository": repo,
+                    "exact_head": exact_head,
+                    "trigger": "ROADMAP_EXHAUSTED",
+                },
+            )
+        return {
+            "status":"NO_WORK",
+            "reason":reason,
+            "repository":repo,
+            "exact_head":exact_head,
+        }
     if derived.get("status")!="READY" or not isinstance(derived.get("slice"),dict):
         request={
             "schema_version":1,

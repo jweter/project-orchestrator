@@ -34,7 +34,13 @@ def derive_slices(payload:dict[str,Any],*,repository:str,exact_head:str)->dict[s
                            and isinstance(check.get("name"),str) and check["name"].strip() for check in checks)):
             return {"schema_version":2,"status":"DIRECTION_REQUIRED","slices":[],
                     "issues":[{"code":"PRODUCT_COMPLETION_EVIDENCE_REQUIRED"}]}
-        return {"schema_version":2,"status":"NO_WORK","slices":[],"issues":[]}
+        return {
+            "schema_version": 2,
+            "status": "NO_WORK",
+            "reason": "ROADMAP_EXHAUSTED",
+            "slices": [],
+            "issues": [],
+        }
     if graph["status"]!="READY" or not graph.get("selected"):
         return {"schema_version":2,"status":graph["status"],"slices":[],"issues":graph["issues"]}
     cid=graph["selected"]
@@ -76,6 +82,7 @@ def derive_slice(payload:dict[str,Any],*,repository:str,exact_head:str)->dict[st
     return {
         "schema_version":1,
         "status":result["status"],
+        "reason":result.get("reason"),
         "issues":result["issues"],
         "slice":result["slices"][0] if result["slices"] else None,
     }

@@ -342,14 +342,19 @@ def select_execution_target(
                 blocked.append(f"{repo}={reason}")
                 continue
             if execution.get("status") == "NO_WORK":
+                reason = str(execution.get("reason") or "NO_WORK")
                 decisions.append({
                     "repository": repo,
                     "product": product,
                     "head_sha": head,
-                    "outcome": "NO_AUTHORIZED_SLICE",
-                    "reason": "NO_WORK",
+                    "outcome": (
+                        "ROADMAP_EXHAUSTED"
+                        if reason == "ROADMAP_EXHAUSTED"
+                        else "NO_AUTHORIZED_SLICE"
+                    ),
+                    "reason": reason,
                 })
-                blocked.append(f"{repo}=NO_WORK")
+                blocked.append(f"{repo}={reason}")
                 continue
             product_had_ready_slice = True
             conflict = conflict_check_fn(state_root, repo, execution)
@@ -416,7 +421,10 @@ def select_execution_target(
             "decisions": decisions,
         },
     )
-    if blocked and all(item.endswith("=NO_WORK") for item in blocked):
+    terminal_outcomes = {"ROADMAP_EXHAUSTED", "NO_AUTHORIZED_SLICE"}
+    if decisions and all(
+        item.get("outcome") in terminal_outcomes for item in decisions
+    ):
         raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
     detail = ";".join(blocked) or "UNKNOWN"
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")

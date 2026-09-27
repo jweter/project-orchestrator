@@ -130,3 +130,26 @@ def test_owned_product_rotates_to_next_eligible_product(tmp_path):
     )
 
     assert repo == "jweter/rocksmith-cdlc-generator"
+
+
+def test_roadmap_exhaustion_is_explicit_in_dispatch_evidence(tmp_path):
+    def exhausted(_state, _repo, _head):
+        return {"status": "NO_WORK", "reason": "ROADMAP_EXHAUSTED"}
+
+    try:
+        select_execution_target(
+            tmp_path,
+            ACTIVATION,
+            PRODUCTS,
+            load_execution_slice_fn=exhausted,
+            conflict_check_fn=_unowned,
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "ALL_EXECUTION_LANES_COMPLETE"
+    else:
+        raise AssertionError("fully exhausted portfolio must terminate explicitly")
+
+    evidence = json.loads((tmp_path / "dispatch-decision.json").read_text(encoding="utf-8"))
+    assert evidence["selected_repository"] is None
+    assert {row["outcome"] for row in evidence["decisions"]} == {"ROADMAP_EXHAUSTED"}
+    assert {row["reason"] for row in evidence["decisions"]} == {"ROADMAP_EXHAUSTED"}
