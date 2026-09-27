@@ -188,6 +188,7 @@ def test_productivity_penalty_requires_multiple_samples():
 
 def test_dashboard_snapshot_projects_runtime_promotion_latency(tmp_path):
     ledger=tmp_path/"kpi-events.jsonl"
+    base=datetime.now(UTC)-timedelta(minutes=10)
     common={
         "project":"knowledge-engine",
         "repository":"jweter/knowledge-engine-ai",
@@ -199,14 +200,14 @@ def test_dashboard_snapshot_projects_runtime_promotion_latency(tmp_path):
     }
     append_event(ledger,{
         **common,
-        "observed_at":"2026-09-26T10:00:00+00:00",
+        "observed_at":base.isoformat(),
         "run_id":"ready",
         "from_state":"DRAFT",
         "to_state":"GREEN",
     })
     append_event(ledger,{
         **common,
-        "observed_at":"2026-09-26T10:05:00+00:00",
+        "observed_at":(base+timedelta(minutes=5)).isoformat(),
         "run_id":"merged",
         "from_state":"GREEN",
         "to_state":"MERGED",
