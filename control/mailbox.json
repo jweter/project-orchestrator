@@ -1,9 +1,7 @@
 {
-  "schema_version": 1,
-  "command_id": "deploy-main-safe-20260926-1319",
-  "action": "DEPLOY_MAIN_SAFE",
-  "issued_at": "2026-09-26T13:19:00Z",
-  "expires_at": "2026-09-26T17:30:00Z",
-  "arguments": {},
-  "note": "Deploy merged Foundry main at first zero-product-worker safe boundary; do not interrupt active builders."
+  "action": "STATUS_SNAPSHOT",
+  "command_id": "8e5807b0-fc33-4509-9f5d-57ea6e82f16b",
+  "expires_at": "2026-09-27T13:05:57.877327+00:00",
+  "issued_at": "2026-09-27T13:00:57.877327+00:00",
+  "source": "iphone-dashboard"
 }
