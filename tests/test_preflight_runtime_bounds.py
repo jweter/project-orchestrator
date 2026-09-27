@@ -87,3 +87,52 @@ def test_main_finalizes_interrupted_evidence(tmp_path, monkeypatch):
     assert payload["active_check"] is None
     assert payload["head_sha"] == "deadbeef"
     assert payload["results"][0]["interrupted"] is True
+
+
+def test_main_fails_closed_when_head_moves_during_check(tmp_path, monkeypatch):
+    evidence = tmp_path / "preflight-evidence.json"
+    monkeypatch.setattr(preflight, "EVIDENCE", evidence)
+    monkeypatch.setattr(preflight, "checks", [("tests", ["pytest"])])
+
+    heads = iter(["a" * 40, "a" * 40, "b" * 40])
+    monkeypatch.setattr(preflight, "git_head", lambda _root: next(heads))
+    monkeypatch.setattr(
+        preflight,
+        "run_check",
+        lambda name, argv: {
+            "name": name,
+            "argv": argv,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "timed_out": False,
+            "interrupted": False,
+            "timeout_seconds": 900,
+            "duration_seconds": 1.0,
+        },
+    )
+
+    assert preflight.main() == 1
+    payload = json.loads(evidence.read_text(encoding="utf-8"))
+    assert payload["status"] == "FAILED"
+    assert payload["head_sha"] == "a" * 40
+    assert payload["results"][-1]["name"] == "exact_head_fence"
+    assert payload["results"][-1]["expected_head_sha"] == "a" * 40
+    assert payload["results"][-1]["observed_head_sha"] == "b" * 40
+
+
+def test_write_evidence_can_pin_starting_head(tmp_path, monkeypatch):
+    evidence = tmp_path / "preflight-evidence.json"
+    monkeypatch.setattr(preflight, "EVIDENCE", evidence)
+    monkeypatch.setattr(preflight, "git_head", lambda _root: "newer-head")
+
+    preflight.write_evidence(
+        status="RUNNING",
+        results=[],
+        active_check="tests",
+        started_at="2026-09-26T00:00:00+00:00",
+        head_sha="pinned-head",
+    )
+
+    payload = json.loads(evidence.read_text(encoding="utf-8"))
+    assert payload["head_sha"] == "pinned-head"

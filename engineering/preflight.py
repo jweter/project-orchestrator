@@ -62,13 +62,14 @@ def write_evidence(
     results: list[dict],
     active_check: str | None,
     started_at: str,
+    head_sha: str | None = None,
 ) -> None:
     EVIDENCE.write_text(
         json.dumps(
             {
                 "schema_version": 3,
                 "repository": "jweter/project-orchestrator",
-                "head_sha": git_head(ROOT),
+                "head_sha": head_sha or git_head(ROOT),
                 "mode": "FULL",
                 "started_at": started_at,
                 "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -86,6 +87,24 @@ def write_evidence(
 
 def timeout_for_check(name: str) -> int:
     return TEST_CHECK_TIMEOUT_SECONDS if name == "tests" else DEFAULT_CHECK_TIMEOUT_SECONDS
+
+
+def exact_head_fence_result(expected_head: str, observed_head: str) -> dict:
+    return {
+        "name": "exact_head_fence",
+        "argv": [],
+        "returncode": 125,
+        "stdout": "",
+        "stderr": (
+            f"PREFLIGHT_HEAD_MOVED:expected={expected_head}:observed={observed_head}"
+        ),
+        "timed_out": False,
+        "interrupted": False,
+        "timeout_seconds": 0,
+        "duration_seconds": 0.0,
+        "expected_head_sha": expected_head,
+        "observed_head_sha": observed_head,
+    }
 
 
 def run_check(name: str, argv: list[str]) -> dict:
@@ -142,23 +161,50 @@ def run_check(name: str, argv: list[str]) -> dict:
 def main() -> int:
     results: list[dict] = []
     started_at = datetime.now(timezone.utc).isoformat()
+    expected_head = git_head(ROOT)
+    if not expected_head or expected_head == "UNKNOWN":
+        results.append(exact_head_fence_result("KNOWN_HEAD_REQUIRED", expected_head))
+        write_evidence(
+            status="FAILED",
+            results=results,
+            active_check=None,
+            started_at=started_at,
+            head_sha=expected_head,
+        )
+        return 1
+
     write_evidence(
         status="RUNNING",
         results=results,
         active_check=None,
         started_at=started_at,
+        head_sha=expected_head,
     )
 
     ok = True
     for name, argv in checks:
+        observed_before = git_head(ROOT)
+        if observed_before != expected_head:
+            results.append(exact_head_fence_result(expected_head, observed_before))
+            ok = False
+            break
+
         write_evidence(
             status="RUNNING",
             results=results,
             active_check=name,
             started_at=started_at,
+            head_sha=expected_head,
         )
         result = run_check(name, argv)
         results.append(result)
+
+        observed_after = git_head(ROOT)
+        if observed_after != expected_head:
+            results.append(exact_head_fence_result(expected_head, observed_after))
+            ok = False
+            break
+
         if result["returncode"] != 0:
             ok = False
             break
@@ -170,6 +216,7 @@ def main() -> int:
         results=results,
         active_check=None,
         started_at=started_at,
+        head_sha=expected_head,
     )
 
     for result in results:
