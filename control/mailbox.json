@@ -1,7 +1,7 @@
 ﻿{
-    "expires_at":  "2026-09-27T14:03:19.8744604+00:00",
-    "issued_at":  "2026-09-27T13:58:19.8744604+00:00",
+    "expires_at":  "2026-09-27T14:04:32.8620927+00:00",
+    "issued_at":  "2026-09-27T13:59:32.8620927+00:00",
     "source":  "commissioning-test",
-    "action":  "HUMAN_MODE",
-    "command_id":  "1a5d194f-0676-42a9-9279-e3b5d32f14da"
+    "action":  "FULL_POWER",
+    "command_id":  "7cb68416-f5cb-415c-97e8-2ef83b03a44e"
 }
