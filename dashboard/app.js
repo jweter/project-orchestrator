@@ -8,3 +8,16 @@ const poolWorkers=(d.active_worker_pool||[]).map(w=>{const s=w.activity_status||
 $("#workers").innerHTML=(grantWorkers.length?grantWorkers:poolWorkers).join("")||card("No active workers","No active grant or worker-pool activity is currently reported.");
 $("#recent").innerHTML=(d.recent_completed_work||[]).slice(0,8).map(w=>card(w.repository||"Completed",esc(w.result_status)+' · '+esc(w.outcome_quality)+(w.pr_number?' · PR #'+esc(w.pr_number):''))).join("")||card("No recent work","No terminal work in the current snapshot.");
 }catch(e){$("#live").textContent="OFFLINE";$("#live").className="bad"}}refresh();setInterval(refresh,15000);
+async function control(action,needsConfirm){
+  if(needsConfirm&&!confirm("Reboot Azathoth Windows? The dashboard will disconnect briefly."))return;
+  let token=localStorage.getItem("azathothControlToken");
+  if(!token){token=prompt("Azathoth admin token");if(!token)return;localStorage.setItem("azathothControlToken",token)}
+  const out=$("#control-result");out.textContent="REQUESTING "+action+"…";
+  try{
+    const r=await fetch("/api/control",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+token},body:JSON.stringify({action})});
+    const d=await r.json();
+    if(r.status===401){localStorage.removeItem("azathothControlToken")}
+    out.textContent=(d.status||"UNKNOWN")+(d.command_id?" · "+d.command_id.slice(0,8):"");
+  }catch(e){out.textContent="CONTROL CHANNEL OFFLINE"}
+}
+document.querySelectorAll("#control button").forEach(b=>b.addEventListener("click",()=>control(b.dataset.action,b.dataset.confirm==="true")));
