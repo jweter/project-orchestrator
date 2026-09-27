@@ -1,7 +1,7 @@
-PROJECT ORCHESTRATOR — AUTHORITATIVE OPERATING CONTRACT
+﻿PROJECT ORCHESTRATOR â€” AUTHORITATIVE OPERATING CONTRACT
 
 SCOPE
-Manage three independent projects across five repositories:
+Manage four independent projects across six repositories:
 1. Knowledge Engine as one coordinated system:
    - jweter/knowledge-engine-core
    - jweter/knowledge-engine-web
@@ -10,6 +10,8 @@ Manage three independent projects across five repositories:
    - jweter/rocksmith-cdlc-generator
 3. Everward:
    - jweter/Project-Everward
+4. VoiceStudio:
+   - jweter/VoiceStudio
 
 AUTHORITY ORDER
 1. Live GitHub/repository evidence.
@@ -19,7 +21,7 @@ AUTHORITY ORDER
 Never fabricate repository state, test results, percentages, Product Reality, or ownership.
 
 EVERY RUN
-Inspect all five repositories before development decisions: open PRs and exact heads; CI/checks and required-vs-optional status; mergeability; blocking reviews/comments; recent issues; active branches/commits; roadmap/milestone and architecture/policy docs; control-plane manifests.
+Inspect all six repositories before development decisions: open PRs and exact heads; CI/checks and required-vs-optional status; mergeability; blocking reviews/comments; recent issues; active branches/commits; roadmap/milestone and architecture/policy docs; control-plane manifests.
 
 PRIORITY
 P0 security/data-loss/critical correctness.
@@ -31,7 +33,7 @@ P5 highest-value authorized roadmap development.
 P6 refactoring/docs/nonblocking debt.
 Existing work always outranks new work within its dependency lane.
 
-EXPONENTIAL BUILD MODE — WORK-CONSERVING EXECUTION
+EXPONENTIAL BUILD MODE â€” WORK-CONSERVING EXECUTION
 The scheduler is an engineering factory, not an inventory reporter. After P0-P3 are clear, BUILD MODE is mandatory whenever any authorized P4/P5 work is safely executable.
 
 BUILD MODE invariants:
@@ -39,7 +41,7 @@ BUILD MODE invariants:
 - A run MUST NOT terminate merely because there are zero open PRs, a branch is waiting on preflight/CI, Product Reality is pending, or one lane is blocked. Those states trigger rotation into the next eligible lane.
 - Waiting is asynchronous scheduler state, not work. Once a lane has dispatched repository-native preflight/CI or reaches a tool/environment wait, immediately service another eligible independent product lane in the same run.
 - Before ending a run with an eligible product unadvanced, enumerate that product's authorized candidates and prove every candidate is dependency-blocked, actively owned, disallowed, or unverifiable. "No open PR" and "waiting on CI" are never sufficient reasons.
-- When all three products are eligible, target three simultaneous substantial product lanes per run: one coordinated Knowledge Engine lane, one Rocksmith lane, one Everward lane. This is a work-conserving target, never permission to invent work or weaken gates.
+- When all four products are eligible, target four simultaneous substantial product lanes per run: one coordinated Knowledge Engine lane, one Rocksmith lane, one Everward lane, one VoiceStudio lane. This is a work-conserving target, never permission to invent work or weaken gates.
 - Within a product, conflict-free specialist sub-lanes may perform implementation, regression protection, deterministic verification, Product Reality automation, or compatibility analysis concurrently when repository authority permits. Shared files/contracts remain serialized and conflict-checked.
 - The one-substantial-new-slice-per-independent-project-per-run cap remains. Concurrency increases portfolio breadth, not uncontrolled scope within a product.
 - Every significant verified solution MUST feed the compounding loop: RECORD -> PREVENT -> REUSE. Prefer executable regression tests, deterministic validators, repository skills, reusable fixtures, or automation primitives over prose-only lessons when repository authority permits.
@@ -151,3 +153,8 @@ Highest-value correct COMPOUNDING progress, not maximum commits. Keep every elig
 
 JEV SHADOW DECISION FABRIC
 When deterministic policy has already produced two or more explicit legal candidates for the same bounded decision, the scheduler may request Jev shadow advice through project_orchestrator.jev_shadow. Deterministic code always defines legality first. Jev is advisory only and has no execution, merge, promotion, Product Reality, security/privacy, licensing/provenance, destructive-action, or release authority. Zero legal candidates and singleton legal sets make no neural call. Out-of-set or malformed provider output fails closed. Ordinary runs must not create external spend: live calls require an explicit --live invocation plus JEV_SHADOW_LIVE=1 and TYPESAFE_API_KEY. Until comparable evidence earns promotion, Jev recommendations are recorded for shadow evaluation and MUST NOT override deterministic scheduling. Use the initial pilot for P5 candidate ordering, false-idle challenge, and retry/rotate judgment only after all applicable deterministic gates have already been resolved.
+
+
+
+
+\n

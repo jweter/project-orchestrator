@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
@@ -7,7 +7,7 @@ from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
-PRODUCTS = ("knowledge-engine", "rocksmith", "everward")
+PRODUCTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 
 
 @dataclass(frozen=True)
@@ -121,3 +121,5 @@ class ParallelWorkerPool(Generic[T]):
 
     def shutdown(self, *, wait: bool = True) -> None:
         self._executor.shutdown(wait=wait, cancel_futures=False)
+
+\n

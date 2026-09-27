@@ -1,9 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
 
-PROJECTS = ("knowledge-engine", "rocksmith", "everward")
+PROJECTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 REQUEUE_EVENTS = {
     "worker_completion",
     "verification_completion",
@@ -169,3 +169,5 @@ def extract_learning_candidate(result: dict[str, Any]) -> dict[str, Any] | None:
         "evidence_state": "VERIFIED",
         "raw_payload_persisted": False,
     }
+
+\n

@@ -1,4 +1,4 @@
-"""Durable event-sourced KPI telemetry for portfolio flow.
+﻿"""Durable event-sourced KPI telemetry for portfolio flow.
 
 The event ledger is append-only.  Flow reports and per-run snapshots are
 projections of recorded transitions, never reconstructions from prose or guessed
@@ -19,7 +19,7 @@ from typing import Any, Iterable
 from .inventory import EXPECTED_REPOSITORIES
 
 SCHEMA_VERSION = 1
-PRODUCT_PROJECTS = frozenset({"knowledge-engine", "rocksmith", "everward"})
+PRODUCT_PROJECTS = frozenset({"knowledge-engine", "rocksmith", "everward", "voicestudio"})
 ALLOWED_PROJECTS = PRODUCT_PROJECTS | {"portfolio"}
 ALLOWED_REPOSITORIES = frozenset(EXPECTED_REPOSITORIES) | {"jweter/project-orchestrator"}
 ENTITY_TYPES = frozenset({"pr", "ci", "branch", "issue"})
@@ -481,3 +481,5 @@ def build_run_snapshot(events: list[dict[str, Any]], *, run_id: str, generated_a
             "rolling_reports": build_rolling_reports(normalized, end=generated_at),
         }
     )
+
+\n

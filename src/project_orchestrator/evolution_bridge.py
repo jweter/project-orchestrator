@@ -25,6 +25,7 @@ PROJECT_REPOSITORIES = {
     },
     "rocksmith": {"jweter/rocksmith-cdlc-generator"},
     "everward": {"jweter/Project-Everward"},
+    "voicestudio": {"jweter/VoiceStudio"},
 }
 
 NEXT_ACTIONS = {
@@ -422,3 +423,4 @@ def compile_verified_capability(
         "source_head_sha": result["head_sha"],
         "measurement_summary": list(evolution_plan.get("measurement_summary", [])),
     }
+\n

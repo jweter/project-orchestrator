@@ -5,7 +5,8 @@
   "scope": [
     "knowledge-engine",
     "rocksmith",
-    "everward"
+    "everward",
+    "voicestudio"
   ],
   "authority": "ephemeral projection of live GitHub and repository-local evidence",
   "manual_ownership_database": false,
@@ -45,3 +46,4 @@
     "live_provider_calls": "separately gated and not performed by Foreman planning"
   }
 }
+\n

@@ -34,6 +34,7 @@ def base_projects():
         "knowledge-engine": p(),
         "rocksmith": p(),
         "everward": p(),
+        "voicestudio": p(),
     }
 
 
@@ -42,7 +43,7 @@ def build(projects=None, **kwargs):
         project_evidence=projects or base_projects(),
         results=RESULTS,
         project_orchestrator={"state": "GREEN", "next_gate": "product execution"},
-        product_repositories_inspected=kwargs.pop("product_repositories_inspected", 5),
+        product_repositories_inspected=kwargs.pop("product_repositories_inspected", 6),
         generated_at="2026-09-08T03:00:00Z",
         **kwargs,
     )
@@ -63,7 +64,7 @@ def test_partial_advancement_is_yellow_and_requires_reason():
     )
     report = build(projects)
     assert report["executive_status"] == "YELLOW"
-    assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(2 / 3)
+    assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(3 / 4)
     assert report["no_advancement_reasons"]["rocksmith"] == "write path unavailable"
 
 
@@ -81,14 +82,14 @@ def test_repeated_no_advancement_reason_is_p1_orchestration_defect():
             advancement_actor=None,
             no_advancement_reason="eligible product work was triaged but not serviced",
         )
-        for name in ("knowledge-engine", "rocksmith", "everward")
+        for name in ("knowledge-engine", "rocksmith", "everward", "voicestudio")
     }
     with pytest.raises(ValueError, match="P1 orchestration defect"):
         build(
             projects,
             previous_no_advancement_reasons={
                 name: "eligible product work was triaged but not serviced"
-                for name in ("knowledge-engine", "rocksmith", "everward")
+                for name in ("knowledge-engine", "rocksmith", "everward", "voicestudio")
             },
         )
 
@@ -114,7 +115,7 @@ def test_orchestrator_advancement_clears_prior_no_advancement_reason():
             "knowledge-engine": "eligible product work was triaged but not serviced"
         }
     )
-    assert report["kpis"]["projects_materially_advanced"] == 3
+    assert report["kpis"]["projects_materially_advanced"] == 4
 
 
 def test_no_safe_work_is_not_counted_in_denominator():
@@ -128,7 +129,7 @@ def test_no_safe_work_is_not_counted_in_denominator():
     )
     report = build(projects)
     rate = report["kpis"]["product_advancement_rate"]
-    assert rate["denominator"] == 2
+    assert rate["denominator"] == 3
     assert rate["value"] == 1.0
 
 
@@ -139,7 +140,7 @@ def test_orchestrator_only_progress_cannot_fake_product_throughput():
             advancement_actor=None,
             no_advancement_reason="not serviced",
         )
-        for name in ("knowledge-engine", "rocksmith", "everward")
+        for name in ("knowledge-engine", "rocksmith", "everward", "voicestudio")
     }
     report = build(projects)
     assert report["executive_status"] == "RED"
@@ -153,7 +154,7 @@ def test_jeremy_merge_does_not_count_as_current_run_advancement():
             advancement_actor=None,
             no_advancement_reason="not serviced",
         )
-        for name in ("knowledge-engine", "rocksmith", "everward")
+        for name in ("knowledge-engine", "rocksmith", "everward", "voicestudio")
     }
     report = build(
         projects,
@@ -185,7 +186,7 @@ def test_external_change_and_orchestrator_progress_can_coexist():
             ]
         }
     )
-    assert report["kpis"]["projects_materially_advanced"] == 3
+    assert report["kpis"]["projects_materially_advanced"] == 4
     assert report["kpis"]["throughput_floor_met"] is True
     assert report["external_state_changes"]["everward"][0]["actor"] == "JEREMY"
 
@@ -212,7 +213,7 @@ def test_external_change_remains_visible_when_project_becomes_ineligible():
         },
     )
     assert report["external_state_changes"]["everward"][0]["advancement"] == "MERGED_GREEN_PR"
-    assert report["kpis"]["product_advancement_rate"]["denominator"] == 2
+    assert report["kpis"]["product_advancement_rate"]["denominator"] == 3
 
 
 def test_external_ci_completion_does_not_count_as_run_advancement():
@@ -234,8 +235,8 @@ def test_external_ci_completion_does_not_count_as_run_advancement():
             ]
         },
     )
-    assert report["kpis"]["projects_materially_advanced"] == 2
-    assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(2 / 3)
+    assert report["kpis"]["projects_materially_advanced"] == 3
+    assert report["kpis"]["product_advancement_rate"]["value"] == pytest.approx(3 / 4)
 
 
 def test_non_orchestrator_advancement_actor_fails_closed():
@@ -277,8 +278,8 @@ def test_unknown_learning_metrics_stay_unknown():
 def test_cli_scheduler_report_passes_previous_no_advancement_reasons(tmp_path, monkeypatch, capsys):
     import json
     from project_orchestrator import cli
-    projects = {name: p(advancement="NONE", advancement_actor=None, no_advancement_reason="same stall") for name in ("knowledge-engine", "rocksmith", "everward")}
-    evidence = {"projects": projects, "results": RESULTS, "project_orchestrator": {"state": "GREEN", "next_gate": "product execution"}, "product_repositories_inspected": 5, "previous_no_advancement_reasons": {name: "same stall" for name in projects}}
+    projects = {name: p(advancement="NONE", advancement_actor=None, no_advancement_reason="same stall") for name in ("knowledge-engine", "rocksmith", "everward", "voicestudio")}
+    evidence = {"projects": projects, "results": RESULTS, "project_orchestrator": {"state": "GREEN", "next_gate": "product execution"}, "product_repositories_inspected": 6, "previous_no_advancement_reasons": {name: "same stall" for name in projects}}
     path = tmp_path / "evidence.json"
     path.write_text(json.dumps(evidence), encoding="utf-8")
     monkeypatch.setattr(cli, "load_memory", lambda *_: {})
@@ -286,3 +287,11 @@ def test_cli_scheduler_report_passes_previous_no_advancement_reasons(tmp_path, m
     monkeypatch.setattr(cli, "build_report", lambda *_: {"learning_effectiveness_rate": None})
     with pytest.raises(ValueError, match="P1 orchestration defect"):
         cli.scheduler_run_report(path)
+
+
+
+
+
+
+
+\n

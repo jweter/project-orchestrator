@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import hashlib
@@ -12,7 +12,7 @@ from project_orchestrator.learning import validate_lesson
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_STORE = ROOT / "engineering" / "learning-candidates.json"
 
-ALLOWED_PROJECTS = {"portfolio", "knowledge-engine", "rocksmith", "everward"}
+ALLOWED_PROJECTS = {"portfolio", "knowledge-engine", "rocksmith", "everward", "voicestudio"}
 ALLOWED_VERIFICATION_AUTHORITIES = {
     "DETERMINISTIC_CI",
     "REPOSITORY_NATIVE_TESTS",
@@ -236,3 +236,5 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+\n

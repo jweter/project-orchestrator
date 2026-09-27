@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import Counter
 from typing import Any
@@ -8,7 +8,7 @@ from .jev_shadow import evaluate_shadow
 from .steward import assess_machine_health, govern_dispatch
 
 FOREMAN_NAME = "Foreman"
-PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward")
+PROJECT_IDS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 TERMINAL_STATES = {
     "PASS",
     "FAIL",
@@ -209,11 +209,11 @@ def build_foreman_plan(
     machine_health: dict[str, Any] | None = None,
     steward_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Project live evidence into exactly three work-conserving portfolio lanes."""
+    """Project live evidence into exactly four work-conserving portfolio lanes."""
     projects = _project_repositories(inventory)
     if set(projects) != set(PROJECT_IDS):
         raise ValueError(
-            "Foreman requires exactly Knowledge Engine, Rocksmith, and Everward"
+            "Foreman requires exactly Knowledge Engine, Rocksmith, Everward, and VoiceStudio"
         )
 
     compacted = compact_execution_records(inventory, execution_records or [])
@@ -389,3 +389,7 @@ def build_foreman_plan(
             "Jev shadow observes independently eligible candidates but cannot alter Foreman selection or dispatch",
         ],
     }
+
+
+
+\n

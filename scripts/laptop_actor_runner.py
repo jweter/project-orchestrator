@@ -18,6 +18,7 @@ ALLOWED_REPOSITORIES = {
     "jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator",
     "jweter/Project-Everward",
+    "jweter/VoiceStudio",
 }
 KNOWLEDGE_ENGINE_CORE = "jweter/knowledge-engine-core"
 KNOWLEDGE_ENGINE_ADAPTER = "knowledge_engine_core"
@@ -372,3 +373,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+\n

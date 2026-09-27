@@ -1,4 +1,4 @@
-"""Conservative always-on green-PR merger for the portfolio."""
+﻿"""Conservative always-on green-PR merger for the portfolio."""
 from __future__ import annotations
 import json, re, subprocess
 from dataclasses import dataclass
@@ -8,7 +8,7 @@ from typing import Any
 PORTFOLIO_REPOS=(
     "jweter/project-orchestrator","jweter/knowledge-engine-core",
     "jweter/knowledge-engine-web","jweter/knowledge-engine-ai",
-    "jweter/rocksmith-cdlc-generator","jweter/Project-Everward",
+    "jweter/rocksmith-cdlc-generator","jweter/Project-Everward","jweter/VoiceStudio",
 )
 PASS_CONCLUSIONS={"SUCCESS","NEUTRAL","SKIPPED"}
 ALLOWED_AUTHORS={"jweter","dependabot[bot]"}
@@ -146,3 +146,5 @@ if __name__=="__main__":
     parser.add_argument("--dry-run",action="store_true")
     args=parser.parse_args()
     print(json.dumps(cycle(args.dry_run),indent=2))
+
+\n

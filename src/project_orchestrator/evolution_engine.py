@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import Counter
 import re
@@ -7,7 +7,7 @@ from typing import Any
 from .learning import validate_memory
 
 STAGES = ("REPAIR", "REPLACEMENT", "UPGRADE", "REDESIGN", "EVOLUTION")
-ALLOWED_PROJECTS = {"portfolio", "knowledge-engine", "rocksmith", "everward"}
+ALLOWED_PROJECTS = {"portfolio", "knowledge-engine", "rocksmith", "everward", "voicestudio"}
 ALLOWED_EVENT_TYPES = {"FAILURE", "SUCCESS_PATTERN"}
 ALLOWED_LEARNING_EFFECTS = {"PREVENTED", "SHORTENED", "NO_CHANGE", "UNKNOWN"}
 ALLOWED_DIRECTIONS = {"lower_is_better", "higher_is_better"}
@@ -582,3 +582,5 @@ def evaluate_material_review_gate(
         "reason": "current-head review has no unresolved material finding",
         "blocking_finding_ids": [],
     }
+
+\n

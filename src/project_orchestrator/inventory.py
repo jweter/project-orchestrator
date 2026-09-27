@@ -11,6 +11,7 @@ EXPECTED_REPOSITORIES = {
     "jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator",
     "jweter/Project-Everward",
+    "jweter/VoiceStudio",
 }
 
 
@@ -52,3 +53,4 @@ def validate_inventory(payload: dict[str, Any]) -> None:
         missing = sorted(EXPECTED_REPOSITORIES - repos)
         extra = sorted(repos - EXPECTED_REPOSITORIES)
         raise ValueError(f"portfolio repository mismatch; missing={missing}, extra={extra}")
+\n

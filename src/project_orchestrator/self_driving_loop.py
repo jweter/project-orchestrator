@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import json,time
 from pathlib import Path
 from typing import Any,Callable
@@ -22,7 +22,7 @@ def _team_candidates(lanes:dict[str,dict[str,Any]])->list[dict[str,Any]]:
  return out
 
 def run_self_driving_iteration(*,lanes:dict[str,dict[str,Any]],portfolio_results:list[dict[str,Any]],state_dir:Path,
- claude_state_dir:Path,laptop_queue_dir:Path,max_dispatches:int=3,scorecard:dict|None=None,
+ claude_state_dir:Path,laptop_queue_dir:Path,max_dispatches:int=4,scorecard:dict|None=None,
  claude_opener:Callable|None=None,now:float|None=None)->dict[str,Any]:
  now=time.time() if now is None else now
  readiness=assess_portfolio_readiness(portfolio_results,now=now)
@@ -60,3 +60,5 @@ def run_self_driving_loop(*,lane_provider:Callable[[],dict[str,dict[str,Any]]],r
    persist_readiness(state,state_dir/"self-driving-state.json")
   i+=1
   if max_iterations is None or i<max_iterations: sleep(interval_seconds)
+
+\n

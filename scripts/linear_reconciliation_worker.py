@@ -1,4 +1,4 @@
-"""Transport-neutral worker for GitHub -> Linear reconciliation.
+﻿"""Transport-neutral worker for GitHub -> Linear reconciliation.
 
 The worker emits desired mutations. A connector-capable caller applies them; no
 Linear credentials are stored on the laptop.
@@ -15,7 +15,7 @@ from src.project_orchestrator.linear_reconciliation import GithubWorkState, reco
 REPOS=(
  "jweter/knowledge-engine-core","jweter/knowledge-engine-web",
  "jweter/knowledge-engine-ai","jweter/rocksmith-cdlc-generator",
- "jweter/Project-Everward","jweter/project-orchestrator",
+ "jweter/Project-Everward","jweter/VoiceStudio","jweter/project-orchestrator",
 )
 
 def gh_json(args:list[str])->object:
@@ -55,3 +55,5 @@ def main()->int:
     path.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     return 0
 if __name__=="__main__": raise SystemExit(main())
+
+\n

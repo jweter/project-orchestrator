@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import re
@@ -12,6 +12,7 @@ PORTFOLIO_REPOSITORIES = frozenset(
         "jweter/knowledge-engine-ai",
         "jweter/rocksmith-cdlc-generator",
         "jweter/Project-Everward",
+        "jweter/VoiceStudio",
     }
 )
 KNOWLEDGE_ENGINE_REPOSITORIES = frozenset(
@@ -311,3 +312,5 @@ def validate_workflow_directory(root: Path) -> list[str]:
         validated.append(filename)
 
     return validated
+
+\n

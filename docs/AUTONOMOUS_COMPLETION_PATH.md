@@ -1,7 +1,7 @@
-# Autonomous Completion Path
+﻿# Autonomous Completion Path
 
 ## Directive
-Continue this plan until the three products are complete. Zero open product PRs is a build trigger, never an idle condition. The portfolio is three independent products spanning five repositories: Knowledge Engine (Core/Web/AI), Rocksmith CDLC Generator, and Project Everward. Every safe unattended cycle must inspect all eligible product lanes and attempt substantive advancement without waiting for Jeremy for routine engineering, testing, repair, or verification.
+Continue this plan until the four products are complete. Zero open product PRs is a build trigger, never an idle condition. The portfolio is four independent products spanning six repositories: Knowledge Engine (Core/Web/AI), Rocksmith CDLC Generator, Project Everward, and VoiceStudio. Every safe unattended cycle must inspect all eligible product lanes and attempt substantive advancement without waiting for Jeremy for routine engineering, testing, repair, or verification.
 
 This document is durable execution authority for Daedalus, the Laptop Actor, Claude specialist lanes, and future development agents. It does not grant merge, release, credential, paid-service, destructive-migration, security/privacy-boundary, or Product Reality authority beyond existing policy.
 
@@ -22,7 +22,7 @@ OBSERVE -> SELECT -> DISPATCH -> ACQUIRE -> BUILD/REPAIR -> VERIFY -> RECORD -> 
 12. Immediately select the next unfinished high-value task after a merge or successful verification. Do not stop because a PR queue became empty.
 
 ## Product completion path
-### Knowledge Engine — Core / Web / AI
+### Knowledge Engine â€” Core / Web / AI
 Continue until the product can answer website/research questions with verified, non-fabricated evidence across the Core -> AI -> Web contract. Preserve provenance, privacy, deterministic state, provider degradation, missing-evidence disclosure, contradictions/null state, certainty rationale, and repository boundaries. Complete live cross-repository acceptance and Product Reality separately from deterministic correctness.
 
 ### Rocksmith CDLC Generator
@@ -63,3 +63,5 @@ Do not declare the portfolio complete because infrastructure is mature or PR que
 3. Exercise unattended advancement on real Knowledge Engine, Rocksmith, and Everward slices and measure outcomes.
 4. Close current product roadmap debt, not just control-plane debt.
 5. Continue the Engineering Gym only from idle capacity and compile proven capabilities back into production planning.
+
+\n

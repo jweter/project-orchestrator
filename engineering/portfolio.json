@@ -6,22 +6,53 @@
       "name": "Knowledge Engine",
       "coordination": "cross-repo-family",
       "repositories": [
-        {"name": "jweter/knowledge-engine-core", "role": "core"},
-        {"name": "jweter/knowledge-engine-web", "role": "web"},
-        {"name": "jweter/knowledge-engine-ai", "role": "ai"}
+        {
+          "name": "jweter/knowledge-engine-core",
+          "role": "core"
+        },
+        {
+          "name": "jweter/knowledge-engine-web",
+          "role": "web"
+        },
+        {
+          "name": "jweter/knowledge-engine-ai",
+          "role": "ai"
+        }
       ]
     },
     {
       "id": "rocksmith",
       "name": "Rocksmith Song DLC Generator",
       "coordination": "standalone",
-      "repositories": [{"name": "jweter/rocksmith-cdlc-generator", "role": "standalone"}]
+      "repositories": [
+        {
+          "name": "jweter/rocksmith-cdlc-generator",
+          "role": "standalone"
+        }
+      ]
     },
     {
       "id": "everward",
       "name": "Everward",
       "coordination": "standalone",
-      "repositories": [{"name": "jweter/Project-Everward", "role": "standalone"}]
+      "repositories": [
+        {
+          "name": "jweter/Project-Everward",
+          "role": "standalone"
+        }
+      ]
+    },
+    {
+      "id": "voicestudio",
+      "name": "VoiceStudio",
+      "coordination": "standalone",
+      "repositories": [
+        {
+          "name": "jweter/VoiceStudio",
+          "role": "standalone"
+        }
+      ]
     }
   ]
 }
+\n

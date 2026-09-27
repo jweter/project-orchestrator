@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
@@ -66,8 +66,8 @@ def build_scheduler_executive_report(
     """
     if isinstance(product_repositories_inspected, bool) or not isinstance(product_repositories_inspected, int):
         raise ValueError("product_repositories_inspected must be an integer")
-    if not 0 <= product_repositories_inspected <= 5:
-        raise ValueError("product_repositories_inspected must be between 0 and 5")
+    if not 0 <= product_repositories_inspected <= 6:
+        raise ValueError("product_repositories_inspected must be between 0 and 6")
 
     previous_reasons = _validate_previous_no_advancement_reasons(previous_no_advancement_reasons or {})
     canonical_projects: dict[str, dict[str, Any]] = {}
@@ -163,11 +163,11 @@ def build_scheduler_executive_report(
     learning = learning_evolution or {}
 
     kpis = {
-        "independent_projects_inspected": {"value": 3, "target": 3, "status": "GREEN"},
+        "independent_projects_inspected": {"value": 4, "target": 4, "status": "GREEN"},
         "product_repositories_inspected": {
             "value": product_repositories_inspected,
-            "target": 5,
-            "status": "GREEN" if product_repositories_inspected == 5 else "RED",
+            "target": 6,
+            "status": "GREEN" if product_repositories_inspected == 6 else "RED",
         },
         "eligible_projects": len(eligible),
         "projects_materially_advanced": len(orchestrator_advanced),
@@ -187,7 +187,7 @@ def build_scheduler_executive_report(
         "schema_version": 2,
         "generated_at": canonical["generated_at"],
         "executive_status": _executive_status(kpis, persistence),
-        "canonical_inventory": {"independent_product_projects": 3, "product_repositories": 5},
+        "canonical_inventory": {"independent_product_projects": 4, "product_repositories": 6},
         "kpis": kpis,
         "portfolio_kpis": portfolio_kpis,
         "kpi_persistence": persistence,
@@ -365,3 +365,10 @@ def _bottom_line(
     if no_advancement:
         return "Portfolio advanced, but at least one eligible product did not advance through this orchestrator run; inspect its recorded reason and exact next gate."
     return "No complete eligible-project denominator was proven; do not claim full portfolio utilization."
+
+
+
+
+
+
+\n

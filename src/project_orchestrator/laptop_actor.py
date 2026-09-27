@@ -12,6 +12,7 @@ ALLOWED_REPOSITORIES = {
     "jweter/knowledge-engine-ai",
     "jweter/rocksmith-cdlc-generator",
     "jweter/Project-Everward",
+    "jweter/VoiceStudio",
 }
 
 
@@ -94,3 +95,4 @@ def next_actor_action(*, idle: bool, active_job: dict[str, Any] | None, queued_j
         ordered = sorted(queued_jobs, key=lambda item: item["job_id"])
         return {"action": "CLAIM", "job_id": ordered[0]["job_id"]}
     return {"action": "POLL", "job_id": None}
+\n

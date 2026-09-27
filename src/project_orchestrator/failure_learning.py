@@ -12,6 +12,7 @@ _PROJECT_BY_REPO = {
     "jweter/knowledge-engine-ai": "knowledge-engine",
     "jweter/rocksmith-cdlc-generator": "rocksmith",
     "jweter/Project-Everward": "everward",
+    "jweter/VoiceStudio": "voicestudio",
 }
 
 
@@ -53,3 +54,4 @@ def verified_failure_lesson(
 def persist_verified_failure(memory: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
     validate_memory(memory)
     return add_lesson(memory, verified_failure_lesson(**kwargs))
+\n

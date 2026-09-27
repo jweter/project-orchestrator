@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any,Callable
@@ -15,7 +15,7 @@ def ingest_production_results(*,pending_dir:Path,results_dir:Path,processed_dir:
   status=str(result.get("status","UNKNOWN")).upper()
   if status not in TERMINAL: status="UNKNOWN"
   repo=result.get("repository");ctx=lane_context.get(str(repo),{})
-  worker={"status":status,"project":ctx.get("project") or ({"jweter/Project-Everward":"everward","jweter/rocksmith-cdlc-generator":"rocksmith"}.get(str(repo),"knowledge-engine")),"repository":repo,
+  worker={"status":status,"project":ctx.get("project") or ({"jweter/Project-Everward":"everward","jweter/rocksmith-cdlc-generator":"rocksmith","jweter/VoiceStudio":"voicestudio"}.get(str(repo),"knowledge-engine")),"repository":repo,
    "head_sha":result.get("exact_head_sha") or result.get("base_sha") or "0"*40,"probe_id":job_id,
    "pattern_id":str(result.get("failure_class") or f"worker-{status.lower()}"),
    "evidence_ref":result.get("evidence_ref") or f"worker://{job_id}","observed_at":ctx.get("observed_at","1970-01-01T00:00:00+00:00"),
@@ -26,3 +26,5 @@ def ingest_production_results(*,pending_dir:Path,results_dir:Path,processed_dir:
   event={"job_id":job_id,"repository":repo,"worker_status":status,"outcome":outcome}
   tmp=marker.with_suffix(".tmp");tmp.write_text(json.dumps(event,sort_keys=True,indent=2)+chr(10),encoding="utf-8");tmp.replace(marker);events.append(event)
  return events
+
+\n

@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Fail-closed machine certificate for Project Hands-Off Evolution."""
 from __future__ import annotations
 import argparse,json
 from datetime import UTC,datetime
 from pathlib import Path
 
-REQUIRED_PRODUCTS={"knowledge-engine","rocksmith","everward"}
+REQUIRED_PRODUCTS={"knowledge-engine","rocksmith","everward","voicestudio"}
 
 def load(path:Path)->dict:
     try:
@@ -28,7 +28,7 @@ def evaluate(state:Path)->dict:
         "same_burst_autonomy":autonomy.get("burst_id")==burst_id,
         "multi_repository_autonomy":autonomy.get("multi_repository_proven") is True,
         "same_burst_products":products.get("burst_id")==burst_id,
-        "all_three_products":products.get("all_three_products_proven") is True and set(products.get("advanced_products",[]))==REQUIRED_PRODUCTS,
+        "all_four_products":products.get("all_four_products_proven") is True and set(products.get("advanced_products",[]))==REQUIRED_PRODUCTS,
         "supervisor_same_burst":supervisor.get("burst_id")==burst_id,
         "physical_instance_present":isinstance(supervisor.get("process_instance_id"),str) and bool(supervisor.get("process_instance_id")),
     }
@@ -45,3 +45,6 @@ def main()->int:
     return 0 if result["status"]=="PASS" else 1
 
 if __name__=="__main__": raise SystemExit(main())
+
+
+\n

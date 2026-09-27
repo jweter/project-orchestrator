@@ -1,4 +1,4 @@
-# Durable KPI telemetry
+﻿# Durable KPI telemetry
 
 ## Purpose
 
@@ -8,8 +8,8 @@ The existing KPI definitions and targets in `src/project_orchestrator/portfolio_
 
 ## Durable stores
 
-- `engineering/kpi-events.jsonl` — append-only, one content-addressed transition event per line.
-- `engineering/kpi-run-snapshots.jsonl` — append-only, one portfolio snapshot per scheduler/run id.
+- `engineering/kpi-events.jsonl` â€” append-only, one content-addressed transition event per line.
+- `engineering/kpi-run-snapshots.jsonl` â€” append-only, one portfolio snapshot per scheduler/run id.
 
 Neither file is a mutable dashboard. A report is a projection of the ledger. Re-running a report changes no historical event.
 
@@ -46,14 +46,14 @@ Do not synthesize a transition because an entity is absent from a later query un
 
 The telemetry projection reports:
 
-- **Issue advancement rate** — distinct issues with an `ADVANCE`, `REPAIR`, or `PROMOTION` transition divided by distinct issues with a material transition in the reporting period.
-- **Cycle time** — median elapsed time from an evidenced PR open/draft state to an evidenced merge, for merges completed in the period.
-- **Repair latency** — median elapsed time from an evidenced CI failure to the next evidenced successful terminal transition for that CI entity.
-- **Promotion latency** — median elapsed time from an evidenced `PREFLIGHT_GREEN`/`GREEN` PR state to merge.
-- **First-pass CI rate** — share of CI entities whose first evidenced terminal result is success, for first terminal results occurring in the period.
-- **Branch net delta** — evidenced branch creations minus evidenced branch deletions in the period.
-- **Branch hygiene debt** — count of observed branches whose latest evidenced state at report end is `STALE`, `MERGED_UNDELETED`, `ORPHANED`, or `HYGIENE_DEBT`.
-- **Human intervention rate** — human-attributed material transitions divided by all material transitions in the period; the report also includes the raw human-intervention count.
+- **Issue advancement rate** â€” distinct issues with an `ADVANCE`, `REPAIR`, or `PROMOTION` transition divided by distinct issues with a material transition in the reporting period.
+- **Cycle time** â€” median elapsed time from an evidenced PR open/draft state to an evidenced merge, for merges completed in the period.
+- **Repair latency** â€” median elapsed time from an evidenced CI failure to the next evidenced successful terminal transition for that CI entity.
+- **Promotion latency** â€” median elapsed time from an evidenced `PREFLIGHT_GREEN`/`GREEN` PR state to merge.
+- **First-pass CI rate** â€” share of CI entities whose first evidenced terminal result is success, for first terminal results occurring in the period.
+- **Branch net delta** â€” evidenced branch creations minus evidenced branch deletions in the period.
+- **Branch hygiene debt** â€” count of observed branches whose latest evidenced state at report end is `STALE`, `MERGED_UNDELETED`, `ORPHANED`, or `HYGIENE_DEBT`.
+- **Human intervention rate** â€” human-attributed material transitions divided by all material transitions in the period; the report also includes the raw human-intervention count.
 
 The existing first-pass **preflight** target remains the authoritative rework KPI. `first_pass_ci_rate` is an observational companion and must not overwrite or substitute for that target.
 
@@ -61,7 +61,7 @@ The existing first-pass **preflight** target remains the authoritative rework KP
 
 No-event and incomplete-pair cases remain `UNKNOWN`. They are not converted to zero. Examples: a merge without a recorded open transition cannot produce cycle time; a success without a recorded preceding failure cannot produce repair latency.
 
-Control-plane events from `jweter/project-orchestrator` are retained in the ledger for auditability but excluded from product-flow reports so the control plane cannot make the three products look healthier.
+Control-plane events from `jweter/project-orchestrator` are retained in the ledger for auditability but excluded from product-flow reports so the control plane cannot make the four products look healthier.
 
 ## Querying
 
@@ -80,3 +80,5 @@ project-orchestrator-kpi finalize-run --run-id <run-id>
 ## Operating requirement
 
 Future scheduler/agent integrations should call the telemetry recorder at the same transition point where the ledger/comment/status change is made, then finalize one snapshot at the end of the run. This makes KPI collection part of the state machine instead of a later analytics reconstruction step.
+
+\n

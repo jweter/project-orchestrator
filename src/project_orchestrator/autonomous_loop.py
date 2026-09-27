@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import json,time
 from pathlib import Path
 from typing import Any,Callable
 from .execution_continuation import learn_and_continue
-PRODUCTS=("knowledge-engine","rocksmith","everward")
-def run_autonomous_cycle(*,lanes:dict[str,dict[str,Any]],claude_state_dir:Path,laptop_queue_dir:Path,telemetry_path:Path,max_dispatches:int=3,scorecard:dict|None=None,claude_opener:Callable|None=None)->dict[str,Any]:
+PRODUCTS=("knowledge-engine","rocksmith","everward","voicestudio")
+def run_autonomous_cycle(*,lanes:dict[str,dict[str,Any]],claude_state_dir:Path,laptop_queue_dir:Path,telemetry_path:Path,max_dispatches:int=4,scorecard:dict|None=None,claude_opener:Callable|None=None)->dict[str,Any]:
  if max_dispatches<1: raise ValueError("max_dispatches must be positive")
  started=time.time();results={};dispatched=0;eligible_unadvanced=[]
  for product in PRODUCTS:
@@ -26,3 +26,6 @@ def run_autonomous_cycle(*,lanes:dict[str,dict[str,Any]],claude_state_dir:Path,l
  with telemetry_path.open("a",encoding="utf-8") as f:
   f.write(json.dumps(snapshot,sort_keys=True)+chr(10))
  return snapshot
+
+
+\n

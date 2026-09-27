@@ -57,6 +57,7 @@ _REPO_TO_PROJECT: dict[str, str] = {
     "jweter/knowledge-engine-ai": "knowledge-engine",
     "jweter/rocksmith-cdlc-generator": "rocksmith",
     "jweter/Project-Everward": "everward",
+    "jweter/VoiceStudio": "voicestudio",
     "jweter/project-orchestrator": "portfolio",
 }
 COLLECTIBLE_REPOSITORIES = frozenset(_REPO_TO_PROJECT)
@@ -558,3 +559,4 @@ def collect_portfolio_windows(
         if dispatch_window is not None:
             windows.append(dispatch_window)
     return windows
+\n

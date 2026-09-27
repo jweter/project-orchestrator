@@ -1,4 +1,4 @@
-"""Current-user continuous engineering supervisor; no admin Task Scheduler required."""
+﻿"""Current-user continuous engineering supervisor; no admin Task Scheduler required."""
 from __future__ import annotations
 import argparse, atexit, hashlib, json, os, shutil, socket, subprocess, sys, time, uuid
 from datetime import UTC, datetime, timedelta
@@ -138,7 +138,7 @@ def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path)->tuple
     repos=[
         workspace_root/"knowledge-engine-core", workspace_root/"knowledge-engine-web",
         workspace_root/"knowledge-engine-ai", workspace_root/"rocksmith-cdlc-generator",
-        workspace_root/"Project-Everward",
+        workspace_root/"Project-Everward", workspace_root/"VoiceStudio",
     ]
     if not all(path.is_dir() for path in repos):
         return False,"READINESS_WORKSPACE_INCOMPLETE"
@@ -2863,7 +2863,7 @@ def record_burst_repository_pass(state_root:Path,*,repository:str|None,builder_s
 PRODUCT_BY_REPOSITORY={
     "jweter/knowledge-engine-core":"knowledge-engine","jweter/knowledge-engine-web":"knowledge-engine",
     "jweter/knowledge-engine-ai":"knowledge-engine","jweter/rocksmith-cdlc-generator":"rocksmith",
-    "jweter/Project-Everward":"everward",
+    "jweter/Project-Everward":"everward","jweter/VoiceStudio":"voicestudio",
 }
 
 def product_for_repository(repository:str|None)->str|None:
@@ -2881,9 +2881,9 @@ def record_product_identity_advancement(state_root:Path,*,repository:str|None,bu
     events.append({"sequence":sequence,"repository":repository,"product":product,"builder_status":builder_status,
                    "lifecycle_advanced":lifecycle_advanced,"advanced":advanced,"process_instance_id":process_instance_id,
                    "recorded_at_utc":datetime.now(UTC).isoformat()})
-    products=sorted({e.get("product") for e in events if isinstance(e,dict) and e.get("advanced") is True and e.get("product") in {"knowledge-engine","rocksmith","everward"}})
+    products=sorted({e.get("product") for e in events if isinstance(e,dict) and e.get("advanced") is True and e.get("product") in {"knowledge-engine","rocksmith","everward","voicestudio"}})
     proof={"schema_version":1,"burst_id":burst_id,"advanced_products":products,"advanced_product_count":len(products),
-           "all_three_products_proven":len(products)==3,"events":events[-100:]}
+           "all_four_products_proven":len(products)==4,"events":events[-100:]}
     atomic(path,proof); return proof
 
 def selected_builder_repository(state_root:Path,expected_invocation_id:str|None)->str|None:
@@ -3367,3 +3367,8 @@ def main()->int:
         time.sleep(delay)
 if __name__=="__main__": raise SystemExit(main())
 
+
+
+
+
+\n

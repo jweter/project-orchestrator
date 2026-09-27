@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-PROJECT_KEYS = ("knowledge-engine", "rocksmith", "everward")
+PROJECT_KEYS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 PROMOTION_STATES = {
     "IMPLEMENTING",
     "PREFLIGHT_UNVERIFIED",
@@ -47,7 +47,7 @@ def validate_run_report(report: dict[str, Any]) -> dict[str, Any]:
 
     projects = report.get("projects")
     if not isinstance(projects, dict) or tuple(projects) != PROJECT_KEYS:
-        raise RunReportError("projects must contain knowledge-engine, rocksmith, everward in canonical order")
+        raise RunReportError("projects must contain knowledge-engine, rocksmith, everward, voicestudio in canonical order")
 
     for project, entry in projects.items():
         if not isinstance(entry, dict):
@@ -106,3 +106,6 @@ def build_run_report(
 def write_run_report(path: Path, report: dict[str, Any]) -> None:
     validated = validate_run_report(report)
     path.write_text(json.dumps(validated, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+
+
+\n

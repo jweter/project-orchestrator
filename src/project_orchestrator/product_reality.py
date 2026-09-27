@@ -1,10 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import json
 from typing import Any
 
-ALLOWED_PROJECTS = {"knowledge-engine", "rocksmith", "everward"}
+ALLOWED_PROJECTS = {"knowledge-engine", "rocksmith", "everward", "voicestudio"}
 ALLOWED_STATES = {"PENDING", "VERIFIED", "FAILED", "SUPERSEDED"}
 ALLOWED_KINDS = {
     "packaged_app",
@@ -127,3 +127,5 @@ def project_debt_summaries(entries: list[dict[str, Any]]) -> dict[str, list[str]
             for item in data["items"]
         ]
     return result
+
+\n

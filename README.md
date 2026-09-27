@@ -1,12 +1,13 @@
-# project-orchestrator
+﻿# project-orchestrator
 
 Portfolio-level control plane for Jeremy Weter's autonomous engineering loop.
 
-This repository is the single portfolio brain above five product repositories:
+This repository is the single portfolio brain above six product repositories:
 
 - Knowledge Engine: `jweter/knowledge-engine-core`, `jweter/knowledge-engine-web`, `jweter/knowledge-engine-ai`
 - Rocksmith Song DLC Generator: `jweter/rocksmith-cdlc-generator`
 - Everward: `jweter/Project-Everward`
+- VoiceStudio: `jweter/VoiceStudio`
 
 It does **not** own product implementation. Product repositories remain authoritative for roadmaps, architecture, tests, CI, Product Reality, and merge gates. This repository owns portfolio inventory, priority policy, promotion rules, cross-project scheduling state, and evidence-derived compounding measurement.
 
@@ -61,3 +62,6 @@ This only creates a local `127.0.0.1` runtime and imports inactive workflows. Gi
 ## Jev shadow decision fabric
 
 The control plane includes an experimental, fail-closed Jev integration for bounded candidate judgment after deterministic eligibility has established the legal action set. It is shadow-only: it cannot execute work, merge, bypass gates, or infer Product Reality. With multiple legal candidates, `python -m project_orchestrator.jev_shadow decision.json` emits the sanitized shadow request without network activity. Real TypeSafe calls are double-gated by `--live`, `JEV_SHADOW_LIVE=1`, and an environment-only `TYPESAFE_API_KEY`. See `docs/JEV_SHADOW_DECISION_FABRIC.md`.
+
+
+\n

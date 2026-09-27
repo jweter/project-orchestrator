@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import json,time
 from pathlib import Path
 from typing import Any,Callable
 from .autonomous_loop import run_autonomous_cycle
 
 def run_watchdog_iteration(*,lanes:dict[str,dict[str,Any]],state_path:Path,telemetry_path:Path,
- claude_state_dir:Path,laptop_queue_dir:Path,max_dispatches:int=3,
+ claude_state_dir:Path,laptop_queue_dir:Path,max_dispatches:int=4,
  scorecard:dict|None=None,claude_opener:Callable|None=None)->dict[str,Any]:
  prior={"consecutive_stalls":0}
  if state_path.exists():
@@ -33,3 +33,5 @@ def run_persistent_watchdog(*,lane_provider:Callable[[],dict[str,dict[str,Any]]]
   iteration+=1
   if max_iterations is None or iteration<max_iterations: sleep(interval_seconds)
  return results
+
+\n

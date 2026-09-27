@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 from .scheduler_policy import apply_retained_policy
 from .claude_dispatch import select_actor
 
-PROJECTS = ("knowledge-engine", "rocksmith", "everward")
+PROJECTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
 LOOP_STAGES = ("SENSE", "REMEMBER", "DECIDE", "ACT", "VERIFY", "LEARN", "ADAPT")
 ACTION_GUARD_STATES = {"READY", "GATHER_CONTEXT", "APPROVAL_REQUIRED", "FORBIDDEN"}
 ADVANCEMENTS = {
@@ -251,3 +251,5 @@ def _parse_time(value: Any, field: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError(f"{field} must be timezone-aware")
     return parsed.astimezone(timezone.utc)
+
+\n
