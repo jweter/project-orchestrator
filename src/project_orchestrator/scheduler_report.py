@@ -25,6 +25,21 @@ ADVANCEMENT_ACTORS = {
 
 KPI_PERSISTENCE_STATES = {"HEALTHY", "FAILED", "UNKNOWN"}
 
+ELIGIBLE_LANE_STATES = {
+    "ACTIVE",
+    "CI_PENDING",
+    "PREFLIGHT_PENDING",
+    "REVIEW_PENDING",
+    "LOCAL_RESOURCE_WAIT",
+    "PRODUCT_REALITY",
+    "DEPENDENCY",
+    "OWNED",
+    "BLOCKED",
+    "IDLE",
+    "UNKNOWN",
+}
+EXPLAINED_WAIT_STATES = ELIGIBLE_LANE_STATES - {"ACTIVE", "IDLE", "UNKNOWN"}
+
 DEFAULT_TIMESERIES_STORE = Path(__file__).resolve().parents[2] / "engineering" / "state" / "compounding-timeseries.json"
 
 
@@ -75,6 +90,7 @@ def build_scheduler_executive_report(
     orchestrator_advanced: list[str] = []
     no_advancement: dict[str, str] = {}
     repeated_no_advancement: dict[str, str] = {}
+    lane_states: dict[str, str] = {}
     external_changes = _validate_external_state_changes(external_state_changes or {})
     persistence = _validate_kpi_persistence(kpi_persistence)
 
@@ -107,6 +123,16 @@ def build_scheduler_executive_report(
 
         if eligibility == "ELIGIBLE":
             eligible.append(project)
+            lane_state = evidence.get("lane_state")
+            if lane_state is None:
+                lane_state = "ACTIVE" if advancement != "NONE" else "UNKNOWN"
+            if lane_state not in ELIGIBLE_LANE_STATES:
+                raise ValueError(f"{project}.lane_state is invalid")
+            if advancement != "NONE" and lane_state != "ACTIVE":
+                raise ValueError(
+                    f"{project}.lane_state must be ACTIVE when current-run advancement is claimed"
+                )
+            lane_states[project] = lane_state
 
         if advancement != "NONE":
             orchestrator_advanced.append(project)
@@ -153,8 +179,34 @@ def build_scheduler_executive_report(
             "denominator": len(eligible),
             "value": len(eligible_advanced) / len(eligible),
         }
+        active_lanes = sorted(
+            project for project in eligible if lane_states.get(project) == "ACTIVE"
+        )
+        explained_waits = {
+            project: lane_states[project]
+            for project in sorted(eligible)
+            if lane_states.get(project) in EXPLAINED_WAIT_STATES
+        }
+        unexplained_idle = {
+            project: lane_states.get(project, "UNKNOWN")
+            for project in sorted(eligible)
+            if lane_states.get(project) in {"IDLE", "UNKNOWN"}
+        }
+        lane_utilization: dict[str, Any] = {
+            "status": "MEASURED",
+            "active_numerator": len(active_lanes),
+            "eligible_denominator": len(eligible),
+            "value": len(active_lanes) / len(eligible),
+            "active_products": active_lanes,
+            "explained_waits": explained_waits,
+            "unexplained_idle": unexplained_idle,
+        }
     else:
         advancement_rate = {
+            "status": "NOT_APPLICABLE",
+            "reason": "no independent product project was proven ELIGIBLE",
+        }
+        lane_utilization = {
             "status": "NOT_APPLICABLE",
             "reason": "no independent product project was proven ELIGIBLE",
         }
@@ -172,6 +224,7 @@ def build_scheduler_executive_report(
         "eligible_projects": len(eligible),
         "projects_materially_advanced": len(orchestrator_advanced),
         "product_advancement_rate": advancement_rate,
+        "eligible_product_lane_utilization": lane_utilization,
         "throughput_floor_met": throughput_floor_met,
         "preventable_repeat_failure_target": 0,
     }

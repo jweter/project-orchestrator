@@ -286,3 +286,55 @@ def test_cli_scheduler_report_passes_previous_no_advancement_reasons(tmp_path, m
     monkeypatch.setattr(cli, "build_report", lambda *_: {"learning_effectiveness_rate": None})
     with pytest.raises(ValueError, match="P1 orchestration defect"):
         cli.scheduler_run_report(path)
+
+
+def test_eligible_product_lane_utilization_is_three_of_three_when_all_active():
+    report = build()
+    utilization = report["kpis"]["eligible_product_lane_utilization"]
+
+    assert utilization["status"] == "MEASURED"
+    assert utilization["active_numerator"] == 3
+    assert utilization["eligible_denominator"] == 3
+    assert utilization["value"] == 1.0
+    assert utilization["active_products"] == ["everward", "knowledge-engine", "rocksmith"]
+    assert utilization["explained_waits"] == {}
+    assert utilization["unexplained_idle"] == {}
+
+
+def test_lane_utilization_separates_ci_wait_from_unexplained_idle():
+    projects = base_projects()
+    projects["rocksmith"] = p(
+        advancement="NONE",
+        advancement_actor=None,
+        lane_state="CI_PENDING",
+        no_advancement_reason="fresh exact-head CI is still pending",
+    )
+    report = build(projects)
+    utilization = report["kpis"]["eligible_product_lane_utilization"]
+
+    assert utilization["active_numerator"] == 2
+    assert utilization["eligible_denominator"] == 3
+    assert utilization["value"] == pytest.approx(2 / 3)
+    assert utilization["explained_waits"] == {"rocksmith": "CI_PENDING"}
+    assert utilization["unexplained_idle"] == {}
+
+
+def test_missing_nonadvanced_lane_state_stays_unknown():
+    projects = base_projects()
+    projects["everward"] = p(
+        advancement="NONE",
+        advancement_actor=None,
+        no_advancement_reason="eligible lane was not serviced",
+    )
+    report = build(projects)
+    utilization = report["kpis"]["eligible_product_lane_utilization"]
+
+    assert utilization["unexplained_idle"] == {"everward": "UNKNOWN"}
+    assert "everward" not in utilization["explained_waits"]
+
+
+def test_advancement_cannot_claim_nonactive_lane_state():
+    projects = base_projects()
+    projects["knowledge-engine"] = p(lane_state="CI_PENDING")
+    with pytest.raises(ValueError, match="lane_state must be ACTIVE"):
+        build(projects)
