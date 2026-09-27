@@ -35,7 +35,8 @@ class RuntimeLeasePool:
             try:
                 import ctypes
                 from ctypes import wintypes
-                k=ctypes.WinDLL("kernel32",use_last_error=True)
+                win_dll=getattr(ctypes,"WinDLL")
+                k=win_dll("kernel32",use_last_error=True)
                 h=k.OpenProcess(0x1000,False,pid)
                 if not h:return None
                 c=wintypes.FILETIME(); e=wintypes.FILETIME(); kt=wintypes.FILETIME(); u=wintypes.FILETIME()
@@ -58,7 +59,8 @@ class RuntimeLeasePool:
             try:
                 import ctypes
                 from ctypes import wintypes
-                k=ctypes.WinDLL("kernel32",use_last_error=True)
+                win_dll=getattr(ctypes,"WinDLL")
+                k=win_dll("kernel32",use_last_error=True)
                 h=k.OpenProcess(0x1000,False,pid)  # PROCESS_QUERY_LIMITED_INFORMATION
                 if not h:return False
                 code=wintypes.DWORD()
