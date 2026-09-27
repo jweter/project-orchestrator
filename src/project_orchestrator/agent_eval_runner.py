@@ -243,7 +243,7 @@ def run_task_attempt(
     attempt_id = f"{matrix_id}:{agent_config['agent_config_id']}:{task['task_id']}"
     artifact_dir = output_dir / _slug(agent_config["agent_config_id"]) / _slug(task["task_id"])
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    worktree_parent = Path(tempfile.mkdtemp(prefix="project-orchestrator-agent-eval-"))
+    worktree_parent = Path(tempfile.mkdtemp(prefix="project-orchestrator agent-eval-"))
     worktree = worktree_parent / "worktree"
 
     result: dict[str, Any] = {
@@ -544,7 +544,3 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     _print(summary)
     return 0 if summary["invalid_benchmarks"] == 0 else 2
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

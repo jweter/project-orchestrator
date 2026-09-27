@@ -175,7 +175,3 @@ def main(argv: list[str] | None = None) -> int:
         _print(compute_rework_kpis(payload))
         return 0
     raise AssertionError("unreachable")
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

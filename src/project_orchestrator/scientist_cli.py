@@ -97,7 +97,3 @@ def main(argv: list[str] | None = None) -> int:
         _print(assess_compute_benchmark_result(**payload))
         return 0
     raise AssertionError("unreachable")
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

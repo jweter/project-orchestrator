@@ -232,7 +232,3 @@ def main(argv: list[str] | None = None) -> int:
     packet = build_promotion_packet(_find_candidate(store, args.candidate_id), verification)
     print(json.dumps(packet, indent=2, sort_keys=True))
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

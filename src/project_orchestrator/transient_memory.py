@@ -375,7 +375,3 @@ def main(argv: list[str] | None = None) -> int:
         output = _self_test()
     print(json.dumps(output, indent=2, sort_keys=True))
     return 1 if output.get("status") == "RED" else 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -115,7 +115,3 @@ def main(argv: list[str] | None = None) -> int:
 
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

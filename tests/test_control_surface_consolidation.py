@@ -67,3 +67,30 @@ def test_engineering_root_contains_only_authority_json():
     root_json = {path.name for path in (ROOT / "engineering").glob("*.json")}
     assert root_json == set(registry["json"]["authority"])
     assert len(root_json) == 27
+
+
+def test_delegated_tools_do_not_expose_duplicate_module_entrypoints():
+    delegated_modules = set(cli.TOOL_DELEGATES.values())
+    for module_name in delegated_modules:
+        module_path = ROOT / "src" / Path(*module_name.split(".")).with_suffix(".py")
+        source = module_path.read_text(encoding="utf-8")
+        assert 'if __name__ == "__main__":' not in source, module_name
+
+
+def test_preflight_routes_delegated_tools_through_canonical_cli():
+    import engineering.preflight as preflight
+
+    delegated_checks = {
+        "autonomy_loop": "loop-audit",
+        "harness_context_audit": "harness-audit",
+        "harness_security": "harness-security",
+        "agent_eval_suite": "agent-eval",
+        "agent_eval_runner_config": "agent-eval-runner",
+        "learning_candidates": "learning-candidate",
+        "repository_skills": "skill",
+        "transient_memory": "handoff-memory",
+    }
+    by_name = {name: argv for name, argv in preflight.checks}
+    for check_name, tool in delegated_checks.items():
+        argv = by_name[check_name]
+        assert argv[1:4] == ["-m", "project_orchestrator.cli", tool]
