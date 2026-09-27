@@ -63,6 +63,52 @@ def resource_leases_for_task(task: dict, runtime_id: str) -> tuple[str, ...]:
     return tuple(resources)
 
 
+def scarce_capacity_plan(
+    batch: list[tuple[str, str, dict]],
+    runtime_snapshot: dict,
+) -> tuple[list[tuple[str, str, dict]], list[dict]]:
+    """Stable-order runnable work ahead of tasks waiting on scarce local resources.
+
+    The simulation consumes only the capacity visible at planning time.  It never
+    grants authority; RuntimeLeasePool remains the execution-time fence.
+    """
+    capacities = runtime_snapshot.get("capacities", {})
+    running = runtime_snapshot.get("running", {})
+    available = {
+        resource: max(int(capacity) - int(running.get(resource, 0)), 0)
+        for resource, capacity in capacities.items()
+        if str(resource).startswith("resource:")
+    }
+    runnable: list[tuple[str, str, dict]] = []
+    deferred: list[tuple[str, str, dict]] = []
+    evidence: list[dict] = []
+
+    for repo, head, task in batch:
+        resources = resource_leases_for_task(task, "laptop-actor")
+        blocked = tuple(
+            resource for resource in resources if available.get(resource, 0) <= 0
+        )
+        row = {
+            "repository": repo,
+            "head_sha": head,
+            "slice_id": task.get("slice_id"),
+            "runtime_requirements": list(task.get("runtime_requirements", []) or []),
+            "scarce_resources": list(resources),
+            "blocked_resources": list(blocked),
+            "queue_state": "LOCAL_RESOURCE_WAIT" if blocked else "RUNNABLE",
+        }
+        evidence.append(row)
+        if blocked:
+            deferred.append((repo, head, task))
+            continue
+        runnable.append((repo, head, task))
+        for resource in resources:
+            if resource in available:
+                available[resource] = max(available[resource] - 1, 0)
+
+    return runnable + deferred, evidence
+
+
 def runner_verified_history(state_root: Path) -> dict[str, dict[str, int]]:
     path = state_root / "hands-off-grant-lifecycle.json"
     try:
@@ -280,6 +326,22 @@ def dispatch_parallel_builders(
         )
         for product in products
     }
+    capacity_snapshot = runtime_leases.snapshot()
+    verification_queue: dict[str, list[dict]] = {}
+    for product, batch in list(task_batches.items()):
+        ordered, queue_evidence = scarce_capacity_plan(batch, capacity_snapshot)
+        task_batches[product] = ordered
+        verification_queue[product] = queue_evidence
+    atomic_json(
+        state_root / "local-verification-queue.json",
+        {
+            "schema_version": 1,
+            "policy": "RUNNABLE_BEFORE_LOCAL_RESOURCE_WAIT",
+            "products": verification_queue,
+            "runtime_capacity": capacity_snapshot,
+            "recorded_at_utc": datetime.now(UTC).isoformat(),
+        },
+    )
     for product, batch in task_batches.items():
         if not batch:
             blocked.append({
