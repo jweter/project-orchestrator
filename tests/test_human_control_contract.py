@@ -22,7 +22,7 @@ def test_supervisor_checks_human_ownership_before_instance_and_merge_work():
 def test_startup_launcher_refuses_autonomy_while_human_marker_exists():
     text = INSTALLER.read_text(encoding="utf-8")
     assert '$HumanMode = Join-Path $StateRoot "human-mode.json"' in text
-    assert "'if exist "' + $HumanMode + '" exit /b 0'" in text
+    assert "'if exist \"' + $HumanMode + '\" exit /b 0'" in text
     assert "if (-not (Test-Path $HumanMode))" in text
 
 
