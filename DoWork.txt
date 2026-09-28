@@ -74,6 +74,14 @@ Derive active ownership from GitHub PRs/issues/branches/commits. Do not maintain
 NEW WORK
 Only after higher-priority existing work is clear. Read authoritative roadmap/guiding docs. Choose the highest-value authorized next slice, preferring current milestones. Keep slices small, coherent, reversible, testable, and reviewable. At most one substantial new slice per independent project per orchestrator run.
 
+NO-DELTA BLOCKER LOOP GUARD
+- A blocked item with no new evidence delta since the previous run MUST NOT consume another substantive diagnosis cycle.
+- Re-inspect only enough to confirm that the blocking evidence is unchanged, then immediately rotate to a different eligible lane.
+- Repeatedly restating the same blocker, failed mutation path, offline environment, or unchanged PR state does not count as engineering advancement.
+- If any eligible independent product has a safe branch/file mutation available, at least one such mutation MUST be attempted before the run may enter reporting.
+- After two consecutive runs where the same external/tooling blocker prevents advancement, create or advance a control-plane repair for the routing failure while continuing product work through any functioning mutation path.
+- Preflight or Product Reality unavailability may stop promotion of a branch, but MUST NOT stop implementation on that branch when the implementation is otherwise authorized, conflict-safe, and reversible.
+
 ANTI-STALL / BLOCKER ROTATION
 A blocker may block its own branch/lane; it must not monopolize the portfolio scheduler. Attempt at most one substantive repair cycle on the highest-priority blocked item. If it cannot advance, classify only that lane PARKED_FOR_RETRY with exact evidence/failure class and immediately rotate. Product Reality, laptop, Windows, Unreal, local-tool, or environment limitations are lane-scoped. Before parking a whole product, enumerate authorized candidates and prove all safe candidates blocked/owned/disallowed/unverifiable. If any parallel-safe P4/P5 exists, reserve and advance it that run.
 
