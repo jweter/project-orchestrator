@@ -46,3 +46,11 @@ def test_human_mode_stops_workers_and_full_power_explicitly_removes_lock():
     assert "Remove-Item -Force $humanMode" in full
     assert "Set-WorkerTasksEnabled $true" in full
     assert "Invoke-SafeSupervisorKick" in full
+
+
+def test_local_human_mode_keeps_control_plane_and_dashboard_alive():
+    text = Path("scripts/enter_human_mode.ps1").read_text(encoding="utf-8")
+    assert "Azathoth-Remote-Desktop-Commander" not in text
+    assert "Azathoth-Dashboard-Control" not in text
+    assert "Guard-GitHubMailbox.ps1" not in text
+    assert "foundry_dashboard_server.py" not in text
