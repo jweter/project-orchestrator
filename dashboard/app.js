@@ -31,11 +31,9 @@ function renderMachine(m={},heartbeat){
   const disk=Number.isFinite(m.disk_free_gb)?m.disk_free_gb.toFixed(0)+" GB":"—";
   let power="AC";
   if(Number.isFinite(m.battery_percent))power=m.battery_percent+"%";
-  const wake=m.wake_armed?"Armed":m.wake_magic_enabled?"Setup":"No";
-  const wakeExtra=m.wake_armed?"External relay still required":m.wake_magic_enabled?"Magic Packet supported; Windows not armed":"No wake capability detected";
   const uptime=fmtUptime(m.boot);
   const heartbeatAge=heartbeat?fmtAge(Math.max(0,(Date.now()-new Date(heartbeat).getTime())/1000)):"?";
-  $("#machine").innerHTML=metric(uptime,"Uptime")+metric(heartbeatAge,"Heartbeat")+metric(cpu,"CPU")+metric(ram,"RAM",Number.isFinite(m.memory_used_gb)?m.memory_used_gb+" / "+m.memory_total_gb+" GB":"")+metric(disk,"Disk free")+metric(power,"Battery/Power",m.pending_reboot?"Reboot pending":"")+metric(wake,"Wake",wakeExtra);
+  $("#machine").innerHTML=metric(uptime,"Uptime")+metric(heartbeatAge,"Heartbeat")+metric(cpu,"CPU")+metric(ram,"RAM",Number.isFinite(m.memory_used_gb)?m.memory_used_gb+" / "+m.memory_total_gb+" GB":"")+metric(disk,"Disk free")+metric(power,"Battery/Power",m.pending_reboot?"Reboot pending":"");
 }
 function renderAlerts(alerts=[]){
   $("#alerts").innerHTML=alerts.map(a=>{
@@ -62,61 +60,6 @@ function renderHistory(rows=[]){
   const list=[...rows].reverse().slice(0,10);
   $("#history").innerHTML=list.map(r=>'<div class="history-row"><div><b>'+esc(actionLabel(r.action))+'</b><span>'+esc(fmtTime(r.at))+'</span></div><span class="status '+statusClass(r.status)+'">'+esc(r.status)+'</span></div>').join("")||'<div class="command-card muted">No phone commands recorded yet.</div>';
 }
-function relayConfig(){
-  return {url:(localStorage.getItem("azathothWakeRelayUrl")||"").replace(/\/+$/,""),token:localStorage.getItem("azathothWakeRelayToken")||""};
-}
-function relayConfigured(){const c=relayConfig();return !!(c.url&&c.token)}
-async function relayFetch(path,options={}){
-  const c=relayConfig(); if(!c.url||!c.token)throw Error("RELAY_NOT_CONFIGURED");
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),5000);
-  try{
-    return await fetch(c.url+path,{...options,cache:"no-store",mode:"cors",signal:controller.signal,
-      headers:{...(options.headers||{}),"Authorization":"Bearer "+c.token,"Content-Type":"application/json"}});
-  }finally{clearTimeout(timer)}
-}
-async function refreshWakeRelay(showError=false){
-  const state=$("#relay-state"),detail=$("#relay-detail"),button=$("#wake-button");
-  if(!relayConfigured()){
-    state.textContent="Wake relay not configured";detail.textContent="Wake needs an external always-on relay on your network.";button.disabled=true;return false;
-  }
-  state.textContent="Checking wake relay…";detail.textContent="Verifying off-machine recovery path";button.disabled=true;
-  try{
-    const r=await relayFetch("/health"); const d=await r.json();
-    if(!r.ok||d.status!=="READY")throw Error(d.status||"RELAY_UNAVAILABLE");
-    state.textContent="Wake relay ready";detail.textContent=d.last_wake_at?"Last wake sent "+fmtTime(d.last_wake_at):"Off-machine wake path is authenticated and ready";
-    button.disabled=false;return true;
-  }catch(e){
-    state.textContent="Wake relay unavailable";detail.textContent=showError?"Could not reach or authenticate the configured relay.":"Configured, but not currently reachable";
-    button.disabled=true;return false;
-  }
-}
-async function waitForAzathoth(){
-  const state=$("#relay-state"),detail=$("#relay-detail");
-  state.textContent="Wake sent";detail.textContent="Waiting for Azathoth to come online…";
-  for(let i=0;i<24;i++){
-    await new Promise(r=>setTimeout(r,5000));
-    try{
-      const c=new AbortController(),t=setTimeout(()=>c.abort(),3000);
-      const r=await fetch("/api/health",{cache:"no-store",signal:c.signal});clearTimeout(t);
-      if(r.ok){state.textContent="Azathoth is back online";detail.textContent="Control plane responded after wake";document.body.classList.remove("dashboard-offline");await refresh();return true}
-    }catch(e){}
-  }
-  state.textContent="Wake sent, no heartbeat yet";detail.textContent="Azathoth did not return within 2 minutes. Check power/network or relay logs.";return false;
-}
-async function wakeAzathoth(){
-  if(!relayConfigured())return;
-  if(!confirm("Send the fixed Wake-on-LAN packet for Azathoth?"))return;
-  const button=$("#wake-button");button.disabled=true;$("#relay-state").textContent="Sending wake…";
-  try{
-    const r=await relayFetch("/wake",{method:"POST",body:"{}"});const d=await r.json();
-    if(!r.ok||d.status!=="WAKE_SENT")throw Error(d.status||"WAKE_FAILED");
-    waitForAzathoth();
-  }catch(e){$("#relay-state").textContent="Wake failed";$("#relay-detail").textContent="The external relay rejected or could not send the wake packet.";button.disabled=false}
-}
-function openRelaySettings(){
-  const c=relayConfig();$("#relay-url").value=c.url;$("#relay-token").value="";$("#relay-token").placeholder=c.token?"Token saved — leave blank to keep it":"Private relay token";$("#relay-dialog").showModal();
-}
-
 async function refresh(){
   try{
     const [r,hr]=await Promise.all([fetch("/api/dashboard",{cache:"no-store"}),fetch("/api/health",{cache:"no-store"})]);
@@ -141,12 +84,10 @@ async function refresh(){
     $("#workers").innerHTML=(grantWorkers.length?grantWorkers:poolWorkers).join("")||card("No active workers","No active grant or worker-pool activity is currently reported.");
     $("#recent").innerHTML=(d.recent_completed_work||[]).slice(0,6).map(w=>card(w.repository||"Completed",esc(w.result_status)+' · '+esc(w.outcome_quality)+(w.pr_number?' · PR #'+esc(w.pr_number):''))).join("")||card("No recent work","No terminal work in the current snapshot.");
     document.body.classList.remove("dashboard-offline");
-    await refreshWakeRelay(false);
   }catch(e){
     document.body.classList.add("dashboard-offline");
     $("#live").textContent="OFFLINE";$("#live").className="pill bad";
-    $("#hero-state").textContent="Azathoth offline";$("#hero-detail").textContent="Local dashboard is unreachable — Recovery Center remains available";
-    await refreshWakeRelay(false);
+    $("#hero-state").textContent="Azathoth offline";$("#hero-detail").textContent="Private dashboard route is unavailable — automatic recovery remains armed";
   }
 }
 async function control(action,needsConfirm){
@@ -175,24 +116,7 @@ $("#auth-settings").addEventListener("click",()=>{
   const has=!!localStorage.getItem("azathothControlToken");
   if(has&&confirm("Forget the saved Azathoth admin token on this iPhone?")){localStorage.removeItem("azathothControlToken");alert("Token forgotten. The next control will ask for it again.");}
   else if(!has)alert("No admin token is currently saved on this iPhone. Tap a control to authenticate.");
-});
-$("#relay-settings").addEventListener("click",openRelaySettings);
-$("#wake-button").addEventListener("click",wakeAzathoth);
-$("#relay-save").addEventListener("click",async()=>{
-  const raw=$("#relay-url").value.trim(),token=$("#relay-token").value.trim(),old=relayConfig();
-  let u;try{u=new URL(raw)}catch(e){alert("Enter a valid relay URL.");return}
-  if(location.protocol==="https:"&&u.protocol!=="https:"){alert("This dashboard requires an HTTPS wake relay.");return}
-  if(!["https:","http:"].includes(u.protocol)){alert("Relay URL must use HTTP or HTTPS.");return}
-  const finalToken=token||old.token;if(!finalToken){alert("Enter the relay token.");return}
-  localStorage.setItem("azathothWakeRelayUrl",u.origin+u.pathname.replace(/\/+$/,""));
-  localStorage.setItem("azathothWakeRelayToken",finalToken);
-  $("#relay-dialog").close();await refreshWakeRelay(true);
-});
-$("#relay-forget").addEventListener("click",()=>{
-  localStorage.removeItem("azathothWakeRelayUrl");localStorage.removeItem("azathothWakeRelayToken");
-  $("#relay-dialog").close();refreshWakeRelay(false);
-});
-if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
+});if("serviceWorker" in navigator)navigator.serviceWorker.register("/sw.js").catch(()=>{});
 const standalone=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;
 $("#install-card").classList.toggle("hidden",standalone);
 refresh();setInterval(refresh,15000);

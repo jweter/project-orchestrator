@@ -1,5 +1,5 @@
-const CACHE="azathoth-shell-v5";
-const SHELL=["/","/app.css?v=5","/app.js?v=5","/manifest.webmanifest"];
+const CACHE="azathoth-shell-v6";
+const SHELL=["/","/app.css?v=6","/app.js?v=6","/manifest.webmanifest"];
 self.addEventListener("install",event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener("activate",event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener("fetch",event=>{
