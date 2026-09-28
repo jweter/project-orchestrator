@@ -1,7 +1,6 @@
 """Single fail-closed ownership gate for Jeremy-vs-Azathoth laptop control."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 
@@ -13,16 +12,10 @@ def human_mode_path(state_root: Path) -> Path:
 
 
 def human_mode_active(state_root: Path) -> bool:
-    """Return True whenever a human-ownership marker exists.
+    """Presence of the ownership marker always gives the laptop to the human.
 
-    Presence is authoritative. Malformed or partially-written markers fail closed
-    to human ownership; FULL_POWER must explicitly remove the marker.
+    FULL_POWER is the only supported transition back to autonomous ownership and
+    must explicitly remove the marker. Contents are deliberately irrelevant so
+    partial writes or schema drift cannot accidentally re-enable workers.
     """
-    path = human_mode_path(state_root)
-    if not path.exists():
-        return False
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return True
-    return not isinstance(payload, dict) or payload.get("enabled") is not False
+    return human_mode_path(state_root).exists()
