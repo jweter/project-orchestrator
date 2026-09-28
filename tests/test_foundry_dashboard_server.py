@@ -72,3 +72,35 @@ def test_dashboard_exposes_only_bounded_control_actions():
     sw=(ROOT/"dashboard"/"sw.js").read_text(encoding="utf-8")
     assert 'url.pathname.startsWith("/api/")' in sw
     assert "url.origin!==self.location.origin" in sw
+
+
+def test_human_mode_control_bypasses_git_mailbox_and_works_without_control_repo(tmp_path,monkeypatch):
+    calls=[]
+    monkeypatch.setattr(server,"_invoke_local_mode",lambda action,state_root: calls.append((action,state_root)) or {"status":"COMPLETED"})
+    httpd=ThreadingHTTPServer(("127.0.0.1",0),server.handler_for(tmp_path,ROOT/"dashboard",None,"secret"))
+    Thread(target=httpd.serve_forever,daemon=True).start()
+    try:
+        base=f"http://127.0.0.1:{httpd.server_port}"
+        req=Request(base+"/api/control",data=b'{"action":"HUMAN_MODE"}',
+                    headers={"Content-Type":"application/json","Authorization":"Bearer secret"},method="POST")
+        payload=json.load(urlopen(req))
+        assert payload["status"]=="COMPLETED"
+        assert calls==[("HUMAN_MODE",tmp_path)]
+    finally:
+        httpd.shutdown()
+
+
+def test_full_power_control_uses_same_local_control_path(tmp_path,monkeypatch):
+    calls=[]
+    monkeypatch.setattr(server,"_invoke_local_mode",lambda action,state_root: calls.append((action,state_root)) or {"status":"COMPLETED"})
+    httpd=ThreadingHTTPServer(("127.0.0.1",0),server.handler_for(tmp_path,ROOT/"dashboard",None,"secret"))
+    Thread(target=httpd.serve_forever,daemon=True).start()
+    try:
+        base=f"http://127.0.0.1:{httpd.server_port}"
+        req=Request(base+"/api/control",data=b'{"action":"FULL_POWER"}',
+                    headers={"Content-Type":"application/json","Authorization":"Bearer secret"},method="POST")
+        payload=json.load(urlopen(req))
+        assert payload["status"]=="COMPLETED"
+        assert calls==[("FULL_POWER",tmp_path)]
+    finally:
+        httpd.shutdown()

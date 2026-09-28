@@ -36,12 +36,46 @@ function Append-History($o){
     ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $history
 }
 
+function Test-HumanMode {
+  Test-Path $humanMode
+}
+
+function Get-AutonomousProcesses {
+  @(Get-CimInstance Win32_Process|Where-Object{
+    $_.Name -like "python*" -and (
+      $_.CommandLine -like "*continuous_flow_supervisor.py*" -or
+      $_.CommandLine -like "*green_pr_watch_loop.py*" -or
+      $_.CommandLine -like "*autonomous_slice_builder.py*" -or
+      $_.CommandLine -like "*laptop_actor_bootstrap.py*"
+    )
+  })
+}
+
+function Stop-AutonomousProcesses {
+  foreach($p in @(Get-AutonomousProcesses)){
+    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Set-WorkerTasksEnabled([bool]$Enabled){
-  foreach($taskName in @("ExponentialEngine-LaptopActor","Portfolio Idle Worker")){
+  foreach($taskName in @(
+    "ExponentialEngine-ContinuousFlow-Watchdog",
+    "ExponentialEngine-LaptopActor",
+    "Portfolio Idle Worker",
+    "Rocksmith CDLC Unattended Worker",
+    "Everward Unattended Product Reality",
+    "Azathoth-Idle-App-Watcher",
+    "Azathoth-Idle-Mine-Watcher"
+  )){
     $task=Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     if(-not $task){continue}
-    if($Enabled){Enable-ScheduledTask -TaskName $taskName|Out-Null}
-    else{Disable-ScheduledTask -TaskName $taskName|Out-Null}
+    if($Enabled){
+      Enable-ScheduledTask -TaskName $taskName|Out-Null
+      Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    } else {
+      Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+      Disable-ScheduledTask -TaskName $taskName|Out-Null
+    }
   }
 }
 
@@ -106,7 +140,18 @@ function Invoke-SafeActorSync {
   return @{status="COMPLETED";consume=$true;worker_count=0}
 }
 
+function Invoke-SafeSupervisorKick {
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+  }
+  & (Join-Path $env:LOCALAPPDATA "ExponentialEngine\Watch-ContinuousFlow.ps1")|Out-Null
+  return @{status="COMPLETED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+}
+
 function Invoke-SafeSupervisorRestart {
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+  }
   $workers=@(Get-ActiveProductWorkers)
   if($workers.Count -gt 0){
     return @{status="DEFERRED_ACTIVE_PRODUCT_WORKERS";consume=$false;worker_count=$workers.Count}
@@ -140,8 +185,10 @@ function Invoke-RemoteControlRestart {
 function Invoke-ControlPlaneRecovery {
   $remote=Invoke-RemoteControlRestart
   if($remote.status -ne "COMPLETED"){return $remote}
-  & (Join-Path $env:LOCALAPPDATA "ExponentialEngine\\Watch-ContinuousFlow.ps1")|Out-Null
-  return @{status="COMPLETED";consume=$true;worker_count=0}
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+  }
+  return Invoke-SafeSupervisorKick
 }
 
 function Invoke-SafeMainDeploy {
@@ -184,7 +231,7 @@ while($true){
             }|ConvertTo-Json -Depth 8|Set-Content -Encoding UTF8 (Join-Path $StateRoot "fallback-status.json")
           }
           "SYNC_ACTOR_MAIN" {$result=Invoke-SafeActorSync}
-          "KICK_SUPERVISOR" {& (Join-Path $env:LOCALAPPDATA "ExponentialEngine\Watch-ContinuousFlow.ps1")|Out-Null}
+          "KICK_SUPERVISOR" {$result=Invoke-SafeSupervisorKick}
           "RESTART_SUPERVISOR" {$result=Invoke-SafeSupervisorRestart}
           "DEPLOY_MAIN_SAFE" {$result=Invoke-SafeMainDeploy}
           "RESTART_REMOTE_CONTROL" {$result=Invoke-RemoteControlRestart}
@@ -193,12 +240,13 @@ while($true){
             @{enabled=$true;since=[DateTimeOffset]::UtcNow.ToString("o");source="iphone-dashboard"} |
               ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $humanMode
             Set-WorkerTasksEnabled $false
+            Stop-AutonomousProcesses
             $result=@{status="COMPLETED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
           }
           "FULL_POWER" {
             Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
             Set-WorkerTasksEnabled $true
-            $result=@{status="COMPLETED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+            $result=Invoke-SafeSupervisorKick
           }
           "REBOOT_WINDOWS" {
             $result=@{status="REBOOT_ACCEPTED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}

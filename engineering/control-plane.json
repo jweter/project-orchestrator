@@ -91,7 +91,9 @@
     "machine_health_throttling_never_becomes_product_failure",
     "unknown_machine_telemetry_never_manufactures_health",
     "automated_cleanup_is_limited_to_actor_owned_transient_artifacts",
-    "development_team_runtime_uses_ephemeral_leases_independent_qa_and_never_delegates_merge_authority"
+    "development_team_runtime_uses_ephemeral_leases_independent_qa_and_never_delegates_merge_authority",
+    "human_ownership_marker_preempts_all_autonomous_execution_and_recovery_paths",
+    "human_mode_preserves_remote_control_and_dashboard_availability"
   ],
   "definition_of_done": {
     "implementation_complete": true,
