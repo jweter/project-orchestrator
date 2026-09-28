@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="app.css?v=5">
+  <link rel="stylesheet" href="app.css?v=6">
   <title>Azathoth Foundry Control</title>
 </head>
 <body>
@@ -21,10 +21,16 @@
     <div id="alerts"></div>
 
     <section>
-      <div class="section-head"><h2>Recovery Center</h2><button id="relay-settings" class="text-button">Wake relay settings</button></div>
-      <div class="recovery-card">
-        <div><span class="eyebrow">OFF-MACHINE RECOVERY</span><b id="relay-state">Wake relay not configured</b><span id="relay-detail">Recovery actions below work while Azathoth is online. Wake requires an external LAN relay.</span></div>
-        <button id="wake-button" class="wake-button" disabled>Wake Azathoth</button>
+      <div class="section-head"><h2>Recovery Center</h2><span class="muted">Software recovery</span></div>
+      <div class="recovery-stack">
+        <div class="recovery-card">
+          <div><span class="eyebrow">REMOTE RECOVERY</span><b>Recovery paths armed</b><span>Tailscale, automatic login, dashboard and remote-control watchdogs, plus the scheduled reboot recovery path are configured.</span></div>
+          <span class="status good">READY</span>
+        </div>
+        <div class="recovery-note">
+          <b>Powered-off limitation</b>
+          <span>The current Wi-Fi adapter cannot be armed for Wake-on-LAN. Azathoth therefore stays awake and relies on watchdogs plus automatic reboot and login recovery.</span>
+        </div>
       </div>
     </section>
 
@@ -72,20 +78,7 @@
     </section>
   </main>
 
-  <dialog id="relay-dialog">
-    <form method="dialog" class="dialog-body" id="relay-form">
-      <h3>Wake relay</h3>
-      <p>The relay must run on another always-on device or router path. Its target is fixed to Azathoth; the phone cannot choose arbitrary devices.</p>
-      <label class="field"><span>Relay URL</span><input id="relay-url" type="url" inputmode="url" autocomplete="off" placeholder="https://relay.example.com"></label>
-      <label class="field"><span>Relay token</span><input id="relay-token" type="password" autocomplete="off" placeholder="Private relay token"></label>
-      <div class="dialog-actions">
-        <button type="button" id="relay-forget" class="danger-lite">Forget</button>
-        <button value="cancel">Cancel</button>
-        <button type="button" id="relay-save">Save</button>
-      </div>
-    </form>
-  </dialog>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
