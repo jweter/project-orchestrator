@@ -1,7 +1,7 @@
 {
-  "action": "RESTART_REMOTE_CONTROL",
-  "command_id": "02d63910-1ca4-400d-bf89-f8395d4c96a7",
-  "expires_at": "2026-09-28T21:45:20.395276+00:00",
-  "issued_at": "2026-09-28T21:40:20.395276+00:00",
+  "action": "FULL_POWER",
+  "command_id": "fbe7117f-7e70-4b47-ab48-44dbf1fea808",
+  "expires_at": "2026-09-28T22:27:15.691179+00:00",
+  "issued_at": "2026-09-28T22:22:15.691179+00:00",
   "source": "iphone-dashboard"
 }
