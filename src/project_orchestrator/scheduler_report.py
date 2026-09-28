@@ -240,7 +240,7 @@ def build_scheduler_executive_report(
         "schema_version": 2,
         "generated_at": canonical["generated_at"],
         "executive_status": _executive_status(kpis, persistence),
-        "canonical_inventory": {"independent_product_projects": 3, "product_repositories": 5},
+        "canonical_inventory": {"independent_product_projects": 4, "product_repositories": 6},
         "kpis": kpis,
         "portfolio_kpis": portfolio_kpis,
         "kpi_persistence": persistence,
