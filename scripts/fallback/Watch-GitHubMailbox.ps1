@@ -71,6 +71,7 @@ function Set-WorkerTasksEnabled([bool]$Enabled){
     if(-not $task){continue}
     if($Enabled){
       Enable-ScheduledTask -TaskName $taskName|Out-Null
+      Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
     } else {
       Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
       Disable-ScheduledTask -TaskName $taskName|Out-Null
