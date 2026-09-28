@@ -67,8 +67,9 @@ def test_dashboard_exposes_only_bounded_control_actions():
         assert action in html
     assert "Authorization" in js and "Bearer " in js
     assert "ARBITRARY_SHELL" not in html
-    assert "Wake Azathoth" in html and "Wake relay settings" in html
-    assert "azathothWakeRelayUrl" in js and "azathothWakeRelayToken" in js
+    assert "Recovery paths armed" in html and "Powered-off limitation" in html
+    assert "Wake Azathoth" not in html and "Wake relay settings" not in html
+    assert "azathothWakeRelayUrl" not in js and "azathothWakeRelayToken" not in js
     sw=(ROOT/"dashboard"/"sw.js").read_text(encoding="utf-8")
     assert 'url.pathname.startsWith("/api/")' in sw
     assert "url.origin!==self.location.origin" in sw
