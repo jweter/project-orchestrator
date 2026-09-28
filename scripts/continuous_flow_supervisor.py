@@ -31,6 +31,7 @@ from project_orchestrator import parallel_runtime as _parallel_runtime
 from project_orchestrator import telemetry_continuation as _telemetry
 from project_orchestrator import activation_capability as _authority
 from project_orchestrator import supervisor_runtime as _supervisor_runtime
+from project_orchestrator.human_ownership import human_mode_active
 
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
@@ -546,6 +547,12 @@ def main()->int:
                    help="SYSTEM cold-boot owner exits when an interactive user session appears")
     a=p.parse_args(); repo=Path(a.repo_root); workspace=Path(a.workspace_root); state=Path(a.state_root)
     state.mkdir(parents=True,exist_ok=True)
+    if human_mode_active(state):
+        atomic(state/"supervisor-human-ownership.json",{
+            "schema_version":1,"status":"HUMAN_MODE_ACTIVE",
+            "observed_at_utc":datetime.now(UTC).isoformat(),
+        })
+        return 0
     instance_lock=acquire_supervisor_instance_lock(state)
     if instance_lock is None:
         owner=None
@@ -593,6 +600,15 @@ def main()->int:
     worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6)
     atexit.register(worker_pool.shutdown,wait=False)
     while True:
+        if human_mode_active(state):
+            atomic(state/"supervisor-human-ownership.json",{
+                "schema_version":1,"status":"HUMAN_MODE_ACTIVE",
+                "process_instance_id":process_instance_id,
+                "observed_at_utc":datetime.now(UTC).isoformat(),
+            })
+            if merge is not None and merge.poll() is None:
+                merge.terminate()
+            return 0
         if a.yield_on_interactive_session:
             try:
                 sessions=active_interactive_sessions()
