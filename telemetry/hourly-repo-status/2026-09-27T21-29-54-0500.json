@@ -1,0 +1,46 @@
+{
+  "observed_at": "2026-09-27T21:29:54-05:00",
+  "independent_products": 4,
+  "repositories_inspected": 6,
+  "advancement": {
+    "knowledge_engine": {
+      "state": "P1_REPAIR_PENDING_VERIFICATION",
+      "evidence": [
+        "knowledge-engine-core main e63da68a7730db93dc3d6a3addc7fb6a5eb3b7c4",
+        "knowledge-engine-ai PR #174 head 7ea509e04dd7fb9b49ab9e160c20bbc9ca7e6e90"
+      ],
+      "blocker": "PR #174 has two unresolved P1 review findings; no fresh workflow run observed on current head."
+    },
+    "rocksmith": {
+      "state": "NO_SAFE_ELIGIBLE_WORK_PROVEN",
+      "evidence": [
+        "main 1bb8121d752535e29aa4cc13ffee127d5a5dc8b4",
+        "docs/project-status.yaml next_continuation"
+      ],
+      "blocker": "remaining named lanes require private representative-song/Windows Product Reality or prerequisite evidence; completed slices must not be reimplemented."
+    },
+    "everward": {
+      "state": "P3_CONFLICT",
+      "evidence": [
+        "PR #326 d3ffd25b94805947e35cf289f957413343a16244"
+      ],
+      "blocker": "branch diverges across overlapping unattended-worker files; semantic reconciliation required before promotion."
+    },
+    "voicestudio": {
+      "state": "P4_RECONCILIATION_BLOCKED_BY_CONNECTOR",
+      "evidence": [
+        "main 13dbf0609d53c94496eb218b2bd6bb51f432d687",
+        "feat/singing-s1-capability-schema diverged 7 ahead/9 behind",
+        "feat/singing-s1-capability-schema-v2 identical to main before replay"
+      ],
+      "blocker": "S1 file replay was proven conflict-free by path, but connector source-file writes were blocked by safety checks; no PR opened without exact-head preflight."
+    }
+  },
+  "product_advancement_rate": {
+    "materially_advanced_this_run": 0,
+    "eligible_proven": 3,
+    "rate": 0,
+    "note": "Rocksmith excluded after authority review showed remaining safe work was not presently evidenced; tool-blocked mutations do not count as advancement."
+  },
+  "schedule_invariant": "unchanged"
+}
