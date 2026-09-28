@@ -3,8 +3,8 @@
   "artifact": "scheduler-executive-run-report",
   "cli": "project-orchestrator scheduler-run-report",
   "canonical_inventory": {
-    "independent_product_projects": 3,
-    "product_repositories": 5
+    "independent_product_projects": 4,
+    "product_repositories": 6
   },
   "required_kpis": [
     "independent_projects_inspected",
@@ -27,7 +27,7 @@
   ],
   "product_advancement_rate": {
     "definition": "eligible independent product projects materially advanced by the current orchestrator run divided by independent product projects explicitly proven ELIGIBLE in the run",
-    "target": 1.0,
+    "target": 1,
     "unknown_policy": "do not include UNKNOWN or NO_SAFE_ELIGIBLE_WORK projects in the denominator"
   },
   "portfolio_kpis": {
@@ -42,10 +42,18 @@
       "evidence_coverage"
     ],
     "rework_quality": {
-      "first_pass_preflight_rate": {"target": ">=0.90"},
-      "merge_race_count": {"target": 0},
-      "post_merge_correctness_hotfix_rate": {"target": "<0.05"},
-      "median_implementation_to_merge_seconds": {"target": "trend_down_without_quality_regression"}
+      "first_pass_preflight_rate": {
+        "target": ">=0.90"
+      },
+      "merge_race_count": {
+        "target": 0
+      },
+      "post_merge_correctness_hotfix_rate": {
+        "target": "<0.05"
+      },
+      "median_implementation_to_merge_seconds": {
+        "target": "trend_down_without_quality_regression"
+      }
     },
     "delivery_progress_metrics": {
       "pr_creation_to_green_seconds": "trend_down",
@@ -61,8 +69,17 @@
       "cli": "project-orchestrator kpi",
       "event_ledger": "engineering/kpi-events.jsonl",
       "run_snapshot_ledger": "engineering/kpi-run-snapshots.jsonl",
-      "event_entities": ["pr", "ci", "branch", "issue"],
-      "rolling_windows": ["24h", "7d", "30d"],
+      "event_entities": [
+        "pr",
+        "ci",
+        "branch",
+        "issue"
+      ],
+      "rolling_windows": [
+        "24h",
+        "7d",
+        "30d"
+      ],
       "flow_metrics": [
         "issue_advancement_rate",
         "cycle_time_seconds",
@@ -80,8 +97,8 @@
     },
     "scope": [
       "portfolio",
-      "each of the three independent product projects",
-      "each of the five product repositories"
+      "each of the four independent product projects",
+      "each of the six product repositories"
     ],
     "bottleneck_rule": "Rank only currently eligible projects and only when the measured-evidence sufficiency rules of project_orchestrator.throughput_optimizer are satisfied. Missing projects remain visible as INSUFFICIENT_DATA.",
     "unknown_policy": "UNKNOWN and INSUFFICIENT_DATA are explicit; neither is converted to zero or omitted from the scorecard.",
