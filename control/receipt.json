@@ -1,6 +1,7 @@
 ﻿{
-    "status":  "REJECTED_EXPIRED",
-    "at":  "2026-09-28T21:45:22.3407728+00:00",
-    "action":  "RESTART_REMOTE_CONTROL",
-    "command_id":  "02d63910-1ca4-400d-bf89-f8395d4c96a7"
+    "status":  "COMPLETED",
+    "worker_count":  0,
+    "at":  "2026-09-28T22:22:21.6837598+00:00",
+    "action":  "FULL_POWER",
+    "command_id":  "fbe7117f-7e70-4b47-ab48-44dbf1fea808"
 }
