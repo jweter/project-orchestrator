@@ -1,0 +1,55 @@
+{
+  "observed_at": "2026-09-28T09:27:21Z",
+  "portfolio": {
+    "eligible_product_projects": [
+      "knowledge-engine",
+      "rocksmith",
+      "everward",
+      "voicestudio"
+    ],
+    "materially_advanced_product_projects": [
+      "voicestudio"
+    ],
+    "product_advancement_rate": "1/4"
+  },
+  "knowledge_engine": {
+    "open_prs": [
+      "knowledge-engine-ai#174"
+    ],
+    "state": "P3_RECONCILE_REQUIRED",
+    "detail": "AI #174 is 10 commits ahead / 6 behind current main; current main independently contains monster_acceptance implementation, so blind repair of stale branch is unsafe."
+  },
+  "rocksmith": {
+    "open_prs": [],
+    "state": "P5_CANDIDATES_REQUIRE_AUTHORITY_OR_LOCAL_EVIDENCE",
+    "detail": "No new mutation selected ahead of existing private/Windows Product Reality and EOF evidence lanes."
+  },
+  "everward": {
+    "open_prs": [
+      "Project-Everward#326"
+    ],
+    "state": "P3_RECONCILE_REQUIRED",
+    "detail": "Semantic overlap remains; no blind replay."
+  },
+  "voicestudio": {
+    "open_prs": [],
+    "branch": "feat/singing-s1-capability-schema-v2",
+    "head": "fd3647eec6df548527d8ac79df82e6926afdfcf9",
+    "state": "PREFLIGHT_UNVERIFIED",
+    "detail": "S1 implementation reconciled to current main; 6 commits ahead / 0 behind. Exact-head full preflight remains required before PR."
+  },
+  "control_plane": {
+    "liveness_repair_branch": "fix/no-delta-blocker-loop",
+    "liveness_repair_head": "5bf3d2ea812925954308a82e62b1e5aa88659738"
+  },
+  "blockers": [
+    "Azathoth offline for repository-native local preflight",
+    "No GitHub workflow-dispatch mutation is exposed by current connector",
+    "AI #174 and Everward #326 require semantic reconciliation"
+  ],
+  "product_reality_debt": [
+    "VoiceStudio S1 has no Product Reality claim; schema/filtering only",
+    "Rocksmith local/private acceptance remains outstanding",
+    "Everward Unreal Product Reality remains lane-scoped"
+  ]
+}
