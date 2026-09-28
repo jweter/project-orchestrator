@@ -19,6 +19,29 @@ def _write_json(path:Path,payload:dict):
 def _fallback_root(state_root:Path)->Path:
     return state_root.parent/"FallbackControl"
 
+def _invoke_local_mode(action:str,state_root:Path)->dict:
+    scripts={
+        "HUMAN_MODE":Path(__file__).resolve().parent/"enter_human_mode.ps1",
+        "FULL_POWER":Path(__file__).resolve().parent/"start_full_power.ps1",
+    }
+    script=scripts.get(action)
+    if script is None:
+        return {"status":"REJECTED_ACTION"}
+    if os.name!="nt":
+        return {"status":"LOCAL_CONTROL_UNAVAILABLE"}
+    if not script.is_file():
+        return {"status":"LOCAL_CONTROL_SCRIPT_MISSING"}
+    try:
+        p=subprocess.run(
+            ["powershell.exe","-NoProfile","-ExecutionPolicy","Bypass","-WindowStyle","Hidden",
+             "-File",str(script),"-StateRoot",str(state_root)],
+            capture_output=True,text=True,timeout=20,check=False,
+        )
+    except (OSError,subprocess.SubprocessError):
+        return {"status":"LOCAL_CONTROL_FAILED"}
+    return {"status":"COMPLETED" if p.returncode==0 else "LOCAL_CONTROL_FAILED",
+            "returncode":p.returncode}
+
 _MACHINE_CACHE={"at":0.0,"value":None}
 def _machine_probe()->dict:
     if _MACHINE_CACHE["value"] is not None and time.monotonic()-_MACHINE_CACHE["at"]<10:
@@ -153,8 +176,6 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
             supplied=self.headers.get("Authorization","").removeprefix("Bearer ").strip()
             if not control_token or not supplied or not secrets.compare_digest(supplied,control_token):
                 self._json(401,{"status":"UNAUTHORIZED"}); return
-            if control_repo is None:
-                self._json(503,{"status":"CONTROL_REPO_UNAVAILABLE"}); return
             try:
                 length=int(self.headers.get("Content-Length","0"))
                 body=json.loads(self.rfile.read(min(length,4096)) or b"{}")
@@ -165,6 +186,16 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
             if action not in allowed:
                 self._json(400,{"status":"REJECTED_ACTION"}); return
             command_id=str(uuid.uuid4()); now=datetime.now(timezone.utc)
+            if action in {"HUMAN_MODE","FULL_POWER"}:
+                result=_invoke_local_mode(action,state_root)
+                status=str(result.get("status","LOCAL_CONTROL_FAILED"))
+                _write_json(_fallback_root(state_root)/"progress.json",
+                            {"command_id":command_id,"action":action,"status":status,"at":now.isoformat()})
+                self._json(200 if status=="COMPLETED" else 503,
+                           {"status":status,"command_id":command_id,"action":action})
+                return
+            if control_repo is None:
+                self._json(503,{"status":"CONTROL_REPO_UNAVAILABLE"}); return
             mailbox={"command_id":command_id,"action":action,"issued_at":now.isoformat(),
                      "expires_at":(now+timedelta(minutes=5)).isoformat(),"source":"iphone-dashboard"}
             try:
