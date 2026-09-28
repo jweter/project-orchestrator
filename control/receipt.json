@@ -1,7 +1,7 @@
 ﻿{
     "status":  "COMPLETED",
     "worker_count":  0,
-    "at":  "2026-09-27T23:43:39.2620935+00:00",
-    "action":  "HUMAN_MODE",
-    "command_id":  "81ddb0af-f51d-4523-9d01-848440b0ba32"
+    "at":  "2026-09-28T21:38:46.8584897+00:00",
+    "action":  "STATUS_SNAPSHOT",
+    "command_id":  "af1bbd8f-188a-4b62-a4e7-647670152f88"
 }
