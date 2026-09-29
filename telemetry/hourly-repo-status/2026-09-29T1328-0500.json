@@ -1,0 +1,47 @@
+{
+  "observed_at": "2026-09-29T13:28:03-05:00",
+  "mode": "EXECUTION_BURST",
+  "open_product_prs": 0,
+  "products": {
+    "knowledge_engine": {
+      "state": "BUILD_TRIGGER",
+      "core_main": "66bcd2cd3bfb7de2b566f69c7572a15cf46f8e58",
+      "candidate": "core#402",
+      "worker_evidence": "latest ledger PASS at older exact heads; no current deterministic failure"
+    },
+    "rocksmith": {
+      "state": "BUILD_TRIGGER",
+      "main": "961a09f7a769c5ed1faee74803832864e5f8a835",
+      "candidate": "#414",
+      "product_reality_debt": "representative lawful-local EOF/native evidence"
+    },
+    "everward": {
+      "state": "PRODUCT_REALITY_PENDING",
+      "main": "7b4dfd7a01d14cece4cd67a2534c46003398d4e7",
+      "candidate": "#228 merged implementation; local UE low-spec evidence pending"
+    },
+    "voicestudio": {
+      "state": "PREFLIGHT_UNVERIFIED",
+      "main": "01bce35fd924198f568f990d55beded30023eb6f",
+      "branch": "feat/singing-s1-capability-schema-v3",
+      "head": "454147d5b9731b2f3e88746050e18d911200bde0",
+      "advancement": "S1 six-file capability implementation reconciled onto current main"
+    }
+  },
+  "materially_advanced_product_projects": [
+    "VoiceStudio"
+  ],
+  "eligible_product_projects": [
+    "Knowledge Engine",
+    "Rocksmith",
+    "Everward",
+    "VoiceStudio"
+  ],
+  "reusable_capabilities_created_or_reused": [
+    "VoiceStudio S1 explicit singing capability schema and regression tests"
+  ],
+  "blockers": [
+    "remote command execution safety blocked local preflight invocation"
+  ],
+  "needs_jeremy": []
+}
