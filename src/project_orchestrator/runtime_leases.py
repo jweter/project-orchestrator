@@ -252,12 +252,22 @@ class RuntimeLeasePool:
             self._leases[worker_id]=renewed; self._persist()
             return renewed
 
-    def release(self,worker_id:str)->bool:
+    def release(self,worker_id:str,lease_id:str|None=None)->bool:
+        """Release only the generation the caller actually owns.
+
+        A worker slot may be reused before an older Future finishes unwinding.
+        Fencing by lease_id prevents that stale generation from deleting the
+        replacement worker's authority (the classic ABA release race).
+        """
         with self._locked():
             if self.state_path:
                 self._reload()
-            removed=self._leases.pop(worker_id,None) is not None
-            if removed:self._persist()
+            current=self._leases.get(worker_id)
+            if current is None or (lease_id is not None and current.lease_id!=lease_id):
+                return False
+            del self._leases[worker_id]
+            self._persist()
+            return True
             return removed
 
     def reconcile_owned_workers(self,active_worker_ids:set[str],owner_pid:int|None=None)->list[str]:

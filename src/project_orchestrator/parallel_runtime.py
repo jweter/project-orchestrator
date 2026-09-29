@@ -427,15 +427,18 @@ def dispatch_parallel_builders(
         def leased_builder(
             *args,
             _worker_id=slot.worker_id,
-            _resources=tuple(lease_ids),
+            _runtime_lease_id=runtime_lease.lease_id,
+            _resources=tuple(lease_ids.items()),
             **kwargs,
         ):
             try:
                 return run_builder_for_product_fn(*args, **kwargs)
             finally:
-                runtime_leases.release(_worker_id)
-                for resource_id in _resources:
-                    runtime_leases.release(f"{_worker_id}:{resource_id}")
+                runtime_leases.release(_worker_id, _runtime_lease_id)
+                for resource_id, resource_lease_id in _resources:
+                    runtime_leases.release(
+                        f"{_worker_id}:{resource_id}", resource_lease_id
+                    )
 
         try:
             worker_id = pool.submit(
