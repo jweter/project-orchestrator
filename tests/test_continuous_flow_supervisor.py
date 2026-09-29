@@ -263,6 +263,44 @@ def test_recover_stale_grant_claims_preserves_live_claim(tmp_path):
     assert supervisor.recover_stale_grant_claims(tmp_path,now)==[]
     assert json.loads(path.read_text())["grants"]["g1"]["state"]=="CLAIMED"
 
+def test_recent_claim_is_released_when_worker_is_proven_dead(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,9,29,12,45,tzinfo=UTC)
+    recent=(now-timedelta(seconds=5)).isoformat()
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
+        "state":"CLAIMED","claimed_at":recent,"last_heartbeat_at":recent,
+        "worker":{"host":"h","pid":99}}}}),encoding="utf-8")
+
+    assert supervisor.recover_stale_grant_claims(
+        tmp_path,now,lambda worker:"DEAD"
+    )==["g1"]
+
+    record=json.loads(path.read_text())["grants"]["g1"]
+    assert record["state"]=="ABANDONED"
+    assert record["result_status"]=="CLAIM_WORKER_PROVEN_DEAD"
+    assert record["worker_liveness"]=="DEAD"
+
+
+def test_recent_claim_still_fails_closed_when_liveness_is_unknown(tmp_path):
+    import json
+    from datetime import UTC, datetime, timedelta
+    import scripts.continuous_flow_supervisor as supervisor
+    now=datetime(2026,9,29,12,45,tzinfo=UTC)
+    recent=(now-timedelta(seconds=5)).isoformat()
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{"g1":{
+        "state":"CLAIMED","claimed_at":recent,"last_heartbeat_at":recent,
+        "worker":None}}}),encoding="utf-8")
+
+    assert supervisor.recover_stale_grant_claims(
+        tmp_path,now,lambda worker:"UNKNOWN"
+    )==[]
+    assert json.loads(path.read_text())["grants"]["g1"]["state"]=="CLAIMED"
+
+
 def test_recover_stale_grant_claims_never_reopens_terminal_claim(tmp_path):
     import json
     from datetime import UTC, datetime, timedelta
