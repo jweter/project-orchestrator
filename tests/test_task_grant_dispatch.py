@@ -49,6 +49,8 @@ def test_dispatch_assigns_distinct_tasks_to_same_repo_workers(tmp_path,monkeypat
     assert submissions[1][2][-1][2]["slice_id"]=="B"
     assert submissions[0][2][-1][2]["worker_id"]=="rocksmith-worker-1"
     assert submissions[1][2][-1][2]["worker_id"]=="rocksmith-worker-2"
+    assert submissions[0][2][-1][2]["runner_id"]=="claude-code"
+    assert submissions[1][2][-1][2]["runner_id"]=="aider-ollama"
 
 
 def test_planned_grants_for_disjoint_same_repo_tasks_can_coexist(tmp_path,monkeypatch):
