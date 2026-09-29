@@ -47,8 +47,17 @@ def test_persist_is_idempotent():
     assert len(second["entries"]) == 1
 
 
-def test_non_product_repository_rejected():
+def test_control_plane_failure_can_become_verified_portfolio_learning():
     values = args()
     values["repository"] = "jweter/project-orchestrator"
-    with pytest.raises(ValueError, match="not a product repository"):
+    values["source_ref"] = "pr:453"
+    lesson = verified_failure_lesson(**values)
+    assert lesson["project"] == "portfolio"
+    assert lesson["repository"] == "jweter/project-orchestrator"
+
+
+def test_unknown_repository_rejected():
+    values = args()
+    values["repository"] = "jweter/not-authorized"
+    with pytest.raises(ValueError, match="not an authorized learning repository"):
         verified_failure_lesson(**values)

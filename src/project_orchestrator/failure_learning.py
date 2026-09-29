@@ -7,6 +7,7 @@ from .repair import fingerprint_failure
 
 
 _PROJECT_BY_REPO = {
+    "jweter/project-orchestrator": "portfolio",
     "jweter/knowledge-engine-core": "knowledge-engine",
     "jweter/knowledge-engine-web": "knowledge-engine",
     "jweter/knowledge-engine-ai": "knowledge-engine",
@@ -29,7 +30,7 @@ def verified_failure_lesson(
 ) -> dict[str, Any]:
     project = _PROJECT_BY_REPO.get(repository)
     if project is None:
-        raise ValueError("repository is not a product repository")
+        raise ValueError("repository is not an authorized learning repository")
     fingerprint = fingerprint_failure(log_text)
     if fingerprint.confidence != "HIGH" or fingerprint.failure_class == "UNKNOWN":
         raise ValueError("failure fingerprint is not deterministic enough to learn")
