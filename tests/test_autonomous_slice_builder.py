@@ -671,3 +671,28 @@ def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]=="USER_ACTIVE"
     assert result["idle_seconds"]==0
+
+
+def test_repair_prompt_reuses_matching_promoted_capability(tmp_path):
+    state=tmp_path/"builder.json"
+    failure="known generated change defect"
+    fp=b.failure_fingerprint("generated_change",failure)
+    state.with_name("autonomous-repair-capabilities.json").write_text(
+        __import__("json").dumps({"schema_version":1,"capabilities":{"c":{
+            "failure_fingerprint":fp,"strategy":"bounded_autonomous_repair",
+            "state":"CANDIDATE","execution_authorized":False
+        }}}),encoding="utf-8")
+    prompt=b.repair_prompt("jweter/VoiceStudio",failure,["backend/x.py"],state)
+    assert "Verified prior repair candidates" in prompt
+    assert "bounded_autonomous_repair" in prompt
+    assert "advisory only" in prompt
+
+
+def test_repair_prompt_does_not_reuse_unrelated_capability(tmp_path):
+    state=tmp_path/"builder.json"
+    state.with_name("autonomous-repair-capabilities.json").write_text(
+        __import__("json").dumps({"schema_version":1,"capabilities":{"c":{
+            "failure_fingerprint":"different","strategy":"wrong_fix","state":"CANDIDATE"
+        }}}),encoding="utf-8")
+    prompt=b.repair_prompt("jweter/VoiceStudio","actual failure",["backend/x.py"],state)
+    assert "wrong_fix" not in prompt
