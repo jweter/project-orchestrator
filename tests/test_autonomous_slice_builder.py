@@ -696,3 +696,22 @@ def test_repair_prompt_does_not_reuse_unrelated_capability(tmp_path):
         }}}),encoding="utf-8")
     prompt=b.repair_prompt("jweter/VoiceStudio","actual failure",["backend/x.py"],state)
     assert "wrong_fix" not in prompt
+
+
+def test_worker_workspace_retries_transient_fetch(monkeypatch,tmp_path):
+    root=tmp_path/"root"; name="repo"; canonical=root/name; canonical.mkdir(parents=True); ws=root/".worker-worktrees"/"worker"/name; ws.mkdir(parents=True)
+    calls={"fetch":0}; sleeps=[]
+    class R:
+        def __init__(self,returncode=0,stdout="",stderr=""):
+            self.returncode=returncode; self.stdout=stdout; self.stderr=stderr
+    def fake_run(argv,cwd=None,**kwargs):
+        if argv[:3]==["git","fetch","--prune"]:
+            calls["fetch"]+=1
+            return R(1,stderr="temporary network") if calls["fetch"]<3 else R()
+        if argv[:4]==["git","remote","get-url","origin"]: return R(stdout="https://github.com/jweter/repo.git")
+        if argv[:2]==["git","status"]: return R()
+        return R()
+    monkeypatch.setattr(b,"run",fake_run); monkeypatch.setattr(b.time,"sleep",lambda x:sleeps.append(x))
+    assert b.ensure_workspace("jweter/repo",root,"worker")==ws
+    assert calls["fetch"]==3
+    assert sleeps==[0.25,0.5]
