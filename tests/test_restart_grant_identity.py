@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import pytest
 from scripts.continuous_flow_supervisor import conflicting_nonterminal_grant
 
@@ -35,3 +36,18 @@ def test_unreadable_lifecycle_fails_closed(tmp_path):
     (tmp_path/"hands-off-grant-lifecycle.json").write_text("{bad",encoding="utf-8")
     with pytest.raises(RuntimeError,match="GRANT_LIFECYCLE_UNREADABLE"):
         conflicting_nonterminal_grant(tmp_path,"jweter/repo",SLICE)
+
+
+def test_transient_lifecycle_permission_error_retries(tmp_path,monkeypatch):
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    lifecycle.write_text(json.dumps({"grants":{}}),encoding="utf-8")
+    original=Path.read_text
+    attempts={"count":0}
+    def flaky_read_text(self,*args,**kwargs):
+        if self==lifecycle and attempts["count"]<2:
+            attempts["count"]+=1
+            raise PermissionError("atomic replace in progress")
+        return original(self,*args,**kwargs)
+    monkeypatch.setattr(Path,"read_text",flaky_read_text)
+    assert conflicting_nonterminal_grant(tmp_path,"jweter/repo",SLICE) is None
+    assert attempts["count"]==2
