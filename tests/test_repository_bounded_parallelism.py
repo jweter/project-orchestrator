@@ -40,11 +40,14 @@ def test_dispatch_capacity_is_driven_by_ready_tasks_not_repository_count(tmp_pat
     }
 
 
-def test_dispatch_refreshes_default_runner_health_at_each_burst(tmp_path,monkeypatch):
+def test_dispatch_refreshes_runner_health_when_cached_capacity_is_exhausted(tmp_path,monkeypatch):
     activation={"products":{
         "voicestudio":{"repositories":{"jweter/VoiceStudio":"f"}},
     }}
     (tmp_path/"hands-off-activation.json").write_text(json.dumps(activation),encoding="utf-8")
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{
+        "active-aider":{"state":"ISSUED","runner_id":"aider-ollama"},
+    }}),encoding="utf-8")
     task=("jweter/VoiceStudio","f",{
         "repository":"jweter/VoiceStudio",
         "exact_head":"f",
@@ -54,16 +57,51 @@ def test_dispatch_refreshes_default_runner_health_at_each_burst(tmp_path,monkeyp
     monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,act,product,limit:[task])
     monkeypatch.setattr(supervisor,"RUNTIME_LEASES",supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
     from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+    cached=RunnerRegistry([
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30,True),
+        RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20,False),
+    ])
     fresh=RunnerRegistry([
-        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30,False),
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30,True),
         RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20,True),
     ])
-    monkeypatch.setattr(supervisor._parallel_runtime,"default_runner_registry",lambda:fresh)
+    monkeypatch.setattr(supervisor._parallel_runtime,"DEFAULT_RUNNERS",cached)
+    refreshes=[]
+    monkeypatch.setattr(supervisor._parallel_runtime,"default_runner_registry",lambda:(refreshes.append(True) or fresh))
     pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=1,executor_factory=ManualExecutor)
 
     workers=supervisor.dispatch_parallel_builders(
         pool,tmp_path,tmp_path,tmp_path,["voicestudio"])
 
     assert workers==["voicestudio-worker-1"]
+    assert refreshes==[True]
     blocked=json.loads((tmp_path/"dispatch-blocks.json").read_text(encoding="utf-8"))["blocked"]
     assert not any(row["reason"]=="NO_ELIGIBLE_RUNNER" for row in blocked)
+
+
+def test_dispatch_does_not_probe_runner_health_when_cached_runner_is_available(tmp_path,monkeypatch):
+    activation={"products":{
+        "voicestudio":{"repositories":{"jweter/VoiceStudio":"f"}},
+    }}
+    (tmp_path/"hands-off-activation.json").write_text(json.dumps(activation),encoding="utf-8")
+    task=("jweter/VoiceStudio","f",{
+        "repository":"jweter/VoiceStudio","exact_head":"f","slice_id":"v1","allowed_paths":["backend/"],
+    })
+    monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,act,product,limit:[task])
+    monkeypatch.setattr(supervisor,"RUNTIME_LEASES",supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
+    from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+    cached=RunnerRegistry([
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30,True),
+    ])
+    monkeypatch.setattr(supervisor._parallel_runtime,"DEFAULT_RUNNERS",cached)
+    monkeypatch.setattr(
+        supervisor._parallel_runtime,
+        "default_runner_registry",
+        lambda:(_ for _ in ()).throw(AssertionError("health refresh should stay off fast path")),
+    )
+    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=1,executor_factory=ManualExecutor)
+
+    workers=supervisor.dispatch_parallel_builders(
+        pool,tmp_path,tmp_path,tmp_path,["voicestudio"])
+
+    assert workers==["voicestudio-worker-1"]
