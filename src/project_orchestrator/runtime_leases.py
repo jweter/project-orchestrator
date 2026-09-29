@@ -268,7 +268,6 @@ class RuntimeLeasePool:
             del self._leases[worker_id]
             self._persist()
             return True
-            return removed
 
     def reconcile_owned_workers(self,active_worker_ids:set[str],owner_pid:int|None=None)->list[str]:
         """Release this supervisor's durable leases when no in-memory worker owns them."""
