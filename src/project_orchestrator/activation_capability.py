@@ -12,6 +12,48 @@ from .state_io import atomic_json
 from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
 
+def ensure_portfolio_workspaces(repo_root:Path,workspace_root:Path,state_root:Path,*,ensure_workspace_fn)->dict:
+    """Guarantee every engineering/portfolio.json repository has a canonical workspace.
+
+    Runs before live-head observation/readiness/dispatch so a repository that
+    was never cloned locally (notably a newly onboarded product such as
+    jweter/VoiceStudio) cannot silently stay invisible to activation and
+    starve its product lane forever. Only ever provisions a workspace that is
+    entirely absent; an existing canonical workspace -- dirty or clean -- is
+    never touched here, so in-flight autonomous work is never destroyed.
+    """
+    try:
+        portfolio=json.loads((repo_root/"engineering"/"portfolio.json").read_text(encoding="utf-8"))
+        repos=sorted({
+            repo["name"]
+            for project in portfolio.get("projects",[])
+            for repo in project.get("repositories",[])
+            if isinstance(repo,dict) and isinstance(repo.get("name"),str) and repo["name"]
+        })
+    except (OSError,json.JSONDecodeError,TypeError,AttributeError):
+        return {"schema_version":1,"status":"PORTFOLIO_CONTRACT_UNREADABLE","repositories":{}}
+
+    results:dict[str,dict]={}
+    for repo in repos:
+        ws=workspace_root/repo.split("/",1)[-1]
+        if ws.is_dir():
+            results[repo]={"status":"PRESENT"}
+            continue
+        try:
+            ensure_workspace_fn(repo,workspace_root)
+            results[repo]={"status":"PROVISIONED"}
+        except (RuntimeError,OSError) as exc:
+            results[repo]={"status":"PROVISION_FAILED","reason":str(exc)}
+
+    payload={
+        "schema_version":1,
+        "status":"OK" if all(row["status"]!="PROVISION_FAILED" for row in results.values()) else "DEGRADED",
+        "repositories":results,
+        "recorded_at_utc":datetime.now(UTC).isoformat(),
+    }
+    atomic_json(state_root/"portfolio-workspace-provisioning.json",payload)
+    return payload
+
 def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path,run_fn=subprocess.run)->tuple[bool,str]:
     """Snapshot contract-declared workspace identity and HEAD independently of readiness certificates."""
     try:

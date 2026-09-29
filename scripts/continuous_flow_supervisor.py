@@ -10,6 +10,7 @@ from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
 from scripts.agent_voice import manager_status, worker_status
 from scripts.blocker_buddy import diagnose as diagnose_blocker
+from scripts.autonomous_slice_builder import ensure_workspace
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
@@ -599,6 +600,8 @@ def main()->int:
     rotation_evidence=None
     worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6)
     atexit.register(worker_pool.shutdown,wait=False)
+    dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state)
+    workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
     while True:
         if human_mode_active(state):
             atomic(state/"supervisor-human-ownership.json",{
@@ -643,6 +646,8 @@ def main()->int:
             recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
         quarantines=quarantined_grants(state)
         publish_direction_outbox(state)
+        dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state)
+        workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
@@ -710,6 +715,15 @@ def main()->int:
         idle_streaks=_planning.record_eligible_idle_streaks(
             state,products,current_invocation_id=dispatch_invocation_id,
         )
+        degraded_reasons=[]
+        if workspace_provisioning.get("status") != "OK":
+            degraded_reasons.append({"reason":"WORKSPACE_PROVISIONING_DEGRADED","details":workspace_provisioning})
+        if convergence.get("status") != "CONVERGED":
+            degraded_reasons.append({"reason":convergence.get("status"),"products":convergence.get("unexplained_eligible_products",[])})
+        if idle_streaks.get("status") == "P1_LIVENESS_DEFECT":
+            degraded_reasons.append({"reason":"P1_LIVENESS_DEFECT"})
+        if liveness.get("status") in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}:
+            degraded_reasons.append({"reason":liveness.get("status")})
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
@@ -717,6 +731,7 @@ def main()->int:
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
         healthy=(builder_ok and linear_rc in (None,0) and not quarantines
+                 and workspace_provisioning.get("status")=="OK"
                  and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}
                  and convergence["status"]=="CONVERGED"
                  and idle_streaks["status"]!="P1_LIVENESS_DEFECT")
@@ -732,6 +747,9 @@ def main()->int:
             "productive_liveness":liveness,
             "product_convergence":convergence,
             "eligible_idle_streaks":idle_streaks,
+            "workspace_provisioning":workspace_provisioning,
+            "dead_builder_reconciliation":dead_builder_reconciliation,
+            "degraded_reasons":degraded_reasons,
             "liveness_reacquire":liveness_reacquire,
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,
