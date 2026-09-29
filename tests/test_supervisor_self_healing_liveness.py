@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
-from project_orchestrator.activation_capability import ensure_portfolio_workspaces
+from project_orchestrator.activation_capability import ensure_portfolio_workspaces, evolution_authorized
 from project_orchestrator.planning_dispatch import product_convergence
 from project_orchestrator.supervisor_runtime import (
     DEAD_BUILDER_STATE,
@@ -85,3 +85,41 @@ def test_four_product_convergence_flags_unexplained_idle(tmp_path):
     assert result["unexplained_eligible_products"] == [
         "everward", "knowledge-engine", "rocksmith", "voicestudio"
     ]
+
+
+
+def test_activation_product_set_drift_surfaces_missing_voicestudio(tmp_path):
+    repo_root = tmp_path / "orchestrator"
+    (repo_root / "engineering").mkdir(parents=True)
+    (repo_root / "engineering" / "hands-off-evolution.json").write_text(json.dumps({
+        "products": {
+            "knowledge-engine": ["jweter/knowledge-engine-core"],
+            "rocksmith": ["jweter/rocksmith-cdlc-generator"],
+            "everward": ["jweter/Project-Everward"],
+            "voicestudio": ["jweter/VoiceStudio"],
+        }
+    }))
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "hands-off-activation.json").write_text("{}")
+    (state / "hands-off-live-heads.json").write_text("{}")
+
+    payload = {
+        "reason": "ACTIVATED",
+        "products": {
+            "knowledge-engine": {"allowed": True},
+            "rocksmith": {"allowed": True},
+            "everward": {"allowed": True},
+        },
+    }
+    fake_run = lambda *a, **k: SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr="")
+    ok, reason, products, stale = evolution_authorized(
+        repo_root,
+        tmp_path / "workspaces",
+        state,
+        observe_fn=lambda *a, **k: (True, "LIVE_HEADS_OBSERVED"),
+        run_fn=fake_run,
+    )
+    assert ok is True
+    assert products == ["everward", "knowledge-engine", "rocksmith"]
+    assert stale == ["voicestudio"]

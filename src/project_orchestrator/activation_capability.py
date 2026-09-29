@@ -93,8 +93,16 @@ def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path,*,ob
         results=payload.get("products",{})
         products=sorted(name for name,result in results.items()
                         if isinstance(result,dict) and result.get("allowed") is True)
-        stale=sorted(name for name,result in results.items()
-                     if isinstance(result,dict) and result.get("reason")=="PRODUCT_HEADS_STALE")
+        stale_products={
+            name for name,result in results.items()
+            if isinstance(result,dict) and result.get("reason")=="PRODUCT_HEADS_STALE"
+        }
+        try:
+            contract=json.loads((repo_root/"engineering"/"hands-off-evolution.json").read_text(encoding="utf-8"))
+            declared_products=set(contract.get("products",{}))
+        except (OSError,json.JSONDecodeError,TypeError,AttributeError):
+            declared_products=set()
+        stale=sorted(stale_products | (declared_products-set(results)))
     except (json.JSONDecodeError,TypeError):
         reason="ACTIVATION_UNREADABLE"
         products=[]
