@@ -965,6 +965,10 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         cleanup_aider_artifacts(ws)
         paths=changed_paths(ws,base)
         if repair.returncode!=0:
+            retain_failure_lesson(
+                state_path,"bounded_repair",f"{repair_fingerprint}:repair_execution_failed",
+                "NEGATIVE_REPAIR_EVIDENCE",
+            )
             reset_workspace(ws,base)
             result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
                     "initial_failure":initial_failure,"final_failure":"repair_execution_failed",
@@ -976,17 +980,15 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             atomic_json(state_path,result); return result
         final_failure=generated_change_failure(ws,base,paths,slice_authority)
         if final_failure:
+            retain_failure_lesson(
+                state_path,"bounded_repair",
+                f"{repair_fingerprint}:{final_failure}","NEGATIVE_REPAIR_EVIDENCE",
+            )
             reset_workspace(ws,base)
             result={"status":"AUTONOMOUS_CHANGE_REJECTED","repository":repo,
                     "initial_failure":initial_failure,"final_failure":final_failure,
                     "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
-        if repair_fingerprint:
-            record_verified_repair(
-                state_path,repair_fingerprint,"bounded_autonomous_repair",
-                "generated change validator passed after repair",
-            )
-            promote_verified_repairs(state_path)
     run(["git","add","-A"],ws)
     commit=run(["git","commit","-m",f"actor autonomous bounded slice {stamp}"],ws)
     if commit.returncode:
@@ -1017,6 +1019,12 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         generated_change_failure_fn=generated_change_failure,
         run_fn=run,
         pr_number_from_url_fn=pr_number_from_url,
+        verified_repair=(
+            {"fingerprint":repair_fingerprint,"strategy":"bounded_autonomous_repair"}
+            if repair_fingerprint else None
+        ),
+        record_verified_repair_fn=record_verified_repair,
+        promote_verified_repairs_fn=promote_verified_repairs,
     )
 
 def pr_number_from_url(value:str)->int|None:

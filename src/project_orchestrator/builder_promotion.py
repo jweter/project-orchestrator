@@ -32,6 +32,9 @@ def promote_candidate(
     generated_change_failure_fn: Callable,
     run_fn: Callable,
     pr_number_from_url_fn: Callable,
+    verified_repair: dict[str, str] | None = None,
+    record_verified_repair_fn: Callable | None = None,
+    promote_verified_repairs_fn: Callable | None = None,
 ) -> dict[str, Any]:
     """Verify, rebase-refresh, publish, and open a PR for one committed candidate."""
     preflight, verified_head, head_stable = run_exact_head_preflight_fn(ws, head)
@@ -116,6 +119,15 @@ def promote_candidate(
             evidence_binding,
             advance_grant_stage_fn,
         )
+
+    if verified_repair and record_verified_repair_fn and promote_verified_repairs_fn:
+        record_verified_repair_fn(
+            state_path,
+            verified_repair["fingerprint"],
+            verified_repair["strategy"],
+            "canonical exact-head preflight and required candidate review passed",
+        )
+        promote_verified_repairs_fn(state_path)
 
     refresh = refresh_base_before_publish_fn(ws, main_branch, base)
     if refresh["status"] == "FETCH_FAILED":
