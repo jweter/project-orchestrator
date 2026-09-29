@@ -99,6 +99,10 @@ class RuntimeLeasePool:
                     pid=int(current["pid"]); fp=current["fingerprint"]
                     alive=self._pid_alive(pid)
                     stale=(not alive) or self._fingerprint(pid)!=fp
+                    acquired_at=float(current.get("acquired_at",0) or 0)
+                    same_owner=(pid==owner_pid and fp==owner_fp)
+                    if same_owner and acquired_at and time.time()-acquired_at>max(timeout*2,10.0):
+                        stale=True
                 except (OSError,json.JSONDecodeError,KeyError,TypeError,ValueError):
                     stale=False
                 if stale:
@@ -255,6 +259,24 @@ class RuntimeLeasePool:
             removed=self._leases.pop(worker_id,None) is not None
             if removed:self._persist()
             return removed
+
+    def reconcile_owned_workers(self,active_worker_ids:set[str],owner_pid:int|None=None)->list[str]:
+        """Release this supervisor's durable leases when no in-memory worker owns them."""
+        pid=owner_pid or os.getpid()
+        fp=self._fingerprint(pid)
+        if not fp:
+            raise RuntimeError("RUNTIME_OWNER_FINGERPRINT_UNAVAILABLE")
+        removed=[]
+        with self._locked():
+            if self.state_path:
+                self._reload()
+            for worker_id,lease in list(self._leases.items()):
+                if lease.owner_pid==pid and lease.owner_fingerprint==fp and worker_id not in active_worker_ids:
+                    del self._leases[worker_id]
+                    removed.append(worker_id)
+            if removed:
+                self._persist()
+        return sorted(removed)
 
     def snapshot(self)->dict:
         return {"schema_version":2,"capacities":dict(self._capacities),

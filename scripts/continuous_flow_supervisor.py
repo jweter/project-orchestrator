@@ -661,6 +661,8 @@ def main()->int:
                 activation_reason=refresh_reason
         products=products if authorized else []
         parallel_results=harvest_parallel_builders(worker_pool,state)
+        active_worker_ids={row["worker_id"] for row in worker_pool.snapshot().get("workers",[]) if not row.get("done")}
+        runtime_lease_reconciliation=RUNTIME_LEASES.reconcile_owned_workers(active_worker_ids)
         dispatch_invocation_id=uuid.uuid4().hex if products else None
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
@@ -681,6 +683,7 @@ def main()->int:
         # on disk as phantom RUNNING workers until another dispatch occurs.
         atomic(state/"parallel-worker-pool.json",{
             "schema_version":2,"pool":pool_snapshot,"runtime_leases":RUNTIME_LEASES.snapshot(),
+            "runtime_lease_reconciliation":runtime_lease_reconciliation,
             "dispatched":dispatched_workers,"dispatch_invocation_id":dispatch_invocation_id,
             "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
             "recorded_at_utc":datetime.now(UTC).isoformat(),
