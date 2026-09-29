@@ -163,3 +163,15 @@ def test_aged_same_process_lock_is_reclaimed(tmp_path):
     pool=RuntimeLeasePool({"native-windows":1},state,fp,lambda pid:True)
     assert pool.acquire("native-windows","w").worker_id=="w"
     assert not lock.exists()
+
+
+def test_stale_generation_cannot_release_replacement_lease(tmp_path):
+    state=tmp_path/"leases.json"
+    fp=lambda pid:f"p:{pid}"
+    pool=RuntimeLeasePool({"native-windows":1},state,fp,lambda pid:True)
+    old=pool.acquire("native-windows","worker",owner_pid=101)
+    assert pool.release("worker",old.lease_id) is True
+    replacement=pool.acquire("native-windows","worker",owner_pid=202)
+
+    assert pool.release("worker",old.lease_id) is False
+    assert pool.assert_fence("worker",replacement.lease_id).lease_id == replacement.lease_id
