@@ -233,7 +233,23 @@ def recover_stale_grant_claims(
                     heartbeat = heartbeat.replace(tzinfo=UTC)
             except (KeyError, TypeError, ValueError):
                 continue
-            if (current - heartbeat).total_seconds() <= CLAIM_LEASE_SECONDS:
+            claim_age = (current - heartbeat).total_seconds()
+            if claim_age <= CLAIM_LEASE_SECONDS:
+                # A lease timeout protects ambiguous/live workers; it is not a
+                # reason to retain ownership after the recorded worker is
+                # positively proven dead. Releasing that claim immediately
+                # allows the scheduler to refill the lane in the same recovery
+                # cycle while UNKNOWN and ALIVE still fail closed.
+                liveness = liveness_probe(record.get("worker"))
+                if liveness != "DEAD":
+                    continue
+                record["last_liveness_check_at"] = current.isoformat()
+                record["worker_liveness"] = liveness
+                record["state"] = "ABANDONED"
+                record["finished_at"] = current.isoformat()
+                record["result_status"] = "CLAIM_WORKER_PROVEN_DEAD"
+                abandoned.append(grant_id)
+                changed = True
                 continue
             liveness = liveness_probe(record.get("worker"))
             record["last_liveness_check_at"] = current.isoformat()
