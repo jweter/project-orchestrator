@@ -1,10 +1,11 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 from project_orchestrator.activation_capability import ensure_portfolio_workspaces, evolution_authorized
 from project_orchestrator.planning_dispatch import product_convergence
+from project_orchestrator.workspace_recovery import pending_recovery_grants
 from project_orchestrator.supervisor_runtime import (
     DEAD_BUILDER_STATE,
     reconcile_dead_builder_states,
@@ -123,3 +124,27 @@ def test_activation_product_set_drift_surfaces_missing_voicestudio(tmp_path):
     assert ok is True
     assert products == ["everward", "knowledge-engine", "rocksmith"]
     assert stale == ["voicestudio"]
+
+
+
+def test_recovery_batch_is_bounded_and_skips_future_backoff(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    now = datetime(2026, 9, 29, tzinfo=UTC)
+    grants = {
+        "new": {"state": "ABANDONED"},
+        "g0": {"state": "ABANDONED"},
+        "g1": {"state": "ABANDONED"},
+        "future": {
+            "state": "ABANDONED",
+            "recovery_next_attempt_at": (now + timedelta(hours=1)).isoformat(),
+        },
+    }
+    (state / "hands-off-grant-lifecycle.json").write_text(json.dumps({"grants": grants}))
+    result = pending_recovery_grants(
+        state,
+        newly_abandoned=["new"],
+        now=now,
+        max_batch=2,
+    )
+    assert result == ["new", "g0"]

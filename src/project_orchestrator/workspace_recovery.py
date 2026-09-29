@@ -367,40 +367,58 @@ def commit_reconciled_staged_work(ws:Path,record:dict,reconcile_fn=None)->str:
     cap["outcome"]="COMMITTED_EXACT"; cap["committed_head_sha"]=record["head_sha"]
     return "STAGED_COMMIT_RECOVERED"
 
-def pending_recovery_grants(state_root:Path,newly_abandoned:list[str]|None=None)->list[str]:
+def pending_recovery_grants(
+    state_root:Path,
+    newly_abandoned:list[str]|None=None,
+    now:datetime|None=None,
+    max_batch:int=8,
+)->list[str]:
+    """Return a bounded due batch of abandoned recovery obligations."""
+    if max_batch < 1:
+        return []
+    path=state_root/"hands-off-grant-lifecycle.json"
+    lifecycle_lock=acquire_lifecycle_lock(path)
     try:
-        """Return every durable abandoned claim that has not reached a terminal recovery state."""
-        path=state_root/"hands-off-grant-lifecycle.json"
-        lifecycle_lock=acquire_lifecycle_lock(path)
         try:
             payload=json.loads(path.read_text(encoding="utf-8"))
             grants=payload.get("grants",{})
         except (OSError,json.JSONDecodeError,TypeError):
-            return list(dict.fromkeys(newly_abandoned or []))
-        pending=list(newly_abandoned or [])
+            return list(dict.fromkeys(newly_abandoned or []))[:max_batch]
+        current=now or datetime.now(UTC)
+        pending=list(dict.fromkeys(newly_abandoned or []))
         changed=False
         for grant_id,record in grants.items():
+            if len(pending)>=max_batch:
+                break
             if not isinstance(record,dict) or record.get("state")!="ABANDONED":
                 continue
             recovery_state=record.get("recovery_state")
-            if recovery_state not in {"RECOVERED","QUARANTINED"}:
-                pending.append(grant_id)
-            elif (recovery_state=="QUARANTINED" and record.get("execution_stage")=="COMMITTED"
-                  and record.get("head_sha") and record.get("recovery_result") in {
-                      "PRESERVED_COMMIT_RECOVERED","CONSUMED_RECOVERY_COMMIT_ADOPTED","STAGED_COMMIT_RECOVERED"
-                  }):
-                # Exact recovered commits must re-enter durable push/PR recovery.
+            eligible=recovery_state not in {"RECOVERED","QUARANTINED"}
+            if (recovery_state=="QUARANTINED" and record.get("execution_stage")=="COMMITTED"
+                and record.get("head_sha") and record.get("recovery_result") in {
+                    "PRESERVED_COMMIT_RECOVERED","CONSUMED_RECOVERY_COMMIT_ADOPTED","STAGED_COMMIT_RECOVERED"
+                }):
                 record["recovery_state"]="RECOVERING"
+                recovery_state="RECOVERING"
+                eligible=True
                 changed=True
-                pending.append(grant_id)
+            if not eligible or grant_id in pending:
+                continue
+            next_attempt=record.get("recovery_next_attempt_at")
+            if next_attempt:
+                try:
+                    due=datetime.fromisoformat(next_attempt)
+                    if due.tzinfo is None:
+                        due=due.replace(tzinfo=UTC)
+                    if current<due:
+                        continue
+                except (TypeError,ValueError):
+                    pass
+            pending.append(grant_id)
         if changed:
-            try:
-                payload["grants"]=grants
-                atomic_json(path,payload)
-            except (OSError,TypeError):
-                return list(dict.fromkeys(newly_abandoned or []))
-        return list(dict.fromkeys(pending))
-
+            payload["grants"]=grants
+            atomic_json(path,payload)
+        return pending[:max_batch]
     finally:
         release_lifecycle_lock(lifecycle_lock)
 
