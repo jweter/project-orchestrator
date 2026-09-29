@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,10 +24,16 @@ def conflicting_nonterminal_grant(
     path = state_root / "hands-off-grant-lifecycle.json"
     if not path.exists():
         return None
-    try:
-        grants = json.loads(path.read_text(encoding="utf-8")).get("grants", {})
-    except (OSError, json.JSONDecodeError, TypeError) as exc:
-        raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE") from exc
+    for attempt in range(5):
+        try:
+            grants = json.loads(path.read_text(encoding="utf-8")).get("grants", {})
+            break
+        except PermissionError as exc:
+            if attempt == 4:
+                raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE") from exc
+            time.sleep(0.05 * (attempt + 1))
+        except (OSError, json.JSONDecodeError, TypeError) as exc:
+            raise RuntimeError("GRANT_LIFECYCLE_UNREADABLE") from exc
     for grant_id, record in grants.items():
         if not isinstance(record, dict):
             continue
