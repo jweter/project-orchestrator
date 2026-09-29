@@ -638,12 +638,10 @@ def main()->int:
         released_recovery_generations=recover_stale_recovery_generations(state)
         abandoned_grants=recover_stale_grant_claims(state)
         recovery_queue=pending_recovery_grants(state,abandoned_grants)
-        recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
+        recovery_results={}
         preserved_work_rechecks=recheck_preserved_work_quarantines(workspace,state)
         quarantine_rechecks=recheck_quarantined_claims(state)
         newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
-        if newly_released:
-            recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
         quarantines=quarantined_grants(state)
         publish_direction_outbox(state)
         dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state)
@@ -668,6 +666,11 @@ def main()->int:
             worker_pool,repo,workspace,state,products,
             dispatch_invocation_id=dispatch_invocation_id
         ) if products else []
+        # Historical abandoned-work recovery is deliberately work-conserving:
+        # current eligible product lanes dispatch before bounded backlog cleanup.
+        recovery_results.update(reconcile_abandoned_claims(workspace,state,recovery_queue))
+        if newly_released:
+            recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
         # A completed nonproductive worker has already released its slot. Refill
         # immediately in the same burst pass instead of waiting for the next loop.
         # This turns ownership/no-work/exception outcomes into routing feedback.
