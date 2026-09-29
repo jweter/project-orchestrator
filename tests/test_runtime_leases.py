@@ -163,16 +163,3 @@ def test_aged_same_process_lock_is_reclaimed(tmp_path):
     pool=RuntimeLeasePool({"native-windows":1},state,fp,lambda pid:True)
     assert pool.acquire("native-windows","w").worker_id=="w"
     assert not lock.exists()
-
-
-def test_reconcile_owned_workers_releases_only_inactive_same_owner(tmp_path):
-    state=tmp_path/"leases.json"
-    fp=lambda pid:f"p:{pid}"
-    pool=RuntimeLeasePool({"native-windows":3},state,fp,lambda pid:True)
-    pid=os.getpid()
-    pool.acquire("native-windows","active",owner_pid=pid)
-    pool.acquire("native-windows","orphan",owner_pid=pid)
-    pool.acquire("native-windows","foreign",owner_pid=777)
-    removed=pool.reconcile_owned_workers({"active"},owner_pid=pid)
-    assert removed==["orphan"]
-    assert {row["worker_id"] for row in pool.snapshot()["leases"]}=={"active","foreign"}
