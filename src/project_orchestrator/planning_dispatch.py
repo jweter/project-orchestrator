@@ -633,8 +633,22 @@ def record_eligible_idle_streaks(
         ).get("grants", {})
     except (OSError, json.JSONDecodeError, TypeError):
         grants = {}
+    active_grant_stale_seconds = 900
+    current_time = datetime.now(UTC)
     for record in grants.values():
         if not isinstance(record, dict) or record.get("state") not in {"ISSUED", "CLAIMED", "RUNNING"}:
+            continue
+        stamp = (
+            record.get("last_heartbeat_at")
+            or record.get("stage_updated_at")
+            or record.get("claimed_at")
+            or record.get("issued_at")
+        )
+        try:
+            observed_at = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if (current_time - observed_at).total_seconds() > active_grant_stale_seconds:
             continue
         repository = record.get("repository")
         authority = record.get("execution_slice")
