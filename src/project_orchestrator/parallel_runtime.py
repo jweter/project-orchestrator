@@ -353,7 +353,8 @@ def dispatch_parallel_builders(
             })
 
     assigned = {product: 0 for product in products}
-    runners = runner_registry or default_runner_registry()
+    runners = runner_registry or DEFAULT_RUNNERS
+    default_registry_refreshed = runner_registry is not None
     runner_running = durable_runner_occupancy(state_root)
 
     for slot in pool.available_slots(products):
@@ -364,9 +365,26 @@ def dispatch_parallel_builders(
         planned_target = batch[index]
         try:
             runner_task = planned_target[2]
-            runner_id = select_adaptive_runner(
-                runner_task, state_root, runners, runner_running
-            )
+            try:
+                runner_id = select_adaptive_runner(
+                    runner_task, state_root, runners, runner_running
+                )
+            except RuntimeError as runner_exc:
+                if (
+                    not default_registry_refreshed
+                    and str(runner_exc).split(":", 1)[0] == "NO_ELIGIBLE_RUNNER"
+                ):
+                    # External runner health is mutable during a long-lived
+                    # supervisor process. Refresh only when the cached registry
+                    # would otherwise idle an eligible lane, keeping the normal
+                    # dispatch path free of repeated auth probes.
+                    runners = default_runner_registry()
+                    default_registry_refreshed = True
+                    runner_id = select_adaptive_runner(
+                        runner_task, state_root, runners, runner_running
+                    )
+                else:
+                    raise
             runtime_id = runtime_for_task(planned_target[2])
         except (RuntimeError, ValueError) as exc:
             blocked.append({
