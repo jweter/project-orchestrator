@@ -396,6 +396,7 @@ def dispatch_parallel_builders(
             })
             continue
 
+        planned_target[2]["runner_id"] = runner_id
         planned_target[2]["execution_runtime"] = runtime_id
         planned_target[2]["worker_id"] = slot.worker_id
         runtime = DEFAULT_EXECUTION_RUNTIMES.require(runtime_id)
