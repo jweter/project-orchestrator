@@ -17,8 +17,10 @@ from .decision_outcome import attribute as attribute_decision_outcome
 from .grant_issuance import finalize_unclaimed_grant
 from .jev_evidence import load_jsonl
 from .parallel_worker_pool import ParallelWorkerPool
-from .recovery_manager import process_start_fingerprint
+from .recovery_manager import UNKNOWN_LIVENESS_MAX_CHECKS, process_start_fingerprint, worker_liveness
 from .state_io import atomic_json
+
+DEAD_BUILDER_STATE = "DEAD_BUILDER_STATE"
 
 
 def builder_health(
@@ -272,6 +274,7 @@ def mark_builder_running(
     worker_id: str | None,
     runner_id: str,
     runtime_id: str,
+    fingerprint_fn: Callable[[int | None], str | None] = process_start_fingerprint,
 ) -> dict:
     try:
         grant_id = json.loads(grant_path.read_text(encoding="utf-8")).get("grant_id")
@@ -285,12 +288,91 @@ def mark_builder_running(
         "runner_id": runner_id,
         "runtime_id": runtime_id,
         "started_at_utc": datetime.now(UTC).isoformat(),
+        # Binds this BUILDER_RUNNING record to the concrete process/incarnation
+        # holding it, so a future cycle can prove the record dead rather than
+        # trusting a status string a crashed process can never update again.
+        "worker": {
+            "host": socket.gethostname(),
+            "pid": os.getpid(),
+            "process_start_fingerprint": fingerprint_fn(None),
+        },
     }
     if grant_id:
         payload["grant_id"] = grant_id
     atomic_json(builder_state, payload)
     builder_output.write_text("", encoding="utf-8")
     return payload
+
+
+def reconcile_dead_builder_states(
+    state_root: Path,
+    now: datetime | None = None,
+    *,
+    liveness_probe: Callable[[dict | None], str] = worker_liveness,
+    unknown_liveness_max_checks: int = UNKNOWN_LIVENESS_MAX_CHECKS,
+) -> dict[str, str]:
+    """Terminal-state BUILDER_RUNNING records whose owning process is proven dead.
+
+    A crashed or replaced supervisor/worker incarnation can leave a
+    worker-state builder.json permanently claiming BUILDER_RUNNING. Nothing
+    can ever update that file again, so it must never be trusted as evidence
+    that a worker slot is occupied. This scans every worker-state builder.json
+    (plus the legacy top-level file) and, only once the recorded owning
+    process is provably dead, rewrites the record to a terminal
+    DEAD_BUILDER_STATE with a structured reason. Liveness that cannot be
+    proven (no recorded identity, cross-host, PID reuse ambiguity) fails
+    closed and is retried on a later cycle, quarantining only after repeated
+    unknown checks, mirroring grant-claim liveness reconciliation.
+    """
+    current = now or datetime.now(UTC)
+    outcomes: dict[str, str] = {}
+    candidates: list[Path] = []
+    top_level = state_root / "builder.json"
+    if top_level.exists():
+        candidates.append(top_level)
+    worker_state_dir = state_root / "worker-state"
+    if worker_state_dir.is_dir():
+        candidates.extend(sorted(worker_state_dir.glob("*/builder.json")))
+
+    for path in candidates:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(payload, dict) or payload.get("status") != "BUILDER_RUNNING":
+            continue
+        try:
+            key = str(path.relative_to(state_root))
+        except ValueError:
+            key = str(path)
+
+        liveness = liveness_probe(payload.get("worker"))
+        if liveness == "DEAD":
+            payload["status"] = DEAD_BUILDER_STATE
+            payload["prior_status"] = "BUILDER_RUNNING"
+            payload["dead_builder_reason"] = DEAD_BUILDER_STATE
+            payload["dead_builder_reconciled_at_utc"] = current.isoformat()
+            payload.pop("dead_builder_unknown_checks", None)
+            atomic_json(path, payload)
+            outcomes[key] = DEAD_BUILDER_STATE
+        elif liveness == "ALIVE":
+            if payload.pop("dead_builder_unknown_checks", None) is not None:
+                atomic_json(path, payload)
+            outcomes[key] = "BUILDER_RUNNING_OWNER_ALIVE"
+        else:
+            checks = int(payload.get("dead_builder_unknown_checks", 0)) + 1
+            payload["dead_builder_unknown_checks"] = checks
+            payload["dead_builder_last_liveness_check_at_utc"] = current.isoformat()
+            if checks >= unknown_liveness_max_checks:
+                payload["status"] = DEAD_BUILDER_STATE
+                payload["prior_status"] = "BUILDER_RUNNING"
+                payload["dead_builder_reason"] = f"{DEAD_BUILDER_STATE}_UNKNOWN_QUARANTINED"
+                payload["dead_builder_reconciled_at_utc"] = current.isoformat()
+                outcomes[key] = f"{DEAD_BUILDER_STATE}_UNKNOWN_QUARANTINED"
+            else:
+                outcomes[key] = "BUILDER_RUNNING_OWNER_UNKNOWN"
+            atomic_json(path, payload)
+    return outcomes
 
 
 def run_builder(

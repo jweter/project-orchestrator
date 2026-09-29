@@ -10,6 +10,7 @@ from scripts.product_completion_proof import build_completion_proof
 from scripts.windows_session_handoff import active_interactive_sessions, boot_owner_should_yield
 from scripts.agent_voice import manager_status, worker_status
 from scripts.blocker_buddy import diagnose as diagnose_blocker
+from scripts.autonomous_slice_builder import ensure_workspace
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
@@ -599,6 +600,8 @@ def main()->int:
     rotation_evidence=None
     worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6)
     atexit.register(worker_pool.shutdown,wait=False)
+    dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state)
+    workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
     while True:
         if human_mode_active(state):
             atomic(state/"supervisor-human-ownership.json",{
@@ -635,14 +638,14 @@ def main()->int:
         released_recovery_generations=recover_stale_recovery_generations(state)
         abandoned_grants=recover_stale_grant_claims(state)
         recovery_queue=pending_recovery_grants(state,abandoned_grants)
-        recovery_results=reconcile_abandoned_claims(workspace,state,recovery_queue)
+        recovery_results={}
         preserved_work_rechecks=recheck_preserved_work_quarantines(workspace,state)
         quarantine_rechecks=recheck_quarantined_claims(state)
         newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
-        if newly_released:
-            recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
         quarantines=quarantined_grants(state)
         publish_direction_outbox(state)
+        dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state)
+        workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
         authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
         if stale_products:
             for product in stale_products:
@@ -656,11 +659,27 @@ def main()->int:
                 activation_reason=refresh_reason
         products=products if authorized else []
         parallel_results=harvest_parallel_builders(worker_pool,state)
+        # RuntimeLeasePool.recover_stale() already proves owner PID + creation
+        # fingerprint before removing durable leases. Do not infer revocation from
+        # this process's in-memory Future snapshot: after supervisor restart the
+        # child can still be legitimately running while the new pool is empty.
+        runtime_lease_reconciliation=RUNTIME_LEASES.recover_stale()
         dispatch_invocation_id=uuid.uuid4().hex if products else None
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
             dispatch_invocation_id=dispatch_invocation_id
         ) if products else []
+        # Historical abandoned-work recovery is idle-capacity work. Never make
+        # an active or newly dispatched product lane wait behind backlog cleanup.
+        if not dispatched_workers and worker_pool.snapshot()["running_total"]==0:
+            recovery_results.update(reconcile_abandoned_claims(workspace,state,recovery_queue))
+            if newly_released:
+                recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
+        elif recovery_queue or newly_released:
+            recovery_results["deferred"]={
+                "status":"DEFERRED_ACTIVE_PRODUCT_WORK",
+                "queued":len(recovery_queue)+len(newly_released),
+            }
         # A completed nonproductive worker has already released its slot. Refill
         # immediately in the same burst pass instead of waiting for the next loop.
         # This turns ownership/no-work/exception outcomes into routing feedback.
@@ -676,6 +695,7 @@ def main()->int:
         # on disk as phantom RUNNING workers until another dispatch occurs.
         atomic(state/"parallel-worker-pool.json",{
             "schema_version":2,"pool":pool_snapshot,"runtime_leases":RUNTIME_LEASES.snapshot(),
+            "runtime_lease_reconciliation":runtime_lease_reconciliation,
             "dispatched":dispatched_workers,"dispatch_invocation_id":dispatch_invocation_id,
             "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
             "recorded_at_utc":datetime.now(UTC).isoformat(),
@@ -710,6 +730,15 @@ def main()->int:
         idle_streaks=_planning.record_eligible_idle_streaks(
             state,products,current_invocation_id=dispatch_invocation_id,
         )
+        degraded_reasons=[]
+        if workspace_provisioning.get("status") != "OK":
+            degraded_reasons.append({"reason":"WORKSPACE_PROVISIONING_DEGRADED","details":workspace_provisioning})
+        if convergence.get("status") != "CONVERGED":
+            degraded_reasons.append({"reason":convergence.get("status"),"products":convergence.get("unexplained_eligible_products",[])})
+        if idle_streaks.get("status") == "P1_LIVENESS_DEFECT":
+            degraded_reasons.append({"reason":"P1_LIVENESS_DEFECT"})
+        if liveness.get("status") in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}:
+            degraded_reasons.append({"reason":liveness.get("status")})
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
@@ -717,6 +746,7 @@ def main()->int:
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
         healthy=(builder_ok and linear_rc in (None,0) and not quarantines
+                 and workspace_provisioning.get("status")=="OK"
                  and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}
                  and convergence["status"]=="CONVERGED"
                  and idle_streaks["status"]!="P1_LIVENESS_DEFECT")
@@ -732,6 +762,9 @@ def main()->int:
             "productive_liveness":liveness,
             "product_convergence":convergence,
             "eligible_idle_streaks":idle_streaks,
+            "workspace_provisioning":workspace_provisioning,
+            "dead_builder_reconciliation":dead_builder_reconciliation,
+            "degraded_reasons":degraded_reasons,
             "liveness_reacquire":liveness_reacquire,
             "abandoned_grants":abandoned_grants,
             "recovery_queue":recovery_queue,

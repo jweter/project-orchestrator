@@ -1,4 +1,6 @@
+import json
 import os
+import time
 import subprocess
 import sys
 import pytest
@@ -145,3 +147,19 @@ def test_superseded_worker_cannot_cross_execution_fence(tmp_path):
     with pytest.raises(RuntimeError,match="FENCE_REJECTED"):
         pool.assert_fence("w",old.lease_id)
     assert pool.assert_fence("w",current.lease_id)==current
+
+
+
+def test_aged_same_process_lock_is_reclaimed(tmp_path):
+    state=tmp_path/"leases.json"; lock=tmp_path/"leases.json.lock"
+    fp=lambda pid:"self"
+    lock.write_text(json.dumps({
+        "schema_version":1,
+        "pid":os.getpid(),
+        "fingerprint":"self",
+        "token":"orphan",
+        "acquired_at":time.time()-60,
+    })+"\n")
+    pool=RuntimeLeasePool({"native-windows":1},state,fp,lambda pid:True)
+    assert pool.acquire("native-windows","w").worker_id=="w"
+    assert not lock.exists()
