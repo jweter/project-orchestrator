@@ -1,7 +1,7 @@
 {
   "action": "FULL_POWER",
-  "command_id": "b02eb58c-9229-4f75-973b-7306ffbb78b8",
-  "expires_at": "2026-09-29T01:14:39.028411+00:00",
-  "issued_at": "2026-09-29T01:09:39.028411+00:00",
+  "command_id": "3fbef8bf-36af-4701-8616-34b97ab9f569",
+  "expires_at": "2026-09-29T01:14:40.481110+00:00",
+  "issued_at": "2026-09-29T01:09:40.481110+00:00",
   "source": "iphone-dashboard"
 }
