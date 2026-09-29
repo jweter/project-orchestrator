@@ -356,6 +356,13 @@ def dispatch_parallel_builders(
     runners = runner_registry or DEFAULT_RUNNERS
     default_registry_refreshed = runner_registry is not None
     runner_running = durable_runner_occupancy(state_root)
+    lease_snapshot = runtime_leases.snapshot()
+    for runtime_id, count in lease_snapshot.get("running", {}).items():
+        if str(runtime_id).startswith("runner:"):
+            runner_id = str(runtime_id).split(":", 1)[1]
+            runner_running[runner_id] = max(
+                runner_running.get(runner_id, 0), int(count)
+            )
 
     for slot in pool.available_slots(products):
         batch = task_batches.get(slot.product, [])
@@ -421,7 +428,16 @@ def dispatch_parallel_builders(
         runner_running[runner_id] = runner_running.get(runner_id, 0) + 1
 
         lease_ids: dict[str, str] = {}
+        runner_lease_worker = f"{slot.worker_id}:runner"
+        runner_lease = None
         try:
+            # Runner capacity must be reserved before the asynchronous worker
+            # has time to write its grant. Without this durable reservation,
+            # a second dispatch pass can select the same scarce runner again
+            # while the first Future is still starting.
+            runner_lease = runtime_leases.acquire(
+                f"runner:{runner_id}", runner_lease_worker
+            )
             for resource_id in resource_leases_for_task(planned_target[2], runtime_id):
                 lease = runtime_leases.acquire(
                     resource_id, f"{slot.worker_id}:{resource_id}"
@@ -438,6 +454,10 @@ def dispatch_parallel_builders(
                 "slice_id": planned_target[2].get("slice_id"),
                 "reason": str(exc).split(":", 1)[0] or "RUNTIME_LEASE_UNAVAILABLE",
             })
+            if runner_lease is not None:
+                runtime_leases.release(
+                    runner_lease_worker, runner_lease.lease_id
+                )
             for resource_id in lease_ids:
                 runtime_leases.release(f"{slot.worker_id}:{resource_id}")
             continue
@@ -446,6 +466,8 @@ def dispatch_parallel_builders(
             *args,
             _worker_id=slot.worker_id,
             _runtime_lease_id=runtime_lease.lease_id,
+            _runner_lease_worker=runner_lease_worker,
+            _runner_lease_id=runner_lease.lease_id,
             _resources=tuple(lease_ids.items()),
             **kwargs,
         ):
@@ -453,6 +475,9 @@ def dispatch_parallel_builders(
                 return run_builder_for_product_fn(*args, **kwargs)
             finally:
                 runtime_leases.release(_worker_id, _runtime_lease_id)
+                runtime_leases.release(
+                    _runner_lease_worker, _runner_lease_id
+                )
                 for resource_id, resource_lease_id in _resources:
                     runtime_leases.release(
                         f"{_worker_id}:{resource_id}", resource_lease_id
@@ -478,6 +503,9 @@ def dispatch_parallel_builders(
                 "reason": str(exc).split(":", 1)[0] or "WORKER_SUBMISSION_REJECTED",
             })
             runtime_leases.release(slot.worker_id)
+            runtime_leases.release(
+                runner_lease_worker, runner_lease.lease_id
+            )
             for resource_id in lease_ids:
                 runtime_leases.release(f"{slot.worker_id}:{resource_id}")
             continue
