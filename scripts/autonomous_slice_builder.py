@@ -1163,6 +1163,11 @@ def main()->int:
         result={"status":"P1_BUILDER_FAILURE","error_class":type(exc).__name__,"error":str(exc)[:500],
                 "invocation_id":invocation_id}
         atomic_json(state,result)
+        if args.execution_grant:
+            # Failure is terminal for this worker attempt. Release lifecycle
+            # ownership immediately so the supervisor can refill the product
+            # lane in the same burst instead of waiting for stale-claim expiry.
+            finish_grant_lifecycle(args.execution_grant,result)
     print(json.dumps(result,indent=2,sort_keys=True))
     return 0 if result["status"] not in {"P1_BUILDER_FAILURE","BUILDER_FAILED"} else 1
 
