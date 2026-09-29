@@ -10,7 +10,7 @@ from .execution_runtime import DEFAULT_EXECUTION_RUNTIMES, require_runtime_capab
 from .parallel_worker_pool import ParallelWorkerPool
 from .planning_dispatch import task_affinity_class, runner_productivity_history
 from .recovery_manager import CLAIM_LEASE_SECONDS, worker_liveness
-from .runner_registry import DEFAULT_RUNNERS, RunnerRegistry
+from .runner_registry import RunnerRegistry, default_runner_registry
 from .runtime_leases import RuntimeLeasePool
 from .state_io import atomic_json
 
@@ -24,12 +24,13 @@ def runner_requirements_for_task(task: dict) -> set[str]:
 
 def select_task_runner(
     task: dict,
-    registry: RunnerRegistry = DEFAULT_RUNNERS,
+    registry: RunnerRegistry | None = None,
     running: dict[str, int] | None = None,
 ) -> str:
     if "runner_requirements" not in task and running is None:
         return "aider-ollama"
-    return registry.select(runner_requirements_for_task(task), running).runner_id
+    runners = registry or default_runner_registry()
+    return runners.select(runner_requirements_for_task(task), running).runner_id
 
 
 def runtime_for_task(task: dict, require_capabilities_fn=require_runtime_capabilities) -> str:
@@ -353,7 +354,7 @@ def dispatch_parallel_builders(
             })
 
     assigned = {product: 0 for product in products}
-    runners = runner_registry or DEFAULT_RUNNERS
+    runners = runner_registry or default_runner_registry()
     runner_running = durable_runner_occupancy(state_root)
 
     for slot in pool.available_slots(products):
