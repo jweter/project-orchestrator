@@ -105,3 +105,37 @@ def test_dispatch_does_not_probe_runner_health_when_cached_runner_is_available(t
         pool,tmp_path,tmp_path,tmp_path,["voicestudio"])
 
     assert workers==["voicestudio-worker-1"]
+
+
+def test_repeated_dispatch_uses_durable_runner_capacity_before_grant_exists(tmp_path,monkeypatch):
+    activation={"products":{
+        "knowledge-engine":{"repositories":{"jweter/core":"a"}},
+        "rocksmith":{"repositories":{"jweter/rocksmith":"b"}},
+    }}
+    (tmp_path/"hands-off-activation.json").write_text(json.dumps(activation),encoding="utf-8")
+    def task(repo,head,sid):
+        return (repo,head,{"repository":repo,"exact_head":head,"slice_id":sid,"allowed_paths":[sid+"/"]})
+    batches={
+        "knowledge-engine":[task("jweter/core","a","k1")],
+        "rocksmith":[task("jweter/rocksmith","b","r1")],
+    }
+    monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,act,product,limit:batches[product][:limit])
+    leases=supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES,tmp_path/"runtime-leases.json")
+    monkeypatch.setattr(supervisor,"RUNTIME_LEASES",leases)
+    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=2,executor_factory=ManualExecutor)
+    from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+    runners=RunnerRegistry([
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,10),
+        RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20),
+    ])
+
+    first=supervisor.dispatch_parallel_builders(
+        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine"],runners)
+    second=supervisor.dispatch_parallel_builders(
+        pool,tmp_path,tmp_path,tmp_path,["rocksmith"],runners)
+
+    assert first==["knowledge-engine-worker-1"]
+    assert second==["rocksmith-worker-1"]
+    snap=leases.snapshot()
+    assert snap["running"]["runner:aider-ollama"]==1
+    assert snap["running"]["runner:claude-code"]==1
