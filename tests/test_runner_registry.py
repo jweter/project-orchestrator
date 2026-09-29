@@ -54,3 +54,25 @@ def test_task_can_explicitly_request_capabilities():
 def test_invalid_task_requirements_fail_closed():
     with pytest.raises(RuntimeError,match="INVALID_RUNNER_REQUIREMENTS"):
         supervisor.runner_requirements_for_task({"runner_requirements":[]})
+
+
+def test_default_runner_health_refreshes_between_selections(monkeypatch):
+    import project_orchestrator.parallel_runtime as runtime
+
+    claude_enabled = {"value": False}
+
+    def fresh_registry():
+        return RunnerRegistry([
+            RunnerManifest("aider-ollama", frozenset({"code","local","windows","offline"}), 1, 30),
+            RunnerManifest("claude-code", frozenset({"code","review","local","windows","offline"}), 3, 20, claude_enabled["value"]),
+        ])
+
+    monkeypatch.setattr(runtime, "default_runner_registry", fresh_registry)
+    task={"runner_requirements":["code","local","windows","offline"]}
+    running={"aider-ollama":1}
+
+    with pytest.raises(RuntimeError, match="NO_ELIGIBLE_RUNNER"):
+        runtime.select_task_runner(task, running=running)
+
+    claude_enabled["value"]=True
+    assert runtime.select_task_runner(task, running=running)=="claude-code"
