@@ -292,4 +292,4 @@ class RuntimeLeasePool:
           "running":{rid:self.running(rid) for rid in self._capacities},
           "leases":[x.__dict__ for x in sorted(self._leases.values(),key=lambda x:x.worker_id)]}
 
-DEFAULT_RUNTIME_CAPACITIES={"native-windows":6,"laptop-actor":6,"resource:ollama":1,"resource:unreal":1}
+DEFAULT_RUNTIME_CAPACITIES={"native-windows":6,"laptop-actor":6,"resource:ollama":1,"resource:unreal":1,\n    "runner:aider-ollama":1,"runner:claude-code":3}
