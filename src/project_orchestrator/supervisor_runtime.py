@@ -401,7 +401,8 @@ def run_builder(
 
     try:
         grant_path = None
-        for attempt in range(3):
+        grant_issue_backoff=(0.05,0.10,0.20,0.30,0.40,0.50,0.50)
+        for attempt,backoff in enumerate(grant_issue_backoff):
             try:
                 grant_path = write_grant_fn(
                     repo_root,
@@ -413,13 +414,13 @@ def run_builder(
             except RuntimeError as exc:
                 if str(exc) != "GRANT_ISSUANCE_BUSY":
                     raise
-                if attempt == 2:
+                if attempt == len(grant_issue_backoff)-1:
                     atomic_json(
                         builder_state,
                         {"status": "OWNERSHIP_HELD", "reason": str(exc)},
                     )
                     return 0, None
-                sleep_fn(0.05 * (attempt + 1))
+                sleep_fn(backoff)
         assert grant_path is not None
     except RuntimeError as exc:
         if str(exc) == "ALL_EXECUTION_LANES_COMPLETE":
