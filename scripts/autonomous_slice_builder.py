@@ -790,10 +790,21 @@ def generated_change_failure(ws:Path,base:str,paths:list[str],slice_authority:di
         return quality
     return diff_anomaly_failure(ws,base)
 
-def repair_prompt(repo:str,failure:str,paths:list[str])->str:
+def repair_prompt(repo:str,failure:str,paths:list[str],state_path:Path|None=None)->str:
+    learned=[]
+    if state_path is not None:
+        fp=failure_fingerprint("generated_change",failure)
+        try:
+            payload=json.loads(state_path.with_name("autonomous-repair-capabilities.json").read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError,TypeError):
+            payload={"capabilities":{}}
+        for cap in payload.get("capabilities",{}).values():
+            if cap.get("failure_fingerprint")==fp and cap.get("state")=="CANDIDATE":
+                learned.append(str(cap.get("strategy","")))
+    learned_text=("\nVerified prior repair candidates (advisory only; re-verify normally): "+"; ".join(sorted(set(learned)))) if learned else ""
     return f"""Your autonomous change for {repo} was rejected before PR creation.
 Failure: {failure}
-Changed paths: {", ".join(paths)}
+Changed paths: {", ".join(paths)}{learned_text}
 Perform exactly ONE bounded repair attempt. Preserve all existing policy, authority, safety, security, provenance, licensing, Product Reality, and human-reserved boundaries. Do not weaken or replace configuration contracts. Reduce destructive diff size if flagged. Add regression coverage when source changed. If the requested repair cannot be made safely, revert your own changes and make no changes. Do not commit, push, or merge."""
 
 def run_preflight(ws:Path)->subprocess.CompletedProcess[str]:
@@ -939,9 +950,12 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     initial_failure=generated_change_failure(ws,base,paths,slice_authority)
+    repair_fingerprint=None
     if initial_failure:
+        lesson=retain_failure_lesson(state_path,"generated_change",initial_failure,"CHANGE_REJECTED")
+        repair_fingerprint=lesson["fingerprint"]
         repair_started_at=datetime.now(UTC)
-        repair=run_builder(ws,repair_prompt(repo,initial_failure,paths),selected_runner)
+        repair=run_builder(ws,repair_prompt(repo,initial_failure,paths,state_path),selected_runner)
         repair_finished_at=datetime.now(UTC)
         repair_seconds=max((repair_finished_at-repair_started_at).total_seconds(),0.0)
         if execution_grant is not None:
@@ -967,6 +981,12 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                     "initial_failure":initial_failure,"final_failure":final_failure,
                     "repair_attempted":True,"last_repo_index":idx,"last_repository":repo}
             atomic_json(state_path,result); return result
+        if repair_fingerprint:
+            record_verified_repair(
+                state_path,repair_fingerprint,"bounded_autonomous_repair",
+                "generated change validator passed after repair",
+            )
+            promote_verified_repairs(state_path)
     run(["git","add","-A"],ws)
     commit=run(["git","commit","-m",f"actor autonomous bounded slice {stamp}"],ws)
     if commit.returncode:
