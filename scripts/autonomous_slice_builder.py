@@ -259,9 +259,15 @@ def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
         verified=run(["git","status","--porcelain"],ws)
         if verified.returncode or verified.stdout.strip():
             raise RuntimeError("worker workspace recovery left residue")
-    fetch=run(["git","fetch","--prune","origin"],ws)
-    if fetch.returncode: raise RuntimeError("fetch failed")
-    return ws
+    fetch=None
+    for attempt,backoff in enumerate((0.25,0.50,1.0)):
+        fetch=run(["git","fetch","--prune","origin"],ws)
+        if fetch.returncode==0:
+            return ws
+        if attempt<2:
+            time.sleep(backoff)
+    detail=(fetch.stderr or fetch.stdout or f"returncode={fetch.returncode}").strip() if fetch else "unknown"
+    raise RuntimeError(f"fetch failed after 3 attempts: {detail[:1000]}")
 
 HEARTBEAT_SECONDS=60
 
