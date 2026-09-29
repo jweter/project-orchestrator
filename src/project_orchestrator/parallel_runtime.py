@@ -10,7 +10,7 @@ from .execution_runtime import DEFAULT_EXECUTION_RUNTIMES, require_runtime_capab
 from .parallel_worker_pool import ParallelWorkerPool
 from .planning_dispatch import task_affinity_class, runner_productivity_history
 from .recovery_manager import CLAIM_LEASE_SECONDS, worker_liveness
-from .runner_registry import RunnerRegistry, default_runner_registry
+from .runner_registry import DEFAULT_RUNNERS, RunnerRegistry, default_runner_registry
 from .runtime_leases import RuntimeLeasePool
 from .state_io import atomic_json
 
