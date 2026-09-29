@@ -666,11 +666,17 @@ def main()->int:
             worker_pool,repo,workspace,state,products,
             dispatch_invocation_id=dispatch_invocation_id
         ) if products else []
-        # Historical abandoned-work recovery is deliberately work-conserving:
-        # current eligible product lanes dispatch before bounded backlog cleanup.
-        recovery_results.update(reconcile_abandoned_claims(workspace,state,recovery_queue))
-        if newly_released:
-            recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
+        # Historical abandoned-work recovery is idle-capacity work. Never make
+        # an active or newly dispatched product lane wait behind backlog cleanup.
+        if not dispatched_workers and worker_pool.snapshot()["running_total"]==0:
+            recovery_results.update(reconcile_abandoned_claims(workspace,state,recovery_queue))
+            if newly_released:
+                recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
+        elif recovery_queue or newly_released:
+            recovery_results["deferred"]={
+                "status":"DEFERRED_ACTIVE_PRODUCT_WORK",
+                "queued":len(recovery_queue)+len(newly_released),
+            }
         # A completed nonproductive worker has already released its slot. Refill
         # immediately in the same burst pass instead of waiting for the next loop.
         # This turns ownership/no-work/exception outcomes into routing feedback.
