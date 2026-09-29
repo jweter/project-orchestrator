@@ -551,6 +551,45 @@ def product_convergence(
                 "state": record.get("state"),
             }
 
+    # A freshly launched builder can be authoritative before its lifecycle ledger
+    # transition is visible. Accept only identity-bearing BUILDER_RUNNING records
+    # whose grant still exists on disk; malformed/partial worker state fails closed.
+    worker_root = state_root / "worker-state"
+    if worker_root.exists():
+        for builder_path in worker_root.glob("*/builder.json"):
+            try:
+                worker = json.loads(builder_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(worker, dict) or worker.get("status") != "BUILDER_RUNNING":
+                continue
+            worker_id = worker.get("worker_id")
+            grant_id = worker.get("grant_id")
+            invocation_id = worker.get("invocation_id")
+            identity = worker.get("worker")
+            if not all(isinstance(value, str) and value for value in (worker_id, grant_id, invocation_id)):
+                continue
+            if not isinstance(identity, dict) or not identity.get("pid") or not identity.get("process_start_fingerprint"):
+                continue
+            grant_path = state_root / "hands-off-execution-grants" / f"{grant_id}.json"
+            try:
+                grant = json.loads(grant_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            repository = grant.get("repository")
+            authority = grant.get("execution_slice")
+            if not repository and isinstance(authority, dict):
+                repository = authority.get("repository")
+            product = product_for_repository(repository)
+            if product in authorized and product not in active:
+                active[product] = {
+                    "grant_id": grant_id,
+                    "repository": repository,
+                    "state": "BUILDER_RUNNING",
+                    "worker_id": worker_id,
+                    "invocation_id": invocation_id,
+                }
+
     reasons = {}
     try:
         blocks = json.loads((state_root / "dispatch-blocks.json").read_text(encoding="utf-8"))
