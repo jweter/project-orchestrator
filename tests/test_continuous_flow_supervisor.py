@@ -1121,6 +1121,46 @@ def test_product_convergence_flags_unexplained_authorized_product(tmp_path):
     assert result["unexplained_eligible_products"]==["everward","knowledge-engine","rocksmith"]
 
 
+
+def test_product_convergence_accepts_identity_bearing_live_worker(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{}}))
+    grants=state/"hands-off-execution-grants"; grants.mkdir()
+    (grants/"g-live.json").write_text(json.dumps({
+        "repository":"jweter/VoiceStudio",
+        "execution_slice":{"repository":"jweter/VoiceStudio"},
+    }))
+    worker=state/"worker-state"/"voicestudio-worker-1"; worker.mkdir(parents=True)
+    (worker/"builder.json").write_text(json.dumps({
+        "status":"BUILDER_RUNNING","worker_id":"voicestudio-worker-1",
+        "grant_id":"g-live","invocation_id":"inv-live",
+        "worker":{"pid":3156,"process_start_fingerprint":"windows:123"},
+    }))
+    result=supervisor.product_convergence(state,["voicestudio"])
+    assert result["status"]=="CONVERGED"
+    assert result["active_products"]["voicestudio"]["state"]=="BUILDER_RUNNING"
+    assert result["active_products"]["voicestudio"]["invocation_id"]=="inv-live"
+
+
+def test_product_convergence_rejects_incomplete_live_worker_identity(tmp_path):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    state=tmp_path/"state"; state.mkdir()
+    (state/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{}}))
+    grants=state/"hands-off-execution-grants"; grants.mkdir()
+    (grants/"g-live.json").write_text(json.dumps({"repository":"jweter/VoiceStudio"}))
+    worker=state/"worker-state"/"voicestudio-worker-1"; worker.mkdir(parents=True)
+    (worker/"builder.json").write_text(json.dumps({
+        "status":"BUILDER_RUNNING","worker_id":"voicestudio-worker-1",
+        "grant_id":"g-live","invocation_id":"inv-live","worker":{"pid":3156},
+    }))
+    result=supervisor.product_convergence(state,["voicestudio"])
+    assert result["status"]=="UNEXPLAINED_ELIGIBLE_IDLE"
+    assert result["unexplained_eligible_products"]==["voicestudio"]
+
+
 def test_product_convergence_resolves_issued_repository_from_execution_slice(tmp_path):
     import json
     import scripts.continuous_flow_supervisor as supervisor
