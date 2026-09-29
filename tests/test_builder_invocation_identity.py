@@ -112,7 +112,6 @@ def test_builder_exception_finalizes_claimed_grant_immediately(tmp_path,monkeypa
     lifecycle.write_text(json.dumps({"schema_version":1,"grants":{"grant-1":{"state":"CLAIMED","claimed_at":"2026-09-29T10:00:00+00:00"}}}),encoding="utf-8")
     monkeypatch.setattr(builder,"granted_repositories",lambda *a,**k:{"jweter/repo":"head"})
     monkeypatch.setattr(builder,"build_once",lambda *a,**k:(_ for _ in ()).throw(RuntimeError("boom")))
-    monkeypatch.setattr(builder,"GRANT_LIFECYCLE_STATE",lifecycle)
     monkeypatch.setattr(sys,"argv",["autonomous_slice_builder.py","--workspace-root",str(tmp_path),"--state",str(state),"--execution-grant",str(grant),"--invocation-id","failure-finalizes-grant","--runner-id","aider-ollama","--runtime-id","native-windows"])
     assert builder.main()==1
     record=json.loads(lifecycle.read_text())["grants"]["grant-1"]
