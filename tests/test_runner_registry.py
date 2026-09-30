@@ -54,3 +54,19 @@ def test_task_can_explicitly_request_capabilities():
 def test_invalid_task_requirements_fail_closed():
     with pytest.raises(RuntimeError,match="INVALID_RUNNER_REQUIREMENTS"):
         supervisor.runner_requirements_for_task({"runner_requirements":[]})
+
+
+def test_default_registry_does_not_authorize_claude_from_authentication_alone(monkeypatch):
+    import project_orchestrator.runner_registry as runners
+    monkeypatch.delenv("AZATHOTH_ENABLE_CLAUDE", raising=False)
+    monkeypatch.setattr(runners, "claude_code_healthy", lambda: True)
+    selected = runners.default_runner_registry().select({"code","local","windows","offline"})
+    assert selected.runner_id == "aider-ollama"
+
+
+def test_default_registry_requires_explicit_claude_opt_in(monkeypatch):
+    import project_orchestrator.runner_registry as runners
+    monkeypatch.setenv("AZATHOTH_ENABLE_CLAUDE", "1")
+    monkeypatch.setattr(runners, "claude_code_healthy", lambda: True)
+    selected = runners.default_runner_registry().select({"code","local","windows","offline"})
+    assert selected.runner_id == "claude-code"
