@@ -236,8 +236,34 @@ def ready_task_batch(
             })
             continue
         derived = derive_slices_fn(payload, repository=repo, exact_head=head)
+        request_path = state_root / "direction-requests" / f"{repo.replace('/', '__')}.json"
+        if derived.get("status") == "DIRECTION_REQUIRED":
+            direction_dir = request_path.parent
+            direction_dir.mkdir(parents=True, exist_ok=True)
+            atomic_json(request_path, {
+                "schema_version": 1,
+                "status": "DIRECTION_REQUIRED",
+                "repository": repo,
+                "exact_head": head,
+                "reason": "CAPABILITY_AUTHORITY_NOT_EXECUTABLE",
+                "issues": derived.get("issues", []),
+                "requested_at_utc": datetime.now(UTC).isoformat(),
+            })
+            continue
+        if derived.get("status") == "NO_WORK":
+            request_path.unlink(missing_ok=True)
+            if derived.get("reason") == "ROADMAP_EXHAUSTED":
+                atomic_json(state_root / "continuation-request.json", {
+                    "requested_at_utc": datetime.now(UTC).isoformat(),
+                    "reason": "REFRESH_AUTHORIZED_CANDIDATES",
+                    "repository": repo,
+                    "exact_head": head,
+                    "trigger": "ROADMAP_EXHAUSTED",
+                })
+            continue
         if derived.get("status") != "READY":
             continue
+        request_path.unlink(missing_ok=True)
         for task in derived.get("slices", []):
             if conflict_check_fn(state_root, repo, task) is None:
                 candidates.append((repo, head, task))
