@@ -553,11 +553,25 @@ def harvest_parallel_builders(
             returncode, invocation_id = result
             worker_state = state_root / "worker-state" / worker_id
             ok, status = health_fn(worker_state, returncode, invocation_id)
+            repository = None
+            try:
+                payload = json.loads((worker_state / "builder.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, TypeError):
+                payload = {}
+            if (
+                invocation_id is not None
+                and isinstance(payload, dict)
+                and payload.get("invocation_id") == invocation_id
+            ):
+                candidate = payload.get("repository")
+                if isinstance(candidate, str) and candidate.strip():
+                    repository = candidate.strip()
             rows[worker_id] = {
                 "status": status,
                 "returncode": returncode,
                 "healthy": ok,
                 "invocation_id": invocation_id,
+                "repository": repository,
             }
     if rows:
         atomic_json(
