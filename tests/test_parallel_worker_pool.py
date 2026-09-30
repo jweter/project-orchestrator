@@ -68,3 +68,4 @@ def test_product_limit_and_global_limit_fail_closed():
     pool.submit(WorkerSlot("rocksmith", 1), lambda: None)
     with pytest.raises(RuntimeError, match="saturated"):
         pool.submit(WorkerSlot("everward", 1), lambda: None)
+\n\ndef test_single_capacity_rotates_to_next_product_after_harvest():\n    executor = ManualExecutor(max_workers=1, thread_name_prefix="x")\n    pool = ParallelWorkerPool(max_workers_per_product=1, max_total_workers=1, executor_factory=lambda **_: executor)\n    first = pool.available_slots(["knowledge-engine", "rocksmith", "everward", "voicestudio"])[0]\n    assert first.product == "knowledge-engine"\n    pool.submit(first, lambda: "done")\n    executor.submissions[0][0].set_result("done")\n    pool.harvest()\n    second = pool.available_slots(["knowledge-engine", "rocksmith", "everward", "voicestudio"])[0]\n    assert second.product == "rocksmith"\n
