@@ -1,7 +1,7 @@
 {
-  "action": "STATUS_SNAPSHOT",
-  "command_id": "a51666dd-41a7-418e-8afb-0dadcb830ffd",
-  "expires_at": "2026-09-29T01:56:50.500696+00:00",
-  "issued_at": "2026-09-29T01:51:50.500696+00:00",
-  "source": "iphone-dashboard"
+  "action": "RESTART_REMOTE_CONTROL",
+  "command_id": "chatgpt-restart-remote-20260930T0002Z",
+  "expires_at": "2026-09-30T00:07:00+00:00",
+  "issued_at": "2026-09-30T00:02:00+00:00",
+  "source": "chatgpt-foundry-repair"
 }
