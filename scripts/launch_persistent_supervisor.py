@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed launcher/health handshake for the persistent Hands-Off supervisor."""
 from __future__ import annotations
-import argparse,json,subprocess,sys,time
+import argparse,json,os,subprocess,sys,time
 from datetime import UTC,datetime
 from pathlib import Path
 
@@ -27,6 +27,14 @@ def supervisor_command(repo:Path,workspace_root:str,state:Path,builder_seconds:i
     if yield_on_interactive_session:
         cmd.append("--yield-on-interactive-session")
     return cmd
+
+def supervisor_environment(repo:Path)->dict[str,str]:
+    """Expose the src-layout package to detached supervisor children."""
+    env=os.environ.copy()
+    src=str(repo/"src")
+    existing=env.get("PYTHONPATH","")
+    env["PYTHONPATH"]=src+(os.pathsep+existing if existing else "")
+    return env
 
 def verified_identity(state:Path,before_id:str|None)->dict|None:
     proc=load(state/"supervisor-process-instance.json")
@@ -58,7 +66,7 @@ def main()->int:
     flags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)|getattr(subprocess,"DETACHED_PROCESS",0)
     with log.open("ab") as out:
         child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,
-                               creationflags=flags,close_fds=True)
+                               creationflags=flags,close_fds=True,env=supervisor_environment(repo))
     deadline=time.monotonic()+max(1,a.timeout_seconds)
     receipt={"schema_version":1,"requested_at_utc":datetime.now(UTC).isoformat(),
              "launcher_pid":child.pid,"previous_process_instance_id":before,"status":"PENDING"}
@@ -90,7 +98,7 @@ def main()->int:
                 before=active_id
                 with log.open("ab") as out:
                     child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,
-                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True)
+                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True,env=supervisor_environment(repo))
                 deadline=time.monotonic()+max(1,a.timeout_seconds)
                 receipt["launcher_pid"]=child.pid
                 receipt["status"]="TAKEOVER_RETRY"
@@ -101,7 +109,7 @@ def main()->int:
                 before=load(state/"supervisor-process-instance.json").get("process_instance_id")
                 with log.open("ab") as out:
                     child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,
-                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True)
+                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True,env=supervisor_environment(repo))
                 deadline=time.monotonic()+max(1,a.timeout_seconds)
                 receipt["launcher_pid"]=child.pid
                 receipt["status"]="TAKEOVER_RETRY"
