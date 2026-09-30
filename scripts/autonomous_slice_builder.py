@@ -1110,9 +1110,12 @@ def main()->int:
     worker_identity=invocation_id
     if args.execution_grant:
         try:
-            worker_identity=json.loads(Path(args.execution_grant).read_text(encoding="utf-8")).get("worker_id") or invocation_id
+            grant_payload=json.loads(Path(args.execution_grant).read_text(encoding="utf-8"))
+            worker_identity=grant_payload.get("worker_id") or invocation_id
+            runtime_lease_worker_identity=grant_payload.get("execution_slice",{}).get("runtime_lease_worker_id") or worker_identity
         except (OSError,json.JSONDecodeError,TypeError):
             worker_identity=invocation_id
+    runtime_lease_worker_identity=locals().get("runtime_lease_worker_identity",worker_identity)
     try:
         global ACTIVE_RUNTIME_ID,ACTIVE_RUNTIME_FENCE,ACTIVE_RESOURCE_FENCES
         ACTIVE_RUNTIME_ID=args.runtime_id or "native-windows"
@@ -1120,8 +1123,8 @@ def main()->int:
             if not args.runtime_lease_state:
                 raise RuntimeError("RUNTIME_LEASE_STATE_REQUIRED")
             lease_pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES,Path(args.runtime_lease_state))
-            ACTIVE_RUNTIME_FENCE=(lease_pool,worker_identity,args.runtime_lease_id)
-            lease_pool.assert_fence(worker_identity,args.runtime_lease_id)
+            ACTIVE_RUNTIME_FENCE=(lease_pool,runtime_lease_worker_identity,args.runtime_lease_id)
+            lease_pool.assert_fence(runtime_lease_worker_identity,args.runtime_lease_id)
             try:
                 resource_ids=json.loads(args.resource_lease_ids)
             except (json.JSONDecodeError,TypeError):
@@ -1129,7 +1132,7 @@ def main()->int:
             if not isinstance(resource_ids,dict):
                 raise RuntimeError("RESOURCE_LEASE_AUTHORITY_INVALID")
             ACTIVE_RESOURCE_FENCES=[
-                (f"{worker_identity}:{resource_id}",lease_id)
+                (f"{runtime_lease_worker_identity}:{resource_id}",lease_id)
                 for resource_id,lease_id in resource_ids.items()
             ]
             for resource_worker,resource_lease_id in ACTIVE_RESOURCE_FENCES:

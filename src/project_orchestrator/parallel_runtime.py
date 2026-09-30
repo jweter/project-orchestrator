@@ -15,6 +15,11 @@ from .runtime_leases import RuntimeLeasePool
 from .state_io import atomic_json
 
 
+def scoped_runtime_worker_id(state_root: Path, worker_id: str) -> str:
+    """Namespace global runtime leases by supervisor state authority."""
+    scope = uuid.uuid5(uuid.NAMESPACE_URL, str(state_root.resolve()).lower()).hex[:12]
+    return f"{scope}:{worker_id}"
+
 def runner_requirements_for_task(task: dict) -> set[str]:
     raw = task.get("runner_requirements", ["code", "local", "windows", "offline"])
     if not isinstance(raw, list) or not raw or any(not isinstance(x, str) or not x.strip() for x in raw):
@@ -422,13 +427,15 @@ def dispatch_parallel_builders(
         runner_running[runner_id] = runner_running.get(runner_id, 0) + 1
 
         lease_ids: dict[str, str] = {}
+        lease_worker_id = scoped_runtime_worker_id(state_root, slot.worker_id)
+        planned_target[2]["runtime_lease_worker_id"] = lease_worker_id
         try:
             for resource_id in resource_leases_for_task(planned_target[2], runtime_id):
                 lease = runtime_leases.acquire(
-                    resource_id, f"{slot.worker_id}:{resource_id}"
+                    resource_id, f"{lease_worker_id}:{resource_id}"
                 )
                 lease_ids[resource_id] = lease.lease_id
-            runtime_lease = runtime_leases.acquire(runtime_id, slot.worker_id)
+            runtime_lease = runtime_leases.acquire(runtime_id, lease_worker_id)
             planned_target[2]["runtime_lease_id"] = runtime_lease.lease_id
             planned_target[2]["resource_lease_ids"] = lease_ids
         except RuntimeError as exc:
@@ -440,12 +447,13 @@ def dispatch_parallel_builders(
                 "reason": str(exc).split(":", 1)[0] or "RUNTIME_LEASE_UNAVAILABLE",
             })
             for resource_id in lease_ids:
-                runtime_leases.release(f"{slot.worker_id}:{resource_id}")
+                runtime_leases.release(f"{lease_worker_id}:{resource_id}")
             continue
 
         def leased_builder(
             *args,
             _worker_id=slot.worker_id,
+            _lease_worker_id=lease_worker_id,
             _runtime_lease_id=runtime_lease.lease_id,
             _resources=tuple(lease_ids.items()),
             **kwargs,
@@ -453,10 +461,10 @@ def dispatch_parallel_builders(
             try:
                 return run_builder_for_product_fn(*args, **kwargs)
             finally:
-                runtime_leases.release(_worker_id, _runtime_lease_id)
+                runtime_leases.release(_lease_worker_id, _runtime_lease_id)
                 for resource_id, resource_lease_id in _resources:
                     runtime_leases.release(
-                        f"{_worker_id}:{resource_id}", resource_lease_id
+                        f"{_lease_worker_id}:{resource_id}", resource_lease_id
                     )
 
         try:
@@ -478,9 +486,9 @@ def dispatch_parallel_builders(
                 "slice_id": planned_target[2].get("slice_id"),
                 "reason": str(exc).split(":", 1)[0] or "WORKER_SUBMISSION_REJECTED",
             })
-            runtime_leases.release(slot.worker_id)
+            runtime_leases.release(lease_worker_id)
             for resource_id in lease_ids:
-                runtime_leases.release(f"{slot.worker_id}:{resource_id}")
+                runtime_leases.release(f"{lease_worker_id}:{resource_id}")
             continue
         dispatched.append(worker_id)
 

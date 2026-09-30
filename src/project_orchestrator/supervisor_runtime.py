@@ -594,7 +594,18 @@ def reconcile_runtime_leases(runtime_leases, pool: ParallelWorkerPool) -> list[s
         for row in snapshot.get("workers", [])
         if isinstance(row, dict) and isinstance(row.get("worker_id"), str) and row["worker_id"]
     }
-    recovered.extend(runtime_leases.reconcile_owned_workers(active_worker_ids))
+    # Global runtime authority is shared across supervisors. Preserve this
+    # supervisor's scoped runtime/resource leases for every active local slot.
+    lease_active=set(active_worker_ids)
+    lease_snapshot=getattr(runtime_leases,"snapshot",lambda: {"leases":[]})()
+    for lease in lease_snapshot.get("leases", []):
+        lease_worker=lease.get("worker_id") if isinstance(lease,dict) else None
+        if not isinstance(lease_worker,str):
+            continue
+        if any(lease_worker.endswith(f":{worker}") or f":{worker}:resource:" in lease_worker
+               for worker in active_worker_ids):
+            lease_active.add(lease_worker)
+    recovered.extend(runtime_leases.reconcile_owned_workers(lease_active))
     return sorted(set(recovered))
 
 
