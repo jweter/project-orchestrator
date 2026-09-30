@@ -1,7 +1,6 @@
 ﻿{
-    "status":  "COMPLETED",
-    "worker_count":  0,
-    "at":  "2026-09-29T01:52:03.3830058+00:00",
-    "action":  "STATUS_SNAPSHOT",
-    "command_id":  "a51666dd-41a7-418e-8afb-0dadcb830ffd"
+    "status":  "REJECTED_EXPIRED",
+    "at":  "2026-09-30T00:40:05.0683903+00:00",
+    "action":  "RESTART_REMOTE_CONTROL",
+    "command_id":  "chatgpt-restart-remote-20260930T0010Z"
 }
