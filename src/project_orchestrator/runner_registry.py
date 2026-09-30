@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Mapping
-import json, shutil, subprocess
+import json, os, shutil, subprocess
 
 @dataclass(frozen=True)
 class RunnerManifest:
@@ -68,7 +68,10 @@ def claude_code_healthy(timeout_seconds:int=10)->bool:
     return status.get("loggedIn") is True
 
 def default_runner_registry(*,probe_external:bool=True)->RunnerRegistry:
-    claude_enabled=claude_code_healthy() if probe_external else False
+    # Claude is quota-bearing and must remain explicitly opted in. Authentication
+    # proves availability, not authorization to spend model quota.
+    claude_opt_in=os.getenv("AZATHOTH_ENABLE_CLAUDE","").strip()=="1"
+    claude_enabled=claude_opt_in and claude_code_healthy() if probe_external else False
     return RunnerRegistry([
         RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30),
         RunnerManifest("codex",frozenset({"code","review"}),2,10,False),
