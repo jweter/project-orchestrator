@@ -667,6 +667,13 @@ def run_builder(ws:Path,message:str,runner_id:str|None)->subprocess.CompletedPro
         return run_aider(ws,message)
     raise RuntimeError(f"UNSUPPORTED_RUNNER:{runner_id}")
 
+def claude_capacity_limited(detail:str)->bool:
+    low=detail.lower()
+    return any(marker in low for marker in (
+        "session limit","usage limit","rate limit",
+        "monthly spend limit","weekly limit",
+    ))
+
 def cleanup_aider_artifacts(ws:Path)->None:
     for path in ws.glob(".aider*"):
         if path.is_dir(): shutil.rmtree(path,ignore_errors=True)
@@ -940,9 +947,7 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     if builder.returncode!=0:
         reset_workspace(ws,base)
         detail=builder.stderr or builder.stdout or f"returncode={builder.returncode}"
-        capacity_limited=selected_runner=="claude-code" and any(
-            marker in detail.lower() for marker in ("session limit","usage limit","rate limit")
-        )
+        capacity_limited=selected_runner=="claude-code" and claude_capacity_limited(detail)
         outcome="RUNNER_CAPACITY_DEFERRED" if capacity_limited else "BUILDER_FAILED"
         result={"status":outcome,"repository":repo,"runner_id":selected_runner,
                 "returncode":builder.returncode,"last_repo_index":idx,"last_repository":repo}
