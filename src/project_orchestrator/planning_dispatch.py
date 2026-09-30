@@ -220,7 +220,20 @@ def ready_task_batch(
         path = state_root / "capability-graphs" / f"{repo.replace('/','__')}.json"
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            # Missing planning authority is not a scheduling conflict. Persist
+            # the real blocker so provisioning/re-planning can repair the lane.
+            direction_dir = state_root / "direction-requests"
+            direction_dir.mkdir(parents=True, exist_ok=True)
+            atomic_json(direction_dir / f"{repo.replace('/', '__')}.json", {
+                "schema_version": 1,
+                "status": "DIRECTION_REQUIRED",
+                "repository": repo,
+                "exact_head": head,
+                "reason": "CAPABILITY_GRAPH_REQUIRED",
+                "issues": [{"code": "CAPABILITY_GRAPH_REQUIRED", "detail": type(exc).__name__}],
+                "requested_at_utc": datetime.now(UTC).isoformat(),
+            })
             continue
         derived = derive_slices_fn(payload, repository=repo, exact_head=head)
         if derived.get("status") != "READY":

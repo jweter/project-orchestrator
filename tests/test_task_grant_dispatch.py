@@ -25,6 +25,18 @@ def test_ready_task_batch_allows_two_disjoint_tasks_same_repo(tmp_path):
     assert selected=={"A","B"}
     assert rejected=={"C"}
 
+def test_ready_task_batch_surfaces_missing_graph_as_direction_required(tmp_path):
+    activation={"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}
+    batch=supervisor.ready_task_batch(tmp_path,activation,"rocksmith",4)
+    assert batch==[]
+    request=json.loads((tmp_path/"direction-requests"/"jweter__repo.json").read_text())
+    assert request["reason"]=="CAPABILITY_GRAPH_REQUIRED"
+    assert request["repository"]=="jweter/repo"
+    assert request["exact_head"]=="abc"
+    ledger=json.loads((tmp_path/"planner-decisions"/"rocksmith.json").read_text())
+    assert ledger["candidate_count"]==0
+
+
 def test_dispatch_assigns_distinct_tasks_to_same_repo_workers(tmp_path,monkeypatch):
     activation={"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}
     (tmp_path/"hands-off-activation.json").write_text(json.dumps(activation))
