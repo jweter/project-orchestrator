@@ -1,0 +1,38 @@
+{
+  "timestamp_local": "2026-09-29T20:32:10-05:00",
+  "eligible_product_projects": 4,
+  "materially_advanced_product_projects": 0,
+  "waiting_lanes_rotated_away_from": [
+    "VoiceStudio exact-head preflight unavailable through current remote command safety boundary",
+    "Everward Product Reality-dependent acceptance",
+    "Rocksmith private Product Reality evidence"
+  ],
+  "reusable_capabilities_created_or_reused": [],
+  "observations": {
+    "VoiceStudio": {
+      "branch": "feat/singing-s1-capability-schema-v3",
+      "head": "454147d5b9731b2f3e88746050e18d911200bde0",
+      "ahead": 1,
+      "behind": 0,
+      "state": "PREFLIGHT_UNVERIFIED"
+    },
+    "KnowledgeEngine": {
+      "core_main": "66bcd2cd3bfb7de2b566f69c7572a15cf46f8e58",
+      "issue_433_branch": "issue-433-provider-cache-reuse-status",
+      "branch_state": "diverged_1_ahead_15_behind"
+    },
+    "Rocksmith": {
+      "pr_734": "closed",
+      "product_reality": "pending"
+    },
+    "Everward": {
+      "main": "7b4dfd7a01d14cece4cd67a2534c46003398d4e7",
+      "low_spec_branch": "identical_to_main"
+    },
+    "control_plane": {
+      "schedule_untouched": true,
+      "remote_device": "online",
+      "remote_command_execution": "safety_blocked"
+    }
+  }
+}
