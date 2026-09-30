@@ -585,6 +585,19 @@ def harvest_parallel_builders(
     return rows
 
 
+def reconcile_runtime_leases(runtime_leases, pool: ParallelWorkerPool) -> list[str]:
+    """Reclaim dead-owner leases plus current-generation orphaned worker leases."""
+    recovered = list(runtime_leases.recover_stale())
+    snapshot = pool.snapshot()
+    active_worker_ids = {
+        row["worker_id"]
+        for row in snapshot.get("workers", [])
+        if isinstance(row, dict) and isinstance(row.get("worker_id"), str) and row["worker_id"]
+    }
+    recovered.extend(runtime_leases.reconcile_owned_workers(active_worker_ids))
+    return sorted(set(recovered))
+
+
 def prove_restart_takeover(state_root: Path, instance_lock: dict, burst: dict) -> dict:
     current = instance_lock["worker"]
     previous_id = burst.get("previous_process_instance_id")

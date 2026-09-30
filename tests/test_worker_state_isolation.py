@@ -50,3 +50,35 @@ def test_supervisor_uses_harvested_repository_for_throughput_proof():
     assert 'current_repository=repository' in source
     assert 'record_burst_repository_pass(state,repository=current_repository' in source
     assert 'record_product_identity_advancement(state,repository=current_repository' in source
+
+
+def test_runtime_lease_reconciliation_uses_post_harvest_active_workers():
+    from project_orchestrator.supervisor_runtime import reconcile_runtime_leases
+
+    class Pool:
+        def snapshot(self):
+            return {"workers":[{"worker_id":"rocksmith-worker-1"}]}
+
+    class Leases:
+        def __init__(self):
+            self.active=None
+        def recover_stale(self):
+            return ["dead-old"]
+        def reconcile_owned_workers(self,active):
+            self.active=active
+            return ["knowledge-engine-worker-1"]
+
+    leases=Leases()
+    assert reconcile_runtime_leases(leases,Pool())==[
+        "dead-old","knowledge-engine-worker-1"
+    ]
+    assert leases.active=={"rocksmith-worker-1"}
+
+
+def test_supervisor_reconciles_current_generation_runtime_leases_after_harvest():
+    import inspect
+    source=inspect.getsource(supervisor.main)
+    harvest=source.index("parallel_results=harvest_parallel_builders(worker_pool,state)")
+    reconcile=source.index("_supervisor_runtime.reconcile_runtime_leases(",harvest)
+    dispatch=source.index("dispatch_parallel_builders(",reconcile)
+    assert harvest < reconcile < dispatch
