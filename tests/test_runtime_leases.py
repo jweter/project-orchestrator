@@ -110,6 +110,27 @@ def test_stale_lock_from_dead_owner_is_reclaimed(tmp_path,monkeypatch):
     assert pool.acquire("native-windows","w").worker_id=="w"
     assert not lock.exists()
 
+def test_stale_lock_reclaim_retries_transient_delete_denial(tmp_path,monkeypatch):
+    state=tmp_path/"leases.json"; lock=tmp_path/"leases.json.lock"
+    lock.write_text('{"schema_version":1,"pid":77,"fingerprint":"old","token":"dead","acquired_at":1}\n')
+    path_type=type(lock)
+    original_unlink=path_type.unlink
+    attempts={"count":0}
+
+    def flaky_unlink(self,*args,**kwargs):
+        if self==lock and attempts["count"]<2:
+            attempts["count"]+=1
+            raise PermissionError(32,"sharing violation",str(self))
+        return original_unlink(self,*args,**kwargs)
+
+    monkeypatch.setattr(path_type,"unlink",flaky_unlink)
+    pool=RuntimeLeasePool({"native-windows":1},state,
+        fingerprint=lambda pid:"self" if pid==os.getpid() else "old",
+        pid_alive=lambda pid:pid==os.getpid())
+    assert pool.acquire("native-windows","w").worker_id=="w"
+    assert attempts["count"]==2
+    assert not lock.exists()
+
 def test_pid_reuse_lock_fingerprint_mismatch_is_reclaimed(tmp_path):
     state=tmp_path/"leases.json"; lock=tmp_path/"leases.json.lock"
     lock.write_text('{"schema_version":1,"pid":77,"fingerprint":"old","token":"dead","acquired_at":1}\n')

@@ -106,8 +106,15 @@ class RuntimeLeasePool:
                 except (OSError,json.JSONDecodeError,KeyError,TypeError,ValueError):
                     stale=False
                 if stale:
-                    try: lock.unlink()
-                    except FileNotFoundError: pass
+                    try:
+                        lock.unlink()
+                    except FileNotFoundError:
+                        pass
+                    except PermissionError as exc:
+                        if time.monotonic()>=deadline:
+                            raise RuntimeError("RUNTIME_LEASE_LOCK_TIMEOUT") from exc
+                        time.sleep(0.02)
+                        continue
                     continue
                 if time.monotonic()>=deadline:
                     raise RuntimeError("RUNTIME_LEASE_LOCK_TIMEOUT")
