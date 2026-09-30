@@ -1,0 +1,37 @@
+{
+  "timestamp": "2026-09-30T02:34:37-05:00",
+  "mode": "EXECUTION_BURST",
+  "eligible_product_projects": ["knowledge-engine","rocksmith","everward","voicestudio"],
+  "materially_advanced_product_projects": ["everward"],
+  "product_advancement_rate": "1/4",
+  "advancement": {
+    "everward": {
+      "branch": "agent/hud-control-architecture-165",
+      "head": "4a0f0cc06e566fb6dcb33faa4fbab07ad58e5fce",
+      "change": "Defined repository architecture for Enhanced Input migration, remapping, controller parity, accessibility preferences, shared binding catalogue, persistence, verification, and Product Reality boundary for issue #165.",
+      "promotion": "IMPLEMENTING",
+      "next_gate": "runtime implementation plus repository-native verification"
+    },
+    "voicestudio": {
+      "branch": "feat/singing-s1-capability-schema-v3",
+      "head": "454147d5b9731b2f3e88746050e18d911200bde0",
+      "promotion": "PREFLIGHT_UNVERIFIED",
+      "next_gate": "exact-head canonical preflight"
+    },
+    "knowledge-engine": {
+      "promotion": "IMPLEMENTING",
+      "note": "issue-433 prior implementation is 1 ahead/15 behind main; preserve unique commit and reconcile before promotion"
+    },
+    "rocksmith": {
+      "promotion": "IMPLEMENTING",
+      "note": "issue #673 is an authorized repository-safe candidate; no safe implementation mutation completed in this burst"
+    }
+  },
+  "worker_route": {
+    "azathoth": "online",
+    "direct_command": "safety_rejected",
+    "classification": "orchestration_path_failure",
+    "portfolio_blocker": false
+  },
+  "schedule_invariant": "UNCHANGED"
+}
