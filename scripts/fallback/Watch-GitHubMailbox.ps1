@@ -125,6 +125,13 @@ function Invoke-SafeActorSync {
   if($LASTEXITCODE -ne 0){
     return @{status="SYNC_FETCH_FAILED";consume=$true;worker_count=0}
   }
+  $uniqueCommits=@(git -C $ActorRepo rev-list origin/main..HEAD)
+  if($LASTEXITCODE -ne 0){
+    return @{status="SYNC_HISTORY_CHECK_FAILED";consume=$true;worker_count=0}
+  }
+  if($uniqueCommits.Count -gt 0){
+    return @{status="REJECTED_ACTOR_UNPUSHED_COMMITS";consume=$true;worker_count=0}
+  }
   $workers=@(Get-ActiveProductWorkers)
   if($workers.Count -gt 0){
     return @{status="DEFERRED_ACTIVE_PRODUCT_WORKERS";consume=$false;worker_count=$workers.Count}

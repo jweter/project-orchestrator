@@ -81,3 +81,17 @@ def test_phone_control_records_progress_history_and_human_mode():
     assert '"HUMAN_MODE"' in text and '"FULL_POWER"' in text
     assert 'Set-Content -Encoding UTF8 $humanMode' in text
     assert 'Remove-Item -Force $humanMode' in text
+
+
+def test_fallback_sync_rejects_unpushed_actor_commits_before_reset():
+    text = source()
+    body = between(
+        text,
+        "function Invoke-SafeActorSync",
+        "function Invoke-SafeSupervisorRestart",
+    )
+    assert "rev-list origin/main..HEAD" in body
+    assert "REJECTED_ACTOR_UNPUSHED_COMMITS" in body
+    assert "SYNC_HISTORY_CHECK_FAILED" in body
+    assert body.index("fetch origin main") < body.index("rev-list origin/main..HEAD")
+    assert body.index("rev-list origin/main..HEAD") < body.index("reset --hard origin/main")
