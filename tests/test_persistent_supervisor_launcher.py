@@ -1,7 +1,8 @@
 import json
+import os
 import sys
 from pathlib import Path
-from scripts.launch_persistent_supervisor import supervisor_command, verified_identity
+from scripts.launch_persistent_supervisor import supervisor_command, supervisor_environment, verified_identity
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
@@ -14,6 +15,11 @@ def test_supervisor_command_uses_package_module_for_scripts_imports():
     assert str(repo/"scripts"/"continuous_flow_supervisor.py") not in cmd
     assert cmd[cmd.index("--workspace-root")+1]==r"C:\workspace"
     assert cmd[cmd.index("--state-root")+1]==str(state)
+
+def test_supervisor_environment_prepends_src_to_existing_pythonpath(monkeypatch):
+    monkeypatch.setenv("PYTHONPATH", r"C:\existing")
+    env=supervisor_environment(Path(r"C:\repo"))
+    assert env["PYTHONPATH"] == str(Path(r"C:\repo")/"src") + os.pathsep + r"C:\existing"
 
 def test_verified_identity_requires_new_matching_process_and_burst(tmp_path):
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"new","burst_id":"burst"})
