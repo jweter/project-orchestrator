@@ -659,11 +659,12 @@ def main()->int:
                 activation_reason=refresh_reason
         products=products if authorized else []
         parallel_results=harvest_parallel_builders(worker_pool,state)
-        # RuntimeLeasePool.recover_stale() already proves owner PID + creation
-        # fingerprint before removing durable leases. Do not infer revocation from
-        # this process's in-memory Future snapshot: after supervisor restart the
-        # child can still be legitimately running while the new pool is empty.
-        runtime_lease_reconciliation=RUNTIME_LEASES.recover_stale()
+        # Harvest first, then reclaim dead-owner leases plus only this supervisor
+        # generation's leases whose worker slots are no longer active. Generation
+        # fencing prevents revoking legitimate work inherited across a restart.
+        runtime_lease_reconciliation=_supervisor_runtime.reconcile_runtime_leases(
+            RUNTIME_LEASES,worker_pool
+        )
         dispatch_invocation_id=uuid.uuid4().hex if products else None
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
