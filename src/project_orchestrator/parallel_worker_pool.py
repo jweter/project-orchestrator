@@ -50,14 +50,14 @@ class ParallelWorkerPool(Generic[T]):
             max_workers=max_total_workers,
             thread_name_prefix="exponential-engine",
         )
-        self._running: dict[str, RunningWork[T]] = {}
+        self._running: dict[str, RunningWork[T]] = {}\n        self._last_submitted_product: str | None = None
 
     def _running_for(self, product: str) -> int:
         return sum(1 for work in self._running.values() if work.slot.product == product)
 
     def available_slots(self, products: list[str]) -> list[WorkerSlot]:
         """Return fair slots: first worker across products before second workers."""
-        allowed = [product for product in PRODUCTS if product in set(products)]
+        allowed = [product for product in PRODUCTS if product in set(products)]\n        if self._last_submitted_product in allowed:\n            pivot = allowed.index(self._last_submitted_product) + 1\n            allowed = allowed[pivot:] + allowed[:pivot]
         remaining = self.max_total_workers - len(self._running)
         slots: list[WorkerSlot] = []
         if remaining <= 0:
