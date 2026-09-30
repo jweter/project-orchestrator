@@ -37,6 +37,30 @@ def test_ready_task_batch_surfaces_missing_graph_as_direction_required(tmp_path)
     assert ledger["candidate_count"]==0
 
 
+def test_ready_task_batch_persists_non_executable_authority_reason(tmp_path):
+    activation={"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}
+    d=tmp_path/"capability-graphs"; d.mkdir()
+    payload=graph()
+    payload["capabilities"][0]["slices"]=[]
+    (d/"jweter__repo.json").write_text(json.dumps(payload))
+    batch=supervisor.ready_task_batch(tmp_path,activation,"rocksmith",4)
+    assert batch==[]
+    request=json.loads((tmp_path/"direction-requests"/"jweter__repo.json").read_text())
+    assert request["reason"]=="CAPABILITY_AUTHORITY_NOT_EXECUTABLE"
+    assert request["issues"]==[{"code":"EXECUTION_SLICE_REQUIRED","capability":"C"}]
+
+
+def test_ready_task_batch_ready_authority_clears_stale_direction_request(tmp_path):
+    activation={"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}
+    d=tmp_path/"capability-graphs"; d.mkdir()
+    (d/"jweter__repo.json").write_text(json.dumps(graph()))
+    requests=tmp_path/"direction-requests"; requests.mkdir()
+    (requests/"jweter__repo.json").write_text(json.dumps({"status":"DIRECTION_REQUIRED"}))
+    batch=supervisor.ready_task_batch(tmp_path,activation,"rocksmith",4)
+    assert batch
+    assert not (requests/"jweter__repo.json").exists()
+
+
 def test_dispatch_assigns_distinct_tasks_to_same_repo_workers(tmp_path,monkeypatch):
     activation={"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}
     (tmp_path/"hands-off-activation.json").write_text(json.dumps(activation))
