@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .grant_lifecycle import mutate_grant_lifecycle
+from .capability_authority import CapabilityAuthorityError, compile_capability_authority
 from .state_io import atomic_json
 from scripts.capability_slice_contract import derive_slice
 from scripts.product_completion_proof import build_completion_proof
@@ -54,6 +55,39 @@ def ensure_portfolio_workspaces(repo_root:Path,workspace_root:Path,state_root:Pa
     atomic_json(state_root/"portfolio-workspace-provisioning.json",payload)
     return payload
 
+
+def compile_declared_capability_graphs(workspace_root:Path,state_root:Path,activation:dict,run_fn=subprocess.run)->dict:
+    """Provision runtime graphs only from exact-head repository declarations."""
+    results={}
+    repositories={repo:head for product in activation.get("products",{}).values() if isinstance(product,dict) and product.get("enabled") is True for repo,head in product.get("repositories",{}).items() if isinstance(repo,str) and isinstance(head,str) and head}
+    for repository,head in sorted(repositories.items()):
+        target=state_root/"capability-graphs"/f"{repository.replace('/','__')}.json"; workspace=workspace_root/repository.split("/",1)[-1]
+        if not workspace.is_dir():
+            results[repository]={"status":"WORKSPACE_UNAVAILABLE"}; continue
+        def show(path:str)->str:
+            proc=run_fn(["git","show",f"{head}:{path}"],cwd=workspace,text=True,capture_output=True,check=False)
+            if proc.returncode: raise CapabilityAuthorityError(f"AUTHORITY_FILE_UNAVAILABLE:{path}")
+            return proc.stdout
+        try:
+            control_plane=json.loads(show("engineering/control-plane.json"))
+            outcome=compile_capability_authority(state_root,repository,head,control_plane,read_authoritative_file=lambda repo,exact,path: show(path))
+            results[repository]={"status":"COMPILED","source":outcome["graph"]["authority"]["source"],"exact_head":head}
+        except (CapabilityAuthorityError,json.JSONDecodeError,TypeError) as exc:
+            keep=False
+            try:
+                prior=json.loads(target.read_text(encoding="utf-8")); keep=prior.get("authority",{}).get("exact_head")==head
+            except (OSError,json.JSONDecodeError,TypeError): pass
+            if target.exists() and not keep: target.unlink()
+            results[repository]={"status":"DIRECTION_REQUIRED","reason":str(exc),"exact_head":head}
+    payload={"schema_version":1,"repositories":results,"recorded_at_utc":datetime.now(UTC).isoformat()}
+    atomic_json(state_root/"capability-authority-compilation.json",payload); return payload
+
+def compile_runtime_capability_authority(workspace_root:Path,state_root:Path)->dict:
+    try:
+        activation=json.loads((state_root/"hands-off-activation.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        activation={}
+    return compile_declared_capability_graphs(workspace_root,state_root,activation)
 def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path,run_fn=subprocess.run)->tuple[bool,str]:
     """Snapshot contract-declared workspace identity and HEAD independently of readiness certificates."""
     try:
