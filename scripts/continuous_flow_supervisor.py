@@ -704,17 +704,23 @@ def main()->int:
         # repository grant is active work; other product slots remain schedulable.
         rc=0 if (dispatched_workers or pool_snapshot["running_total"] or parallel_results) else 3
         builder_invocation_id=None
+        current_repository=None
         if parallel_results:
-            statuses=[row["status"] for row in parallel_results.values()]
-            builder_status=statuses[-1]
-            builder_ok=all(row.get("healthy",False) for row in parallel_results.values())
+            completed_rows=list(parallel_results.values())
+            latest_row=completed_rows[-1]
+            builder_status=latest_row["status"]
+            builder_ok=all(row.get("healthy",False) for row in completed_rows)
+            repository=latest_row.get("repository")
+            if isinstance(repository,str) and repository:
+                current_repository=repository
         elif pool_snapshot["running_total"]:
             builder_status="PARALLEL_WORKERS_ACTIVE"
             builder_ok=True
         else:
             builder_status="NO_READY_EXECUTION_SLICE"
             builder_ok=False
-        current_repository=selected_builder_repository(state,builder_invocation_id)
+        if current_repository is None:
+            current_repository=selected_builder_repository(state,builder_invocation_id)
         rotation_evidence=maybe_record_async_rotation(state,previous_repository=previous_repository,
             previous_status=previous_builder_status,current_repository=current_repository,
             burst_id=burst_id,process_instance_id=process_instance_id)
@@ -808,10 +814,10 @@ def main()->int:
         record=record_continuation_pass(state,builder_status=builder_status,delay_seconds=delay,
             lifecycle_advanced=lifecycle_advanced,liveness_reacquire=liveness_reacquire,burst_id=burst_id,
             process_instance_id=process_instance_id)
-        burst_proof=record_burst_repository_pass(state,repository=selected_builder_repository(state,builder_invocation_id),
+        burst_proof=record_burst_repository_pass(state,repository=current_repository,
             builder_status=builder_status,burst_id=burst_id,process_instance_id=process_instance_id,
             sequence=record["sequence"])
-        product_proof=record_product_identity_advancement(state,repository=selected_builder_repository(state,builder_invocation_id),
+        product_proof=record_product_identity_advancement(state,repository=current_repository,
             builder_status=builder_status,lifecycle_advanced=lifecycle_advanced,burst_id=burst_id,
             process_instance_id=process_instance_id,sequence=record["sequence"])
         # Dashboard telemetry is observational only and must never consume or block
