@@ -1,5 +1,5 @@
 import pytest
-from project_orchestrator.runner_registry import RunnerManifest, RunnerRegistry
+from project_orchestrator.runner_registry import RunnerManifest, RunnerRegistry, default_runner_registry
 
 def registry():
     return RunnerRegistry([
@@ -54,3 +54,13 @@ def test_task_can_explicitly_request_capabilities():
 def test_invalid_task_requirements_fail_closed():
     with pytest.raises(RuntimeError,match="INVALID_RUNNER_REQUIREMENTS"):
         supervisor.runner_requirements_for_task({"runner_requirements":[]})
+
+
+def test_default_aider_pipeline_allows_three_overlapping_workers_without_claude_probe():
+    r=default_runner_registry(probe_external=False)
+    requirements={"code","local","windows","offline"}
+    assert r.select(requirements,{}).runner_id=="aider-ollama"
+    assert r.select(requirements,{"aider-ollama":1}).runner_id=="aider-ollama"
+    assert r.select(requirements,{"aider-ollama":2}).runner_id=="aider-ollama"
+    with pytest.raises(RuntimeError,match="NO_ELIGIBLE_RUNNER"):
+        r.select(requirements,{"aider-ollama":3})
