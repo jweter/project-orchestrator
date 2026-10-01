@@ -74,7 +74,11 @@ def claude_code_authorized()->bool:
 def default_runner_registry(*,probe_external:bool=True)->RunnerRegistry:
     claude_enabled=claude_code_authorized() and claude_code_healthy() if probe_external else False
     return RunnerRegistry([
-        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),1,30),
+        # Multiple Aider workers may overlap Git/worktree/test/preflight stages.
+        # Actual Ollama inference is still serialized by autonomous_slice_builder's
+        # exclusive local Ollama lock, so this raises pipeline parallelism without
+        # oversubscribing the scarce model server.
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),3,30),
         RunnerManifest("codex",frozenset({"code","review"}),2,10,False),
         RunnerManifest("claude-code",frozenset({"code","review","local","windows","offline"}),3,20,claude_enabled),
     ])

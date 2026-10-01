@@ -40,6 +40,36 @@ def test_dispatch_capacity_is_driven_by_ready_tasks_not_repository_count(tmp_pat
     }
 
 
+def test_three_aider_workers_can_fill_independent_product_lanes(tmp_path,monkeypatch):
+    activation={"products":{
+        "knowledge-engine":{"repositories":{"jweter/core":"a"}},
+        "rocksmith":{"repositories":{"jweter/rocksmith":"b"}},
+        "voicestudio":{"repositories":{"jweter/VoiceStudio":"c"}},
+    }}
+    (tmp_path/"hands-off-activation.json").write_text(json.dumps(activation),encoding="utf-8")
+    def task(repo,head,sid):
+        return (repo,head,{"repository":repo,"exact_head":head,"slice_id":sid,"allowed_paths":[sid+"/"]})
+    batches={
+        "knowledge-engine":[task("jweter/core","a","k1")],
+        "rocksmith":[task("jweter/rocksmith","b","r1")],
+        "voicestudio":[task("jweter/VoiceStudio","c","v1")],
+    }
+    monkeypatch.setattr(supervisor,"ready_task_batch",lambda state,act,product,limit:batches[product][:limit])
+    monkeypatch.setattr(supervisor,"RUNTIME_LEASES",supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES))
+    from project_orchestrator.runner_registry import RunnerManifest,RunnerRegistry
+    runners=RunnerRegistry([
+        RunnerManifest("aider-ollama",frozenset({"code","local","windows","offline"}),3,30),
+    ])
+    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=3,executor_factory=ManualExecutor)
+
+    workers=supervisor.dispatch_parallel_builders(
+        pool,tmp_path,tmp_path,tmp_path,["knowledge-engine","rocksmith","voicestudio"],runners)
+
+    assert workers==["knowledge-engine-worker-1","rocksmith-worker-1","voicestudio-worker-1"]
+    blocks=json.loads((tmp_path/"dispatch-blocks.json").read_text(encoding="utf-8"))["blocked"]
+    assert not any(row["reason"]=="NO_ELIGIBLE_RUNNER" for row in blocks)
+
+
 def test_dispatch_refreshes_runner_health_when_cached_capacity_is_exhausted(tmp_path,monkeypatch):
     activation={"products":{
         "voicestudio":{"repositories":{"jweter/VoiceStudio":"f"}},
