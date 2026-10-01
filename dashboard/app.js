@@ -62,9 +62,19 @@ function renderHistory(rows=[]){
 }
 async function refresh(){
   try{
-    const [r,hr]=await Promise.all([fetch("/api/dashboard",{cache:"no-store"}),fetch("/api/health",{cache:"no-store"})]);
+    const r=await fetch("/api/dashboard",{cache:"no-store"});
     if(!r.ok)throw Error(r.status);
-    const d=await r.json(),h=hr.ok?await hr.json():null,subs=h?.subsystems||{};
+    const d=await r.json();
+    let h=null;
+    try{
+      const controller=new AbortController();
+      const timer=setTimeout(()=>controller.abort(),5000);
+      try{
+        const hr=await fetch("/api/health",{cache:"no-store",signal:controller.signal});
+        if(hr.ok)h=await hr.json();
+      }finally{clearTimeout(timer)}
+    }catch(_e){}
+    const subs=h?.subsystems||{};
     const controlKeys=["windows","foundry_supervisor","github_guardian","remote_control"];
     const controlStates=controlKeys.map(k=>subs[k]?.status||"UNKNOWN");
     const overall=h?.overall_status||(controlStates.some(s=>s==="OFFLINE")?"DEGRADED":controlStates.every(s=>s==="LIVE")?"LIVE":"CHECKING");

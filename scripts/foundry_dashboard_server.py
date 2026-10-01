@@ -85,7 +85,7 @@ $used=[double]$os.TotalVisibleMemorySize-[double]$os.FreePhysicalMemory
  wake_external_relay_required=$true
 }|ConvertTo-Json -Compress"""
     try:
-        p=subprocess.run(["powershell.exe","-NoProfile","-Command",script],capture_output=True,text=True,timeout=8,check=True)
+        p=subprocess.run(["powershell.exe","-NoProfile","-Command",script],capture_output=True,text=True,timeout=2,check=True)
         row=json.loads(p.stdout)
         default.update(row)
     except (OSError,subprocess.SubprocessError,json.JSONDecodeError,TypeError,ValueError):
@@ -125,7 +125,7 @@ mailbox_watcher=[bool]($p|Where-Object{$_.CommandLine -like '*Watch-GitHubMailbo
 remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine -match 'desktop-commander' -and $_.CommandLine -match 'remote'}|Select-Object -First 1)
 }|ConvertTo-Json -Compress"""
         try:
-            p=subprocess.run(["powershell.exe","-NoProfile","-Command",probe_script],capture_output=True,text=True,timeout=8,check=True)
+            p=subprocess.run(["powershell.exe","-NoProfile","-Command",probe_script],capture_output=True,text=True,timeout=2,check=True)
             processes.update(json.loads(p.stdout))
         except (OSError,subprocess.SubprocessError,json.JSONDecodeError,TypeError,ValueError):
             pass

@@ -133,6 +133,20 @@ def test_dashboard_snapshot_projects_running_worker_pool(tmp_path):
     assert [(w["worker_id"],w["activity_status"]) for w in snapshot["active_worker_pool"]]==[
         ("rocksmith-worker-1","RUNNING"),("everward-worker-1","STALE")]
 
+
+def test_dashboard_snapshot_excludes_deferred_grants_from_active_workers(tmp_path):
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":{
+        "deferred":{"state":"DEFERRED","repository":"jweter/queued","slice_id":"later"},
+        "running":{"state":"RUNNING","repository":"jweter/live","slice_id":"now","worker_id":"voice-worker-1"},
+    }}),encoding="utf-8")
+    (tmp_path/"parallel-worker-pool.json").write_text(json.dumps({
+        "pool":{"workers":[{"worker_id":"voice-worker-1","product":"voicestudio","slot":1,"done":False}]}
+    }),encoding="utf-8")
+    snapshot=supervisor.write_dashboard_snapshot(tmp_path)
+    assert snapshot["active_count"]==1
+    assert [row["repository"] for row in snapshot["active_work"]]==["jweter/live"]
+    assert snapshot["active_worker_pool"][0]["activity_status"]=="RUNNING"
+
 def test_dashboard_snapshot_writer_creates_telemetry_directory(tmp_path):
     snapshot=supervisor.write_dashboard_snapshot(tmp_path)
     assert snapshot["schema_version"]==1

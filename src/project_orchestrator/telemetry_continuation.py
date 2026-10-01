@@ -92,7 +92,7 @@ def write_dashboard_snapshot(state_root:Path)->dict:
         kpi_state={"status":"FAILED","event_count":None,"reason":str(exc),"rolling_reports":{}}
     active=[]
     for gid,r in lifecycle.items():
-        if not isinstance(r,dict) or r.get("state") not in {"ISSUED","CLAIMED","RUNNING","QUARANTINED","DEFERRED"}:
+        if not isinstance(r,dict) or r.get("state") not in {"ISSUED","CLAIMED","RUNNING","QUARANTINED"}:
             continue
         projection=canonical_job_projection(r)
         active.append({"grant_id":gid,
@@ -142,7 +142,7 @@ def write_dashboard_snapshot(state_root:Path)->dict:
     runtime_leases=(workers.get("runtime_leases",{}) or {}).get("leases",[]) if isinstance(workers,dict) else []
     leased_workers={str(row.get("worker_id") or "") for row in runtime_leases if isinstance(row,dict)}
     active_grant_workers={str(r.get("worker_id") or "") for r in lifecycle.values()
-                          if isinstance(r,dict) and r.get("state") in {"ISSUED","CLAIMED","QUARANTINED"}}
+                          if isinstance(r,dict) and r.get("state") in {"ISSUED","CLAIMED","RUNNING","QUARANTINED"}}
     observed_pool=[]
     for w in pool_workers:
         if not isinstance(w,dict) or w.get("done",False):
