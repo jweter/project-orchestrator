@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import time
 import uuid
 from pathlib import Path
@@ -21,8 +20,7 @@ def atomic_json(path: Path, payload: dict[str, Any]) -> None:
                 return
             except PermissionError:
                 if attempt == 4:
-                    shutil.copyfile(tmp, path)
-                    return
+                    raise
                 time.sleep(0.1 * (attempt + 1))
     finally:
         tmp.unlink(missing_ok=True)
