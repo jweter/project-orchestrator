@@ -708,7 +708,9 @@ def test_worker_workspace_retries_transient_fetch(monkeypatch,tmp_path):
         if argv[:3]==["git","fetch","--prune"]:
             calls["fetch"]+=1
             return R(1,stderr="temporary network") if calls["fetch"]<3 else R()
-        if argv[:4]==["git","remote","get-url","origin"]: return R(stdout="https://github.com/jweter/repo.git")
+        if argv[:4]==["git","remote","get-url","origin"]:
+            assert kwargs.get("timeout")==30
+            return R(stdout="https://github.com/jweter/repo.git")
         if argv[:2]==["git","status"]: return R()
         return R()
     monkeypatch.setattr(b,"run",fake_run); monkeypatch.setattr(b.time,"sleep",lambda x:sleeps.append(x))

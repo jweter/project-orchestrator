@@ -244,7 +244,7 @@ def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
         root.mkdir(parents=True,exist_ok=True)
         proc=run(["gh","repo","clone",repo,str(ws),"--","--filter=blob:none"],root)
         if proc.returncode: raise RuntimeError("clone failed")
-    origin=run(["git","remote","get-url","origin"],ws)
+    origin=run(["git","remote","get-url","origin"],ws,timeout=30)
     if origin.returncode or repo.lower() not in origin.stdout.lower():
         raise RuntimeError("origin mismatch")
     clean_generated_workspace_artifacts(ws)
