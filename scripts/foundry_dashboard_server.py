@@ -118,14 +118,14 @@ def _health_snapshot(state_root:Path,control_repo:Path|None)->dict:
     snapshot_status="LIVE" if age_seconds is not None and age_seconds<=120 else "STALE" if age_seconds is not None else "UNKNOWN"
     processes={"supervisor":False,"guardian":False,"mailbox_watcher":False,"remote_control":False}
     if os.name=="nt":
-        probe_script=r"""$p=Get-CimInstance Win32_Process; [ordered]@{
+        probe_script=r"""$p=Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe' OR Name='powershell.exe' OR Name='node.exe'"; [ordered]@{
 supervisor=[bool]($p|Where-Object{$_.CommandLine -like '*continuous_flow_supervisor.py*'}|Select-Object -First 1)
 guardian=[bool]($p|Where-Object{$_.CommandLine -like '*Guard-GitHubMailbox.ps1*'}|Select-Object -First 1)
 mailbox_watcher=[bool]($p|Where-Object{$_.CommandLine -like '*Watch-GitHubMailbox.ps1*'}|Select-Object -First 1)
 remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine -match 'desktop-commander' -and $_.CommandLine -match 'remote'}|Select-Object -First 1)
 }|ConvertTo-Json -Compress"""
         try:
-            p=subprocess.run(["powershell.exe","-NoProfile","-Command",probe_script],capture_output=True,text=True,timeout=2,check=True)
+            p=subprocess.run(["powershell.exe","-NoProfile","-Command",probe_script],capture_output=True,text=True,timeout=5,check=True)
             processes.update(json.loads(p.stdout))
         except (OSError,subprocess.SubprocessError,json.JSONDecodeError,TypeError,ValueError):
             pass

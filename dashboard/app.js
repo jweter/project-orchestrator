@@ -68,7 +68,7 @@ async function refresh(){
     let h=null;
     try{
       const controller=new AbortController();
-      const timer=setTimeout(()=>controller.abort(),5000);
+      const timer=setTimeout(()=>controller.abort(),9000);
       try{
         const hr=await fetch("/api/health",{cache:"no-store",signal:controller.signal});
         if(hr.ok)h=await hr.json();
