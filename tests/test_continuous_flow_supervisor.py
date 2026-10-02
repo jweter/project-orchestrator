@@ -8,8 +8,27 @@ def test_atomic_supervisor_state(tmp_path):
 
 def test_supervisor_state_uses_extended_replace_budget():
     assert supervisor.SUPERVISOR_STATE_REPLACE_ATTEMPTS == 60
-    source = (supervisor.Path(supervisor.__file__)).read_text(encoding="utf-8")
-    assert "replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS" in source
+
+
+def test_supervisor_publication_lock_keeps_generation_alive(tmp_path, monkeypatch):
+    calls = []
+    def fake_atomic(path, payload, **kwargs):
+        calls.append((path.name, payload, kwargs))
+        if path.name == "supervisor.json":
+            raise PermissionError(5, "Access is denied")
+    monkeypatch.setattr(supervisor, "atomic", fake_atomic)
+    published = supervisor.publish_supervisor_snapshot(
+        tmp_path, {"status": "HEALTHY"}, process_instance_id="generation-1",
+        burst_id="burst-1", revision="abc123",
+    )
+    assert published is False
+    heartbeat = next(payload for name, payload, _ in calls if name == "supervisor-generation-heartbeat.json")
+    assert heartbeat["status"] == "STATE_PUBLICATION_BLOCKED"
+    assert heartbeat["process_instance_id"] == "generation-1"
+    blocked = next(payload for name, payload, _ in calls if name == "supervisor-publication-blocked.json")
+    assert blocked["status"] == "STATE_PUBLICATION_BLOCKED"
+    supervisor_call = next(kwargs for name, _, kwargs in calls if name == "supervisor.json")
+    assert supervisor_call["replace_attempts"] == supervisor.SUPERVISOR_STATE_REPLACE_ATTEMPTS
 
 
 def test_linear_reconciliation_is_optional(tmp_path):

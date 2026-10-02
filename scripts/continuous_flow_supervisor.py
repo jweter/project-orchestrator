@@ -543,13 +543,34 @@ def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,
 def actor_revision(repo:Path)->str|None:
     return subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False).stdout.strip() or None
 
-def publish_generation_heartbeat(state:Path,*,process_instance_id:str,burst_id:str,actor_revision:str|None)->None:
+def publish_generation_heartbeat(state:Path,*,process_instance_id:str,burst_id:str,
+                                 actor_revision:str|None,status:str="RUNNING_CURRENT")->None:
     atomic(state/"supervisor-generation-heartbeat.json",{
-        "schema_version":1,"status":"RUNNING_CURRENT",
+        "schema_version":1,"status":status,
         "process_instance_id":process_instance_id,"burst_id":burst_id,
         "actor_revision":actor_revision,
         "heartbeat_at_utc":datetime.now(UTC).isoformat(),
     })
+
+
+def publish_supervisor_snapshot(state:Path,payload:dict,*,process_instance_id:str,
+                                burst_id:str,revision:str|None)->bool:
+    """Keep the generation alive when an external Windows reader blocks replacement."""
+    try:
+        atomic(state/"supervisor.json",payload,
+               replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
+    except PermissionError as exc:
+        publish_generation_heartbeat(state,process_instance_id=process_instance_id,
+            burst_id=burst_id,actor_revision=revision,status="STATE_PUBLICATION_BLOCKED")
+        atomic(state/"supervisor-publication-blocked.json",{
+            "schema_version":1,"status":"STATE_PUBLICATION_BLOCKED",
+            "process_instance_id":process_instance_id,"burst_id":burst_id,
+            "observed_at_utc":datetime.now(UTC).isoformat(),"error":str(exc),
+        })
+        return False
+    publish_generation_heartbeat(state,process_instance_id=process_instance_id,
+        burst_id=burst_id,actor_revision=revision)
+    return True
 
 def generation_handoff_status(state:Path,*,process_instance_id:str,worker_pool:ParallelWorkerPool)->str|None:
     request={}
@@ -785,7 +806,7 @@ def main()->int:
                  and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}
                  and convergence["status"]=="CONVERGED"
                  and idle_streaks["status"]!="P1_LIVENESS_DEFECT")
-        atomic(state/"supervisor.json",{"updated_at_utc":datetime.now(UTC).isoformat(),
+        publish_supervisor_snapshot(state,{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
             "linear_reconciliation_returncode":linear_rc,
@@ -814,8 +835,8 @@ def main()->int:
             "autonomous_burst_proof":burst_proof,
             "portfolio_product_advancement_proof":product_proof,
             "async_gate_rotation":rotation_evidence,
-            "decision_learning":decision_learning},
-            replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
+            "decision_learning":decision_learning},process_instance_id=process_instance_id,
+            burst_id=burst_id,revision=loaded_actor_revision)
         # Presentation-only persona output. Never feeds control decisions.
         (state/"manager-voice.txt").write_text(
             manager_status(healthy,liveness["status"],builder_status)+"\n",encoding="utf-8")
