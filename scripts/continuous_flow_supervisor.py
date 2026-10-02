@@ -591,6 +591,7 @@ def main()->int:
         "worker":instance_lock["worker"],"started_at_utc":datetime.now(UTC).isoformat()})
     burst_id=burst["burst_id"]
     burst_pass=burst["burst_pass"]
+    actor_revision=subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False).stdout.strip() or None
     try: burst_proof=json.loads((state/"autonomous-burst-proof.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError): burst_proof={}
     try: product_proof=json.loads((state/"portfolio-product-advancement-proof.json").read_text(encoding="utf-8"))
@@ -603,6 +604,30 @@ def main()->int:
     dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state)
     workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
     while True:
+        atomic(state/"supervisor-generation-heartbeat.json",{
+            "schema_version":1,"status":"RUNNING_CURRENT",
+            "process_instance_id":process_instance_id,"burst_id":burst_id,
+            "actor_revision":actor_revision,
+            "heartbeat_at_utc":datetime.now(UTC).isoformat(),
+        })
+        takeover_request={}
+        try:
+            takeover_request=json.loads((state/"supervisor-takeover-request.json").read_text(encoding="utf-8"))
+        except (OSError,json.JSONDecodeError,TypeError):
+            pass
+        if (takeover_request.get("status")=="TAKEOVER_REQUESTED"
+                and takeover_request.get("predecessor_process_instance_id")==process_instance_id):
+            active_workers=worker_pool.snapshot()["running_total"]
+            handoff_status="WAITING_FOR_WORKERS" if active_workers else "DRAINING_FOR_TAKEOVER"
+            atomic(state/"supervisor-generation-handoff.json",{
+                "schema_version":1,"status":handoff_status,
+                "process_instance_id":process_instance_id,"active_workers":active_workers,
+                "observed_at_utc":datetime.now(UTC).isoformat(),
+            })
+            if not active_workers:
+                if merge is not None and merge.poll() is None:
+                    merge.terminate()
+                return 0
         if human_mode_active(state):
             atomic(state/"supervisor-human-ownership.json",{
                 "schema_version":1,"status":"HUMAN_MODE_ACTIVE",

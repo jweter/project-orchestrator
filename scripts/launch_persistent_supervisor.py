@@ -50,6 +50,26 @@ def verified_identity(state:Path,before_id:str|None)->dict|None:
     return {"process_instance_id":instance,"burst_id":burst,
             "supervisor_status":sup.get("status"),"builder_status":sup.get("builder_status")}
 
+def supervisor_state_fresh(sup:dict,*,now:datetime|None=None,max_age_seconds:int=900)->bool:
+    stamp=sup.get("heartbeat_at_utc") or sup.get("updated_at_utc")
+    if not isinstance(stamp,str) or not stamp:
+        return False
+    try:
+        updated=datetime.fromisoformat(stamp.replace("Z","+00:00"))
+    except ValueError:
+        return False
+    current=now or datetime.now(UTC)
+    if updated.tzinfo is None:
+        updated=updated.replace(tzinfo=UTC)
+    return 0 <= (current-updated).total_seconds() <= max_age_seconds
+
+def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|None=None)->dict:
+    payload={"schema_version":1,"status":"TAKEOVER_REQUESTED",
+             "predecessor_process_instance_id":active_id,
+             "requested_at_utc":(now or datetime.now(UTC)).isoformat()}
+    atomic(state/"supervisor-takeover-request.json",payload)
+    return payload
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True);p.add_argument("--workspace-root",required=True)
@@ -58,6 +78,8 @@ def main()->int:
     p.add_argument("--yield-on-interactive-session",action="store_true")
     p.add_argument("--wait-for-takeover",action="store_true",
                    help="keep retrying until this launcher becomes authoritative")
+    p.add_argument("--stale-seconds",type=int,default=900,
+                   help="request graceful generation handoff after canonical supervisor state is this old")
     a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root);state.mkdir(parents=True,exist_ok=True)
     before=load(state/"supervisor-process-instance.json").get("process_instance_id")
     log=state/"persistent-supervisor.log"
@@ -80,11 +102,21 @@ def main()->int:
         active_id=reentry.get("active_process_instance_id")
         proc=load(state/"supervisor-process-instance.json")
         sup=load(state/"supervisor.json")
+        heartbeat=load(state/"supervisor-generation-heartbeat.json")
+        freshness=heartbeat if heartbeat.get("process_instance_id")==active_id else sup
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
                 and proc.get("process_instance_id")==active_id
                 and sup.get("process_instance_id")==active_id
                 and proc.get("burst_id") and sup.get("burst_id")==proc.get("burst_id")
                 and sup.get("updated_at_utc")):
+            if not supervisor_state_fresh(freshness,max_age_seconds=max(1,a.stale_seconds)):
+                request_stale_generation_handoff(state,active_id)
+                receipt.update({"status":"STALE_GENERATION","process_instance_id":active_id,
+                                "burst_id":proc["burst_id"],
+                                "observed_at_utc":datetime.now(UTC).isoformat()})
+                atomic(state/"persistent-supervisor-launch.json",receipt)
+                if not a.wait_for_takeover:
+                    return 2
             if not a.wait_for_takeover:
                 receipt.update({"status":"EXISTING_ACTIVE","process_instance_id":active_id,
                                 "burst_id":proc["burst_id"],
