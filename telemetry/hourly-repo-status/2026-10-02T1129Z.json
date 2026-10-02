@@ -1,0 +1,33 @@
+{
+  "observed_at": "2026-10-02T11:29:42Z",
+  "eligible_product_projects": 4,
+  "materially_advanced_product_projects": 1,
+  "knowledge_engine": {
+    "state": "PR_177_QUALITY_FAILED",
+    "classification": "DEPENDENCY_SECURITY",
+    "first_error": "urllib3 2.7.0 CVE-2026-97687/97688/97689; fix 2.8.0",
+    "next_gate": "deterministic dependency regeneration and fresh CI"
+  },
+  "rocksmith": {
+    "state": "PREFLIGHT_GREEN_BRANCH_READY",
+    "branch": "repair/live-review-transport-without-draft",
+    "next_gate": "PR creation",
+    "blocker": "connector write safety rejection"
+  },
+  "everward": {
+    "state": "PREFLIGHT_GREEN_BRANCH_READY",
+    "branch": "repair/low-spec-cleanup-survivor-pid-v2",
+    "next_gate": "PR creation",
+    "blocker": "connector write safety rejection"
+  },
+  "voicestudio": {
+    "state": "S1_AUTHORITY_SYNC_COMMITTED",
+    "branch": "docs/singing-s1-authority-sync-v2",
+    "head": "afd7086a7fbfbb5a45631e857e096e927d65dbdb",
+    "next_gate": "repository-native verification/preflight before PR"
+  },
+  "control_plane": {
+    "schedule_unchanged": true,
+    "telemetry": "this snapshot"
+  }
+}
