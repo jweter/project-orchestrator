@@ -209,13 +209,39 @@ def test_observe_live_heads_reads_git_not_activation(tmp_path, monkeypatch):
     def run(cmd,**kwargs):
         if cmd[:3]==["git","remote","get-url"]:
             return Result("https://github.com/jweter/rocksmith-cdlc-generator.git\n")
-        if cmd[:3]==["git","rev-parse","HEAD"]:
+        if cmd[:3]==["git","ls-remote","origin"]:
+            return Result("live-sha\trefs/heads/main\n")
+        if cmd[:3]==["git","rev-parse","refs/remotes/origin/main"]:
             return Result("live-sha\n")
         raise AssertionError(cmd)
     monkeypatch.setattr(supervisor.subprocess,"run",run)
     assert supervisor.observe_live_heads(repo_root,workspace,state)==(True,"LIVE_HEADS_OBSERVED")
     assert json.loads((state/"hands-off-live-heads.json").read_text())=={
         "jweter/rocksmith-cdlc-generator":"live-sha"}
+
+def test_observe_live_heads_refreshes_stale_origin_main_without_moving_workspace_head(tmp_path, monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    repo_root=tmp_path/"orchestrator"; repo_root.mkdir()
+    engineering=repo_root/"engineering"; engineering.mkdir()
+    engineering.joinpath("hands-off-evolution.json").write_text(json.dumps({
+        "products":{"voicestudio":["jweter/VoiceStudio"]}}),encoding="utf-8")
+    workspace=tmp_path/"workspace"; ws=workspace/"VoiceStudio"; ws.mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir(); calls=[]
+    class Result:
+        def __init__(self,stdout="",returncode=0): self.returncode=returncode; self.stdout=stdout; self.stderr=""
+    def run(cmd,**kwargs):
+        calls.append(cmd)
+        if cmd[:3]==["git","remote","get-url"]: return Result("https://github.com/jweter/VoiceStudio.git\n")
+        if cmd[:3]==["git","ls-remote","origin"]: return Result("new-main\trefs/heads/main\n")
+        if cmd[:3]==["git","rev-parse","refs/remotes/origin/main"]: return Result("old-main\n")
+        if cmd[:3]==["git","fetch","origin"]: return Result()
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.observe_live_heads(repo_root,workspace,state)==(True,"LIVE_HEADS_OBSERVED")
+    assert json.loads((state/"hands-off-live-heads.json").read_text())=={"jweter/VoiceStudio":"new-main"}
+    assert ["git","fetch","origin","main"] in calls
+    assert not any(cmd[:3]==["git","rev-parse","HEAD"] for cmd in calls)
 
 def test_observe_live_heads_ignores_origin_mismatch(tmp_path, monkeypatch):
     import json
