@@ -162,6 +162,29 @@ def test_execution_grant_rejects_product_when_local_head_moved(tmp_path, monkeyp
     monkeypatch.setattr(builder,"run",lambda *a,**k:Result())
     assert builder.granted_repositories(grant,tmp_path,contract)=={}
 
+def test_execution_grant_accepts_certified_remote_main_without_moving_canonical_head(tmp_path, monkeypatch):
+    import hashlib, json
+    import scripts.autonomous_slice_builder as builder
+
+    ws=tmp_path/"VoiceStudio"; ws.mkdir()
+    contract=tmp_path/"contract.json"
+    contract.write_text('{"products":{"voicestudio":["jweter/VoiceStudio"]}}',encoding="utf-8")
+    activation=tmp_path/"hands-off-activation.json"; activation.write_text('{"schema_version":2}',encoding="utf-8")
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"schema_version":5,"grant_id":"voice-grant",
+        "contract_sha256":hashlib.sha256(contract.read_bytes()).hexdigest(),
+        "activation_sha256":hashlib.sha256(activation.read_bytes()).hexdigest(),
+        "products":{"voicestudio":{"repositories":{"jweter/VoiceStudio":"merged-main"}}}}),encoding="utf-8")
+    class Result:
+        returncode=0; stdout="merged-main\n"
+    calls=[]
+    def run(cmd,*args,**kwargs):
+        calls.append(cmd); return Result()
+    monkeypatch.setattr(builder,"run",run)
+    assert builder.granted_repositories(grant,tmp_path,contract)=={"jweter/VoiceStudio":"merged-main"}
+    assert ["git","rev-parse","refs/remotes/origin/main"] in calls
+    assert ["git","rev-parse","HEAD"] not in calls
+
 @pytest.mark.parametrize("schema_version",[4,5])
 def test_execution_grant_accepts_exact_local_head(tmp_path, monkeypatch, schema_version):
     import json

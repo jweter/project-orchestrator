@@ -380,7 +380,10 @@ def granted_repositories(path:Path,workspace_root:Path,contract_path:Path|None=N
         current=True
         for repo,expected in repositories.items():
             ws=workspace_root/repo.split("/",1)[-1]
-            head=run(["git","rev-parse","HEAD"],ws) if ws.is_dir() else None
+            # Grants are certified against merged remote-main authority, not the
+            # canonical checkout's current branch. Workers execute in isolated
+            # worktrees and check out this exact SHA before mutation.
+            head=run(["git","rev-parse","refs/remotes/origin/main"],ws) if ws.is_dir() else None
             if head is None or head.returncode or head.stdout.strip()!=expected:
                 current=False
                 break
