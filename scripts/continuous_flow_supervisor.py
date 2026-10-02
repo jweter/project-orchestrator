@@ -539,6 +539,34 @@ def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,
     )
 
 
+def actor_revision(repo:Path)->str|None:
+    return subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False).stdout.strip() or None
+
+def publish_generation_heartbeat(state:Path,*,process_instance_id:str,burst_id:str,actor_revision:str|None)->None:
+    atomic(state/"supervisor-generation-heartbeat.json",{
+        "schema_version":1,"status":"RUNNING_CURRENT",
+        "process_instance_id":process_instance_id,"burst_id":burst_id,
+        "actor_revision":actor_revision,
+        "heartbeat_at_utc":datetime.now(UTC).isoformat(),
+    })
+
+def generation_handoff_status(state:Path,*,process_instance_id:str,worker_pool:ParallelWorkerPool)->str|None:
+    request={}
+    try:
+        request=json.loads((state/"supervisor-takeover-request.json").read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        pass
+    if (request.get("status")!="TAKEOVER_REQUESTED"
+            or request.get("predecessor_process_instance_id")!=process_instance_id):
+        return None
+    active_workers=worker_pool.snapshot()["running_total"]
+    status="WAITING_FOR_WORKERS" if active_workers else "DRAINING_FOR_TAKEOVER"
+    atomic(state/"supervisor-generation-handoff.json",{
+        "schema_version":1,"status":status,"process_instance_id":process_instance_id,
+        "active_workers":active_workers,"observed_at_utc":datetime.now(UTC).isoformat(),
+    })
+    return status
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -589,45 +617,19 @@ def main()->int:
         "resumed":burst["resumed"],"previous_process_instance_id":burst.get("previous_process_instance_id"),
         "takeover_status":takeover_proof["status"],
         "worker":instance_lock["worker"],"started_at_utc":datetime.now(UTC).isoformat()})
-    burst_id=burst["burst_id"]
-    burst_pass=burst["burst_pass"]
-    actor_revision=subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False).stdout.strip() or None
+    burst_id=burst["burst_id"]; burst_pass=burst["burst_pass"]
+    loaded_actor_revision=actor_revision(repo)
     try: burst_proof=json.loads((state/"autonomous-burst-proof.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError): burst_proof={}
     try: product_proof=json.loads((state/"portfolio-product-advancement-proof.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError): product_proof={}
-    previous_repository=None
-    previous_builder_status=None
-    rotation_evidence=None
-    worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6)
-    atexit.register(worker_pool.shutdown,wait=False)
-    dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state)
-    workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
+    previous_repository=previous_builder_status=rotation_evidence=None
+    worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6); atexit.register(worker_pool.shutdown,wait=False)
+    dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state); workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
     while True:
-        atomic(state/"supervisor-generation-heartbeat.json",{
-            "schema_version":1,"status":"RUNNING_CURRENT",
-            "process_instance_id":process_instance_id,"burst_id":burst_id,
-            "actor_revision":actor_revision,
-            "heartbeat_at_utc":datetime.now(UTC).isoformat(),
-        })
-        takeover_request={}
-        try:
-            takeover_request=json.loads((state/"supervisor-takeover-request.json").read_text(encoding="utf-8"))
-        except (OSError,json.JSONDecodeError,TypeError):
-            pass
-        if (takeover_request.get("status")=="TAKEOVER_REQUESTED"
-                and takeover_request.get("predecessor_process_instance_id")==process_instance_id):
-            active_workers=worker_pool.snapshot()["running_total"]
-            handoff_status="WAITING_FOR_WORKERS" if active_workers else "DRAINING_FOR_TAKEOVER"
-            atomic(state/"supervisor-generation-handoff.json",{
-                "schema_version":1,"status":handoff_status,
-                "process_instance_id":process_instance_id,"active_workers":active_workers,
-                "observed_at_utc":datetime.now(UTC).isoformat(),
-            })
-            if not active_workers:
-                if merge is not None and merge.poll() is None:
-                    merge.terminate()
-                return 0
+        publish_generation_heartbeat(state,process_instance_id=process_instance_id,burst_id=burst_id,actor_revision=loaded_actor_revision)
+        if generation_handoff_status(state,process_instance_id=process_instance_id,worker_pool=worker_pool)=="DRAINING_FOR_TAKEOVER":
+            return 0
         if human_mode_active(state):
             atomic(state/"supervisor-human-ownership.json",{
                 "schema_version":1,"status":"HUMAN_MODE_ACTIVE",
