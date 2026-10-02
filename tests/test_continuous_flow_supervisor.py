@@ -6,6 +6,12 @@ def test_atomic_supervisor_state(tmp_path):
     assert '"status": "HEALTHY"' in path.read_text(encoding="utf-8")
 
 
+def test_supervisor_state_uses_extended_replace_budget():
+    assert supervisor.SUPERVISOR_STATE_REPLACE_ATTEMPTS == 60
+    source = (supervisor.Path(supervisor.__file__)).read_text(encoding="utf-8")
+    assert "replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS" in source
+
+
 def test_linear_reconciliation_is_optional(tmp_path):
     from scripts.continuous_flow_supervisor import run_linear_reconciliation
     assert run_linear_reconciliation(tmp_path,tmp_path/"state") is None

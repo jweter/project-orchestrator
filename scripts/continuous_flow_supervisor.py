@@ -36,6 +36,7 @@ from project_orchestrator.human_ownership import human_mode_active
 
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
+SUPERVISOR_STATE_REPLACE_ATTEMPTS=60
 
 def _acquire_lifecycle_lock(path:Path):
     """Compatibility facade over the extracted lifecycle lock authority."""
@@ -813,7 +814,8 @@ def main()->int:
             "autonomous_burst_proof":burst_proof,
             "portfolio_product_advancement_proof":product_proof,
             "async_gate_rotation":rotation_evidence,
-            "decision_learning":decision_learning})
+            "decision_learning":decision_learning},
+            replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
         # Presentation-only persona output. Never feeds control decisions.
         (state/"manager-voice.txt").write_text(
             manager_status(healthy,liveness["status"],builder_status)+"\n",encoding="utf-8")
