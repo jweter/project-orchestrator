@@ -49,3 +49,22 @@ def test_concurrent_first_lock_initialization_is_atomic(tmp_path):
         thread.join()
     assert errors==[]
     assert lock_path.read_bytes()==b"0"
+
+
+def test_lifecycle_mutation_uses_extended_replace_window(tmp_path, monkeypatch):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"schema_version":1,"grants":{"a":{"state":"CLAIMED"}}}),encoding="utf-8")
+    attempts=0
+    real_replace=type(path).replace
+    def transient_replace(self,target):
+        nonlocal attempts
+        if self.name.startswith("hands-off-grant-lifecycle.json.tmp."):
+            attempts+=1
+            if attempts<8:
+                raise PermissionError("transient destination busy")
+        return real_replace(self,target)
+    monkeypatch.setattr(type(path),"replace",transient_replace)
+    monkeypatch.setattr("project_orchestrator.state_io.time.sleep",lambda _seconds:None)
+    assert lifecycle.mutate_grant_lifecycle(path,"a",lambda record:(record.__setitem__("marker","ok") or True))
+    assert attempts==8
+    assert json.loads(path.read_text())["grants"]["a"]["marker"]=="ok"

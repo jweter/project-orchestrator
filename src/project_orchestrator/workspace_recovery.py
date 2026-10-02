@@ -9,7 +9,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
+from .grant_lifecycle import acquire_lifecycle_lock, atomic_lifecycle_json, release_lifecycle_lock
 from .recovery_manager import (
     RECOVERY_GENERATION_LEASE_SECONDS,
     process_start_fingerprint,
@@ -417,7 +417,7 @@ def pending_recovery_grants(
             pending.append(grant_id)
         if changed:
             payload["grants"]=grants
-            atomic_json(path,payload)
+            atomic_lifecycle_json(path,payload)
         return pending[:max_batch]
     finally:
         release_lifecycle_lock(lifecycle_lock)
@@ -496,7 +496,7 @@ def begin_recovery_generation(
                                                  "process_start_fingerprint":fingerprint_probe()}
         reserved["recovery_version"]=int(current.get("recovery_version",0))+1
         payload["grants"][grant_id]=reserved
-        atomic_json(path,payload)
+        atomic_lifecycle_json(path,payload)
         return token,reserved
     finally:
         release_lifecycle_lock(lock)
@@ -518,7 +518,7 @@ def commit_recovery_record(path:Path,grant_id:str,expected:dict,updated:dict)->b
         final.pop("recovery_generation_worker",None)
         final.pop("recovery_generation_unknown_checks",None)
         payload["grants"][grant_id]=final
-        atomic_json(path,payload)
+        atomic_lifecycle_json(path,payload)
         return True
     finally:
         release_lifecycle_lock(lock)
