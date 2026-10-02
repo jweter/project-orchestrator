@@ -641,19 +641,21 @@ def test_atomic_json_retries_windows_permission_error_then_succeeds(tmp_path,mon
     assert list(tmp_path.glob("*.tmp.*"))==[]
 
 
-def test_atomic_json_falls_back_to_copy_after_windows_rename_denied(tmp_path,monkeypatch):
-    import json
+def test_atomic_json_fails_closed_after_windows_rename_denied(tmp_path,monkeypatch):
+    import pytest
     import scripts.autonomous_slice_builder as builder
     path=tmp_path/"hands-off-grant-lifecycle.json"
-    path.write_text('{"grants":{}}')
+    original='{"grants":{}}'
+    path.write_text(original)
     def denied(self,target):
         if self.name.startswith(path.name+".tmp."):
             raise PermissionError(5,"Access is denied")
         raise AssertionError("unexpected replace")
     monkeypatch.setattr(builder.Path,"replace",denied)
     monkeypatch.setattr(builder.time,"sleep",lambda *_:None)
-    builder.atomic_json(path,{"grants":{"g":{"state":"RUNNING"}}})
-    assert json.loads(path.read_text())["grants"]["g"]["state"]=="RUNNING"
+    with pytest.raises(PermissionError,match="Access is denied"):
+        builder.atomic_json(path,{"grants":{"g":{"state":"RUNNING"}}})
+    assert path.read_text()==original
     assert list(tmp_path.glob("*.tmp.*"))==[]
 
 
