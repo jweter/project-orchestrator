@@ -73,8 +73,13 @@ class RuntimeLeasePool:
         except (OSError,PermissionError): return False
 
     @contextmanager
-    def _locked(self,timeout:float=5.0):
-        """Cross-process lock serializes read/check/write lease transactions."""
+    def _locked(self,timeout:float=15.0):
+        """Cross-process lock serializes read/check/write lease transactions.
+
+        Runtime lease operations may legitimately overlap worker harvest and supervisor
+        convergence on Windows.  Keep the lock bounded, but allow enough time for the
+        current owner to finish rather than crashing the supervisor after five seconds.
+        """
         if not self.state_path:
             yield; return
         lock=self.state_path.with_suffix(self.state_path.suffix+".lock")

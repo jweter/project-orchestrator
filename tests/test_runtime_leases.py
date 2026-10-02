@@ -149,6 +149,24 @@ def test_live_lock_is_not_stolen(tmp_path):
         with pool._locked(timeout=0.03): pass
     assert lock.exists()
 
+def test_runtime_lock_default_allows_supervisor_worker_overlap_window(tmp_path,monkeypatch):
+    state=tmp_path/"leases.json"
+    pool=RuntimeLeasePool({"native-windows":1},state,
+        fingerprint=lambda pid:f"p:{pid}",pid_alive=lambda pid:True)
+    observed={}
+    monotonic_values=iter((100.0,114.9))
+    monkeypatch.setattr("project_orchestrator.runtime_leases.time.monotonic",lambda:next(monotonic_values))
+    def blocked_open(path,flags,*args,**kwargs):
+        observed["deadline_probe"]=True
+        raise FileExistsError(path)
+    monkeypatch.setattr("project_orchestrator.runtime_leases.os.open",blocked_open)
+    lock=state.with_suffix(state.suffix+".lock")
+    lock.write_text('{"schema_version":1,"pid":77,"fingerprint":"p:77","token":"live","acquired_at":1}\n')
+    monkeypatch.setattr("project_orchestrator.runtime_leases.time.sleep",lambda _:None)
+    with pytest.raises(RuntimeError,match="generator raised StopIteration"):
+        with pool._locked(): pass
+    assert observed["deadline_probe"]
+
 def test_heartbeat_requires_current_lease_fencing_token(tmp_path):
     state=tmp_path/"leases.json"; fp=lambda pid:f"p:{pid}"
     pool=RuntimeLeasePool({"native-windows":1},state,fp,lambda pid:True)
