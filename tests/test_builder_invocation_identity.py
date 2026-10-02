@@ -20,7 +20,8 @@ def test_builder_health_rejects_stale_invocation_identity(tmp_path):
 
 def test_run_builder_passes_and_returns_same_invocation_id(tmp_path,monkeypatch):
     state=tmp_path/"state"; state.mkdir()
-    grant=state/"grant.json"; grant.write_text(json.dumps({"schema_version":5,"execution_slice":{"runner_id":"aider-ollama","execution_runtime":"native-windows","runtime_lease_id":"lease-test"}}),encoding="utf-8")
+    grant=state/"grant.json"; grant.write_text(json.dumps({"schema_version":5,"products":{"voicestudio":{"repositories":{"jweter/VoiceStudio":"abc123"}}},"execution_slice":{"repository":"jweter/VoiceStudio","runner_id":"aider-ollama","execution_runtime":"native-windows","runtime_lease_id":"lease-test"}}),encoding="utf-8")
+    (state/"dispatch-decision.json").write_text(json.dumps({"schema_version":1,"recorded_at_utc":"2026-09-26T00:56:58+00:00","decisions":[{"repository":"stale/repo"}]}),encoding="utf-8")
     captured={}
     class Result:
         returncode=0
@@ -37,6 +38,12 @@ def test_run_builder_passes_and_returns_same_invocation_id(tmp_path,monkeypatch)
     idx=captured["cmd"].index("--invocation-id")
     assert captured["cmd"][idx+1]==invocation_id
     assert invocation_id
+    dispatch=json.loads((state/"dispatch-decision.json").read_text(encoding="utf-8"))
+    assert dispatch["invocation_id"]==invocation_id
+    assert dispatch["grant_path"]==str(grant)
+    assert dispatch["selected_product"]=="voicestudio"
+    assert dispatch["selected_repository"]=="jweter/VoiceStudio"
+    assert dispatch["recorded_at_utc"]!="2026-09-26T00:56:58+00:00"
 
 
 def test_runtime_fence_uses_granted_worker_identity(tmp_path,monkeypatch):
