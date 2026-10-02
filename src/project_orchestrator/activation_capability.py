@@ -101,12 +101,18 @@ def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path,run_fn
         if not ws.is_dir():
             continue
         origin=run_fn(["git","remote","get-url","origin"],cwd=ws,text=True,capture_output=True,check=False)
-        head=run_fn(["git","rev-parse","HEAD"],cwd=ws,text=True,capture_output=True,check=False)
-        if origin.returncode or head.returncode or repo.lower() not in origin.stdout.lower():
+        remote=run_fn(["git","ls-remote","origin","refs/heads/main"],cwd=ws,text=True,capture_output=True,check=False)
+        if origin.returncode or remote.returncode or repo.lower() not in origin.stdout.lower():
             continue
-        value=head.stdout.strip()
-        if value:
-            observed[repo]=value
+        value=remote.stdout.split()[0] if remote.stdout.strip() else ""
+        if not value:
+            continue
+        tracking=run_fn(["git","rev-parse","refs/remotes/origin/main"],cwd=ws,text=True,capture_output=True,check=False)
+        if tracking.returncode or tracking.stdout.strip()!=value:
+            fetched=run_fn(["git","fetch","origin","main"],cwd=ws,text=True,capture_output=True,check=False)
+            if fetched.returncode:
+                continue
+        observed[repo]=value
     atomic_json(state_root/"hands-off-live-heads.json",observed)
     return bool(observed),"LIVE_HEADS_OBSERVED" if observed else "LIVE_HEADS_UNAVAILABLE"
 
