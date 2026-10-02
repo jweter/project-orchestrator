@@ -443,18 +443,34 @@ def run_builder(
         raise
 
     invocation_id = uuid.uuid4().hex
+    grant_payload = json.loads(grant_path.read_text(encoding="utf-8"))
+    grant_authority = grant_payload.get("execution_slice", {})
     decision_path = state_root / "dispatch-decision.json"
     try:
         decision = json.loads(decision_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError):
         decision = {}
-    if isinstance(decision, dict):
-        decision["invocation_id"] = invocation_id
-        decision["grant_path"] = str(grant_path)
-        atomic_json(decision_path, decision)
+    if not isinstance(decision, dict):
+        decision = {}
+    selected_product = next(iter(grant_payload.get("products", {})), None)
+    selected_repository = grant_authority.get("repository")
+    decision.update({
+        "schema_version": 1,
+        "recorded_at_utc": datetime.now(UTC).isoformat(),
+        "invocation_id": invocation_id,
+        "grant_path": str(grant_path),
+        "selected_product": selected_product,
+        "selected_repository": selected_repository,
+        "decisions": [{
+            "outcome": "DISPATCHED",
+            "product": selected_product,
+            "repository": selected_repository,
+            "head_sha": grant_authority.get("exact_head"),
+            "reason": "EXECUTION_GRANT_ISSUED",
+        }],
+    })
+    atomic_json(decision_path, decision)
 
-    grant_payload = json.loads(grant_path.read_text(encoding="utf-8"))
-    grant_authority = grant_payload.get("execution_slice", {})
     runner_id = grant_authority.get("runner_id")
     runtime_id = grant_authority.get("execution_runtime")
     runtime_lease_id = grant_authority.get("runtime_lease_id")
