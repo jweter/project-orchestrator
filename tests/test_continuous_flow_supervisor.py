@@ -100,6 +100,8 @@ def test_refresh_readiness_uses_contract_declared_voicestudio_workspace(tmp_path
         stderr=""
 
     def run(cmd,**kwargs):
+        if cmd[:3]==["git","worktree","add"] or cmd[:3]==["git","worktree","remove"]:
+            return Result()
         captured["cmd"]=cmd
         activation=Path(cmd[cmd.index("--activation-state")+1])
         activation.write_text(
@@ -119,7 +121,9 @@ def test_refresh_readiness_uses_contract_declared_voicestudio_workspace(tmp_path
     assert supervisor.refresh_readiness(tmp_path,workspace,state)==(
         True,"READINESS_REFRESHED"
     )
-    assert str(voice) in captured["cmd"]
+    audited=[Path(value) for value in captured["cmd"] if "readiness-worktrees" in str(value)]
+    assert len(audited)==1 and audited[0].name=="VoiceStudio"
+    assert str(voice) not in captured["cmd"]
     assert json.loads((state/"hands-off-expected-heads.json").read_text())=={
         "jweter/VoiceStudio":"voice-head"
     }
@@ -183,7 +187,10 @@ def test_recertify_product_runs_targeted_audit_and_merges(tmp_path, monkeypatch)
     class Result:
         returncode=0; stdout=""; stderr=""
     def run(cmd,**kwargs):
+        if cmd[:3]==["git","worktree","add"] or cmd[:3]==["git","worktree","remove"]:
+            return Result()
         assert cmd[cmd.index("--product")+1]=="rocksmith"
+        assert any("readiness-worktrees" in str(value) and str(value).endswith("rocksmith-cdlc-generator") for value in cmd)
         partial=state/"hands-off-recertify-rocksmith.json"
         partial.write_text(json.dumps({"products":{"rocksmith":{
             "enabled":True,"status":"PASS","repositories":{"jweter/rocksmith-cdlc-generator":"new"}}}}),encoding="utf-8")
@@ -464,11 +471,14 @@ def test_recertify_product_passes_only_target_product_repositories(tmp_path, mon
     contract={"products":{"rocksmith":["jweter/rocksmith-cdlc-generator"],
                           "knowledge-engine":["jweter/knowledge-engine-core","jweter/knowledge-engine-web"]}}
     (repo_root/"engineering"/"hands-off-evolution.json").write_text(json.dumps(contract))
+    (workspace/"rocksmith-cdlc-generator").mkdir(parents=True)
     calls=[]
     class Result:
-        returncode=1; stdout=""; stderr=""
+        def __init__(self,returncode=1): self.returncode=returncode; self.stdout=""; self.stderr=""
     def run(cmd,**kwargs):
         calls.append(cmd)
+        if cmd[:3]==["git","worktree","add"] or cmd[:3]==["git","worktree","remove"]:
+            return Result(0)
         # Simulate auditor writing a readable partial authority.
         partial=state/"hands-off-recertify-rocksmith.json"
         partial.write_text(json.dumps({"products":{"rocksmith":{"enabled":False,"repositories":{}}}}))
@@ -476,10 +486,9 @@ def test_recertify_product_passes_only_target_product_repositories(tmp_path, mon
     monkeypatch.setattr(supervisor.subprocess,"run",run)
     monkeypatch.setattr(supervisor,"merge_product_recertification",lambda *a:(False,"PRODUCT_QUARANTINED"))
     supervisor.recertify_product(repo_root,workspace,state,"rocksmith")
-    cmd=calls[0]
-    assert str(workspace/"rocksmith-cdlc-generator") in cmd
-    assert str(workspace/"knowledge-engine-core") not in cmd
-    assert str(workspace/"knowledge-engine-web") not in cmd
+    cmd=next(call for call in calls if "--product" in call)
+    assert any("readiness-worktrees" in str(value) and str(value).endswith("rocksmith-cdlc-generator") for value in cmd)
+    assert not any(str(value).endswith("knowledge-engine-core") or str(value).endswith("knowledge-engine-web") for value in cmd)
 
 def test_recertify_unknown_product_fails_before_auditor(tmp_path, monkeypatch):
     import json

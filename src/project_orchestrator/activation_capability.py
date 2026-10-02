@@ -4,6 +4,8 @@ import hashlib
 import json
 import subprocess
 import sys
+import shutil
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -149,6 +151,30 @@ def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path,*,ob
         stale=[]
     return p.returncode==0 and bool(products),reason,products,stale
 
+def _readiness_worktrees(repos:list[Path],state_root:Path,run_fn=subprocess.run)->tuple[list[Path],Path]:
+    """Create disposable detached origin/main trees without moving canonical workspaces."""
+    root=state_root/"readiness-worktrees"/uuid.uuid4().hex
+    root.mkdir(parents=True,exist_ok=True)
+    audited=[]
+    try:
+        for canonical in repos:
+            target=root/canonical.name
+            proc=run_fn(["git","worktree","add","--detach",str(target),"refs/remotes/origin/main"],
+                        cwd=canonical,text=True,capture_output=True,check=False)
+            if proc.returncode:
+                raise RuntimeError(f"readiness worktree creation failed: {canonical.name}")
+            audited.append(target)
+        return audited,root
+    except Exception:
+        _cleanup_readiness_worktrees(repos,audited,root,run_fn)
+        raise
+
+def _cleanup_readiness_worktrees(canonical_repos:list[Path],audited:list[Path],root:Path,run_fn=subprocess.run)->None:
+    for canonical,target in zip(canonical_repos,audited):
+        run_fn(["git","worktree","remove","--force",str(target)],cwd=canonical,
+               text=True,capture_output=True,check=False)
+    shutil.rmtree(root,ignore_errors=True)
+
 def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path,run_fn=subprocess.run)->tuple[bool,str]:
     """Regenerate exact-head activation evidence from contract-declared repositories."""
     try:
@@ -170,9 +196,16 @@ def refresh_readiness(repo_root:Path,workspace_root:Path,state_root:Path,run_fn=
         return False,"READINESS_WORKSPACE_INCOMPLETE"
     activation=state_root/"hands-off-activation.json"
     report=state_root/"hands-off-readiness.json"
-    cmd=[sys.executable,str(repo_root/"scripts"/"hands_off_readiness.py"),
-         *[str(path) for path in repos],"--output",str(report),"--activation-state",str(activation)]
-    p=run_fn(cmd,cwd=repo_root,text=True,capture_output=True,check=False)
+    try:
+        audited,worktree_root=_readiness_worktrees(repos,state_root,run_fn)
+    except (RuntimeError,OSError):
+        return False,"READINESS_WORKTREE_UNAVAILABLE"
+    try:
+        cmd=[sys.executable,str(repo_root/"scripts"/"hands_off_readiness.py"),
+             *[str(path) for path in audited],"--output",str(report),"--activation-state",str(activation)]
+        p=run_fn(cmd,cwd=repo_root,text=True,capture_output=True,check=False)
+    finally:
+        _cleanup_readiness_worktrees(repos,audited,worktree_root,run_fn)
     (state_root/"readiness-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     if p.returncode!=0:
         return False,"READINESS_NOT_GREEN"
@@ -204,10 +237,17 @@ def recertify_product(repo_root:Path,workspace_root:Path,state_root:Path,product
     repos=[workspace_root/repo.split("/",1)[-1] for repo in declared]
     partial=state_root/f"hands-off-recertify-{product}.json"
     report=state_root/f"hands-off-readiness-{product}.json"
-    cmd=[sys.executable,str(repo_root/"scripts"/"hands_off_readiness.py"),
-         *[str(path) for path in repos],"--product",product,
-         "--output",str(report),"--activation-state",str(partial)]
-    p=run_fn(cmd,cwd=repo_root,text=True,capture_output=True,check=False)
+    try:
+        audited,worktree_root=_readiness_worktrees(repos,state_root,run_fn)
+    except (RuntimeError,OSError):
+        return False,"RECERTIFICATION_WORKTREE_UNAVAILABLE"
+    try:
+        cmd=[sys.executable,str(repo_root/"scripts"/"hands_off_readiness.py"),
+             *[str(path) for path in audited],"--product",product,
+             "--output",str(report),"--activation-state",str(partial)]
+        p=run_fn(cmd,cwd=repo_root,text=True,capture_output=True,check=False)
+    finally:
+        _cleanup_readiness_worktrees(repos,audited,worktree_root,run_fn)
     (state_root/f"recertify-{product}-last-output.txt").write_text((p.stdout or "")+(p.stderr or ""),encoding="utf-8")
     try:
         payload=json.loads(partial.read_text(encoding="utf-8"))
