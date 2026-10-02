@@ -10,6 +10,12 @@ from .state_io import atomic_json
 
 GrantMutator = Callable[[dict[str, Any]], bool]
 
+LIFECYCLE_REPLACE_ATTEMPTS = 20
+
+def atomic_lifecycle_json(path: Path, payload: dict[str, Any]) -> None:
+    """Persist the shared lifecycle through a bounded Windows contention window."""
+    atomic_json(path, payload, replace_attempts=LIFECYCLE_REPLACE_ATTEMPTS)
+
 
 CANONICAL_JOB_STATES = frozenset({
     "QUEUED",
@@ -186,7 +192,7 @@ def mutate_grant_lifecycle(lifecycle: Path, grant_id: str, mutator: GrantMutator
             return False
         if not isinstance(record, dict) or not mutator(record):
             return False
-        atomic_json(lifecycle, state)
+        atomic_lifecycle_json(lifecycle, state)
         return True
     finally:
         release_lifecycle_lock(handle)
