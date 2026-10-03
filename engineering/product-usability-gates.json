@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "objective": "FINISH_USABLE_PRODUCTS",
+  "states": ["UNUSABLE", "FIRST_WORKING_BUILD", "USABLE_ALPHA", "USER_TESTING", "BETA", "FINISHED_TARGET"],
+  "products": {
+    "knowledge-engine": {
+      "current_state": "UNUSABLE",
+      "next_gate": "FIRST_WORKING_BUILD",
+      "gate": "Jeremy can open the product, ask a real research question, and receive a useful evidence-backed answer end-to-end."
+    },
+    "rocksmith": {
+      "current_state": "UNUSABLE",
+      "next_gate": "FIRST_WORKING_BUILD",
+      "gate": "Jeremy can provide a song and obtain a genuinely playable Rocksmith CDLC with acceptable note and timing alignment."
+    },
+    "everward": {
+      "current_state": "UNUSABLE",
+      "next_gate": "FIRST_WORKING_BUILD",
+      "gate": "Jeremy can launch and play a coherent vertical slice."
+    },
+    "voicestudio": {
+      "current_state": "UNUSABLE",
+      "next_gate": "FIRST_WORKING_BUILD",
+      "gate": "Jeremy can provide or record a voice, choose a singing target, and produce a listenable singing output through a usable workflow."
+    }
+  },
+  "scheduler": {
+    "primary_signal": "distance_to_next_usability_gate",
+    "rules": [
+      "Prefer capability slices that remove a proven blocker to the next usability gate.",
+      "Keep every safely executable product advancing; waiting gates do not consume worker capacity.",
+      "Use weighted round-robin rotation with starvation protection across independent products.",
+      "Refill a released worker slot immediately when safe eligible work exists.",
+      "Debt/refactor/docs work cannot outrank usability capability work unless it blocks correctness, safety, verification, promotion, or the usability gate.",
+      "DIRECTION_REQUIRED triggers frontier refresh from authoritative product direction; it is not indefinite idle authority.",
+      "Never fabricate usability or Product Reality evidence."
+    ]
+  }
+}

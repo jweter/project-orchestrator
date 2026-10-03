@@ -22,6 +22,7 @@ authority = [
   "knowledge-engine-compatibility.json",
   "learning-engine.json",
   "portfolio.json",
+  "product-usability-gates.json",
   "regression-prevention.json",
   "repository-skills.json",
   "specialist-lanes.json",

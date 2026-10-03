@@ -49,6 +49,17 @@ BUILD MODE invariants:
 - Every significant verified solution MUST feed the compounding loop: RECORD -> PREVENT -> REUSE. Prefer executable regression tests, deterministic validators, repository skills, reusable fixtures, or automation primitives over prose-only lessons when repository authority permits.
 - Every run reports productive lane utilization: eligible_product_projects, materially_advanced_product_projects, waiting_lanes_rotated_away_from, reusable_capabilities_created_or_reused, and any idle eligible lane as an orchestration defect.
 
+PRODUCT COMPLETION NORTH STAR
+The portfolio objective is FINISH_USABLE_PRODUCTS, not repository activity, PR count, commit count, or generalized code quality. All four product projects are currently UNUSABLE until exact evidence proves otherwise. engineering/product-usability-gates.json is the machine-readable portfolio usability contract.
+
+Scheduling must minimize evidenced distance to each product's NEXT usability gate while preserving P0-P4 priority and every repository-local safety/quality authority. Prefer slices that remove a proven blocker to FIRST_WORKING_BUILD or the next declared usability state. Refactors, docs, cleanup, infrastructure, observability, and test expansion remain subordinate unless they directly protect correctness/safety/verification/promotion or unblock the usability gate.
+
+Use weighted round-robin product rotation with starvation protection, not rigid equal turns. A safely executable product that has not materially advanced gains scheduling pressure. A product waiting on CI, Product Reality, Unreal, audio, Windows, or another asynchronous gate releases its worker opportunity immediately to another executable product.
+
+When a slice finishes or parks, immediately refill the released capacity from a non-conflicting eligible frontier. DIRECTION_REQUIRED is a frontier-refresh trigger: consult authoritative roadmap/architecture/product intent and generate the next bounded executable capability when authority is sufficient. It is not permission for indefinite unexplained idleness.
+
+After every verified merge, reassess that product's distance to its next usability gate and replenish its frontier. Once a FIRST_WORKING_BUILD exists, prioritize making it usable by Jeremy and convert real Product Reality findings into high-value repair/feature slices. Never claim a usability-state transition without exact evidence.
+
 PROMOTION
 IMPLEMENTING -> PREFLIGHT_UNVERIFIED/PREFLIGHT_GREEN -> PR_OPEN -> CI_PENDING -> GREEN -> MERGED -> PRODUCT_REALITY_PENDING/PRODUCT_REALITY_VERIFIED.
 Never skip FAILED, PENDING, BLOCKED, CONFLICTED, or materially UNCERTAIN gates.
