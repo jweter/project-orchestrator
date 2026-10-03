@@ -648,10 +648,10 @@ def main()->int:
     previous_repository=previous_builder_status=rotation_evidence=None
     worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6); atexit.register(worker_pool.shutdown,wait=False)
     dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state); workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
+    progress_sequence=0
     while True:
-        publish_generation_heartbeat(state,process_instance_id=process_instance_id,burst_id=burst_id,actor_revision=loaded_actor_revision)
-        if generation_handoff_status(state,process_instance_id=process_instance_id,worker_pool=worker_pool)=="DRAINING_FOR_TAKEOVER":
-            return 0
+        progress_sequence+=1
+        if _supervisor_runtime.guard_generation_iteration(state,process_instance_id=process_instance_id,burst_id=burst_id,actor_revision=loaded_actor_revision,sequence=progress_sequence,worker_pool=worker_pool,heartbeat_fn=publish_generation_heartbeat,handoff_fn=generation_handoff_status): return 0
         if human_mode_active(state):
             atomic(state/"supervisor-human-ownership.json",{
                 "schema_version":1,"status":"HUMAN_MODE_ACTIVE",

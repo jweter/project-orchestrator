@@ -93,6 +93,24 @@ Authoritative design: [HANDS_OFF_EVOLUTION.md](HANDS_OFF_EVOLUTION.md).
 
 **Completion test:** Jeremy can set/realign authoritative direction, leave the routine loop, and later inspect evidence of continuous verified product advancement. A recurring need to say "continue" is P1 liveness debt, not normal operation.
 
+## Current control-plane sequence — Iron Foreman -> Helix
+
+The immediate P1 reliability project is **Project Iron Foreman** (`engineering/IRON_FOREMAN_PLAN.md`). It removes the supervisor single point of failure through progress-based health, exact-generation fencing, an independent Guardian, state reconstruction, and live recovery proving.
+
+Iron Foreman must reach its production Definition of DONE before the next major control-plane expansion begins.
+
+Its explicit successor is **Project Helix — Durable Execution, Evidence, and Learning** (`engineering/PROJECT_HELIX_ROADMAP.md`). Helix consumes Iron Foreman's reconstructed execution truth and extends it into:
+
+- a durable execution ledger and resumable checkpoints;
+- typed, evidence-backed agent contracts;
+- unified end-to-end execution tracing;
+- quantitative trajectory/outcome evaluation;
+- Capability Compiler v2 with governed promote/demote rules;
+- measured planner/dispatcher intelligence;
+- temporal knowledge only if evidence shows it is needed.
+
+The handoff artifact is Iron Foreman's final controlled recovery evidence bundle, which becomes Helix Phase 0's reference reconstruction fixture. This keeps reliability before intelligence: **recover correctly first, then remember, measure, learn, and improve.**
+
 ## After v1
 
 Freeze governance-layer expansion unless measured evidence identifies a bottleneck. Direct most engineering capacity into product roadmap work and use the orchestrator to measure, learn, and improve the loop.
