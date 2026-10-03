@@ -440,6 +440,42 @@ def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, mon
     assert "Execute exactly this authorized bounded slice" in seen["message"]
     assert "Objective: Implement parser" in seen["message"]
 
+
+def test_build_once_retains_runner_output_when_success_makes_no_changes(tmp_path, monkeypatch):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
+    monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
+    ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
+    monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
+    class GitResult:
+        returncode=0; stdout="authorized\n"; stderr=""
+    class BuilderResult:
+        returncode=0; stdout="prefix " + ("x"*5000) + " useful terminal diagnosis"; stderr=""
+    monkeypatch.setattr(builder,"run",lambda *a,**k:GitResult())
+    monkeypatch.setattr(builder,"run_aider",lambda *a,**k:BuilderResult())
+    monkeypatch.setattr(builder,"cleanup_aider_artifacts",lambda ws:None)
+    monkeypatch.setattr(builder,"changed_paths",lambda ws,base:[])
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"grant_id":"g1","execution_slice":{
+        "capability_id":"C1","slice_id":"S1","repository":"jweter/rocksmith-cdlc-generator",
+        "exact_head":"authorized","objective":"Implement parser","acceptance":["parser tests pass"]
+    }}),encoding="utf-8")
+
+    result=builder.build_once(tmp_path,tmp_path/"state.json",
+        eligible_repos={"jweter/rocksmith-cdlc-generator":"authorized"},execution_grant=grant)
+
+    assert result["status"]=="NO_OP"
+    assert result["runner_id"]=="aider-ollama"
+    assert result["failure_fingerprint"]
+    lessons=json.loads((tmp_path/"autonomous-failure-lessons.json").read_text())
+    lesson=lessons["lessons"][result["failure_fingerprint"]]
+    assert lesson["stage"]=="aider-ollama_no_changes"
+    assert lesson["last_outcome"]=="NO_OP"
+    assert lesson["detail"].endswith("useful terminal diagnosis")
+    assert len(lesson["detail"])==4000
+
+
 def test_failure_lessons_compound_repeated_failure_into_promotion_candidate(tmp_path):
     import json
     import scripts.autonomous_slice_builder as builder
