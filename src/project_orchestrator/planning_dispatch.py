@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from .decision_learning import planning_hint
+from .portfolio_advancement import select_portfolio_frontier
 from .state_io import atomic_json
 
 PRODUCT_BY_REPOSITORY = {
@@ -300,14 +301,9 @@ def select_execution_target(
     *,
     load_execution_slice_fn: Callable,
     conflict_check_fn: Callable,
+    usability_policy: dict | None = None,
 ) -> tuple[str, str]:
-    """Allocate one execution target with independent-product fairness.
-
-    Portfolio capacity is reserved by product first, not by repository.  This
-    prevents Knowledge Engine's three repositories from consuming consecutive
-    portfolio turns while Rocksmith or Everward has eligible work.  Repository
-    rotation happens only inside the selected product lane.
-    """
+    """Allocate one execution target with product fairness and optional usability pressure."""
     reserved = reserved_quarantine_repositories(state_root)
     product_repositories: dict[str, list[tuple[str, str]]] = {}
     for product in products:
@@ -329,14 +325,18 @@ def select_execution_target(
         previous_product = cursor.get("product")
         previous_repository = cursor.get("repository")
         repository_cursors = cursor.get("repositories", {})
+        starvation = cursor.get("product_starvation", {})
         if not isinstance(repository_cursors, dict):
             repository_cursors = {}
+        if not isinstance(starvation, dict):
+            starvation = {}
         if previous_product and previous_repository and previous_product not in repository_cursors:
             repository_cursors[previous_product] = previous_repository
     except (OSError, json.JSONDecodeError, TypeError):
         previous_product = None
         previous_repository = None
         repository_cursors = {}
+        starvation = {}
 
     atomic_json(
         state_root / "decision-learning-hint.json",
@@ -354,6 +354,7 @@ def select_execution_target(
     )
     blocked: list[str] = []
     decisions: list[dict] = []
+    legal_candidates: list[dict] = []
 
     for product in product_order:
         repositories = product_repositories[product]
@@ -411,37 +412,29 @@ def select_execution_target(
                 blocked.append(f"{repo}=ALREADY_OWNED:{conflict.get('grant_id')}")
                 continue
 
+            legal_candidates.append({
+                "product": product,
+                "repository": repo,
+                "head_sha": head,
+                "slice_id": execution.get("slice_id"),
+                "eligible": True,
+                "advances_usability_gate": execution.get("advances_usability_gate") is True,
+                "removes_usability_blocker": execution.get("removes_usability_blocker") is True,
+                "execution": execution,
+            })
             decisions.append({
                 "repository": repo,
                 "product": product,
                 "head_sha": head,
-                "outcome": "SELECTED",
+                "slice_id": execution.get("slice_id"),
+                "outcome": "READY_CANDIDATE",
                 "reason": "READY_EXECUTION_SLICE",
+                "advances_usability_gate": execution.get("advances_usability_gate") is True,
+                "removes_usability_blocker": execution.get("removes_usability_blocker") is True,
             })
-            atomic_json(
-                state_root / "dispatch-decision.json",
-                {
-                    "schema_version": 2,
-                    "allocation_policy": "PRODUCT_FIRST_FAIR_SHARE",
-                    "recorded_at_utc": datetime.now(UTC).isoformat(),
-                    "selected_repository": repo,
-                    "selected_product": product,
-                    "decisions": decisions,
-                },
-            )
-            repository_cursors[product] = repo
-            atomic_json(
-                cursor_path,
-                {
-                    "schema_version": 2,
-                    "product": product,
-                    "repository": repo,
-                    "repositories": repository_cursors,
-                },
-            )
-            return repo, head
+            break
 
-        if product_had_ready_slice:
+        if product_had_ready_slice and not any(row["product"] == product for row in legal_candidates):
             decisions.append({
                 "repository": None,
                 "product": product,
@@ -450,11 +443,83 @@ def select_execution_target(
                 "reason": "ALL_READY_SLICES_OWNED",
             })
 
+    selected_candidate = None
+    policy_active = isinstance(usability_policy, dict) and bool(usability_policy.get("products"))
+    if legal_candidates:
+        if policy_active:
+            if not starvation:
+                # Stable initial ordering preserves declared product order while
+                # subsequent calls use persisted starvation age.
+                starvation = {
+                    product: len(product_order) - index
+                    for index, product in enumerate(product_order)
+                }
+            ranked = select_portfolio_frontier(
+                legal_candidates,
+                usability_policy,
+                slots=1,
+                advancement_age=starvation,
+            )
+            if ranked:
+                selected_candidate = ranked[0]
+        if selected_candidate is None:
+            selected_candidate = legal_candidates[0]
+
+    if selected_candidate is not None:
+        product = selected_candidate["product"]
+        repo = selected_candidate["repository"]
+        head = selected_candidate["head_sha"]
+        for row in decisions:
+            if row.get("product") == product and row.get("repository") == repo and row.get("outcome") == "READY_CANDIDATE":
+                row["outcome"] = "SELECTED"
+                row["reason"] = (
+                    "USABILITY_WEIGHTED_READY_SLICE"
+                    if policy_active else "READY_EXECUTION_SLICE"
+                )
+                row["starvation_age"] = int(starvation.get(product, 0))
+                break
+        if policy_active:
+            for candidate in legal_candidates:
+                candidate_product = candidate["product"]
+                starvation[candidate_product] = max(int(starvation.get(candidate_product, 0)), 0) + 1
+            starvation[product] = 0
+        allocation_policy = (
+            "USABILITY_WEIGHTED_FAIR_SHARE"
+            if policy_active else "PRODUCT_FIRST_FAIR_SHARE"
+        )
+        atomic_json(
+            state_root / "dispatch-decision.json",
+            {
+                "schema_version": 3,
+                "allocation_policy": allocation_policy,
+                "recorded_at_utc": datetime.now(UTC).isoformat(),
+                "selected_repository": repo,
+                "selected_product": product,
+                "selected_slice_id": selected_candidate.get("slice_id"),
+                "decisions": decisions,
+            },
+        )
+        repository_cursors[product] = repo
+        atomic_json(
+            cursor_path,
+            {
+                "schema_version": 3,
+                "product": product,
+                "repository": repo,
+                "repositories": repository_cursors,
+                "product_starvation": starvation,
+            },
+        )
+        return repo, head
+
     atomic_json(
         state_root / "dispatch-decision.json",
         {
-            "schema_version": 2,
-            "allocation_policy": "PRODUCT_FIRST_FAIR_SHARE",
+            "schema_version": 3 if policy_active else 2,
+            "allocation_policy": (
+                "USABILITY_WEIGHTED_FAIR_SHARE"
+                if policy_active else "PRODUCT_FIRST_FAIR_SHARE"
+            ),
             "recorded_at_utc": datetime.now(UTC).isoformat(),
             "selected_repository": None,
             "selected_product": None,
@@ -462,13 +527,16 @@ def select_execution_target(
         },
     )
     terminal_outcomes = {"ROADMAP_EXHAUSTED", "NO_AUTHORIZED_SLICE"}
-    if decisions and all(
-        item.get("outcome") in terminal_outcomes for item in decisions
+    terminal_decisions = [
+        item for item in decisions
+        if item.get("repository") is not None
+    ]
+    if terminal_decisions and all(
+        item.get("outcome") in terminal_outcomes for item in terminal_decisions
     ):
         raise RuntimeError("ALL_EXECUTION_LANES_COMPLETE")
     detail = ";".join(blocked) or "UNKNOWN"
     raise RuntimeError(f"NO_READY_EXECUTION_SLICE:{detail}")
-
 
 def productive_liveness(
     state_root: Path,

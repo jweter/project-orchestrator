@@ -159,3 +159,72 @@ def test_roadmap_exhaustion_is_explicit_in_dispatch_evidence(tmp_path):
     assert evidence["selected_repository"] is None
     assert {row["outcome"] for row in evidence["decisions"]} == {"ROADMAP_EXHAUSTED"}
     assert {row["reason"] for row in evidence["decisions"]} == {"ROADMAP_EXHAUSTED"}
+
+
+USABILITY_POLICY = {"products": {
+    "knowledge-engine": {"next_gate": "FIRST_WORKING_BUILD"},
+    "rocksmith": {"next_gate": "FIRST_WORKING_BUILD"},
+    "everward": {"next_gate": "FIRST_WORKING_BUILD"},
+    "voicestudio": {"next_gate": "FIRST_WORKING_BUILD"},
+}}
+
+
+def test_live_policy_prefers_slice_that_removes_usability_blocker(tmp_path):
+    def load(_state, repo, _head):
+        if repo == "jweter/VoiceStudio":
+            return {
+                "status": "READY",
+                "slice_id": "singing-output",
+                "allowed_paths": ["src/singing.py"],
+                "advances_usability_gate": True,
+                "removes_usability_blocker": True,
+            }
+        return {
+            "status": "READY",
+            "slice_id": "generic",
+            "allowed_paths": ["src/example.py"],
+        }
+
+    repo, _ = select_execution_target(
+        tmp_path,
+        ACTIVATION,
+        PRODUCTS,
+        load_execution_slice_fn=load,
+        conflict_check_fn=_unowned,
+        usability_policy=USABILITY_POLICY,
+    )
+    assert repo == "jweter/VoiceStudio"
+    evidence = json.loads((tmp_path / "dispatch-decision.json").read_text(encoding="utf-8"))
+    assert evidence["allocation_policy"] == "USABILITY_WEIGHTED_FAIR_SHARE"
+    assert evidence["selected_slice_id"] == "singing-output"
+
+
+def test_live_policy_starvation_rotates_equal_usability_candidates(tmp_path):
+    def load(_state, repo, _head):
+        return {
+            "status": "READY",
+            "slice_id": repo.rsplit("/", 1)[-1],
+            "allowed_paths": ["src/example.py"],
+            "advances_usability_gate": True,
+        }
+
+    picks = [
+        select_execution_target(
+            tmp_path,
+            ACTIVATION,
+            PRODUCTS,
+            load_execution_slice_fn=load,
+            conflict_check_fn=_unowned,
+            usability_policy=USABILITY_POLICY,
+        )[0]
+        for _ in range(4)
+    ]
+    repo_to_product = {
+        "jweter/knowledge-engine-ai": "knowledge-engine",
+        "jweter/knowledge-engine-core": "knowledge-engine",
+        "jweter/knowledge-engine-web": "knowledge-engine",
+        "jweter/rocksmith-cdlc-generator": "rocksmith",
+        "jweter/Project-Everward": "everward",
+        "jweter/VoiceStudio": "voicestudio",
+    }
+    assert [repo_to_product[repo] for repo in picks] == PRODUCTS
