@@ -961,7 +961,13 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             result["failure_fingerprint"]=lesson["fingerprint"]
         atomic_json(state_path,result); return result
     if not paths:
-        result={"status":"NO_OP","repository":repo,"last_repo_index":idx,"last_repository":repo}
+        detail=(builder.stderr or builder.stdout or "runner returned success without tracked changes")[-4000:]
+        lesson=retain_failure_lesson(
+            state_path,f"{selected_runner or 'aider-ollama'}_no_changes",detail,"NO_OP"
+        )
+        result={"status":"NO_OP","repository":repo,"runner_id":selected_runner or "aider-ollama",
+                "failure_fingerprint":lesson["fingerprint"],
+                "last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
     initial_failure=generated_change_failure(ws,base,paths,slice_authority)
     repair_fingerprint=None
