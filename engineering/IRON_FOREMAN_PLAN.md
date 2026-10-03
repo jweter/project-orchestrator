@@ -120,3 +120,18 @@ This phase must not delay supervisor self-recovery.
 
 ## Definition of DONE
 Iron Foreman is complete only when an alive-but-stalled supervisor can be detected and recovered automatically on Azathoth, with exact-generation fencing, one authoritative replacement, reconstructed execution truth, no duplicate mutation authority, and durable evidence proving every gate above.
+
+
+## Successor project — Project Helix
+Project Iron Foreman ends by proving that the Foundry control plane can recover itself safely. Its direct successor is **Project Helix**, defined in `engineering/PROJECT_HELIX_ROADMAP.md`.
+
+Helix begins only after the Iron Foreman production Definition of DONE is satisfied. The handoff is deliberate:
+- Iron Foreman provides trustworthy recovery, exact-generation authority, and reconstructed execution truth.
+- Helix turns that truth into a durable execution ledger and typed agent contracts.
+- Helix then adds unified tracing and quantitative trajectory evaluation.
+- Verified successful episodes feed Capability Compiler v2.
+- Measured capabilities then improve planner/dispatcher decisions without taking authority away from deterministic safety, ownership, CI, or Product Reality gates.
+
+The first Helix artifact is the evidence bundle from Iron Foreman's final controlled recovery test. That becomes Helix Phase 0's reference reconstruction fixture.
+
+**Next major project after Iron Foreman: Project Helix — Durable Execution, Evidence, and Learning.**
