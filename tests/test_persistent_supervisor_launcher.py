@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
-from scripts.launch_persistent_supervisor import (publication_blocked_generation_live, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from scripts.launch_persistent_supervisor import (publication_blocked_generation_live, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
@@ -90,3 +90,36 @@ def test_stale_generation_handoff_request_is_fenced_to_predecessor(tmp_path):
     assert persisted["status"]=="TAKEOVER_REQUESTED"
     assert persisted["predecessor_process_instance_id"]=="old-generation"
     assert persisted["requested_at_utc"]==now.isoformat()
+
+
+def test_reclaim_stalled_generation_fences_exact_verified_owner(tmp_path):
+    now=datetime(2026,10,3,1,0,tzinfo=UTC)
+    write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
+    write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
+    write(tmp_path/"supervisor-progress.json",{"process_instance_id":"old","burst_id":"burst","sequence":7,"observed_at_utc":(now-timedelta(seconds=601)).isoformat()})
+    result=reclaim_stalled_generation(tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:123")
+    assert result["status"]=="GENERATION_FENCED"
+    assert result["reclaimed"] is True
+    fence=json.loads((tmp_path/"supervisor-generation-fence.json").read_text())
+    assert fence["process_instance_id"]=="old"
+    assert fence["burst_id"]=="burst"
+
+def test_reclaim_stalled_generation_refuses_pid_reuse(tmp_path):
+    now=datetime(2026,10,3,1,0,tzinfo=UTC)
+    write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
+    write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
+    write(tmp_path/"supervisor-progress.json",{"process_instance_id":"old","burst_id":"burst","sequence":7,"observed_at_utc":(now-timedelta(seconds=601)).isoformat()})
+    result=reclaim_stalled_generation(tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:999")
+    assert result["status"]=="PROCESS_IDENTITY_CHANGED"
+    assert result["reclaimed"] is False
+    assert not (tmp_path/"supervisor-generation-fence.json").exists()
+
+def test_reclaim_stalled_generation_refuses_recent_progress(tmp_path):
+    now=datetime(2026,10,3,1,0,tzinfo=UTC)
+    write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
+    write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
+    write(tmp_path/"supervisor-progress.json",{"process_instance_id":"old","burst_id":"burst","sequence":8,"observed_at_utc":(now-timedelta(seconds=10)).isoformat()})
+    result=reclaim_stalled_generation(tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:123")
+    assert result["status"]=="HEARTBEAT_STALE_PROGRESS_RECENT"
+    assert result["reclaimed"] is False
+    assert not (tmp_path/"supervisor-generation-fence.json").exists()
