@@ -775,17 +775,26 @@ def record_eligible_idle_streaks(
                     for row in no_slice
                 ]
             if reason is None and blocks_fresh:
-                matches = [
+                product_blocks = [
                     row for row in blocks.get("blocked", [])
-                    if isinstance(row, dict)
-                    and row.get("product") == product
-                    and row.get("reason") == "NO_CONFLICT_FREE_READY_SLICE"
+                    if isinstance(row, dict) and row.get("product") == product
                 ]
-                if matches:
+                direction = [row for row in product_blocks if row.get("reason") == "DIRECTION_REQUIRED"]
+                conflicts = [
+                    row for row in product_blocks
+                    if row.get("reason") == "NO_CONFLICT_FREE_READY_SLICE"
+                ]
+                if direction:
+                    reason = "DIRECTION_REQUIRED"
+                    signature = [
+                        [row.get("repository"), row.get("detail_reason"), row.get("reason")]
+                        for row in direction
+                    ]
+                elif conflicts:
                     reason = "NO_CONFLICT_FREE_READY_SLICE"
                     signature = [
                         [row.get("repository"), row.get("slice_id"), row.get("reason")]
-                        for row in matches
+                        for row in conflicts
                     ]
 
         prior = prior_products.get(product, {}) if isinstance(prior_products, dict) else {}

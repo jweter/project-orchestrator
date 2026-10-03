@@ -1323,6 +1323,37 @@ def test_parallel_dispatch_records_current_empty_batch_reason(tmp_path,monkeypat
     assert convergence["explained_nonexecuting_products"]["everward"]["reason"]=="NO_CONFLICT_FREE_READY_SLICE"
 
 
+def test_parallel_dispatch_preserves_direction_required_without_false_p1(tmp_path,monkeypatch):
+    import json
+    import scripts.continuous_flow_supervisor as supervisor
+    from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+    from tests.test_parallel_worker_pool import ManualExecutor
+    activation={"products":{"everward":{"repositories":{"jweter/Project-Everward":"abc"}}}}
+    (tmp_path/"hands-off-activation.json").write_text(json.dumps(activation))
+    requests=tmp_path/"direction-requests"; requests.mkdir()
+    (requests/"jweter__Project-Everward.json").write_text(json.dumps({
+        "status":"DIRECTION_REQUIRED","repository":"jweter/Project-Everward",
+        "exact_head":"abc","reason":"CAPABILITY_GRAPH_REQUIRED"
+    }))
+    pool=ParallelWorkerPool(max_workers_per_product=1,max_total_workers=1,
+                            executor_factory=ManualExecutor)
+    monkeypatch.setattr(supervisor,"ready_task_batch",lambda *args:[])
+    workers=supervisor.dispatch_parallel_builders(
+        pool,tmp_path,tmp_path,tmp_path,["everward"],dispatch_invocation_id="cycle-2")
+    assert workers==[]
+    blocks=json.loads((tmp_path/"dispatch-blocks.json").read_text())
+    assert blocks["blocked"]==[{
+        "product":"everward","worker_id":None,"repository":"jweter/Project-Everward",
+        "slice_id":None,"reason":"DIRECTION_REQUIRED","detail_reason":"CAPABILITY_GRAPH_REQUIRED"
+    }]
+    from project_orchestrator.planning_dispatch import record_eligible_idle_streaks
+    streaks=record_eligible_idle_streaks(
+        tmp_path,["everward"],current_invocation_id="cycle-2")
+    assert streaks["products"]["everward"]["reason"]=="DIRECTION_REQUIRED"
+    assert streaks["products"]["everward"]["streak"]==0
+    assert streaks["products"]["everward"]["p1_liveness_defect"] is False
+
+
 def test_product_convergence_accepts_matching_dispatch_invocation(tmp_path):
     import json
     import scripts.continuous_flow_supervisor as supervisor
