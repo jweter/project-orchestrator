@@ -892,6 +892,8 @@ def test_preserved_validation_prefers_canonical_engineering_preflight(tmp_path,m
     monkeypatch.setattr(supervisor.subprocess,"run",fake)
     assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_PASSED"
     assert seen[0][1].endswith("engineering\\preflight.py") or seen[0][1].endswith("engineering/preflight.py")
+    assert seen[0][2]=="--evidence"
+    assert seen[0][3].endswith("preflight-evidence.json")
 
 
 def test_preserved_validation_fails_closed_without_repository_preflight(tmp_path,monkeypatch):
