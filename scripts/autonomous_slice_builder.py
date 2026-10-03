@@ -961,7 +961,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
             result["failure_fingerprint"]=lesson["fingerprint"]
         atomic_json(state_path,result); return result
     if not paths:
-        detail=(builder.stderr or builder.stdout or "runner returned success without tracked changes")[-4000:]
+        combined="\n".join(part for part in (builder.stderr,builder.stdout) if part)
+        detail=(combined or "runner returned success without tracked changes")[-4000:]
         lesson=retain_failure_lesson(
             state_path,f"{selected_runner or 'aider-ollama'}_no_changes",detail,"NO_OP"
         )

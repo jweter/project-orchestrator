@@ -451,7 +451,7 @@ def test_build_once_retains_runner_output_when_success_makes_no_changes(tmp_path
     class GitResult:
         returncode=0; stdout="authorized\n"; stderr=""
     class BuilderResult:
-        returncode=0; stdout="prefix " + ("x"*5000) + " useful terminal diagnosis"; stderr=""
+        returncode=0; stdout="prefix " + ("x"*5000) + " useful terminal diagnosis"; stderr="repo scan progress"
     monkeypatch.setattr(builder,"run",lambda *a,**k:GitResult())
     monkeypatch.setattr(builder,"run_aider",lambda *a,**k:BuilderResult())
     monkeypatch.setattr(builder,"cleanup_aider_artifacts",lambda ws:None)
