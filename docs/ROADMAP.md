@@ -162,3 +162,7 @@ The Gym is an explicit post-v1 capability path. It uses otherwise-idle Laptop Ac
 ### Gym north star
 
 Each verified production or practice episode gets a governed path to make future engineering cheaper: recognize -> retrieve -> prevent/repair -> verify -> measure -> retain/demote. Idle compute becomes deliberate practice; deliberate practice creates candidate skills; production evidence decides whether those skills survive.
+
+## Active P1 production roadblock � Iron Foreman / Iron Gate
+
+Current incident, exact evidence, stale Git-lock recovery requirements, promotion separation, and runtime acceptance criteria are authoritative in [Iron Foreman Production Roadblock Handoff](../engineering/IRON_FOREMAN_PRODUCTION_ROADBLOCK_2026-10-03.md). Treat it as active development input until its acceptance criteria are satisfied.
