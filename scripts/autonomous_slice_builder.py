@@ -1,6 +1,6 @@
 """Idle-gated autonomous bounded-slice builder using local Ollama + Aider."""
 from __future__ import annotations
-import argparse, ctypes, hashlib, json, os, shutil, socket, subprocess, sys, threading, time, uuid
+import argparse, ctypes, hashlib, json, os, re, shutil, socket, subprocess, sys, threading, time, uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -89,6 +89,53 @@ def run(argv:list[str],cwd:Path,**kwargs:Any)->subprocess.CompletedProcess[str]:
             raise RuntimeError("EXECUTION_RUNTIME_NOT_FENCEABLE")
         result=supervised(request,authority_check)
     return subprocess.CompletedProcess(argv,result.returncode,result.stdout,result.stderr)
+
+STALE_GIT_LOCK_SECONDS=3600
+
+def git_processes_absent(ws:Path)->bool:
+    """Return True only when the host process inventory proves no Git process is alive."""
+    argv=["tasklist","/FO","CSV","/NH"] if os.name=="nt" else ["pgrep","-a","-f","(^|/)git( |$)"]
+    probe=run(argv,ws)
+    if os.name=="nt":
+        if probe.returncode:
+            return False
+        return not any("git" in line.lower().split(",",1)[0] for line in probe.stdout.splitlines())
+    return probe.returncode==1
+
+def recover_stale_checkout_lock(ws:Path,stderr:str,now:float|None=None)->dict[str,Any]:
+    """Remove only an old checkout lock when host process evidence proves Git is absent."""
+    match=re.search(r"['\"]([^'\"]*index\.lock)['\"]",stderr or "",re.IGNORECASE)
+    if not match:
+        return {"status":"NO_INDEX_LOCK_EVIDENCE"}
+    lock=Path(match.group(1))
+    try:
+        stat=lock.stat()
+    except OSError:
+        return {"status":"LOCK_UNAVAILABLE","lock_path":str(lock)}
+    age=max(0.0,(time.time() if now is None else now)-stat.st_mtime)
+    if age<STALE_GIT_LOCK_SECONDS:
+        return {"status":"LOCK_TOO_RECENT","lock_path":str(lock),"age_seconds":age}
+    if not git_processes_absent(ws):
+        return {"status":"LOCK_OWNER_AMBIGUOUS","lock_path":str(lock),"age_seconds":age}
+    try:
+        lock.unlink()
+    except OSError as exc:
+        return {"status":"LOCK_REMOVE_FAILED","lock_path":str(lock),"error":type(exc).__name__}
+    return {"status":"STALE_LOCK_REMOVED","lock_path":str(lock),"age_seconds":age}
+
+def checkout_with_stale_lock_recovery(argv:list[str],ws:Path)->tuple[subprocess.CompletedProcess[str],dict[str,Any]]:
+    first=run(argv,ws)
+    if not first.returncode:
+        return first,{"status":"NOT_NEEDED"}
+    recovery=recover_stale_checkout_lock(ws,first.stderr)
+    if recovery.get("status")!="STALE_LOCK_REMOVED":
+        return first,recovery
+    return run(argv,ws),recovery
+
+def checkout_failure(repo:str,ws:Path,target:str,result:subprocess.CompletedProcess[str],recovery:dict[str,Any])->dict[str,Any]:
+    detail=(result.stderr or result.stdout or "git checkout failed").strip()
+    return {"status":"P1_BASE_CHECKOUT_FAILED","repository":repo,"worktree":str(ws),"target":target,
+            "checkout_recovery":recovery,"failure_fingerprint":failure_fingerprint("base_checkout",detail),"detail":detail[-2000:]}
 
 def gh_json(args:list[str],cwd:Path|None=None)->Any:
     p=run(["gh",*args],cwd or Path.cwd())
@@ -903,13 +950,13 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                      if len(line)>=3 and line[0] in porcelain_states and line[1] in porcelain_states]
         if pre_checkout.returncode or dirty_lines:
             raise RuntimeError("WORKSPACE_CHANGED_AFTER_ADMISSION")
-        reset=run(["git","checkout","--detach",checkout_target],ws)
+        reset,checkout_recovery=checkout_with_stale_lock_recovery(["git","checkout","--detach",checkout_target],ws)
     else:
         expected=None
         checkout_target=f"origin/{main}"
         staging_branch="actor-staging" if not worker_id else f"actor-staging-{worker_id}"
-        reset=run(["git","checkout","-B",staging_branch,checkout_target],ws)
-    if reset.returncode: raise RuntimeError("base checkout failed")
+        reset,checkout_recovery=checkout_with_stale_lock_recovery(["git","checkout","-B",staging_branch,checkout_target],ws)
+    if reset.returncode: return checkout_failure(repo,ws,checkout_target,reset,checkout_recovery)
     base=run(["git","rev-parse","HEAD"],ws).stdout.strip()
     if execution_grant is not None:
         if base!=expected:
