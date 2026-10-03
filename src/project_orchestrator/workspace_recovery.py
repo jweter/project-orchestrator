@@ -17,6 +17,15 @@ from .recovery_manager import (
 )
 from .state_io import atomic_json
 
+
+def repository_preflight_command(ws:Path)->list[str]|None:
+    """Resolve the repository's canonical local preflight without inventing a verifier."""
+    for relative in (Path("engineering/preflight.py"),Path("scripts/preflight.py")):
+        if (ws/relative).is_file():
+            return [sys.executable,str(relative)]
+    return None
+
+
 def classify_orphan_branch(repo:str,ws:Path,branch:str)->tuple[str,dict]:
     """Classify clean autonomous branch state without mutating it."""
     base=subprocess.run(["git","merge-base","HEAD","origin/main"],cwd=ws,text=True,capture_output=True,check=False)
@@ -59,7 +68,10 @@ def resume_orphan_branch(repo:str,ws:Path,branch:str,classification:str,evidence
     if actual.returncode or actual.stdout.strip()!=expected:
         return "RECOVERY_HEAD_CHANGED"
     if classification=="ORPHAN_LOCAL_COMMIT_UNPUSHED":
-        preflight=subprocess.run([sys.executable,"scripts/preflight.py"],cwd=ws,text=True,capture_output=True,check=False)
+        preflight_command=repository_preflight_command(ws)
+        if preflight_command is None:
+            return "RECOVERY_PREFLIGHT_UNAVAILABLE"
+        preflight=subprocess.run(preflight_command,cwd=ws,text=True,capture_output=True,check=False)
         if preflight.returncode:
             return "RECOVERY_PREFLIGHT_FAILED"
         pushed=subprocess.run(["git","push","-u","origin",branch],cwd=ws,text=True,capture_output=True,check=False)
@@ -160,7 +172,10 @@ def validate_preserved_work(ws:Path,record:dict,revalidate_fn=None)->str:
     if revalidate_fn(ws,record)!="PRESERVED_WORK_EXACT":
         return "PRESERVED_VALIDATION_IDENTITY_PRECHECK_FAILED"
     before=record.get("preserved_work_evidence",{}).get("diff_sha256")
-    preflight=subprocess.run([sys.executable,"scripts/preflight.py"],cwd=ws,text=True,capture_output=True,check=False)
+    preflight_command=repository_preflight_command(ws)
+    if preflight_command is None:
+        return "PRESERVED_VALIDATION_PREFLIGHT_UNAVAILABLE"
+    preflight=subprocess.run(preflight_command,cwd=ws,text=True,capture_output=True,check=False)
     if revalidate_fn(ws,record)!="PRESERVED_WORK_EXACT":
         return "PRESERVED_VALIDATION_MUTATED_WORKSPACE"
     if preflight.returncode:
