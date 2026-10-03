@@ -8,8 +8,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
 
-from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
-from .state_io import atomic_json
+from .grant_lifecycle import (
+    acquire_lifecycle_lock,
+    atomic_lifecycle_json,
+    release_lifecycle_lock,
+)
 
 ISSUE_LEASE_SECONDS = 60
 RECOVERY_GENERATION_LEASE_SECONDS = 60
@@ -137,7 +140,7 @@ def recover_stale_issued_grants(
                 record["issue_unknown_liveness_checks"] = 0
                 record["result_status"] = "ISSUE_LEASE_EXPIRED_ISSUER_ALIVE"
         if changed:
-            atomic_json(path, payload)
+            atomic_lifecycle_json(path, payload)
         return recovered
     finally:
         release_lifecycle_lock(lock)
@@ -199,7 +202,7 @@ def recover_stale_recovery_generations(
                     record["recovery_state"] = "QUARANTINED"
                     record["recovery_quarantine_reason"] = "RECOVERY_GENERATION_OWNER_UNKNOWN"
         if changed:
-            atomic_json(path, payload)
+            atomic_lifecycle_json(path, payload)
         return released
     finally:
         release_lifecycle_lock(lock)
@@ -259,7 +262,7 @@ def recover_stale_grant_claims(
                 record.pop("unknown_liveness_first_seen_at", None)
                 record["result_status"] = "CLAIM_LEASE_EXPIRED_WORKER_ALIVE"
         if changed:
-            atomic_json(path, payload)
+            atomic_lifecycle_json(path, payload)
         return abandoned
     finally:
         release_lifecycle_lock(lock)
@@ -321,7 +324,7 @@ def recheck_quarantined_claims(
             else:
                 outcomes[grant_id] = "STILL_UNKNOWN"
         if changed:
-            atomic_json(path, payload)
+            atomic_lifecycle_json(path, payload)
         return outcomes
     finally:
         release_lifecycle_lock(lock)
