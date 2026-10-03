@@ -85,6 +85,27 @@ def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|Non
     atomic(state/"supervisor-takeover-request.json",payload)
     return payload
 
+def reclaim_stalled_generation(state:Path,active_id:str,*,now:datetime|None=None,
+                               fingerprint_fn=None)->dict:
+    """Fence only an exact generation proven stalled and still owning its PID."""
+    from project_orchestrator.recovery_manager import process_start_fingerprint
+    from project_orchestrator.supervisor_health import (
+        evaluate_supervisor_health, fence_generation, verify_reclaim_identity,
+    )
+    proc=load(state/"supervisor-process-instance.json")
+    heartbeat=load(state/"supervisor-generation-heartbeat.json")
+    progress=load(state/"supervisor-progress.json")
+    if proc.get("process_instance_id") != active_id:
+        return {"status":"RECLAIM_IDENTITY_MISMATCH","reclaimed":False}
+    health=evaluate_supervisor_health(process=proc,heartbeat=heartbeat,progress=progress,now=now)
+    if health.get("status") != "SUPERVISOR_STALLED" or health.get("reclaimable") is not True:
+        return {"status":health.get("status","RECLAIM_NOT_AUTHORIZED"),"reclaimed":False}
+    verified=verify_reclaim_identity(health,fingerprint_fn=fingerprint_fn or process_start_fingerprint)
+    if verified.get("verified") is not True:
+        return {**verified,"reclaimed":False}
+    fence=fence_generation(state,verified,now=now)
+    return {**fence,"reclaimed":True}
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True);p.add_argument("--workspace-root",required=True)
@@ -135,8 +156,10 @@ def main()->int:
                 and sup.get("updated_at_utc")):
             if not supervisor_state_fresh(freshness,max_age_seconds=max(1,a.stale_seconds)):
                 request_stale_generation_handoff(state,active_id)
-                receipt.update({"status":"STALE_GENERATION","process_instance_id":active_id,
-                                "burst_id":proc["burst_id"],
+                reclaim=reclaim_stalled_generation(state,active_id)
+                receipt.update({"status":"GENERATION_FENCED" if reclaim.get("reclaimed") else "STALE_GENERATION",
+                                "process_instance_id":active_id,"burst_id":proc["burst_id"],
+                                "reclaim_status":reclaim.get("status"),
                                 "observed_at_utc":datetime.now(UTC).isoformat()})
                 atomic(state/"persistent-supervisor-launch.json",receipt)
                 if not a.wait_for_takeover:
