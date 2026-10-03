@@ -1491,7 +1491,7 @@ def test_parallel_worker_failure_is_recorded_without_blocking_pool(tmp_path):
     assert "private detail" not in json.dumps(rows)
 
 
-def test_post_harvest_takeover_admission_drains_without_refill(tmp_path):
+def test_post_harvest_takeover_drains_without_refill(tmp_path):
     import json
     import scripts.continuous_flow_supervisor as supervisor
 
@@ -1505,24 +1505,19 @@ def test_post_harvest_takeover_admission_drains_without_refill(tmp_path):
         "status":"TAKEOVER_REQUESTED",
         "predecessor_process_instance_id":"generation-1",
     }))
-
-    status,admit=supervisor.post_harvest_takeover_admission(
+    status=supervisor.generation_handoff_status(
         tmp_path,process_instance_id="generation-1",worker_pool=pool)
     assert status=="WAITING_FOR_WORKERS"
-    assert admit is False
-    handoff=json.loads((tmp_path/"supervisor-generation-handoff.json").read_text())
-    assert handoff["active_workers"]==1
+    assert json.loads((tmp_path/"supervisor-generation-handoff.json").read_text())["active_workers"]==1
 
     pool.running=0
-    status,admit=supervisor.post_harvest_takeover_admission(
+    status=supervisor.generation_handoff_status(
         tmp_path,process_instance_id="generation-1",worker_pool=pool)
     assert status=="DRAINING_FOR_TAKEOVER"
-    assert admit is False
-    handoff=json.loads((tmp_path/"supervisor-generation-handoff.json").read_text())
-    assert handoff["active_workers"]==0
+    assert json.loads((tmp_path/"supervisor-generation-handoff.json").read_text())["active_workers"]==0
 
 
-def test_post_harvest_takeover_admission_ignores_other_generation(tmp_path):
+def test_post_harvest_takeover_ignores_other_generation(tmp_path):
     import json
     import scripts.continuous_flow_supervisor as supervisor
 
@@ -1534,7 +1529,5 @@ def test_post_harvest_takeover_admission_ignores_other_generation(tmp_path):
         "status":"TAKEOVER_REQUESTED",
         "predecessor_process_instance_id":"older-generation",
     }))
-    status,admit=supervisor.post_harvest_takeover_admission(
-        tmp_path,process_instance_id="current-generation",worker_pool=Pool())
-    assert status is None
-    assert admit is True
+    assert supervisor.generation_handoff_status(
+        tmp_path,process_instance_id="current-generation",worker_pool=Pool()) is None
