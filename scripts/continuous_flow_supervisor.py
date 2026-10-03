@@ -589,6 +589,15 @@ def generation_handoff_status(state:Path,*,process_instance_id:str,worker_pool:P
     })
     return status
 
+
+def post_harvest_takeover_admission(state:Path,*,process_instance_id:str,
+                                    worker_pool:ParallelWorkerPool)->tuple[str|None,bool]:
+    """Refuse new grants while a fenced generation drains for takeover."""
+    status=generation_handoff_status(
+        state,process_instance_id=process_instance_id,worker_pool=worker_pool
+    )
+    return status,status is None
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -714,11 +723,19 @@ def main()->int:
         runtime_lease_reconciliation=_supervisor_runtime.reconcile_runtime_leases(
             RUNTIME_LEASES,worker_pool
         )
-        dispatch_invocation_id=uuid.uuid4().hex if products else None
+        # Re-check takeover after harvest. A worker can finish after the loop-start
+        # handoff check; admitting a replacement here would starve a safe deploy
+        # forever. Drain existing work, then yield before issuing any new grant.
+        post_harvest_handoff,admit_new_work=post_harvest_takeover_admission(
+            state,process_instance_id=process_instance_id,worker_pool=worker_pool
+        )
+        if post_harvest_handoff=="DRAINING_FOR_TAKEOVER":
+            return 0
+        dispatch_invocation_id=uuid.uuid4().hex if products and admit_new_work else None
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
             dispatch_invocation_id=dispatch_invocation_id
-        ) if products else []
+        ) if products and admit_new_work else []
         # Historical abandoned-work recovery is idle-capacity work. Never make
         # an active or newly dispatched product lane wait behind backlog cleanup.
         if not dispatched_workers and worker_pool.snapshot()["running_total"]==0:
@@ -733,7 +750,8 @@ def main()->int:
         # A completed nonproductive worker has already released its slot. Refill
         # immediately in the same burst pass instead of waiting for the next loop.
         # This turns ownership/no-work/exception outcomes into routing feedback.
-        if products and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
+        if (products and admit_new_work and parallel_results
+                and any(not row.get("healthy",False) for row in parallel_results.values())):
             dispatch_invocation_id=uuid.uuid4().hex
             dispatched_workers.extend(
                 dispatch_parallel_builders(worker_pool,repo,workspace,state,products,
