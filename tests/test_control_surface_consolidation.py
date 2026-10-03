@@ -66,4 +66,4 @@ def test_engineering_root_contains_only_authority_json():
     )
     root_json = {path.name for path in (ROOT / "engineering").glob("*.json")}
     assert root_json == set(registry["json"]["authority"])
-    assert len(root_json) == 27
+    assert len(root_json) == 28
