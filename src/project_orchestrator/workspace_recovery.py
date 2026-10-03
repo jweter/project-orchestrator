@@ -5,6 +5,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -18,12 +19,28 @@ from .recovery_manager import (
 from .state_io import atomic_json
 
 
-def repository_preflight_command(ws:Path)->list[str]|None:
+def repository_preflight_command(ws:Path,evidence_path:Path|None=None)->list[str]|None:
     """Resolve the repository's canonical local preflight without inventing a verifier."""
-    for relative in (Path("engineering/preflight.py"),Path("scripts/preflight.py")):
-        if (ws/relative).is_file():
-            return [sys.executable,str(relative)]
+    engineering=Path("engineering/preflight.py")
+    if (ws/engineering).is_file():
+        command=[sys.executable,str(engineering)]
+        if evidence_path is not None:
+            command.extend(["--evidence",str(evidence_path)])
+        return command
+    legacy=Path("scripts/preflight.py")
+    if (ws/legacy).is_file():
+        return [sys.executable,str(legacy)]
     return None
+
+
+def run_repository_preflight(ws:Path)->subprocess.CompletedProcess[str]|None:
+    """Run repository-native validation while redirecting supported evidence outside preserved work."""
+    with tempfile.TemporaryDirectory(prefix="azathoth-preserved-preflight-") as temp_dir:
+        evidence_path=Path(temp_dir)/"preflight-evidence.json"
+        command=repository_preflight_command(ws,evidence_path)
+        if command is None:
+            return None
+        return subprocess.run(command,cwd=ws,text=True,capture_output=True,check=False)
 
 
 def classify_orphan_branch(repo:str,ws:Path,branch:str)->tuple[str,dict]:
@@ -68,10 +85,9 @@ def resume_orphan_branch(repo:str,ws:Path,branch:str,classification:str,evidence
     if actual.returncode or actual.stdout.strip()!=expected:
         return "RECOVERY_HEAD_CHANGED"
     if classification=="ORPHAN_LOCAL_COMMIT_UNPUSHED":
-        preflight_command=repository_preflight_command(ws)
-        if preflight_command is None:
+        preflight=run_repository_preflight(ws)
+        if preflight is None:
             return "RECOVERY_PREFLIGHT_UNAVAILABLE"
-        preflight=subprocess.run(preflight_command,cwd=ws,text=True,capture_output=True,check=False)
         if preflight.returncode:
             return "RECOVERY_PREFLIGHT_FAILED"
         pushed=subprocess.run(["git","push","-u","origin",branch],cwd=ws,text=True,capture_output=True,check=False)
@@ -172,10 +188,9 @@ def validate_preserved_work(ws:Path,record:dict,revalidate_fn=None)->str:
     if revalidate_fn(ws,record)!="PRESERVED_WORK_EXACT":
         return "PRESERVED_VALIDATION_IDENTITY_PRECHECK_FAILED"
     before=record.get("preserved_work_evidence",{}).get("diff_sha256")
-    preflight_command=repository_preflight_command(ws)
-    if preflight_command is None:
+    preflight=run_repository_preflight(ws)
+    if preflight is None:
         return "PRESERVED_VALIDATION_PREFLIGHT_UNAVAILABLE"
-    preflight=subprocess.run(preflight_command,cwd=ws,text=True,capture_output=True,check=False)
     if revalidate_fn(ws,record)!="PRESERVED_WORK_EXACT":
         return "PRESERVED_VALIDATION_MUTATED_WORKSPACE"
     if preflight.returncode:
