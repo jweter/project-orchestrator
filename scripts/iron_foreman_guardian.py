@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Narrow independent guardian for Foundry supervisor liveness."""
 from __future__ import annotations
-import argparse, json, os, time, uuid
+import argparse, json, os, sys, time, uuid
 from datetime import UTC, datetime
 from pathlib import Path
+
+_REPO_ROOT=Path(__file__).resolve().parents[1]
+_SRC_ROOT=_REPO_ROOT/"src"
+if str(_SRC_ROOT) not in sys.path:
+    sys.path.insert(0,str(_SRC_ROOT))
 
 from project_orchestrator.iron_foreman import recovery_decision, prepare_reclamation
 from project_orchestrator.recovery_manager import process_start_fingerprint
