@@ -449,6 +449,7 @@ def test_classify_orphan_branch_detects_pushed_branch_without_pr(tmp_path, monke
 
 def test_resume_unpushed_orphan_verifies_preflight_push_remote_and_opens_pr(tmp_path, monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
+    (tmp_path/"engineering").mkdir(); (tmp_path/"engineering"/"preflight.py").write_text("pass")
     calls=[]
     class Result:
         returncode=0; stderr=""
@@ -853,6 +854,7 @@ def test_preserved_quarantine_recheck_never_releases_work(tmp_path,monkeypatch):
 
 def test_validate_preserved_work_requires_identity_before_and_after(tmp_path,monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
+    (tmp_path/"engineering").mkdir(); (tmp_path/"engineering"/"preflight.py").write_text("pass")
     record={"preserved_work_evidence":{"diff_sha256":"abc"}}
     checks=iter(["PRESERVED_WORK_EXACT","PRESERVED_WORK_EXACT"])
     monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:next(checks))
@@ -862,6 +864,7 @@ def test_validate_preserved_work_requires_identity_before_and_after(tmp_path,mon
 
 def test_validate_preserved_work_detects_validator_mutation(tmp_path,monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
+    (tmp_path/"engineering").mkdir(); (tmp_path/"engineering"/"preflight.py").write_text("pass")
     record={"preserved_work_evidence":{"diff_sha256":"abc"}}
     checks=iter(["PRESERVED_WORK_EXACT","PRESERVED_WORK_CHANGED"])
     monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:next(checks))
@@ -875,6 +878,29 @@ def test_validate_preserved_work_does_not_run_preflight_without_identity(tmp_pat
     monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:"PRESERVED_WORK_CHANGED")
     monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:(_ for _ in ()).throw(AssertionError("must not execute")))
     assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_IDENTITY_PRECHECK_FAILED"
+
+def test_preserved_validation_prefers_canonical_engineering_preflight(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    engineering=tmp_path/"engineering"; engineering.mkdir(); (engineering/"preflight.py").write_text("pass")
+    scripts=tmp_path/"scripts"; scripts.mkdir(); (scripts/"preflight.py").write_text("pass")
+    record={"preserved_work_evidence":{"diff_sha256":"abc"}}
+    checks=iter(["PRESERVED_WORK_EXACT","PRESERVED_WORK_EXACT"])
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:next(checks))
+    seen=[]
+    class R: returncode=0; stdout=""; stderr=""
+    def fake(argv,**kwargs): seen.append(argv); return R()
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_PASSED"
+    assert seen[0][1].endswith("engineering\\preflight.py") or seen[0][1].endswith("engineering/preflight.py")
+
+
+def test_preserved_validation_fails_closed_without_repository_preflight(tmp_path,monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    record={"preserved_work_evidence":{"diff_sha256":"abc"}}
+    monkeypatch.setattr(supervisor,"revalidate_preserved_work",lambda ws,r:"PRESERVED_WORK_EXACT")
+    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k:(_ for _ in ()).throw(AssertionError("must not execute")))
+    assert supervisor.validate_preserved_work(tmp_path,record)=="PRESERVED_VALIDATION_PREFLIGHT_UNAVAILABLE"
+
 
 def test_recovery_capability_is_exact_bound_and_single_use(tmp_path,monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
