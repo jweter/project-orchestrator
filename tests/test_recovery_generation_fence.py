@@ -75,3 +75,15 @@ def test_preserved_missing_repo_does_not_strand_recovery_generation(tmp_path):
     assert out["g"]=="PRESERVED_REPOSITORY_MISSING"
     live=json.loads(path.read_text())["grants"]["g"]
     assert "recovery_generation" not in live
+
+
+def test_recovery_generation_defers_when_atomic_replace_stays_busy(tmp_path, monkeypatch):
+    path=tmp_path/"hands-off-grant-lifecycle.json"
+    original={"state":"ABANDONED","recovery_state":"RECOVERING","authorized_repositories":["o/repo"]}
+    _write(path,original)
+    import project_orchestrator.workspace_recovery as recovery
+    def busy(*_args,**_kwargs):
+        raise PermissionError("busy")
+    monkeypatch.setattr(recovery,"atomic_lifecycle_json",busy)
+    assert recovery.begin_recovery_generation(path,"g",dict(original)) is None
+    assert json.loads(path.read_text())["grants"]["g"]==original

@@ -496,7 +496,10 @@ def begin_recovery_generation(
                                                  "process_start_fingerprint":fingerprint_probe()}
         reserved["recovery_version"]=int(current.get("recovery_version",0))+1
         payload["grants"][grant_id]=reserved
-        atomic_lifecycle_json(path,payload)
+        try:
+            atomic_lifecycle_json(path,payload)
+        except PermissionError:
+            return None
         return token,reserved
     finally:
         release_lifecycle_lock(lock)
