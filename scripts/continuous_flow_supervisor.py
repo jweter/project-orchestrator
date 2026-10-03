@@ -172,10 +172,16 @@ def decision_learning_hint(state_root:Path,decision_class:str)->dict:
 
 
 def select_execution_target(state_root:Path,activation:dict,products:list[str])->tuple[str,str]:
+    policy_path=Path(__file__).resolve().parents[1]/"engineering"/"product-usability-gates.json"
+    try:
+        usability_policy=json.loads(policy_path.read_text(encoding="utf-8"))
+    except (OSError,json.JSONDecodeError,TypeError):
+        usability_policy=None
     return _planning.select_execution_target(
         state_root,activation,products,
         load_execution_slice_fn=load_execution_slice,
         conflict_check_fn=conflicting_nonterminal_grant,
+        usability_policy=usability_policy,
     )
 
 
