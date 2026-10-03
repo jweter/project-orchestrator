@@ -63,6 +63,21 @@ def supervisor_state_fresh(sup:dict,*,now:datetime|None=None,max_age_seconds:int
         updated=updated.replace(tzinfo=UTC)
     return 0 <= (current-updated).total_seconds() <= max_age_seconds
 
+def publication_blocked_generation_live(state:Path,active_id:str,*,now:datetime|None=None,
+                                        max_age_seconds:int=900)->bool:
+    """Prove degraded liveness without promoting heartbeat evidence to authority."""
+    proc=load(state/"supervisor-process-instance.json")
+    heartbeat=load(state/"supervisor-generation-heartbeat.json")
+    return bool(
+        active_id
+        and proc.get("process_instance_id")==active_id
+        and proc.get("burst_id")
+        and heartbeat.get("process_instance_id")==active_id
+        and heartbeat.get("burst_id")==proc.get("burst_id")
+        and heartbeat.get("status")=="STATE_PUBLICATION_BLOCKED"
+        and supervisor_state_fresh(heartbeat,now=now,max_age_seconds=max_age_seconds)
+    )
+
 def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|None=None)->dict:
     payload={"schema_version":1,"status":"TAKEOVER_REQUESTED",
              "predecessor_process_instance_id":active_id,
@@ -104,6 +119,15 @@ def main()->int:
         sup=load(state/"supervisor.json")
         heartbeat=load(state/"supervisor-generation-heartbeat.json")
         freshness=heartbeat if heartbeat.get("process_instance_id")==active_id else sup
+        if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
+                and publication_blocked_generation_live(
+                    state,active_id,max_age_seconds=max(1,a.stale_seconds))):
+            receipt.update({"status":"WAITING_FOR_STATE_PUBLICATION","process_instance_id":active_id,
+                            "burst_id":proc.get("burst_id"),
+                            "observed_at_utc":datetime.now(UTC).isoformat()})
+            atomic(state/"persistent-supervisor-launch.json",receipt)
+            time.sleep(.25)
+            continue
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
                 and proc.get("process_instance_id")==active_id
                 and sup.get("process_instance_id")==active_id
