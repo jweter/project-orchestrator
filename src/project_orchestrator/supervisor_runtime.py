@@ -23,6 +23,27 @@ from .state_io import atomic_json
 DEAD_BUILDER_STATE = "DEAD_BUILDER_STATE"
 
 
+def guard_generation_iteration(state_root: Path, *, process_instance_id: str,
+                               burst_id: str, actor_revision: str, sequence: int,
+                               worker_pool, heartbeat_fn: Callable, handoff_fn: Callable) -> bool:
+    """Publish loop progress, or revoke this exact generation before more work."""
+    from .supervisor_health import generation_is_fenced
+    if generation_is_fenced(state_root,process_instance_id=process_instance_id,burst_id=burst_id):
+        atomic_json(state_root/"supervisor-generation-handoff.json",{
+            "schema_version":1,"status":"FENCED_GENERATION_EXITING",
+            "process_instance_id":process_instance_id,"burst_id":burst_id,
+            "observed_at_utc":datetime.now(UTC).isoformat(),
+        })
+        return True
+    atomic_json(state_root/"supervisor-progress.json",{
+        "schema_version":1,"status":"LOOP_STARTED","sequence":sequence,
+        "process_instance_id":process_instance_id,"burst_id":burst_id,
+        "actor_revision":actor_revision,"observed_at_utc":datetime.now(UTC).isoformat(),
+    })
+    heartbeat_fn(state_root,process_instance_id=process_instance_id,burst_id=burst_id,actor_revision=actor_revision)
+    return handoff_fn(state_root,process_instance_id=process_instance_id,worker_pool=worker_pool)=="DRAINING_FOR_TAKEOVER"
+
+
 def builder_health(
     state_root: Path,
     returncode: int,
