@@ -344,13 +344,37 @@ def dispatch_parallel_builders(
     )
     for product, batch in task_batches.items():
         if not batch:
-            blocked.append({
-                "product": product,
-                "worker_id": None,
-                "repository": None,
-                "slice_id": None,
-                "reason": "NO_CONFLICT_FREE_READY_SLICE",
-            })
+            direction_blocks = []
+            repositories = activation.get("products", {}).get(product, {}).get("repositories", {})
+            for repository, head in repositories.items():
+                request_path = state_root / "direction-requests" / f"{repository.replace('/', '__')}.json"
+                try:
+                    request = json.loads(request_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError, TypeError):
+                    continue
+                if (
+                    request.get("status") == "DIRECTION_REQUIRED"
+                    and request.get("repository") == repository
+                    and request.get("exact_head") == head
+                ):
+                    direction_blocks.append({
+                        "product": product,
+                        "worker_id": None,
+                        "repository": repository,
+                        "slice_id": None,
+                        "reason": "DIRECTION_REQUIRED",
+                        "detail_reason": request.get("reason"),
+                    })
+            if direction_blocks:
+                blocked.extend(direction_blocks)
+            else:
+                blocked.append({
+                    "product": product,
+                    "worker_id": None,
+                    "repository": None,
+                    "slice_id": None,
+                    "reason": "NO_CONFLICT_FREE_READY_SLICE",
+                })
 
     assigned = {product: 0 for product in products}
     runners = runner_registry or DEFAULT_RUNNERS
