@@ -26,8 +26,15 @@ class RuntimeResult:
     stderr: str
 
 class NativeWindowsRuntime:
-    """Direct argv execution without a shell; suitable for isolated worktrees."""
+    """Direct, non-interactive argv execution suitable for isolated worktrees."""
     runtime_id="native-windows"
+
+    @staticmethod
+    def _process_kwargs()->dict[str,int]:
+        """Keep unattended Windows workers from creating or stealing console windows."""
+        if os.name!="nt":
+            return {}
+        return {"creationflags":subprocess.CREATE_NO_WINDOW}
 
     @staticmethod
     def _terminate_tree(process:subprocess.Popen,grace_seconds:float=3.0)->None:
@@ -52,7 +59,7 @@ class NativeWindowsRuntime:
             env.update(request.env)
         completed=subprocess.run(
             list(request.argv),cwd=request.cwd,env=env,text=True,capture_output=True,
-            check=False,timeout=request.timeout_seconds,
+            check=False,timeout=request.timeout_seconds,**self._process_kwargs(),
         )
         return RuntimeResult(self.runtime_id,completed.returncode,completed.stdout,completed.stderr)
 
@@ -61,7 +68,8 @@ class NativeWindowsRuntime:
         env=os.environ.copy()
         if request.env: env.update(request.env)
         process=subprocess.Popen(list(request.argv),cwd=request.cwd,env=env,text=True,
-                                 stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+                                 stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                                 **self._process_kwargs())
         deadline=None if request.timeout_seconds is None else __import__("time").monotonic()+request.timeout_seconds
         try:
             while process.poll() is None:

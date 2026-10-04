@@ -204,8 +204,11 @@ def ensure_workspace(repo:str,root:Path,worker_id:str|None=None)->Path:
         raise RuntimeError("origin mismatch")
     clean_generated_workspace_artifacts(ws)
     dirty=run(["git","status","--porcelain"],ws)
-    if dirty.returncode or dirty.stdout.strip():
-        raise RuntimeError("workspace dirty")
+    if dirty.returncode:
+        raise RuntimeError("workspace status failed")
+    if dirty.stdout.strip():
+        detail=";".join(line.strip() for line in dirty.stdout.splitlines() if line.strip())[:1000]
+        raise RuntimeError(f"WORKSPACE_DIRTY_PRESERVED:{detail}")
     fetch=run(["git","fetch","--prune","origin"],ws)
     if fetch.returncode: raise RuntimeError("fetch failed")
     return ws
