@@ -68,6 +68,7 @@ TOOL_DELEGATES = {
     "skill": "project_orchestrator.skill_extraction",
     "learning-candidate": "project_orchestrator.learning_candidates",
     "handoff-memory": "project_orchestrator.transient_memory",
+    "shared-memory": "project_orchestrator.shared_memory_cli",
 }
 
 
