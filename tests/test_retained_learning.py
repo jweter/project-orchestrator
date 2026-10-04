@@ -1,6 +1,16 @@
 import pytest
 
-from project_orchestrator.retained_learning import add_rule, applicable_rules, empty_store, retain_from_experiment
+from project_orchestrator.process_experiments import (
+    activate,
+    build_experiment,
+    write_store as write_experiment_store,
+)
+from project_orchestrator.retained_learning import (
+    add_rule,
+    applicable_rules,
+    empty_store,
+    retain_from_experiment,
+)
 
 
 def kept():
@@ -63,3 +73,69 @@ def test_cli_retain_path_can_feed_scheduler_context(tmp_path, monkeypatch):
     assert len(stored["rules"]) == 1
     result = cli.scheduler_context(stored, [{"repository": exp["repository"], "changed_paths": ["scripts/x.py"], "failure_class": "ENVIRONMENT_FAILURE"}])
     assert result[0]["retained_policy"]["mechanisms"] == ["provision before verify"]
+
+
+def test_cli_evaluate_auto_retains_declared_keep(tmp_path, monkeypatch):
+    import json
+
+    from project_orchestrator import cli
+
+    p = {
+        "repository": "jweter/project-orchestrator",
+        "friction_type": "promotion_liveness",
+        "evidence_refs": ["run-1", "run-2"],
+        "proposed_mechanism": "reuse verified promotion ordering",
+        "verification_plan": ["preflight", "CI"],
+        "safety_boundaries": ["never weaken CI"],
+        "retention": {
+            "mechanism": "reuse verified promotion ordering",
+            "applicability": {"path_prefixes": ["src/project_orchestrator/"]},
+            "scope": "repository",
+        },
+    }
+    exp = activate(
+        build_experiment(
+            p,
+            target_metrics=["merge_cycle_seconds"],
+            baseline_refs=["baseline-1"],
+        ),
+        change_ref="pr-1",
+        verification_refs=["ci-green"],
+    )
+    experiments_path = tmp_path / "experiments.json"
+    retained_path = tmp_path / "retained.json"
+    metrics_path = tmp_path / "metrics.json"
+    write_experiment_store(
+        experiments_path,
+        {"schema_version": 1, "experiments": [exp]},
+    )
+    retained_path.write_text(json.dumps(empty_store()), encoding="utf-8")
+    metrics_path.write_text(
+        json.dumps(
+            {
+                "merge_cycle_seconds": {
+                    "status": "MEASURED",
+                    "outcome": "IMPROVED",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "DEFAULT_PROCESS_EXPERIMENTS", experiments_path)
+    monkeypatch.setattr(cli, "DEFAULT_RETAINED_LEARNING", retained_path)
+
+    cli.process_experiment_evaluate(
+        exp["experiment_id"],
+        metrics_path,
+        ["post-1"],
+        "passed",
+    )
+
+    retained = json.loads(retained_path.read_text(encoding="utf-8"))
+    assert len(retained["rules"]) == 1
+    assert retained["rules"][0]["mechanism"] == "reuse verified promotion ordering"
+    updated = json.loads(experiments_path.read_text(encoding="utf-8"))[
+        "experiments"
+    ][0]
+    assert updated["state"] == "KEEP"
+    assert updated["retained_rule_id"] == retained["rules"][0]["rule_id"]

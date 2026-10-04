@@ -77,3 +77,28 @@ def test_replace_rejects_unknown_experiment():
     exp = build_experiment(proposal(), target_metrics=["x"], baseline_refs=["baseline"])
     with pytest.raises(ValueError, match="unknown experiment_id"):
         replace_experiment(empty_store(), exp)
+
+
+def test_build_carries_explicit_retention_contract():
+    p = proposal()
+    p["retention"] = {
+        "mechanism": "reuse measured repair ordering",
+        "applicability": {
+            "path_prefixes": ["src/"],
+            "failure_classes": ["QUALITY_FAILURE"],
+        },
+        "scope": "repository",
+    }
+    exp = build_experiment(p, target_metrics=["x"], baseline_refs=["baseline"])
+    assert exp["retention"] == p["retention"]
+
+
+def test_invalid_retention_contract_fails_closed():
+    p = proposal()
+    p["retention"] = {
+        "mechanism": "reuse",
+        "applicability": {},
+        "scope": "repository",
+    }
+    with pytest.raises(ValueError, match="retention.applicability"):
+        build_experiment(p, target_metrics=["x"], baseline_refs=["baseline"])
