@@ -713,7 +713,22 @@ def main()->int:
                 authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
             else:
                 activation_reason=refresh_reason
-        products=products if authorized else []; capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}; frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
+        products=products if authorized else []
+        # Capability graphs are exact-head planning authority. Compile them before
+        # frontier selection/dispatch every pass so a merged default branch cannot
+        # leave an eligible product permanently stuck at CAPABILITY_GRAPH_REQUIRED.
+        capability_authority_compilation=(
+            _authority.compile_runtime_capability_authority(workspace,state)
+            if products else {"schema_version":1,"repositories":{}}
+        )
+        frontier_replenishment=(
+            replenish_frontiers(
+                workspace,state,
+                compile_fn=_authority.compile_runtime_capability_authority,
+                load_slice_fn=load_execution_slice,
+            )
+            if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
+        )
         parallel_results=harvest_parallel_builders(worker_pool,state)
         # Harvest first, then reclaim dead-owner leases plus only this supervisor
         # generation's leases whose worker slots are no longer active. Generation
