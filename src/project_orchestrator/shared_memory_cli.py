@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from .learning import load_memory
-from .shared_memory import load_shared_memory, query_memory, sync_shared_memory
+from .shared_memory import query_all_memory, sync_shared_memory
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LEARNING_MEMORY = ROOT / "engineering" / "state" / "learning-memory.json"
@@ -32,11 +32,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(sync_shared_memory(memory, args.root), indent=2, sort_keys=True))
         return 0
 
-    memory = load_shared_memory(args.root)
     print(
         json.dumps(
-            query_memory(
-                memory,
+            query_all_memory(
+                root=args.root,
                 project=args.project,
                 repository=args.repository,
                 source_type=args.source_type,
