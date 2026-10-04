@@ -41,6 +41,7 @@
 - [x] Branch lifecycle manager with stale-value recovery and safe merged-branch cleanup
 - [x] Measured self-improvement proposals from recurring orchestration friction
 - [x] Success-pattern memory + verified learning-effectiveness measurement
+- [x] Iron Memory shared local cross-agent engineering memory materialization + deterministic retrieval
 - [ ] Re-collect corrected current portfolio evidence — operational measurement task
 - [ ] Exercise the full learning loop on product work and measure outcomes — primary operational gate
   - [x] Bind claimed advancement to concrete product execution + verification evidence
