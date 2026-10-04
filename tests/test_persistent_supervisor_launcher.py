@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
-from scripts.launch_persistent_supervisor import (publication_blocked_generation_live, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from scripts.launch_persistent_supervisor import (publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
@@ -80,6 +80,17 @@ def test_publication_blocked_generation_live_rejects_stale_or_nonblocked_heartbe
         "heartbeat_at_utc":now.isoformat(),
     })
     assert not publication_blocked_generation_live(tmp_path,"live",now=now,max_age_seconds=60)
+
+
+def test_publication_blocked_generation_stale_routes_expired_matching_generation(tmp_path):
+    now=datetime(2026,10,3,0,20,tzinfo=UTC)
+    write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"live","burst_id":"burst"})
+    write(tmp_path/"supervisor-generation-heartbeat.json",{
+        "process_instance_id":"live","burst_id":"burst","status":"STATE_PUBLICATION_BLOCKED",
+        "heartbeat_at_utc":(now-timedelta(seconds=61)).isoformat(),
+    })
+    assert publication_blocked_generation_stale(tmp_path,"live",now=now,max_age_seconds=60)
+    assert not publication_blocked_generation_stale(tmp_path,"other",now=now,max_age_seconds=60)
 
 
 def test_stale_generation_handoff_request_is_fenced_to_predecessor(tmp_path):
