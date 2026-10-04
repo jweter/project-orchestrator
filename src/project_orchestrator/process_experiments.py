@@ -7,6 +7,25 @@ from typing import Any
 
 _ALLOWED_STATES = {"PROPOSED", "BASELINE_READY", "ACTIVE", "MEASURING", "KEEP", "REJECT", "INSUFFICIENT_DATA"}
 _TERMINAL = {"KEEP", "REJECT", "INSUFFICIENT_DATA"}
+_ALLOWED_RETENTION_SCOPES = {"repository", "portfolio"}
+
+
+def _normalize_retention(proposal: dict[str, Any]) -> dict[str, Any] | None:
+    retention = proposal.get("retention")
+    if retention is None:
+        return None
+    if not isinstance(retention, dict):
+        raise ValueError("retention must be an object")
+    mechanism = retention.get("mechanism")
+    applicability = retention.get("applicability")
+    scope = retention.get("scope", "repository")
+    if not isinstance(mechanism, str) or not mechanism.strip():
+        raise ValueError("retention.mechanism is required")
+    if not isinstance(applicability, dict) or not applicability:
+        raise ValueError("retention.applicability is required")
+    if scope not in _ALLOWED_RETENTION_SCOPES:
+        raise ValueError("retention.scope is invalid")
+    return {"mechanism": mechanism.strip(), "applicability": applicability, "scope": scope}
 
 
 def empty_store() -> dict[str, Any]:
@@ -58,7 +77,8 @@ def build_experiment(proposal: dict[str, Any], *, target_metrics: list[str], bas
     evidence_refs = sorted(set(proposal["evidence_refs"]))
     if len(evidence_refs) < 2:
         raise ValueError("process experiments require recurring verified proposal evidence")
-    seed = json.dumps([proposal["repository"], proposal["friction_type"], evidence_refs, sorted(set(target_metrics))], sort_keys=True)
+    retention = _normalize_retention(proposal)
+    seed = json.dumps([proposal["repository"], proposal["friction_type"], evidence_refs, sorted(set(target_metrics)), retention], sort_keys=True)
     experiment_id = "pex-" + hashlib.sha256(seed.encode()).hexdigest()[:12]
     return {
         "experiment_id": experiment_id,
@@ -72,6 +92,7 @@ def build_experiment(proposal: dict[str, Any], *, target_metrics: list[str], bas
         "verification_refs": [],
         "post_change_refs": [],
         "safety_invariants": list(proposal["safety_boundaries"]),
+        "retention": retention,
         "decision": None,
         "decision_evidence": [],
         "authority": "GOVERNED_ENGINEERING_ONLY",

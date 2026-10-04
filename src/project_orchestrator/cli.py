@@ -409,6 +409,17 @@ def process_experiment_evaluate(
         post_change_refs=post_change_refs,
         safety_invariants_passed=safety_map[safety],
     )
+    retention = updated_experiment.get("retention")
+    if updated_experiment.get("state") == "KEEP" and isinstance(retention, dict):
+        rule = retain_from_experiment(
+            updated_experiment,
+            mechanism=retention["mechanism"],
+            applicability=retention["applicability"],
+            scope=retention["scope"],
+        )
+        retained = add_retained_rule(load_retained_store(DEFAULT_RETAINED_LEARNING), rule)
+        write_retained_store(DEFAULT_RETAINED_LEARNING, retained)
+        updated_experiment = {**updated_experiment, "retained_rule_id": rule["rule_id"]}
     write_process_experiment_store(
         DEFAULT_PROCESS_EXPERIMENTS, replace_experiment(store, updated_experiment)
     )
