@@ -50,7 +50,8 @@
     "engineering/state/product-reality-debt.json",
     "engineering/state/closed-loop-product-run.json",
     "engineering/state/pre-change-risk.json",
-    "engineering/state/process-experiments.json"
+    "engineering/state/process-experiments.json",
+    "docs/IRON_MEMORY.md"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",
@@ -93,7 +94,8 @@
     "automated_cleanup_is_limited_to_actor_owned_transient_artifacts",
     "development_team_runtime_uses_ephemeral_leases_independent_qa_and_never_delegates_merge_authority",
     "human_ownership_marker_preempts_all_autonomous_execution_and_recovery_paths",
-    "human_mode_preserves_remote_control_and_dashboard_availability"
+    "human_mode_preserves_remote_control_and_dashboard_availability",
+    "shared_engineering_memory_contains_only_verified_sanitized_lessons_and_never_overrides_live_authority"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -706,5 +708,27 @@
     "ownership_model": "ephemeral_projection_of_live_GitHub_evidence",
     "adaptive_concurrency": "measured_advisory",
     "merge_authority": false
+  },
+  "shared_engineering_memory": {
+    "name": "Iron Memory",
+    "source": "engineering/state/learning-memory.json",
+    "documentation": "docs/IRON_MEMORY.md",
+    "cli": "project-orchestrator shared-memory",
+    "local_root_env": "AZATHOTH_SHARED_MEMORY_DIR",
+    "default_local_root": "~/.azathoth/shared-memory",
+    "representations": [
+      "memory.json",
+      "index.json",
+      "memory.txt"
+    ],
+    "trust_rule": "only VERIFIED sanitized lessons may be materialized; live repository evidence and repository-local authority always outrank memory",
+    "cross_agent_readers": [
+      "ChatGPT",
+      "Claude",
+      "Ollama/local agents",
+      "LaptopActor",
+      "authorized workers"
+    ],
+    "write_rule": "agents do not write arbitrary conversation history; new lessons enter through the existing verified learning-memory contract"
   }
 }

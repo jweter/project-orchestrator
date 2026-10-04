@@ -177,3 +177,12 @@ Highest-value correct COMPOUNDING progress, not maximum commits. Keep every elig
 
 JEV SHADOW DECISION FABRIC
 When deterministic policy has already produced two or more explicit legal candidates for the same bounded decision, the scheduler may request Jev shadow advice through project_orchestrator.jev_shadow. Deterministic code always defines legality first. Jev is advisory only and has no execution, merge, promotion, Product Reality, security/privacy, licensing/provenance, destructive-action, or release authority. Zero legal candidates and singleton legal sets make no neural call. Out-of-set or malformed provider output fails closed. Ordinary runs must not create external spend: live calls require an explicit --live invocation plus JEV_SHADOW_LIVE=1 and TYPESAFE_API_KEY. Until comparable evidence earns promotion, Jev recommendations are recorded for shadow evaluation and MUST NOT override deterministic scheduling. Use the initial pilot for P5 candidate ordering, false-idle challenge, and retry/rotate judgment only after all applicable deterministic gates have already been resolved.
+
+
+IRON MEMORY — SHARED VERIFIED ENGINEERING MEMORY
+- Before editing a known subsystem or diagnosing a recurring failure, retrieve relevant VERIFIED lessons through the shared engineering memory when available.
+- Canonical source remains engineering/state/learning-memory.json; shared JSON/TXT materialization is an adapter, not a second authority.
+- Sync local shared memory after verified learning-memory changes using project-orchestrator shared-memory sync when the execution environment permits local storage.
+- Live repository evidence, current default/head identity, repository-local architecture/policy, and current tests always outrank memory.
+- Never ingest arbitrary conversation history, secrets, credentials, raw private Product Reality, or unverified conclusions into shared engineering memory.
+- A retrieved lesson is advisory evidence only. Application outcomes feed the existing learning-effectiveness / Capability Compiler path; ineffective or stale guidance must not silently become policy.
