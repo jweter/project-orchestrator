@@ -67,6 +67,39 @@ def _validate_workspace_origin(workspace: Path, repository: str) -> None:
         raise ActorEnvironmentError("ORIGIN_MISMATCH")
 
 
+def _validate_workspace_identity(workspace: Path, repository: str, expected_sha: str) -> dict[str, str]:
+    """Fail closed unless path, Git root, origin, and exact HEAD identify one workspace."""
+    try:
+        resolved = workspace.resolve(strict=True)
+    except OSError as exc:
+        raise ActorEnvironmentError("IDENTITY_GATE_PATH_UNAVAILABLE") from exc
+    root = run(["git", "rev-parse", "--show-toplevel"], resolved)
+    if root.returncode != 0:
+        raise ActorEnvironmentError("IDENTITY_GATE_NOT_GIT")
+    try:
+        git_root = Path(root.stdout.strip()).resolve(strict=True)
+    except OSError as exc:
+        raise ActorEnvironmentError("IDENTITY_GATE_ROOT_UNAVAILABLE") from exc
+    if git_root != resolved:
+        raise ActorEnvironmentError("IDENTITY_GATE_ROOT_MISMATCH")
+    _validate_workspace_origin(resolved, repository)
+    head = run(["git", "rev-parse", "HEAD"], resolved)
+    if head.returncode != 0:
+        raise ActorEnvironmentError("IDENTITY_GATE_HEAD_UNAVAILABLE")
+    actual_sha = head.stdout.strip().lower()
+    expected = expected_sha.strip().lower()
+    if len(expected) != 40 or any(c not in "0123456789abcdef" for c in expected):
+        raise ActorEnvironmentError("IDENTITY_GATE_EXPECTED_SHA_INVALID")
+    if actual_sha != expected:
+        raise ActorEnvironmentError("IDENTITY_GATE_HEAD_MISMATCH")
+    return {
+        "workspace": str(resolved),
+        "repository": repository,
+        "origin": _expected_origin(repository),
+        "exact_head_sha": actual_sha,
+    }
+
+
 def _clone_workspace(repository: str, workspace: Path) -> None:
     gh = shutil.which("gh")
     if gh is None:

@@ -265,3 +265,35 @@ def test_recovery_fails_closed_on_collision(tmp_path):
     (tmp_path / "a.job.json.running").write_text("{}", encoding="utf-8")
     with pytest.raises(runner.ActorEnvironmentError, match="INTERRUPTED_JOB_COLLISION"):
         runner.recover_interrupted_jobs(tmp_path)
+
+
+def test_workspace_identity_gate_rejects_non_git_temp_directory(tmp_path):
+    fake = tmp_path / "omnivoice-test-data-false-positive"
+    fake.mkdir()
+    with pytest.raises(runner.ActorEnvironmentError, match="IDENTITY_GATE_NOT_GIT"):
+        runner._validate_workspace_identity(
+            fake, "jweter/VoiceStudio", "a" * 40
+        )
+
+
+def test_workspace_identity_gate_rejects_wrong_head_before_verification(tmp_path, monkeypatch):
+    repo = tmp_path / "VoiceStudio"
+    actual = make_repo(repo)
+    monkeypatch.setattr(runner, "_validate_workspace_origin", lambda *_: None)
+    with pytest.raises(runner.ActorEnvironmentError, match="IDENTITY_GATE_HEAD_MISMATCH"):
+        runner._validate_workspace_identity(
+            repo, "jweter/VoiceStudio", "b" * 40
+        )
+    assert actual != "b" * 40
+
+
+def test_workspace_identity_gate_records_authoritative_identity(tmp_path, monkeypatch):
+    repo = tmp_path / "VoiceStudio"
+    head = make_repo(repo)
+    monkeypatch.setattr(runner, "_validate_workspace_origin", lambda *_: None)
+    identity = runner._validate_workspace_identity(
+        repo, "jweter/VoiceStudio", head
+    )
+    assert identity["workspace"] == str(repo.resolve())
+    assert identity["repository"] == "jweter/VoiceStudio"
+    assert identity["exact_head_sha"] == head
