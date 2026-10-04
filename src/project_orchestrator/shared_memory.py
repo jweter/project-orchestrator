@@ -204,3 +204,122 @@ def query_memory(
             for score, entry, reasons in selected
         ],
     }
+
+
+
+def load_repository_snapshots(root: str | Path | None = None) -> list[dict[str, Any]]:
+    destination = Path(root) if root is not None else default_shared_memory_root()
+    repo_dir = destination.expanduser() / "repos"
+    if not repo_dir.exists():
+        return []
+    snapshots: list[dict[str, Any]] = []
+    for path in sorted(repo_dir.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if payload.get("schema_version") != 1:
+            continue
+        if payload.get("kind") != "azathoth-repository-learning-snapshot":
+            continue
+        repository = payload.get("repository")
+        events = payload.get("events")
+        if not isinstance(repository, str) or not repository or not isinstance(events, list):
+            continue
+        verified_events = [
+            event
+            for event in events
+            if isinstance(event, dict)
+            and event.get("evidence_state") == "VERIFIED"
+            and isinstance(event.get("verification"), str)
+            and event["verification"].strip()
+        ]
+        snapshots.append(
+            {
+                "schema_version": 1,
+                "kind": "azathoth-repository-learning-snapshot",
+                "repository": repository,
+                "events": verified_events,
+            }
+        )
+    return snapshots
+
+
+def query_all_memory(
+    *,
+    root: str | Path | None = None,
+    project: str | None = None,
+    repository: str | None = None,
+    terms: list[str] | None = None,
+    source_type: str | None = None,
+    limit: int = 8,
+) -> dict[str, Any]:
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    memory = load_shared_memory(root)
+    central = query_memory(
+        memory,
+        project=project,
+        repository=repository,
+        terms=terms,
+        source_type=source_type,
+        limit=max(limit, 1),
+    )
+
+    query_tokens = _tokens(" ".join(terms or []))
+    combined: list[dict[str, Any]] = [
+        {
+            "source": "portfolio",
+            "score": result["score"],
+            "match_reasons": result["match_reasons"],
+            "record": result["lesson"],
+        }
+        for result in central["results"]
+    ]
+
+    for snapshot in load_repository_snapshots(root):
+        if repository is not None and snapshot["repository"] != repository:
+            continue
+        for event in snapshot["events"]:
+            if source_type is not None and event.get("type") != source_type:
+                continue
+            haystack = " ".join(
+                str(value)
+                for value in event.values()
+                if isinstance(value, (str, int, float))
+            )
+            overlap = sorted(query_tokens & _tokens(haystack))
+            if query_tokens and not overlap:
+                continue
+            score = 70 + (60 if repository is not None else 0) + len(overlap) * 10
+            combined.append(
+                {
+                    "source": "repository",
+                    "score": score,
+                    "match_reasons": [
+                        *(["repository"] if repository is not None else []),
+                        *(f"term:{token}" for token in overlap),
+                    ],
+                    "record": event,
+                }
+            )
+
+    combined.sort(
+        key=lambda item: (
+            -item["score"],
+            item["source"],
+            json.dumps(item["record"], sort_keys=True),
+        )
+    )
+    selected = combined[:limit]
+    return {
+        "state": "MATCHES" if selected else "NO_MATCH",
+        "query": {
+            "project": project,
+            "repository": repository,
+            "source_type": source_type,
+            "terms": list(terms or []),
+            "limit": limit,
+        },
+        "results": selected,
+    }
