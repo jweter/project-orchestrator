@@ -10,7 +10,7 @@ from .state_io import atomic_json
 
 GrantMutator = Callable[[dict[str, Any]], bool]
 
-LIFECYCLE_REPLACE_ATTEMPTS = 20
+LIFECYCLE_REPLACE_ATTEMPTS = 120
 
 def atomic_lifecycle_json(path: Path, payload: dict[str, Any]) -> None:
     """Persist the shared lifecycle through a bounded Windows contention window."""
