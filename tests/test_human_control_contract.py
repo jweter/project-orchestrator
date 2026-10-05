@@ -9,7 +9,7 @@ FALLBACK = Path("scripts/fallback/Watch-GitHubMailbox.ps1")
 def test_supervisor_checks_human_ownership_before_instance_and_merge_work():
     text = SUPERVISOR.read_text(encoding="utf-8")
     startup = text.index("if human_mode_active(state):")
-    lock = text.index("instance_lock=acquire_supervisor_instance_lock(state)")
+    lock = text.index("instance_lock=acquire_supervisor_instance_lock(state,RUNTIME_LEASE_STATE.parent)")
     assert startup < lock
 
     loop = text.index("while True:")

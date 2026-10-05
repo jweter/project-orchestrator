@@ -251,9 +251,10 @@ def conflicting_nonterminal_grant(state_root:Path,repo:str,execution_slice:dict)
 
 
 
-def acquire_supervisor_instance_lock(state_root:Path)->dict|None:
+def acquire_supervisor_instance_lock(state_root:Path,machine_lock_root:Path|None=None)->dict|None:
     return _supervisor_runtime.acquire_supervisor_instance_lock(
-        state_root,fingerprint_fn=process_start_fingerprint,
+        state_root,machine_lock_root=machine_lock_root,
+        fingerprint_fn=process_start_fingerprint,
     )
 
 
@@ -611,7 +612,7 @@ def main()->int:
             "observed_at_utc":datetime.now(UTC).isoformat(),
         })
         return 0
-    instance_lock=acquire_supervisor_instance_lock(state)
+    instance_lock=acquire_supervisor_instance_lock(state,RUNTIME_LEASE_STATE.parent)
     if instance_lock is None:
         owner=None
         try:

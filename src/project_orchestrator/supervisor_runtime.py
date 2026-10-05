@@ -132,31 +132,35 @@ def _release_os_file_lock(handle) -> None:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def acquire_supervisor_instance_lock(
-    state_root: Path,
+def _acquire_supervisor_lock_record(
+    path: Path,
+    metadata: Path,
     *,
-    fingerprint_fn: Callable[[int | None], str | None] = process_start_fingerprint,
+    lock_id: str,
+    worker: dict,
+    extra_metadata: dict | None = None,
 ) -> dict | None:
-    state_root.mkdir(parents=True, exist_ok=True)
-    path = state_root / "supervisor-instance.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
     handle = path.open("a+b", buffering=0)
     if not _acquire_os_file_lock(handle):
         handle.close()
         return None
-    lock_id = str(uuid.uuid4())
-    worker = {
-        "host": socket.gethostname(),
-        "pid": os.getpid(),
-        "process_start_fingerprint": fingerprint_fn(None),
-        "instance_id": uuid.uuid4().hex,
-    }
-    metadata = state_root / "supervisor-instance.lock.json"
-    atomic_json(metadata, {
+    payload = {
         "schema_version": 1,
         "lock_id": lock_id,
         "worker": worker,
         "acquired_at_utc": datetime.now(UTC).isoformat(),
-    })
+    }
+    if extra_metadata:
+        payload.update(extra_metadata)
+    try:
+        atomic_json(metadata, payload)
+    except OSError:
+        try:
+            _release_os_file_lock(handle)
+        finally:
+            handle.close()
+        raise
     return {
         "path": path,
         "metadata_path": metadata,
@@ -166,7 +170,7 @@ def acquire_supervisor_instance_lock(
     }
 
 
-def release_supervisor_instance_lock(lock: dict) -> None:
+def _release_supervisor_lock_record(lock: dict) -> None:
     handle = lock["handle"]
     metadata = lock["metadata_path"]
     try:
@@ -182,6 +186,57 @@ def release_supervisor_instance_lock(lock: dict) -> None:
             _release_os_file_lock(handle)
         finally:
             handle.close()
+
+
+def acquire_supervisor_instance_lock(
+    state_root: Path,
+    *,
+    machine_lock_root: Path | None = None,
+    fingerprint_fn: Callable[[int | None], str | None] = process_start_fingerprint,
+) -> dict | None:
+    state_root.mkdir(parents=True, exist_ok=True)
+    lock_id = str(uuid.uuid4())
+    worker = {
+        "host": socket.gethostname(),
+        "pid": os.getpid(),
+        "process_start_fingerprint": fingerprint_fn(None),
+        "instance_id": uuid.uuid4().hex,
+    }
+
+    machine_lock = None
+    if machine_lock_root is not None:
+        machine_lock_root.mkdir(parents=True, exist_ok=True)
+        machine_lock = _acquire_supervisor_lock_record(
+            machine_lock_root / "continuous-flow-supervisor.lock",
+            machine_lock_root / "continuous-flow-supervisor.lock.json",
+            lock_id=lock_id,
+            worker=worker,
+            extra_metadata={"state_root": str(state_root.resolve())},
+        )
+        if machine_lock is None:
+            return None
+
+    local_lock = _acquire_supervisor_lock_record(
+        state_root / "supervisor-instance.lock",
+        state_root / "supervisor-instance.lock.json",
+        lock_id=lock_id,
+        worker=worker,
+    )
+    if local_lock is None:
+        if machine_lock is not None:
+            _release_supervisor_lock_record(machine_lock)
+        return None
+    local_lock["machine_lock"] = machine_lock
+    return local_lock
+
+
+def release_supervisor_instance_lock(lock: dict) -> None:
+    machine_lock = lock.get("machine_lock")
+    try:
+        _release_supervisor_lock_record(lock)
+    finally:
+        if machine_lock is not None:
+            _release_supervisor_lock_record(machine_lock)
 
 
 def write_execution_grant(
