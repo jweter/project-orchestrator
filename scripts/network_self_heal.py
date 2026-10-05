@@ -40,8 +40,19 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
+def human_control_roots(state_root: Path) -> tuple[Path, ...]:
+    roots = [state_root]
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        canonical = Path(local_app_data) / "ExponentialEngine" / "flow-state"
+        if canonical != state_root:
+            roots.append(canonical)
+    return tuple(roots)
+
+
 def human_mode(state_root: Path) -> bool:
-    return (state_root / "human-mode.json").exists() or (state_root / "give-me-control").exists()
+    markers = ("human-mode.json", "give-me-control")
+    return any((root / marker).exists() for root in human_control_roots(state_root) for marker in markers)
 
 
 def log(state_root: Path, event: str, **details: object) -> None:
@@ -148,19 +159,35 @@ def recover(state_root: Path, allow_reboot: bool = False) -> bool:
     return False
 
 
-def acquire_guardian(state_root: Path) -> Path | None:
+def acquire_guardian(state_root: Path):
+    """Acquire an OS-released singleton lock; return an open handle or None."""
     state_root.mkdir(parents=True, exist_ok=True)
-    pid_path = state_root / GUARDIAN_PID
-    if pid_path.exists():
-        try:
-            pid = int(pid_path.read_text(encoding="utf-8").strip())
-            result = run(["tasklist", "/FI", f"PID eq {pid}"])
-            if str(pid) in result.stdout:
-                return None
-        except (OSError, ValueError):
-            pass
-    pid_path.write_text(str(os.getpid()), encoding="utf-8")
-    return pid_path
+    lock_path = state_root / "network-guardian.lock"
+    handle = lock_path.open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            handle.seek(0)
+            if handle.read(1) == b"":
+                handle.seek(0)
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, ImportError):
+        handle.close()
+        return None
+
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()).encode("ascii"))
+    handle.flush()
+    return handle
 
 
 def main() -> int:
@@ -177,8 +204,8 @@ def main() -> int:
         clear_reboot_latch(args.state_root, "HUMAN_RESET")
         return 0
 
-    pid_path = acquire_guardian(args.state_root)
-    if pid_path is None:
+    guardian_lock = acquire_guardian(args.state_root)
+    if guardian_lock is None:
         return 0
 
     failures = 0
@@ -201,10 +228,7 @@ def main() -> int:
                 break
             time.sleep(max(10, args.poll_seconds))
     finally:
-        try:
-            pid_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        guardian_lock.close()
     return 0
 
 
