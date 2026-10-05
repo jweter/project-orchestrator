@@ -30,3 +30,9 @@ def test_validator_rejects_large_non_orchestration_helper(tmp_path):
     path.write_text(source, encoding="utf-8")
     errors = validate(path)
     assert any("non-orchestration helper too large" in error for error in errors)
+
+
+def test_productive_liveness_sidecar_contention_is_nonfatal_and_visible():
+    source = (Path(__file__).parents[1] / "scripts" / "continuous_flow_supervisor.py").read_text(encoding="utf-8")
+    assert 'optional_atomic(state/"productive-liveness.json"' in source
+    assert "PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED" in source

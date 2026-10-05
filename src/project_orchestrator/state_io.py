@@ -25,3 +25,11 @@ def atomic_json(path: Path, payload: dict[str, Any], *, replace_attempts: int = 
                 time.sleep(min(0.1 * (attempt + 1), 0.5))
     finally:
         tmp.unlink(missing_ok=True)
+
+def optional_atomic_json(path: Path, payload: dict[str, Any], *, replace_attempts: int = 5) -> bool:
+    """Publish redundant telemetry atomically without taking down its owner on contention."""
+    try:
+        atomic_json(path, payload, replace_attempts=replace_attempts)
+    except PermissionError:
+        return False
+    return True

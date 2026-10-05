@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse, atexit, json, os, subprocess, sys, time, uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from project_orchestrator.state_io import atomic_json as atomic
+from project_orchestrator.state_io import atomic_json as atomic, optional_atomic_json as optional_atomic
 
 from scripts.capability_slice_contract import derive_slice, derive_slices
 from scripts.product_completion_proof import build_completion_proof
@@ -747,9 +747,7 @@ def main()->int:
                                            dispatch_invocation_id=dispatch_invocation_id)
             )
         pool_snapshot=worker_pool.snapshot()
-        # Persist the authoritative post-harvest/post-dispatch pool, not the
-        # earlier dispatch-time snapshot. Otherwise completed futures can remain
-        # on disk as phantom RUNNING workers until another dispatch occurs.
+        # Persist authoritative post-harvest/post-dispatch pool so completed futures cannot remain as phantom RUNNING workers.
         atomic(state/"parallel-worker-pool.json",{
             "schema_version":2,"pool":pool_snapshot,"runtime_leases":RUNTIME_LEASES.snapshot(),
             "runtime_lease_reconciliation":runtime_lease_reconciliation,
@@ -788,12 +786,13 @@ def main()->int:
         if lifecycle_advanced:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
-        atomic(state/"productive-liveness.json",liveness,replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
+        liveness_published=optional_atomic(state/"productive-liveness.json",liveness,replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
         convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
         idle_streaks=_planning.record_eligible_idle_streaks(
             state,products,current_invocation_id=dispatch_invocation_id,
         )
         degraded_reasons=[]
+        if not liveness_published: degraded_reasons.append({"reason":"PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"})
         if workspace_provisioning.get("status") != "OK":
             degraded_reasons.append({"reason":"WORKSPACE_PROVISIONING_DEGRADED","details":workspace_provisioning})
         if convergence.get("status") != "CONVERGED":
