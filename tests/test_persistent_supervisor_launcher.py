@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
-from scripts.launch_persistent_supervisor import (publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from scripts.launch_persistent_supervisor import (network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
@@ -16,6 +16,16 @@ def test_supervisor_command_uses_package_module_for_scripts_imports():
     assert str(repo/"scripts"/"continuous_flow_supervisor.py") not in cmd
     assert cmd[cmd.index("--workspace-root")+1]==r"C:\workspace"
     assert cmd[cmd.index("--state-root")+1]==str(state)
+
+def test_network_guardian_is_part_of_existing_launcher_path():
+    repo=Path(r"C:\repo")
+    state=repo/".hands-off-state"
+    cmd=network_guardian_command(repo,state)
+    assert cmd[0]==sys.executable
+    assert cmd[1]==str(repo/"scripts"/"network_self_heal.py")
+    assert "--state-root" in cmd
+    assert "--allow-reboot" in cmd
+    assert cmd[cmd.index("--failures")+1]=="3"
 
 def test_supervisor_environment_prepends_src_to_existing_pythonpath(monkeypatch):
     monkeypatch.setenv("PYTHONPATH", r"C:\existing")
