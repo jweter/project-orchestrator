@@ -36,19 +36,34 @@ def supervisor_environment(repo:Path)->dict[str,str]:
     env["PYTHONPATH"]=src+(os.pathsep+existing if existing else "")
     return env
 
-def network_guardian_command(repo:Path,state:Path)->list[str]:
-    return [sys.executable,str(repo/"scripts"/"network_self_heal.py"),
-            "--state-root",str(state),"--poll-seconds","30","--failures","3","--allow-reboot"]
+def interactive_human_control_root(state:Path)->Path|None:
+    """Resolve the interactive user's control marker root without trusting SYSTEM's profile."""
+    for candidate in (state,*state.parents):
+        if candidate.parent.name.lower()=="users":
+            return candidate/"AppData"/"Local"/"ExponentialEngine"/"flow-state"
+    local_app_data=os.environ.get("LOCALAPPDATA")
+    return Path(local_app_data)/"ExponentialEngine"/"flow-state" if local_app_data else None
 
-def start_network_guardian(repo:Path,state:Path)->bool:
-    """Best-effort boot of the idempotent Windows network guardian."""
+def network_guardian_command(repo:Path,state:Path,human_control_root:Path|None=None)->list[str]:
+    cmd=[sys.executable,str(repo/"scripts"/"network_self_heal.py"),
+         "--state-root",str(state),"--poll-seconds","30","--failures","3","--allow-reboot"]
+    if human_control_root is not None:
+        cmd.extend(["--human-control-root",str(human_control_root)])
+    return cmd
+
+def network_guardian_authorized(yield_on_interactive_session:bool)->bool:
+    """Only the elevated ONSTART owner is allowed to own network recovery."""
+    return bool(yield_on_interactive_session)
+
+def start_network_guardian(repo:Path,state:Path,human_control_root:Path|None=None)->bool:
+    """Best-effort boot of the idempotent elevated Windows network guardian."""
     if os.name!="nt":
         return False
     flags=(getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)
            |getattr(subprocess,"DETACHED_PROCESS",0)
            |getattr(subprocess,"CREATE_NO_WINDOW",0))
     try:
-        subprocess.Popen(network_guardian_command(repo,state),cwd=repo,
+        subprocess.Popen(network_guardian_command(repo,state,human_control_root),cwd=repo,
                          stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
                          creationflags=flags,close_fds=True)
     except OSError:
@@ -151,7 +166,8 @@ def main()->int:
     p.add_argument("--stale-seconds",type=int,default=900,
                    help="request graceful generation handoff after canonical supervisor state is this old")
     a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root);state.mkdir(parents=True,exist_ok=True)
-    start_network_guardian(repo,state)
+    if network_guardian_authorized(a.yield_on_interactive_session):
+        start_network_guardian(repo,state,interactive_human_control_root(state))
     before=load(state/"supervisor-process-instance.json").get("process_instance_id")
     log=state/"persistent-supervisor.log"
     cmd=supervisor_command(repo,a.workspace_root,state,a.builder_seconds,a.merge_seconds,

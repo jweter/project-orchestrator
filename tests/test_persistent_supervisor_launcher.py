@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
-from scripts.launch_persistent_supervisor import (network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from scripts.launch_persistent_supervisor import (interactive_human_control_root, network_guardian_authorized, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
@@ -144,3 +144,24 @@ def test_reclaim_stalled_generation_refuses_recent_progress(tmp_path):
     assert result["status"]=="HEARTBEAT_STALE_PROGRESS_RECENT"
     assert result["reclaimed"] is False
     assert not (tmp_path/"supervisor-generation-fence.json").exists()
+
+
+def test_network_guardian_command_receives_explicit_human_control_root():
+    repo=Path(r"C:\repo")
+    state=Path(r"C:\Users\jerem\repo\.hands-off-state")
+    human_root=Path(r"C:\Users\jerem\AppData\Local\ExponentialEngine\flow-state")
+    cmd=network_guardian_command(repo,state,human_root)
+    assert cmd[cmd.index("--human-control-root")+1]==str(human_root)
+
+
+def test_interactive_human_control_root_comes_from_user_profile_not_system_environment(monkeypatch):
+    monkeypatch.setenv("LOCALAPPDATA", r"C:\Windows\System32\config\systemprofile\AppData\Local")
+    state=Path(r"C:\Users\jerem\Documents\GitHub\project-orchestrator\.hands-off-state")
+    assert interactive_human_control_root(state)==Path(
+        r"C:\Users\jerem\AppData\Local\ExponentialEngine\flow-state"
+    )
+
+
+def test_only_boot_owner_is_authorized_to_start_network_guardian():
+    assert network_guardian_authorized(True) is True
+    assert network_guardian_authorized(False) is False

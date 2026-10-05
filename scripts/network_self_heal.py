@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HOSTS = ("1.1.1.1", "8.8.8.8")
+DNS_PROBE_HOST = "github.com"
 REBOOT_LATCH = "network-reboot-cooldown.json"
-GUARDIAN_PID = "network-guardian.pid"
 
 
 def now() -> str:
@@ -20,6 +20,10 @@ def now() -> str:
 
 
 def internet_ok(timeout: float = 2.0) -> bool:
+    try:
+        socket.getaddrinfo(DNS_PROBE_HOST, 443, type=socket.SOCK_STREAM)
+    except OSError:
+        return False
     for host in HOSTS:
         try:
             with socket.create_connection((host, 443), timeout=timeout):
@@ -40,19 +44,25 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def human_control_roots(state_root: Path) -> tuple[Path, ...]:
+def human_control_roots(state_root: Path, human_control_root: Path | None = None) -> tuple[Path, ...]:
     roots = [state_root]
+    if human_control_root is not None and human_control_root not in roots:
+        roots.append(human_control_root)
     local_app_data = os.environ.get("LOCALAPPDATA")
     if local_app_data:
         canonical = Path(local_app_data) / "ExponentialEngine" / "flow-state"
-        if canonical != state_root:
+        if canonical not in roots:
             roots.append(canonical)
     return tuple(roots)
 
 
-def human_mode(state_root: Path) -> bool:
+def human_mode(state_root: Path, human_control_root: Path | None = None) -> bool:
     markers = ("human-mode.json", "give-me-control")
-    return any((root / marker).exists() for root in human_control_roots(state_root) for marker in markers)
+    return any(
+        (root / marker).exists()
+        for root in human_control_roots(state_root, human_control_root)
+        for marker in markers
+    )
 
 
 def log(state_root: Path, event: str, **details: object) -> None:
@@ -104,9 +114,13 @@ def snapshot(state_root: Path) -> None:
     path.write_text(json.dumps({"ts": now(), **evidence}, indent=2), encoding="utf-8")
 
 
-def recover(state_root: Path, allow_reboot: bool = False) -> bool:
+def recover(
+    state_root: Path,
+    allow_reboot: bool = False,
+    human_control_root: Path | None = None,
+) -> bool:
     snapshot(state_root)
-    if human_mode(state_root):
+    if human_mode(state_root, human_control_root):
         log(state_root, "RECOVERY_SUPPRESSED_HUMAN_MODE")
         return False
 
@@ -140,13 +154,13 @@ def recover(state_root: Path, allow_reboot: bool = False) -> bool:
             return True
 
     log(state_root, "RECOVERY_EXHAUSTED")
-    if allow_reboot and not human_mode(state_root):
+    if allow_reboot and not human_mode(state_root, human_control_root):
         if reboot_latched(state_root):
             log(state_root, "REBOOT_SUPPRESSED_COOLDOWN")
         else:
             set_reboot_latch(state_root)
             log(state_root, "BOUNDED_REBOOT_REQUESTED")
-            run(
+            result = run(
                 [
                     "shutdown",
                     "/r",
@@ -156,6 +170,18 @@ def recover(state_root: Path, allow_reboot: bool = False) -> bool:
                     "Azathoth network recovery exhausted; rebooting to restore connectivity",
                 ]
             )
+            if result.returncode == 0:
+                for _ in range(15):
+                    time.sleep(1)
+                    if human_mode(state_root, human_control_root):
+                        run(["shutdown", "/a"])
+                        log(state_root, "REBOOT_ABORTED_HUMAN_MODE")
+                        return False
+                    if internet_ok():
+                        run(["shutdown", "/a"])
+                        clear_reboot_latch(state_root, "CONNECTIVITY_RECOVERED_DURING_REBOOT_COUNTDOWN")
+                        log(state_root, "REBOOT_ABORTED_CONNECTIVITY_RECOVERED")
+                        return True
     return False
 
 
@@ -196,6 +222,7 @@ def main() -> int:
     parser.add_argument("--poll-seconds", type=int, default=30)
     parser.add_argument("--failures", type=int, default=3)
     parser.add_argument("--allow-reboot", action="store_true")
+    parser.add_argument("--human-control-root", type=Path)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--reset-reboot-cooldown", action="store_true")
     args = parser.parse_args()
@@ -221,7 +248,7 @@ def main() -> int:
                 log(args.state_root, "PROBE_FAILED", consecutive=failures)
 
             if failures >= args.failures:
-                recover(args.state_root, args.allow_reboot)
+                recover(args.state_root, args.allow_reboot, args.human_control_root)
                 failures = 0
 
             if args.once:
