@@ -1,44 +1,212 @@
-import argparse,json,os,socket,subprocess,time
-from datetime import datetime,timezone
+"""Bounded network self-healing for the Azathoth hands-off runtime."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import subprocess
+import time
+from datetime import datetime, timezone
 from pathlib import Path
-HOSTS=("1.1.1.1","8.8.8.8")
-def now():return datetime.now(timezone.utc).isoformat()
-def internet_ok(timeout=2):
- for h in HOSTS:
-  try:
-   with socket.create_connection((h,443),timeout=timeout):return True
-  except OSError:pass
- return False
-def run(c):return subprocess.run(c,capture_output=True,text=True,timeout=30,creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
-def human_mode(r):return (r/"human-mode.json").exists() or (r/"give-me-control").exists()
-def log(r,e,**d):
- r.mkdir(parents=True,exist_ok=True)
- with (r/"network-recovery.jsonl").open("a",encoding="utf8") as f:f.write(json.dumps({"ts":now(),"event":e,**d},sort_keys=True)+"\n")
-def snapshot(r):
- out={}
- for n,c in {"wlan":["netsh","wlan","show","interfaces"],"ip":["ipconfig","/all"],"route":["route","print","-4"]}.items():
-  try:
-   x=run(c);out[n]={"rc":x.returncode,"stdout":x.stdout[-12000:],"stderr":x.stderr[-2000:]}
-  except Exception as e:out[n]={"error":repr(e)}
- q=r/"network-incidents";q.mkdir(parents=True,exist_ok=True);(q/(datetime.now().strftime("%Y%m%d-%H%M%S")+".json")).write_text(json.dumps({"ts":now(),**out},indent=2))
-def recover(r,allow_reboot=False):
- snapshot(r)
- if human_mode(r):log(r,"RECOVERY_SUPPRESSED_HUMAN_MODE");return False
- steps=[("wlan_reconnect",["netsh","wlan","connect","name=ATTgw6SIjk"]),("wlan_service_restart",["powershell","-NoProfile","-Command","Restart-Service WlanSvc -Force"]),("adapter_restart",["powershell","-NoProfile","-Command","Get-NetAdapter -InterfaceDescription 'Intel(R) Wi-Fi 6E AX211 160MHz' | Restart-NetAdapter -Confirm:$false"])]
- for n,c in steps:
-  try:x=run(c);log(r,n,rc=x.returncode,stderr=x.stderr[-1000:])
-  except Exception as e:log(r,n,error=repr(e))
-  time.sleep(8)
-  if internet_ok():log(r,"RECOVERED",step=n);return True
- log(r,"RECOVERY_EXHAUSTED")
- if allow_reboot and not human_mode(r):log(r,"BOUNDED_REBOOT_REQUESTED");run(["shutdown","/r","/t","15","/c","Azathoth network recovery exhausted; rebooting to restore connectivity"])
- return False
-def main():
- a=argparse.ArgumentParser();a.add_argument("--state-root",type=Path,required=True);a.add_argument("--poll-seconds",type=int,default=30);a.add_argument("--failures",type=int,default=3);a.add_argument("--allow-reboot",action="store_true");a.add_argument("--once",action="store_true");q=a.parse_args();bad=0;log(q.state_root,"GUARDIAN_STARTED",pid=os.getpid())
- while True:
-  ok=internet_ok();bad=0 if ok else bad+1
-  if not ok:log(q.state_root,"PROBE_FAILED",consecutive=bad)
-  if bad>=q.failures:recover(q.state_root,q.allow_reboot);bad=0
-  if q.once:break
-  time.sleep(max(10,q.poll_seconds))
-if __name__=="__main__":main()
+
+HOSTS = ("1.1.1.1", "8.8.8.8")
+REBOOT_LATCH = "network-reboot-cooldown.json"
+GUARDIAN_PID = "network-guardian.pid"
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def internet_ok(timeout: float = 2.0) -> bool:
+    for host in HOSTS:
+        try:
+            with socket.create_connection((host, 443), timeout=timeout):
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def run(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        check=False,
+    )
+
+
+def human_mode(state_root: Path) -> bool:
+    return (state_root / "human-mode.json").exists() or (state_root / "give-me-control").exists()
+
+
+def log(state_root: Path, event: str, **details: object) -> None:
+    state_root.mkdir(parents=True, exist_ok=True)
+    record = {"ts": now(), "event": event, **details}
+    with (state_root / "network-recovery.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def reboot_latched(state_root: Path) -> bool:
+    return (state_root / REBOOT_LATCH).exists()
+
+
+def set_reboot_latch(state_root: Path) -> None:
+    state_root.mkdir(parents=True, exist_ok=True)
+    (state_root / REBOOT_LATCH).write_text(
+        json.dumps({"requested_at_utc": now(), "reason": "NETWORK_RECOVERY_EXHAUSTED"}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def clear_reboot_latch(state_root: Path, reason: str) -> None:
+    latch = state_root / REBOOT_LATCH
+    if latch.exists():
+        latch.unlink()
+        log(state_root, "REBOOT_COOLDOWN_CLEARED", reason=reason)
+
+
+def snapshot(state_root: Path) -> None:
+    evidence: dict[str, object] = {}
+    commands = {
+        "wlan": ["netsh", "wlan", "show", "interfaces"],
+        "ip": ["ipconfig", "/all"],
+        "route": ["route", "print", "-4"],
+    }
+    for name, command in commands.items():
+        try:
+            result = run(command)
+            evidence[name] = {
+                "rc": result.returncode,
+                "stdout": result.stdout[-12000:],
+                "stderr": result.stderr[-2000:],
+            }
+        except Exception as exc:
+            evidence[name] = {"error": repr(exc)}
+    incident_root = state_root / "network-incidents"
+    incident_root.mkdir(parents=True, exist_ok=True)
+    path = incident_root / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    path.write_text(json.dumps({"ts": now(), **evidence}, indent=2), encoding="utf-8")
+
+
+def recover(state_root: Path, allow_reboot: bool = False) -> bool:
+    snapshot(state_root)
+    if human_mode(state_root):
+        log(state_root, "RECOVERY_SUPPRESSED_HUMAN_MODE")
+        return False
+
+    steps = [
+        ("wlan_reconnect", ["netsh", "wlan", "connect", "name=ATTgw6SIjk"]),
+        (
+            "wlan_service_restart",
+            ["powershell", "-NoProfile", "-Command", "Restart-Service WlanSvc -Force"],
+        ),
+        (
+            "adapter_restart",
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-NetAdapter -InterfaceDescription 'Intel(R) Wi-Fi 6E AX211 160MHz' | "
+                "Restart-NetAdapter -Confirm:$false",
+            ],
+        ),
+    ]
+    for name, command in steps:
+        try:
+            result = run(command)
+            log(state_root, name, rc=result.returncode, stderr=result.stderr[-1000:])
+        except Exception as exc:
+            log(state_root, name, error=repr(exc))
+        time.sleep(8)
+        if internet_ok():
+            clear_reboot_latch(state_root, "CONNECTIVITY_RECOVERED")
+            log(state_root, "RECOVERED", step=name)
+            return True
+
+    log(state_root, "RECOVERY_EXHAUSTED")
+    if allow_reboot and not human_mode(state_root):
+        if reboot_latched(state_root):
+            log(state_root, "REBOOT_SUPPRESSED_COOLDOWN")
+        else:
+            set_reboot_latch(state_root)
+            log(state_root, "BOUNDED_REBOOT_REQUESTED")
+            run(
+                [
+                    "shutdown",
+                    "/r",
+                    "/t",
+                    "15",
+                    "/c",
+                    "Azathoth network recovery exhausted; rebooting to restore connectivity",
+                ]
+            )
+    return False
+
+
+def acquire_guardian(state_root: Path) -> Path | None:
+    state_root.mkdir(parents=True, exist_ok=True)
+    pid_path = state_root / GUARDIAN_PID
+    if pid_path.exists():
+        try:
+            pid = int(pid_path.read_text(encoding="utf-8").strip())
+            result = run(["tasklist", "/FI", f"PID eq {pid}"])
+            if str(pid) in result.stdout:
+                return None
+        except (OSError, ValueError):
+            pass
+    pid_path.write_text(str(os.getpid()), encoding="utf-8")
+    return pid_path
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--state-root", type=Path, required=True)
+    parser.add_argument("--poll-seconds", type=int, default=30)
+    parser.add_argument("--failures", type=int, default=3)
+    parser.add_argument("--allow-reboot", action="store_true")
+    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--reset-reboot-cooldown", action="store_true")
+    args = parser.parse_args()
+
+    if args.reset_reboot_cooldown:
+        clear_reboot_latch(args.state_root, "HUMAN_RESET")
+        return 0
+
+    pid_path = acquire_guardian(args.state_root)
+    if pid_path is None:
+        return 0
+
+    failures = 0
+    try:
+        log(args.state_root, "GUARDIAN_STARTED", pid=os.getpid())
+        while True:
+            healthy = internet_ok()
+            if healthy:
+                failures = 0
+                clear_reboot_latch(args.state_root, "CONNECTIVITY_CONFIRMED")
+            else:
+                failures += 1
+                log(args.state_root, "PROBE_FAILED", consecutive=failures)
+
+            if failures >= args.failures:
+                recover(args.state_root, args.allow_reboot)
+                failures = 0
+
+            if args.once:
+                break
+            time.sleep(max(10, args.poll_seconds))
+    finally:
+        try:
+            pid_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

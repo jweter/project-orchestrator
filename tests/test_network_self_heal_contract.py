@@ -1,6 +1,41 @@
 from pathlib import Path
-def test_network_guardian_contract():
- r=Path(__file__).parents[1];c=(r/"scripts/network_self_heal.py").read_text();b=(r/"scripts/windows_hands_off_boot.bat").read_text()
- assert "RECOVERY_SUPPRESSED_HUMAN_MODE" in c and "network-incidents" in c
- assert all(x in c for x in ("wlan_reconnect","wlan_service_restart","adapter_restart","RECOVERY_EXHAUSTED"))
- assert "allow_reboot and not human_mode" in c and "network_self_heal.py" in b
+from types import SimpleNamespace
+
+from scripts import network_self_heal as network
+
+
+def test_reboot_latch_blocks_repeat_reboots(tmp_path, monkeypatch):
+    commands = []
+
+    monkeypatch.setattr(network, "snapshot", lambda _root: None)
+    monkeypatch.setattr(network, "human_mode", lambda _root: False)
+    monkeypatch.setattr(network, "internet_ok", lambda: False)
+    monkeypatch.setattr(network.time, "sleep", lambda _seconds: None)
+
+    def fake_run(command):
+        commands.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(network, "run", fake_run)
+
+    assert network.recover(tmp_path, allow_reboot=True) is False
+    assert network.reboot_latched(tmp_path)
+    assert sum(command[0] == "shutdown" for command in commands) == 1
+
+    assert network.recover(tmp_path, allow_reboot=True) is False
+    assert sum(command[0] == "shutdown" for command in commands) == 1
+    assert "REBOOT_SUPPRESSED_COOLDOWN" in (tmp_path / "network-recovery.jsonl").read_text()
+
+
+def test_reboot_latch_clears_only_on_explicit_clear(tmp_path):
+    network.set_reboot_latch(tmp_path)
+    assert network.reboot_latched(tmp_path)
+    network.clear_reboot_latch(tmp_path, "CONNECTIVITY_CONFIRMED")
+    assert not network.reboot_latched(tmp_path)
+
+
+def test_human_mode_suppresses_recovery(tmp_path, monkeypatch):
+    monkeypatch.setattr(network, "snapshot", lambda _root: None)
+    (tmp_path / "human-mode.json").write_text("{}")
+    assert network.recover(tmp_path, allow_reboot=True) is False
+    assert not network.reboot_latched(tmp_path)

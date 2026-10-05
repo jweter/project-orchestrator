@@ -13,16 +13,11 @@ TASK_NAME="ProjectHandsOffSupervisor"
 BOOT_TASK_NAME="ProjectHandsOffSupervisorBoot"
 
 def task_command(repo:Path,workspace:Path,state:Path,*,boot_owner:bool=False)->str:
-    launcher=repo/"scripts"/"launch_persistent_supervisor.py"
-    command=(f'"{sys.executable}" "{launcher}" --repo-root "{repo}" '
-             f'--workspace-root "{workspace}" --state-root "{state}" '
-             '--timeout-seconds 60 --builder-seconds 60 --merge-seconds 60')
+    entrypoint=repo/"scripts"/"hands_off_boot_entrypoint.py"
+    command=(f'"{sys.executable}" "{entrypoint}" --repo-root "{repo}" '
+             f'--workspace-root "{workspace}" --state-root "{state}"')
     if boot_owner:
-        command += ' --yield-on-interactive-session'
-    else:
-        # ONLOGON may race the SYSTEM boot owner. Keep the launcher alive until
-        # that owner yields its lock so supervision cannot fall into a gap.
-        command += ' --wait-for-takeover'
+        command += ' --boot-owner'
     return command
 
 def run(args:list[str])->subprocess.CompletedProcess[str]:
