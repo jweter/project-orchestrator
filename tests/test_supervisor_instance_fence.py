@@ -30,9 +30,28 @@ def test_main_exits_cleanly_when_supervisor_already_active(tmp_path, monkeypatch
     repo=tmp_path/"repo"; repo.mkdir()
     work=tmp_path/"work"; work.mkdir()
     state=tmp_path/"state"
-    monkeypatch.setattr(supervisor,"acquire_supervisor_instance_lock",lambda _: None)
+    monkeypatch.setattr(supervisor,"acquire_supervisor_instance_lock",lambda *_args, **_kwargs: None)
     monkeypatch.setattr(sys,"argv",["supervisor",
         "--repo-root",str(repo),"--workspace-root",str(work),"--state-root",str(state),"--once"])
     assert supervisor.main()==0
     payload=json.loads((state/"supervisor-reentry.json").read_text())
     assert payload["status"]=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE"
+
+
+def test_machine_wide_fence_blocks_different_state_roots(tmp_path):
+    machine=tmp_path/"machine"
+    first_state=tmp_path/"state-a"
+    second_state=tmp_path/"state-b"
+    first=supervisor.acquire_supervisor_instance_lock(first_state,machine)
+    assert first is not None
+    try:
+        second=supervisor.acquire_supervisor_instance_lock(second_state,machine)
+        assert second is None
+        meta=json.loads((machine/"continuous-flow-supervisor.lock.json").read_text())
+        assert meta["lock_id"]==first["lock_id"]
+        assert meta["state_root"]==str(first_state.resolve())
+    finally:
+        supervisor.release_supervisor_instance_lock(first)
+    third=supervisor.acquire_supervisor_instance_lock(second_state,machine)
+    assert third is not None
+    supervisor.release_supervisor_instance_lock(third)
