@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from project_orchestrator.state_io import atomic_json
+from project_orchestrator.state_io import atomic_json, optional_atomic_json
 
 
 def test_atomic_json_never_rewrites_live_destination_in_place_on_replace_contention(tmp_path, monkeypatch):
@@ -52,3 +52,27 @@ def test_atomic_json_can_use_longer_bounded_replace_window_without_in_place_fall
     assert attempts == 8
     assert json.loads(path.read_text(encoding="utf-8")) == {"generation": "new"}
     assert not list(tmp_path.glob("hands-off-grant-lifecycle.json.tmp.*"))
+
+
+def test_optional_atomic_json_reports_contention_without_rewriting_destination(tmp_path, monkeypatch):
+    path = tmp_path / "productive-liveness.json"
+    original = '{"status":"old"}\n'
+    path.write_text(original, encoding="utf-8")
+    real_replace = type(path).replace
+
+    def blocked_replace(self, target):
+        if self.name.startswith("productive-liveness.json.tmp."):
+            raise PermissionError(5, "Access is denied")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(type(path), "replace", blocked_replace)
+    monkeypatch.setattr("project_orchestrator.state_io.time.sleep", lambda _seconds: None)
+    assert optional_atomic_json(path, {"status": "new"}, replace_attempts=3) is False
+    assert path.read_text(encoding="utf-8") == original
+    assert not list(tmp_path.glob("productive-liveness.json.tmp.*"))
+
+
+def test_optional_atomic_json_reports_success(tmp_path):
+    path = tmp_path / "productive-liveness.json"
+    assert optional_atomic_json(path, {"status": "fresh"}) is True
+    assert json.loads(path.read_text(encoding="utf-8")) == {"status": "fresh"}
