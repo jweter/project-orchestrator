@@ -711,6 +711,7 @@ def test_atomic_json_fails_closed_after_windows_rename_denied(tmp_path,monkeypat
             raise PermissionError(5,"Access is denied")
         raise AssertionError("unexpected replace")
     monkeypatch.setattr(builder.Path,"replace",denied)
+    monkeypatch.setattr("project_orchestrator.state_io._windows_replace_file",lambda *_:False)
     monkeypatch.setattr(builder.time,"sleep",lambda *_:None)
     with pytest.raises(PermissionError,match="Access is denied"):
         builder.atomic_json(path,{"grants":{"g":{"state":"RUNNING"}}})
