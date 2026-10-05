@@ -57,3 +57,52 @@ def test_review_usage_limit_is_blocking_evidence(monkeypatch):
     import scripts.green_pr_merger as merger
     monkeypatch.setattr(merger,"gh_json",lambda args:[{"commit_id":"head","body":"You have reached your Codex usage limits for code reviews."}] if args[-1].endswith("/comments") else [])
     assert merger.blocking_review_findings("o/r",1,"head") is True
+
+
+def test_open_pr_inventory_requires_dual_source_agreement(monkeypatch):
+    import scripts.green_pr_merger as merger
+    primary=[
+        {"number":12,"headRefOid":"a"*40},
+        {"number":19,"headRefOid":"b"*40},
+    ]
+    secondary=[
+        {"number":12,"head":{"sha":"a"*40}},
+        {"number":19,"head":{"sha":"b"*40}},
+    ]
+    monkeypatch.setattr(merger,"gh_json",lambda _args:primary)
+    monkeypatch.setattr(merger,"gh_paginated",lambda _endpoint:secondary)
+    assert merger.open_prs("jweter/repo") is primary
+
+
+def test_open_pr_inventory_fails_closed_when_pr_is_missing_from_one_source(monkeypatch):
+    import scripts.green_pr_merger as merger
+    monkeypatch.setattr(
+        merger,"gh_json",
+        lambda _args:[{"number":12,"headRefOid":"a"*40}],
+    )
+    monkeypatch.setattr(merger,"gh_paginated",lambda _endpoint:[])
+    import pytest
+    with pytest.raises(RuntimeError,match="PR_INVENTORY_MISMATCH"):
+        merger.open_prs("jweter/repo")
+
+
+def test_open_pr_inventory_fails_closed_when_exact_head_disagrees(monkeypatch):
+    import scripts.green_pr_merger as merger
+    monkeypatch.setattr(
+        merger,"gh_json",
+        lambda _args:[{"number":12,"headRefOid":"a"*40}],
+    )
+    monkeypatch.setattr(
+        merger,"gh_paginated",
+        lambda _endpoint:[{"number":12,"head":{"sha":"b"*40}}],
+    )
+    import pytest
+    with pytest.raises(RuntimeError,match="PR_INVENTORY_MISMATCH"):
+        merger.open_prs("jweter/repo")
+
+
+def test_open_pr_inventory_allows_verified_empty_inventory(monkeypatch):
+    import scripts.green_pr_merger as merger
+    monkeypatch.setattr(merger,"gh_json",lambda _args:[])
+    monkeypatch.setattr(merger,"gh_paginated",lambda _endpoint:[])
+    assert merger.open_prs("jweter/repo")==[]

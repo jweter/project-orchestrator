@@ -51,9 +51,42 @@ def gh_paginated(endpoint:str)->list[dict[str,Any]]:
     if not isinstance(pages,list): raise RuntimeError("invalid paginated GitHub response")
     return [item for page in pages if isinstance(page,list) for item in page if isinstance(item,dict)]
 
+def _identity_map_from_pr_list(prs:list[dict[str,Any]])->dict[int,str]:
+    identity:dict[int,str]={}
+    for pr in prs:
+        number=pr.get("number")
+        head=pr.get("headRefOid")
+        if not isinstance(number,int) or not isinstance(head,str) or not head:
+            raise RuntimeError("PR_INVENTORY_PRIMARY_MALFORMED")
+        identity[number]=head
+    return identity
+
+def _identity_map_from_rest(prs:list[dict[str,Any]])->dict[int,str]:
+    identity:dict[int,str]={}
+    for pr in prs:
+        number=pr.get("number")
+        head=(pr.get("head") or {}).get("sha") if isinstance(pr.get("head"),dict) else None
+        if not isinstance(number,int) or not isinstance(head,str) or not head:
+            raise RuntimeError("PR_INVENTORY_SECONDARY_MALFORMED")
+        identity[number]=head
+    return identity
+
 def open_prs(repo:str)->list[dict[str,Any]]:
+    """Fail closed unless two independent GitHub PR inventories agree exactly."""
     fields="number,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"
-    return gh_json(["pr","list","--repo",repo,"--state","open","--json",fields,"--limit","100"])
+    primary=gh_json(["pr","list","--repo",repo,"--state","open","--json",fields,"--limit","100"])
+    if not isinstance(primary,list):
+        raise RuntimeError("PR_INVENTORY_PRIMARY_MALFORMED")
+    secondary=gh_paginated(f"repos/{repo}/pulls?state=open&per_page=100")
+    primary_identity=_identity_map_from_pr_list(primary)
+    secondary_identity=_identity_map_from_rest(secondary)
+    if primary_identity != secondary_identity:
+        raise RuntimeError(
+            "PR_INVENTORY_MISMATCH "
+            f"primary={sorted(primary_identity.items())} "
+            f"secondary={sorted(secondary_identity.items())}"
+        )
+    return primary
 
 def _age_seconds(created_at:str)->float:
     created=datetime.fromisoformat(created_at.replace("Z","+00:00"))
