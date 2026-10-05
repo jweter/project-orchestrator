@@ -1124,10 +1124,14 @@ def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
             # Execution was intentionally deferred; no engineering failure
             # occurred and a later grant may retry the same slice.
             record["state"]="DEFERRED"
-        elif result_status in {
-            "PR_OPEN","NO_OP","SELF_REPAIRED_TO_NO_OP","DRY_RUN","NO_ELIGIBLE_REPOSITORY"
-        }:
+        elif result_status in {"PR_OPEN","DRY_RUN","NO_ELIGIBLE_REPOSITORY"}:
             record["state"]="COMPLETED"
+        elif result_status in {"NO_OP","SELF_REPAIRED_TO_NO_OP"}:
+            # A clean runner exit without a candidate artifact is not
+            # production.  Make it terminal and recoverable, but never let it
+            # inflate completion/productivity history.
+            record["state"]="FAILED"
+            record["failure_class"]="NONPRODUCTIVE_COMPLETION"
         else:
             record["state"]="FAILED"
         record["finished_at"]=datetime.now(UTC).isoformat()
