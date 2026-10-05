@@ -555,6 +555,7 @@ def productive_liveness(
 
     records = []
     latest = None
+    latest_activity = None
     active = False
     for grant_id, record in grants.items():
         if not isinstance(record, dict):
@@ -591,6 +592,8 @@ def productive_liveness(
         )
         if parsed and produced_candidate and (latest is None or parsed > latest):
             latest = parsed
+        if parsed and is_active and (latest_activity is None or parsed > latest_activity):
+            latest_activity = parsed
         active = active or is_active
         records.append({
             "grant_id": grant_id,
@@ -605,6 +608,7 @@ def productive_liveness(
         })
 
     age = (current - latest).total_seconds() if latest else None
+    activity_age = (current - latest_activity).total_seconds() if latest_activity else None
     no_slice = builder_status == "NO_WORK"
     eligible = bool(authorized_products)
     productive = bool(records) and age is not None and age <= stale_seconds
@@ -613,6 +617,8 @@ def productive_liveness(
         status = "NO_AUTHORIZED_WORK"
     elif productive:
         status = "PRODUCTIVE"
+    elif active and activity_age is not None and activity_age > stale_seconds:
+        status = "STALE_ACTIVE_WORK"
     elif active:
         status = "ACTIVE_WORK"
     elif no_slice:
@@ -628,6 +634,7 @@ def productive_liveness(
         "grant_evidence": records,
         "last_productive_mutation_at": latest.isoformat() if latest else None,
         "seconds_since_productive_mutation": age,
+        "seconds_since_active_progress": activity_age,
         "stale_after_seconds": stale_seconds,
     }
 
