@@ -136,6 +136,7 @@ def test_atomic_json_windows_replacefile_handles_node_reader(tmp_path):
         child.wait(timeout=5)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows ReplaceFileW partial-failure semantics")
 def test_windows_replacefile_1176_preserves_original_destination(tmp_path, monkeypatch):
     import project_orchestrator.state_io as state_io
 
@@ -159,6 +160,7 @@ def test_windows_replacefile_1176_preserves_original_destination(tmp_path, monke
     assert observed["backup"].parent == destination.parent
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows ReplaceFileW partial-failure semantics")
 def test_windows_replacefile_1177_restores_backup_to_canonical_path(tmp_path, monkeypatch):
     import project_orchestrator.state_io as state_io
 
@@ -181,6 +183,7 @@ def test_windows_replacefile_1177_restores_backup_to_canonical_path(tmp_path, mo
     assert not list(tmp_path.glob("supervisor.json.backup.*"))
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows ReplaceFileW partial-failure semantics")
 def test_windows_replacefile_success_removes_old_backup(tmp_path, monkeypatch):
     import project_orchestrator.state_io as state_io
 
