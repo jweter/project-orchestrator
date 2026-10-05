@@ -134,3 +134,67 @@ def test_atomic_json_windows_replacefile_handles_node_reader(tmp_path):
     finally:
         child.terminate()
         child.wait(timeout=5)
+
+
+def test_windows_replacefile_1176_preserves_original_destination(tmp_path, monkeypatch):
+    import project_orchestrator.state_io as state_io
+
+    destination = tmp_path / "supervisor.json"
+    replacement = tmp_path / "supervisor.json.tmp"
+    destination.write_text('{"generation":"old"}\n', encoding="utf-8")
+    replacement.write_text('{"generation":"new"}\n', encoding="utf-8")
+    observed = {}
+
+    def fail_1176(dest, repl, backup):
+        observed["backup"] = backup
+        assert dest == destination
+        assert repl == replacement
+        return False, state_io.ERROR_UNABLE_TO_MOVE_REPLACEMENT
+
+    monkeypatch.setattr(state_io, "_call_windows_replace_file", fail_1176)
+    assert state_io._windows_replace_file(replacement, destination) is False
+    assert json.loads(destination.read_text(encoding="utf-8")) == {"generation": "old"}
+    assert replacement.exists()
+    assert observed["backup"] != destination
+    assert observed["backup"].parent == destination.parent
+
+
+def test_windows_replacefile_1177_restores_backup_to_canonical_path(tmp_path, monkeypatch):
+    import project_orchestrator.state_io as state_io
+
+    destination = tmp_path / "supervisor.json"
+    replacement = tmp_path / "supervisor.json.tmp"
+    destination.write_text('{"generation":"old"}\n', encoding="utf-8")
+    replacement.write_text('{"generation":"new"}\n', encoding="utf-8")
+
+    def fail_1177(dest, repl, backup):
+        dest.replace(backup)
+        assert not dest.exists()
+        assert repl.exists()
+        assert backup.exists()
+        return False, state_io.ERROR_UNABLE_TO_MOVE_REPLACEMENT_2
+
+    monkeypatch.setattr(state_io, "_call_windows_replace_file", fail_1177)
+    assert state_io._windows_replace_file(replacement, destination) is False
+    assert json.loads(destination.read_text(encoding="utf-8")) == {"generation": "old"}
+    assert replacement.exists()
+    assert not list(tmp_path.glob("supervisor.json.backup.*"))
+
+
+def test_windows_replacefile_success_removes_old_backup(tmp_path, monkeypatch):
+    import project_orchestrator.state_io as state_io
+
+    destination = tmp_path / "supervisor.json"
+    replacement = tmp_path / "supervisor.json.tmp"
+    destination.write_text('{"generation":"old"}\n', encoding="utf-8")
+    replacement.write_text('{"generation":"new"}\n', encoding="utf-8")
+
+    def succeed(dest, repl, backup):
+        dest.replace(backup)
+        repl.replace(dest)
+        return True, 0
+
+    monkeypatch.setattr(state_io, "_call_windows_replace_file", succeed)
+    assert state_io._windows_replace_file(replacement, destination) is True
+    assert json.loads(destination.read_text(encoding="utf-8")) == {"generation": "new"}
+    assert not list(tmp_path.glob("supervisor.json.backup.*"))
