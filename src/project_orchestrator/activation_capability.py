@@ -507,7 +507,8 @@ def repeated_noop_slice_evidence(state_root:Path,repo:str,execution_slice:dict,
     history.sort(key=lambda item:(item["issued_at"],item["finished_at"],item["grant_id"]))
     recent=history[-threshold:] if threshold>0 else []
     exhausted=(len(recent)>=threshold and all(
-        item.get("state")=="COMPLETED" and item.get("result_status") in NO_OP_TERMINAL_STATUSES
+        item.get("state") in {"COMPLETED","FAILED"}
+        and item.get("result_status") in NO_OP_TERMINAL_STATUSES
         for item in recent
     ))
     return {
