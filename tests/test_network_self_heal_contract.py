@@ -8,7 +8,7 @@ def test_reboot_latch_blocks_repeat_reboots(tmp_path, monkeypatch):
     commands = []
 
     monkeypatch.setattr(network, "snapshot", lambda _root: None)
-    monkeypatch.setattr(network, "human_mode", lambda _root: False)
+    monkeypatch.setattr(network, "human_mode", lambda *_args: False)
     monkeypatch.setattr(network, "internet_ok", lambda: False)
     monkeypatch.setattr(network.time, "sleep", lambda _seconds: None)
 
@@ -63,3 +63,45 @@ def test_guardian_singleton_is_atomic_and_os_released(tmp_path):
     replacement = network.acquire_guardian(tmp_path)
     assert replacement is not None
     replacement.close()
+
+
+def test_dns_failure_is_not_reported_as_healthy(monkeypatch):
+    def fail_dns(*_args, **_kwargs):
+        raise network.socket.gaierror("dns unavailable")
+
+    monkeypatch.setattr(network.socket, "getaddrinfo", fail_dns)
+    monkeypatch.setattr(
+        network.socket,
+        "create_connection",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("IP probe must not mask DNS failure")),
+    )
+    assert network.internet_ok() is False
+
+
+def test_explicit_interactive_human_control_root_is_honored(tmp_path, monkeypatch):
+    state_root = tmp_path / "repo-state"
+    human_root = tmp_path / "interactive-flow-state"
+    human_root.mkdir(parents=True)
+    (human_root / "human-mode.json").write_text("{}")
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    assert network.human_mode(state_root, human_root)
+
+
+def test_queued_reboot_is_aborted_when_human_mode_appears(tmp_path, monkeypatch):
+    commands = []
+    checks = iter([False, False, True])
+
+    monkeypatch.setattr(network, "snapshot", lambda _root: None)
+    monkeypatch.setattr(network, "human_mode", lambda *_args: next(checks))
+    monkeypatch.setattr(network, "internet_ok", lambda: False)
+    monkeypatch.setattr(network.time, "sleep", lambda _seconds: None)
+
+    def fake_run(command):
+        commands.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(network, "run", fake_run)
+    assert network.recover(tmp_path, allow_reboot=True, human_control_root=tmp_path / "human") is False
+    assert ["shutdown", "/a"] in commands
+    assert any(command[:2] == ["shutdown", "/r"] for command in commands)
+    assert "REBOOT_ABORTED_HUMAN_MODE" in (tmp_path / "network-recovery.jsonl").read_text()
