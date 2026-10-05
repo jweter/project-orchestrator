@@ -807,7 +807,7 @@ def main()->int:
             liveness_reacquire={"requested":True,"reason":"PRODUCT_CONVERGENCE_DEFECT",
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
-        healthy=(builder_ok and linear_rc in (None,0) and not quarantines
+        healthy=(builder_ok and linear_rc in (None,0) and not quarantines and liveness_published
                  and workspace_provisioning.get("status")=="OK"
                  and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}
                  and convergence["status"]=="CONVERGED"
