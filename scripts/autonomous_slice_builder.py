@@ -660,7 +660,8 @@ def run_aider(ws:Path,message:str)->subprocess.CompletedProcess[str]:
 
 def run_claude_code(ws:Path,message:str)->subprocess.CompletedProcess[str]:
     """Independent authenticated coding lane; worktree and grant remain the sandbox boundary."""
-    argv=["claude","-p","--output-format","text","--permission-mode","acceptEdits",message]
+    argv=["claude","-p","--output-format","text","--permission-mode","dontAsk",
+          "--allowedTools","Read,Edit,Write,Glob,Grep,Bash",message]
     return run(argv,ws,timeout=MAX_AIDER_SECONDS)
 
 def run_builder(ws:Path,message:str,runner_id:str|None)->subprocess.CompletedProcess[str]:

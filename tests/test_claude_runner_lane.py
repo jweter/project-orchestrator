@@ -26,7 +26,8 @@ def test_claude_adapter_uses_noninteractive_edit_mode(monkeypatch,tmp_path):
     monkeypatch.setattr(builder,"run",fake)
     result=builder.run_builder(tmp_path,"implement slice","claude-code")
     assert result.returncode==0
-    assert seen["argv"][:5]==["claude","-p","--output-format","text","--permission-mode"]
+    assert seen["argv"][:7]==["claude","-p","--output-format","text","--permission-mode","dontAsk","--allowedTools"]
+    assert seen["argv"][7]=="Read,Edit,Write,Glob,Grep,Bash"
     assert seen["argv"][-1]=="implement slice"
 
 def test_unknown_runner_fails_closed(tmp_path):
