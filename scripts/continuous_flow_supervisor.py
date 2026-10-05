@@ -788,7 +788,7 @@ def main()->int:
         if lifecycle_advanced:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
-        atomic(state/"productive-liveness.json",liveness)
+        atomic(state/"productive-liveness.json",liveness,replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
         convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
         idle_streaks=_planning.record_eligible_idle_streaks(
             state,products,current_invocation_id=dispatch_invocation_id,
