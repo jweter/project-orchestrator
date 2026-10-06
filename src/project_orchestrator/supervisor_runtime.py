@@ -65,9 +65,9 @@ def builder_health(
         "PUSH_FAILED", "PR_CREATE_FAILED",
     }
     productive = {
-        "USER_ACTIVE", "IMPLEMENTING", "PREFLIGHT_GREEN", "PR_OPEN",
-        "CI_PENDING", "GREEN", "MERGED", "PRODUCT_REALITY_PENDING",
-        "PRODUCT_REALITY_VERIFIED",
+        "USER_ACTIVE", "IMPLEMENTING", "PREFLIGHT_GREEN", "PUSH_PENDING",
+        "PR_OPEN_PENDING", "PR_OPEN", "CI_PENDING", "GREEN", "MERGED",
+        "PRODUCT_REALITY_PENDING", "PRODUCT_REALITY_VERIFIED",
     }
     return status in productive and status not in degraded, status
 

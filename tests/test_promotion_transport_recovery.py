@@ -38,3 +38,11 @@ def test_pr_creation_failure_preserves_pushed_exact_head_for_retry(tmp_path):
     assert stages[-1][0]=="PUSHED"
     assert stages[-1][1]["remote_head_sha"]=="b"*40
     assert stages[-1][1]["transport_state"]=="PR_OPEN_PENDING"
+
+def test_supervisor_treats_transport_pending_as_live_promotion_work(tmp_path):
+    import json
+    from project_orchestrator.supervisor_runtime import builder_health
+    state=tmp_path/"builder.json"
+    for status in ("PUSH_PENDING","PR_OPEN_PENDING"):
+        state.write_text(json.dumps({"status":status}),encoding="utf-8")
+        assert builder_health(tmp_path,0)==(True,status)
