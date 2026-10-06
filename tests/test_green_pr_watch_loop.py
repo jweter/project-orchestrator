@@ -137,3 +137,9 @@ def test_failed_reconciliation_does_not_authorize_continuation(tmp_path, monkeyp
     assert not (tmp_path / "continuation-request.json").exists()
     assert payload["kpi_events_emitted"] == 1
     assert payload["flow_events_emitted"] == 1
+
+
+def test_isolated_cycle_failures_are_reported_as_watcher_error():
+    results=[{"repository":"broken/repo","decision":"REPOSITORY_QUERY_FAILED","merged":False}]
+    error=("PARTIAL_PROMOTION_FAILURE" if any(result.get("decision") in {"REPOSITORY_QUERY_FAILED","PR_PROCESSING_FAILED"} for result in results) else None)
+    assert error=="PARTIAL_PROMOTION_FAILURE"

@@ -171,7 +171,14 @@ def main() -> int:
             started = time.time()
             try:
                 results = cycle(False)
-                error = None
+                error = (
+                    "PARTIAL_PROMOTION_FAILURE"
+                    if any(
+                        result.get("decision") in {"REPOSITORY_QUERY_FAILED", "PR_PROCESSING_FAILED"}
+                        for result in results
+                    )
+                    else None
+                )
             except Exception as exc:
                 results = []
                 error = type(exc).__name__
