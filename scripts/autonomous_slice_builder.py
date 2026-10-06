@@ -1142,7 +1142,7 @@ def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
             record["state"]="FAILED"
         record["finished_at"]=datetime.now(UTC).isoformat()
         record["result_status"]=result_status
-        for key in ("repository","branch","base_sha","head_sha"):
+        for key in ("repository","branch","base_sha","head_sha","workspace_path"):
             if result.get(key):
                 record[key]=result[key]
         return True

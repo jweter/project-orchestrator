@@ -43,7 +43,16 @@ def conflicting_nonterminal_grant(
         if not owns:
             continue
         authority = record.get("execution_slice") or {}
-        if repo in record.get("authorized_repositories", []) and paths_conflict(execution_slice, authority):
+        # A transport-pending candidate still physically owns its static
+        # worker worktree. Reserve the repository until recovery has consumed
+        # that exact workspace; otherwise a non-conflicting slice can reuse
+        # the slot and overwrite the verified candidate before promotion.
+        transport_workspace_owned = (
+            record.get("recovery_state") in {"PENDING", "RECOVERING"}
+            and bool(record.get("workspace_path"))
+        )
+        if repo in record.get("authorized_repositories", []) and (
+                transport_workspace_owned or paths_conflict(execution_slice, authority)):
             return {
                 "grant_id": grant_id,
                 "state": record.get("state"),
