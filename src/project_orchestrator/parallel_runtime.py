@@ -152,7 +152,7 @@ def runner_affinity_history(state_root: Path, task_class: str) -> dict[str, dict
         row = history.setdefault(runner_id, {"success": 0, "failure": 0})
         status = str(record.get("result_status") or "")
         if record.get("state") == "COMPLETED" and "FAILED" not in status and status not in {
-            "PREFLIGHT_FAILED", "PUSH_FAILED", "PR_CREATE_FAILED"
+            "NO_OP", "SELF_REPAIRED_TO_NO_OP", "PREFLIGHT_FAILED", "PUSH_FAILED", "PR_CREATE_FAILED"
         }:
             row["success"] += 1
         else:

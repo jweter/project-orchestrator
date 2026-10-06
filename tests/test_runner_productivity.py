@@ -221,3 +221,13 @@ def test_dashboard_snapshot_projects_runtime_promotion_latency(tmp_path):
     metric=kpi["rolling_reports"]["24h"]["metrics"]["promotion_latency_seconds"]
     assert metric["status"]=="MEASURED"
     assert metric["value"]==300.0
+
+
+def test_noop_outcomes_are_failures_in_runner_affinity_history(tmp_path):
+    import json
+    from project_orchestrator.parallel_runtime import runner_affinity_history
+    grants={}
+    for i in range(4):
+        grants[str(i)]={"state":"COMPLETED","runner_id":"aider-ollama","result_status":"NO_OP","execution_slice":{"task_class":"repair"}}
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps({"grants":grants}))
+    assert runner_affinity_history(tmp_path,"repair")["aider-ollama"]=={"success":0,"failure":4}
