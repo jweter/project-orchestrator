@@ -1517,3 +1517,13 @@ def test_parallel_worker_failure_is_recorded_without_blocking_pool(tmp_path):
     assert rows["rocksmith-worker-1"]["status"]=="WORKER_EXCEPTION"
     assert rows["rocksmith-worker-1"]["error_class"]=="RuntimeError"
     assert "private detail" not in json.dumps(rows)
+
+
+def test_worker_liveness_treats_missing_process_as_dead_before_fingerprint(monkeypatch):
+    import socket
+    import scripts.continuous_flow_supervisor as supervisor
+    import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(ProcessLookupError()))
+    monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:None)
+    worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
+    assert supervisor.worker_liveness(worker)=="DEAD"

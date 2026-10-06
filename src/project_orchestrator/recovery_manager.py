@@ -72,6 +72,17 @@ def worker_liveness(worker: dict | None) -> str:
         return "UNKNOWN"
     if pid <= 0:
         return "UNKNOWN"
+    # Establish process existence separately from creation-identity probing.
+    # Fingerprint readers intentionally return None for both an absent process
+    # and an unreadable process, so they cannot safely prove death by themselves.
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return "DEAD"
+    except PermissionError:
+        pass
+    except OSError:
+        return "UNKNOWN"
     expected = worker.get("process_start_fingerprint")
     if expected:
         try:
@@ -79,21 +90,10 @@ def worker_liveness(worker: dict | None) -> str:
             actual = builder_process_start_fingerprint(pid)
         except (ImportError, OSError):
             return "UNKNOWN"
-        # A missing fingerprint is inconclusive: the process may be alive but
-        # temporarily unqueryable (access/I/O failure). Only a successfully
-        # observed, different creation identity proves that this worker is dead
-        # or the PID has been reused.
         if actual is None:
             return "UNKNOWN"
         if actual != expected:
             return "DEAD"
-        return "ALIVE"
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return "DEAD"
-    except (PermissionError, OSError):
-        return "UNKNOWN"
     return "ALIVE"
 
 
