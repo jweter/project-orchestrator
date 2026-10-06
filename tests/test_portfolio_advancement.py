@@ -50,3 +50,44 @@ def test_extra_capacity_refills_after_product_breadth():
     ],POLICY,slots=3)
     assert len(selected)==3
     assert {r["slice_id"] for r in selected}=={"v1","v2","r1"}
+
+
+def test_resilient_plan_rotates_around_async_gate():
+    from project_orchestrator.portfolio_advancement import build_resilient_advancement_plan
+    plan=build_resilient_advancement_plan([
+      c("voicestudio","ci",advances_usability_gate=True,gate_state="CI_RUNNING"),
+      c("rocksmith","repair",advances_usability_gate=True),
+    ],POLICY,slots=1)
+    assert [r["slice_id"] for r in plan["selected"]]==["repair"]
+    assert plan["waiting"][0]["rotation_reason"]=="ASYNC_GATE_IN_FLIGHT"
+
+
+def test_resilient_plan_uses_next_authorized_mutation_route():
+    from project_orchestrator.portfolio_advancement import build_resilient_advancement_plan
+    plan=build_resilient_advancement_plan([
+      c("rocksmith","repair",advances_usability_gate=True,
+        authorized_mutation_routes=["primary","github","laptop"],
+        failed_mutation_routes=["primary"]),
+    ],POLICY,slots=1)
+    assert plan["selected"][0]["mutation_route"]=="github"
+
+
+def test_resilient_plan_does_not_bypass_exhausted_authority():
+    from project_orchestrator.portfolio_advancement import build_resilient_advancement_plan
+    plan=build_resilient_advancement_plan([
+      c("everward","repair",advances_usability_gate=True,
+        authorized_mutation_routes=["primary"],failed_mutation_routes=["primary"]),
+      c("knowledge-engine","safe",advances_usability_gate=True),
+    ],POLICY,slots=2)
+    assert [r["slice_id"] for r in plan["selected"]]==["safe"]
+    assert plan["route_blocked"][0]["rotation_reason"]=="AUTHORIZED_ROUTES_EXHAUSTED"
+
+
+def test_resilient_plan_preserves_ineligible_and_owned_boundaries():
+    from project_orchestrator.portfolio_advancement import build_resilient_advancement_plan
+    plan=build_resilient_advancement_plan([
+      c("rocksmith","owned",owned=True,advances_usability_gate=True),
+      {"product":"everward","slice_id":"illegal","eligible":False,"advances_usability_gate":True},
+      c("voicestudio","safe",advances_usability_gate=True),
+    ],POLICY,slots=3)
+    assert [r["slice_id"] for r in plan["selected"]]==["safe"]
