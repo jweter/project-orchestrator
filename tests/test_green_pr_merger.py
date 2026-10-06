@@ -55,5 +55,28 @@ def test_draft_requires_refetch_before_merge(monkeypatch):
 
 def test_review_usage_limit_is_blocking_evidence(monkeypatch):
     import scripts.green_pr_merger as merger
-    monkeypatch.setattr(merger,"gh_json",lambda args:[{"commit_id":"head","body":"You have reached your Codex usage limits for code reviews."}] if args[-1].endswith("/comments") else [])
+    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":False,"comments":{"nodes":[{"body":"You have reached your Codex usage limits for code reviews.","commit":{"oid":"head"}}]}}]}}}}}
+    monkeypatch.setattr(merger,"gh_json",lambda args:payload)
     assert merger.blocking_review_findings("o/r",1,"head") is True
+
+
+def test_resolved_blocking_review_thread_does_not_block(monkeypatch):
+    import scripts.green_pr_merger as merger
+    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":True,"comments":{"nodes":[{"body":"P1 blocking regression","commit":{"oid":"head"}}]}}]}}}}}
+    monkeypatch.setattr(merger,"gh_json",lambda args:payload)
+    assert merger.blocking_review_findings("o/r",1,"head") is False
+
+
+def test_unresolved_blocking_review_thread_blocks(monkeypatch):
+    import scripts.green_pr_merger as merger
+    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":False,"comments":{"nodes":[{"body":"P1 blocking regression","commit":{"oid":"head"}}]}}]}}}}}
+    monkeypatch.setattr(merger,"gh_json",lambda args:payload)
+    assert merger.blocking_review_findings("o/r",1,"head") is True
+
+
+def test_review_thread_resolution_unavailable_fails_closed(monkeypatch):
+    import pytest
+    import scripts.green_pr_merger as merger
+    monkeypatch.setattr(merger,"gh_json",lambda args:{"data":{"repository":{"pullRequest":{}}}})
+    with pytest.raises(RuntimeError,match="resolution state unavailable"):
+        merger.blocking_review_findings("o/r",1,"head")
