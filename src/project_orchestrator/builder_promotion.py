@@ -35,6 +35,7 @@ def promote_candidate(
     verified_repair: dict[str, str] | None = None,
     record_verified_repair_fn: Callable | None = None,
     promote_verified_repairs_fn: Callable | None = None,
+    promotion_queue_fn: Callable | None = None,
 ) -> dict[str, Any]:
     """Verify, rebase-refresh, publish, and open a PR for one committed candidate."""
     preflight, verified_head, head_stable = run_exact_head_preflight_fn(ws, head)
@@ -340,6 +341,20 @@ def promote_candidate(
             remote_head_sha=head,
             pr_url=pr_url,
             pr_number=pr_number,
+        )
+
+    if promotion_queue_fn is not None and status == "PR_OPEN":
+        # Hand the published candidate to the durable promotion queue and release
+        # this worker's development capacity now; PR/CI/review/merge lifecycle is
+        # no longer this worker's concern. A promotion failure discovered later
+        # must never re-occupy this capacity (see promotion_queue.py).
+        promotion_queue_fn(
+            repository=repo,
+            branch=branch,
+            base_sha=base,
+            head_sha=head,
+            pr_number=pr_number,
+            changed_paths=paths,
         )
 
     return _persist(
