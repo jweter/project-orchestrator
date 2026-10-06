@@ -28,6 +28,7 @@ def test_push_failure_preserves_verified_candidate_for_transport_retry(tmp_path)
     result,stages=_call(tmp_path,push_rc=1)
     assert result["status"]=="PUSH_PENDING"
     assert result["head_sha"]=="b"*40
+    assert result["workspace_path"]==str(tmp_path/"ws")
     assert stages[-1][0]=="PREFLIGHT_GREEN"
     assert stages[-1][1]["transport_state"]=="PUSH_PENDING"
     assert stages[-1][1]["transport_failure"]=="PUSH_FAILED"
@@ -35,6 +36,7 @@ def test_push_failure_preserves_verified_candidate_for_transport_retry(tmp_path)
 def test_pr_creation_failure_preserves_pushed_exact_head_for_retry(tmp_path):
     result,stages=_call(tmp_path,pr_rc=1)
     assert result["status"]=="PR_OPEN_PENDING"
+    assert result["workspace_path"]==str(tmp_path/"ws")
     assert stages[-1][0]=="PUSHED"
     assert stages[-1][1]["remote_head_sha"]=="b"*40
     assert stages[-1][1]["transport_state"]=="PR_OPEN_PENDING"

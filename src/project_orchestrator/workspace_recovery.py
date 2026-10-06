@@ -617,11 +617,16 @@ def reconcile_abandoned_claims(workspace_root:Path,state_root:Path,grant_ids:lis
         if len(candidates)!=1:
             outcomes[grant_id]="RECOVERY_IDENTITY_AMBIGUOUS"
         else:
-            repo=candidates[0]; ws=workspace_root/repo.split("/",1)[-1]
-            if not ws.is_dir():
-                outcomes[grant_id]="WORKSPACE_MISSING"
-            else:
-                outcomes[grant_id]=None
+            repo=candidates[0]
+            recorded_workspace=record.get("workspace_path")
+            ws=Path(recorded_workspace) if recorded_workspace else workspace_root/repo.split("/",1)[-1]
+            if recorded_workspace:
+                try:
+                    ws.resolve().relative_to(workspace_root.resolve())
+                except (OSError, ValueError):
+                    outcomes[grant_id]="RECOVERY_WORKSPACE_OUTSIDE_ROOT"
+            if outcomes.get(grant_id) is None:
+                outcomes[grant_id]=None if ws.is_dir() else "WORKSPACE_MISSING"
         if outcomes.get(grant_id) is not None:
             record["recovery_result"]=outcomes[grant_id]
             delay=min(3600,60*(2**attempts))
