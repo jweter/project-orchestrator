@@ -692,12 +692,11 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
-        released_recovery_generations=recover_stale_recovery_generations(state)
-        abandoned_grants=recover_stale_grant_claims(state)
-        recovery_queue=pending_recovery_grants(state,abandoned_grants)
-        recovery_results={}
-        preserved_work_rechecks=recheck_preserved_work_quarantines(workspace,state)
-        quarantine_rechecks=recheck_quarantined_claims(state)
+        lifecycle_recovery=_supervisor_runtime.run_lifecycle_recovery_pass(state,workspace,
+            recover_generations_fn=recover_stale_recovery_generations,recover_claims_fn=recover_stale_grant_claims,
+            pending_fn=pending_recovery_grants,preserved_fn=recheck_preserved_work_quarantines,quarantined_fn=recheck_quarantined_claims)
+        released_recovery_generations,abandoned_grants,recovery_queue=(lifecycle_recovery["released"],lifecycle_recovery["abandoned"],lifecycle_recovery["queue"])
+        recovery_results={}; preserved_work_rechecks=lifecycle_recovery["preserved"]; quarantine_rechecks=lifecycle_recovery["quarantine_rechecks"]
         newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
         quarantines=quarantined_grants(state)
         publish_direction_outbox(state)
@@ -782,8 +781,7 @@ def main()->int:
             burst_id=burst_id,process_instance_id=process_instance_id)
         previous_repository=current_repository
         previous_builder_status=builder_status
-        lifecycle_advanced=merge_watcher_advanced(state)
-        decision_learning=refresh_decision_learning(state)
+        lifecycle_advanced=merge_watcher_advanced(state); decision_learning=refresh_decision_learning(state)
         if lifecycle_advanced:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
@@ -793,6 +791,7 @@ def main()->int:
             state,products,current_invocation_id=dispatch_invocation_id,
         )
         degraded_reasons=[]
+        if lifecycle_recovery["publication_blocked"]: degraded_reasons.append({"reason":"LIFECYCLE_STATE_PUBLICATION_BLOCKED"})
         if not liveness_published: degraded_reasons.append({"reason":"PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"})
         if workspace_provisioning.get("status") != "OK":
             degraded_reasons.append({"reason":"WORKSPACE_PROVISIONING_DEGRADED","details":workspace_provisioning})
