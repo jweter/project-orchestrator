@@ -222,15 +222,25 @@ def main()->int:
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
                 and stale_generation_requires_reclaim(
                     state,active_id,max_age_seconds=max(1,a.stale_seconds))):
-            request_stale_generation_handoff(state,active_id)
             reclaim=reclaim_stalled_generation(state,active_id)
+            if reclaim.get("reclaimed") is True:
+                request_stale_generation_handoff(state,active_id)
             receipt.update({"status":"GENERATION_FENCED" if reclaim.get("reclaimed") else "STALE_GENERATION",
                             "process_instance_id":active_id,"burst_id":proc["burst_id"],
                             "reclaim_status":reclaim.get("status"),
                             "observed_at_utc":datetime.now(UTC).isoformat()})
             atomic(state/"persistent-supervisor-launch.json",receipt)
-            if not a.wait_for_takeover:
+            if not a.wait_for_takeover and reclaim.get("reclaimed") is not True:
                 return 2
+            if reclaim.get("reclaimed") is True and child.poll() is not None:
+                before=active_id
+                with log.open("ab") as out:
+                    child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,
+                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True,
+                        env=supervisor_environment(repo))
+                deadline=time.monotonic()+max(1,a.timeout_seconds)
+                receipt["launcher_pid"]=child.pid
+                receipt["status"]="TAKEOVER_RETRY"
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
                 and proc.get("process_instance_id")==active_id
                 and sup.get("process_instance_id")==active_id
