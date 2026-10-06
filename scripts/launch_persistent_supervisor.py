@@ -118,6 +118,25 @@ def publication_blocked_generation_stale(state:Path,active_id:str,*,now:datetime
         and not supervisor_state_fresh(heartbeat,now=now,max_age_seconds=max_age_seconds)
     )
 
+def stale_generation_requires_reclaim(state:Path,active_id:str,*,now:datetime|None=None,
+                                      max_age_seconds:int=900)->bool:
+    """Detect a stale authoritative generation without trusting supervisor.json.
+
+    Canonical supervisor publication may itself be the failed boundary, so
+    process identity + generation heartbeat are the authority for reclamation.
+    """
+    proc=load(state/"supervisor-process-instance.json")
+    heartbeat=load(state/"supervisor-generation-heartbeat.json")
+    return bool(
+        active_id
+        and proc.get("process_instance_id")==active_id
+        and proc.get("burst_id")
+        and heartbeat.get("process_instance_id")==active_id
+        and heartbeat.get("burst_id")==proc.get("burst_id")
+        and not supervisor_state_fresh(
+            heartbeat,now=now,max_age_seconds=max_age_seconds)
+    )
+
 def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|None=None)->dict:
     payload={"schema_version":1,"status":"TAKEOVER_REQUESTED",
              "predecessor_process_instance_id":active_id,
@@ -191,7 +210,7 @@ def main()->int:
             time.sleep(.25)
             continue
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
-                and publication_blocked_generation_stale(
+                and stale_generation_requires_reclaim(
                     state,active_id,max_age_seconds=max(1,a.stale_seconds))):
             request_stale_generation_handoff(state,active_id)
             reclaim=reclaim_stalled_generation(state,active_id)

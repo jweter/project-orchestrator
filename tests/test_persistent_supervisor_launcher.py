@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
-from scripts.launch_persistent_supervisor import (atomic, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from scripts.launch_persistent_supervisor import (atomic, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, stale_generation_requires_reclaim, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
@@ -152,3 +152,27 @@ def test_reclaim_stalled_generation_refuses_recent_progress(tmp_path):
     assert result["status"]=="HEARTBEAT_STALE_PROGRESS_RECENT"
     assert result["reclaimed"] is False
     assert not (tmp_path/"supervisor-generation-fence.json").exists()
+
+def test_stale_generation_reclaim_does_not_depend_on_canonical_supervisor_snapshot(tmp_path):
+    now=datetime(2026,10,6,16,0,tzinfo=UTC)
+    write(tmp_path/"supervisor-process-instance.json",{
+        "process_instance_id":"current","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
+    write(tmp_path/"supervisor-generation-heartbeat.json",{
+        "process_instance_id":"current","burst_id":"burst","status":"RUNNING_CURRENT",
+        "heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
+    # This is the production failure mode: canonical publication is from an
+    # older generation, so it must not suppress reclaim of the proven owner.
+    write(tmp_path/"supervisor.json",{
+        "process_instance_id":"older","burst_id":"older-burst","updated_at_utc":now.isoformat()})
+    assert stale_generation_requires_reclaim(
+        tmp_path,"current",now=now,max_age_seconds=60) is True
+
+
+def test_stale_generation_reclaim_requires_matching_process_and_heartbeat_identity(tmp_path):
+    now=datetime(2026,10,6,16,0,tzinfo=UTC)
+    write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"current","burst_id":"burst"})
+    write(tmp_path/"supervisor-generation-heartbeat.json",{
+        "process_instance_id":"other","burst_id":"burst",
+        "heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
+    assert stale_generation_requires_reclaim(
+        tmp_path,"current",now=now,max_age_seconds=60) is False
