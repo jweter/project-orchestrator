@@ -37,7 +37,9 @@ def conflicting_nonterminal_grant(
     for grant_id, record in grants.items():
         if not isinstance(record, dict):
             continue
-        owns = record.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"} or bool(record.get("recovery_generation"))
+        owns = (record.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"}
+                or record.get("recovery_state") in {"PENDING", "RECOVERING", "QUARANTINED"}
+                or bool(record.get("recovery_generation")))
         if not owns:
             continue
         authority = record.get("execution_slice") or {}
@@ -152,7 +154,9 @@ def reserve_execution_grant(
         for existing_id, existing in grants.items():
             if not isinstance(existing, dict):
                 continue
-            owns = existing.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"} or bool(existing.get("recovery_generation"))
+            owns = (existing.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"}
+                    or existing.get("recovery_state") in {"PENDING", "RECOVERING", "QUARANTINED"}
+                    or bool(existing.get("recovery_generation")))
             existing_repos = set(existing.get("authorized_repositories", []))
             if existing.get("repository"):
                 existing_repos.add(existing["repository"])
