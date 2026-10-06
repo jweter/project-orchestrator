@@ -79,7 +79,13 @@ def worker_liveness(worker: dict | None) -> str:
             actual = builder_process_start_fingerprint(pid)
         except (ImportError, OSError):
             return "UNKNOWN"
-        if actual is None or actual != expected:
+        # A missing fingerprint is inconclusive: the process may be alive but
+        # temporarily unqueryable (access/I/O failure). Only a successfully
+        # observed, different creation identity proves that this worker is dead
+        # or the PID has been reused.
+        if actual is None:
+            return "UNKNOWN"
+        if actual != expected:
             return "DEAD"
         return "ALIVE"
     try:
