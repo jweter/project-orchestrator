@@ -43,11 +43,11 @@ def test_identity_mismatch_is_never_reclaimable():
     assert result["reclaimable"] is False
 
 
-def test_wrong_progress_burst_does_not_supply_false_progress():
+def test_wrong_progress_burst_does_not_authorize_reclaim():
     pg=progress(age=10); pg["burst_id"]="old-burst"
     result=evaluate_supervisor_health(process=process(),heartbeat=heartbeat(age=121),progress=pg,now=NOW)
-    assert result["status"]=="SUPERVISOR_STALLED"
-    assert result["reclaimable"] is True
+    assert result["status"]=="PROGRESS_UNREADABLE"
+    assert result["reclaimable"] is False
 
 
 def test_future_heartbeat_fails_closed_on_clock_skew():

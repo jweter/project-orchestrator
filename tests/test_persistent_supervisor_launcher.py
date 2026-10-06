@@ -162,6 +162,9 @@ def test_stale_generation_reclaim_does_not_depend_on_canonical_supervisor_snapsh
     write(tmp_path/"supervisor-generation-heartbeat.json",{
         "process_instance_id":"current","burst_id":"burst","status":"RUNNING_CURRENT",
         "heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
+    write(tmp_path/"supervisor-progress.json",{
+        "process_instance_id":"current","burst_id":"burst","sequence":7,
+        "observed_at_utc":(now-timedelta(seconds=601)).isoformat()})
     # This is the production failure mode: canonical publication is from an
     # older generation, so it must not suppress reclaim of the proven owner.
     write(tmp_path/"supervisor.json",{
