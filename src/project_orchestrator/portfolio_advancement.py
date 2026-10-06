@@ -62,3 +62,54 @@ def select_portfolio_frontier(
         if len(selected) >= slots:
             break
     return selected
+
+
+ASYNC_GATE_STATES = frozenset({
+    "PREFLIGHT_RUNNING", "CI_RUNNING", "REVIEW_SETTLING",
+    "PRODUCT_REALITY_RUNNING", "WINDOWS_GATE_RUNNING",
+    "UNREAL_GATE_RUNNING", "OLLAMA_RUNNING", "WORKER_RUNNING",
+})
+
+
+def build_resilient_advancement_plan(
+    candidates: list[dict[str, Any]],
+    usability: dict[str, Any],
+    *,
+    slots: int,
+    advancement_age: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Plan productive lanes while rotating around asynchronous or route-local stalls.
+
+    This function only ranks candidates that already carry execution authority.
+    It never makes blocked/ineligible work legal and never changes repository gates.
+    """
+    if slots <= 0:
+        return {"selected": [], "waiting": [], "route_blocked": [], "capacity": 0}
+
+    ready: list[dict[str, Any]] = []
+    waiting: list[dict[str, Any]] = []
+    route_blocked: list[dict[str, Any]] = []
+    for candidate in candidates:
+        gate_state = str(candidate.get("gate_state") or "")
+        if gate_state in ASYNC_GATE_STATES:
+            waiting.append({**candidate, "rotation_reason": "ASYNC_GATE_IN_FLIGHT"})
+            continue
+        routes = candidate.get("authorized_mutation_routes")
+        failed_routes = frozenset(candidate.get("failed_mutation_routes") or ())
+        if isinstance(routes, (list, tuple)) and routes:
+            available = [route for route in routes if route not in failed_routes]
+            if not available:
+                route_blocked.append({**candidate, "rotation_reason": "AUTHORIZED_ROUTES_EXHAUSTED"})
+                continue
+            candidate = {**candidate, "mutation_route": available[0]}
+        ready.append(candidate)
+
+    selected = select_portfolio_frontier(
+        ready, usability, slots=slots, advancement_age=advancement_age
+    )
+    return {
+        "selected": selected,
+        "waiting": waiting,
+        "route_blocked": route_blocked,
+        "capacity": slots,
+    }

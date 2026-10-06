@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from .decision_learning import planning_hint
-from .portfolio_advancement import select_portfolio_frontier
+from .portfolio_advancement import build_resilient_advancement_plan
 from .state_io import atomic_json
 
 PRODUCT_BY_REPOSITORY = {
@@ -454,14 +454,14 @@ def select_execution_target(
                     product: len(product_order) - index
                     for index, product in enumerate(product_order)
                 }
-            ranked = select_portfolio_frontier(
+            advancement_plan = build_resilient_advancement_plan(
                 legal_candidates,
                 usability_policy,
                 slots=1,
                 advancement_age=starvation,
             )
-            if ranked:
-                selected_candidate = ranked[0]
+            if advancement_plan["selected"]:
+                selected_candidate = advancement_plan["selected"][0]
         if selected_candidate is None:
             selected_candidate = legal_candidates[0]
 
