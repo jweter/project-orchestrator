@@ -10,7 +10,10 @@ from .state_io import atomic_json
 
 GrantMutator = Callable[[dict[str, Any]], bool]
 
-LIFECYCLE_REPLACE_ATTEMPTS = 120
+# Lifecycle state must remain atomic, but a contended Windows destination must
+# not monopolize the supervisor long enough to trip generation liveness.
+# Persistent contention is fail-closed by callers and retried on a later pass.
+LIFECYCLE_REPLACE_ATTEMPTS = 20
 
 def atomic_lifecycle_json(path: Path, payload: dict[str, Any]) -> None:
     """Persist the shared lifecycle through a bounded Windows contention window."""
