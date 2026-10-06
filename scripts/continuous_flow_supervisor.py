@@ -659,6 +659,7 @@ def main()->int:
     progress_sequence=0
     while True:
         progress_sequence+=1
+        revision_rollover=_supervisor_runtime.prepare_actor_revision_rollover(repo,workspace,state,loaded_actor_revision=loaded_actor_revision,current_actor_revision=actor_revision(repo),process_instance_id=process_instance_id,worker_pool=worker_pool,builder_seconds=a.builder_seconds,merge_seconds=a.merge_seconds,yield_on_interactive_session=a.yield_on_interactive_session)
         if _supervisor_runtime.guard_generation_iteration(state,process_instance_id=process_instance_id,burst_id=burst_id,actor_revision=loaded_actor_revision,sequence=progress_sequence,worker_pool=worker_pool,heartbeat_fn=publish_generation_heartbeat,handoff_fn=generation_handoff_status): return 0
         if human_mode_active(state):
             atomic(state/"supervisor-human-ownership.json",{
@@ -725,10 +726,10 @@ def main()->int:
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
             dispatch_invocation_id=dispatch_invocation_id
-        ) if products else []
+        ) if products and not revision_rollover["requested"] else []
         # Historical abandoned-work recovery is idle-capacity work. Never make
         # an active or newly dispatched product lane wait behind backlog cleanup.
-        if not dispatched_workers and worker_pool.snapshot()["running_total"]==0:
+        if not revision_rollover["requested"] and not dispatched_workers and worker_pool.snapshot()["running_total"]==0:
             recovery_results.update(reconcile_abandoned_claims(workspace,state,recovery_queue))
             if newly_released:
                 recovery_results.update(reconcile_abandoned_claims(workspace,state,newly_released))
@@ -740,7 +741,7 @@ def main()->int:
         # A completed nonproductive worker has already released its slot. Refill
         # immediately in the same burst pass instead of waiting for the next loop.
         # This turns ownership/no-work/exception outcomes into routing feedback.
-        if products and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
+        if products and not revision_rollover["requested"] and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
             dispatch_invocation_id=uuid.uuid4().hex
             dispatched_workers.extend(
                 dispatch_parallel_builders(worker_pool,repo,workspace,state,products,
