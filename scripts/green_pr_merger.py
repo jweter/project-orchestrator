@@ -86,14 +86,21 @@ def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
     return (datetime.now(UTC)-latest).total_seconds() >= REVIEW_SETTLE_SECONDS
 
 def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
-    comments=gh_json(["api",f"repos/{repo}/pulls/{number}/comments"])
-    for comment in comments:
-        body=str(comment.get("body",""))
-        commit=str(comment.get("commit_id") or "")
-        if commit != head_sha:
+    owner,name=repo.split("/",1)
+    query="""query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(first:100){nodes{body commit{oid}}}}}}}}"""
+    payload=gh_json(["api","graphql","-f",f"query={query}","-F",f"owner={owner}","-F",f"name={name}","-F",f"number={number}"])
+    threads=((((payload.get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {}).get("nodes")
+    if not isinstance(threads,list):
+        raise RuntimeError("review thread resolution state unavailable")
+    for thread in threads:
+        if thread.get("isResolved") is True:
             continue
-        if BLOCKING_RE.search(body):
-            return True
+        comments=((thread.get("comments") or {}).get("nodes") or [])
+        for comment in comments:
+            body=str(comment.get("body",""))
+            commit=str(((comment.get("commit") or {}).get("oid")) or "")
+            if commit == head_sha and BLOCKING_RE.search(body):
+                return True
     return False
 def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     head=str(pr.get("headRefOid") or "")
