@@ -654,6 +654,17 @@ def test_worker_liveness_treats_unreadable_fingerprinted_pid_as_unknown(monkeypa
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
     assert supervisor.worker_liveness(worker)=="UNKNOWN"
 
+def test_worker_liveness_treats_windows_error_87_as_dead(monkeypatch):
+    import socket
+    import project_orchestrator.recovery_manager as recovery
+    import scripts.continuous_flow_supervisor as supervisor
+    err=OSError("Windows invalid parameter")
+    err.winerror=87
+    monkeypatch.setattr(recovery.sys,"platform","win32")
+    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(err))
+    worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
+    assert supervisor.worker_liveness(worker)=="DEAD"
+
 def test_worker_liveness_accepts_matching_process_fingerprint(monkeypatch):
     import socket
     import scripts.continuous_flow_supervisor as supervisor
