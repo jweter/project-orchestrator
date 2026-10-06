@@ -285,6 +285,7 @@ def promote_candidate(
                 base_sha=base,
                 branch=branch,
                 head_sha=head,
+                workspace_path=str(ws),
                 transport_state="PUSH_PENDING",
                 transport_failure="PUSH_FAILED",
             )
@@ -297,6 +298,7 @@ def promote_candidate(
                 "branch": branch,
                 "base_sha": base,
                 "head_sha": head,
+                "workspace_path": str(ws),
                 "last_repo_index": idx,
                 "last_repository": repo,
             },
@@ -366,6 +368,7 @@ def promote_candidate(
             branch=branch,
             head_sha=head,
             remote_head_sha=head,
+            workspace_path=str(ws),
             transport_state="PR_OPEN_PENDING",
             transport_failure="PR_CREATE_FAILED",
         )
@@ -378,6 +381,7 @@ def promote_candidate(
             "branch": branch,
             "base_sha": base,
             "head_sha": head,
+            "workspace_path": str(ws),
             "changed_paths": paths,
             "pr_url": pr_url,
             "pr_number": pr_number,
