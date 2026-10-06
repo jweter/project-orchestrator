@@ -81,7 +81,9 @@ def worker_liveness(worker: dict | None) -> str:
         return "DEAD"
     except PermissionError:
         pass
-    except OSError:
+    except OSError as exc:
+        if sys.platform == "win32" and getattr(exc, "winerror", None) == 87:
+            return "DEAD"
         return "UNKNOWN"
     expected = worker.get("process_start_fingerprint")
     if expected:
