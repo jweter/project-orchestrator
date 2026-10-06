@@ -144,25 +144,29 @@ def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|Non
     return payload
 
 def reclaim_stalled_generation(state:Path,active_id:str,*,now:datetime|None=None,
-                               fingerprint_fn=None,retire_fn=None)->dict:
-    """Fence only an exact generation proven stalled and still owning its PID."""
+                               fingerprint_fn=None,retire_fn=None,
+                               confirmation_seconds:int=30)->dict:
+    """Fence only a confirmed stalled generation while respecting human ownership."""
+    from project_orchestrator.human_ownership import human_mode_active
+    from project_orchestrator.iron_foreman import recovery_decision, prepare_reclamation
     from project_orchestrator.recovery_manager import process_start_fingerprint
-    from project_orchestrator.supervisor_health import (
-        evaluate_supervisor_health, fence_generation, retire_verified_generation,
-        verify_reclaim_identity,
-    )
+    from project_orchestrator.supervisor_health import retire_verified_generation
+    if human_mode_active(state):
+        return {"status":"HUMAN_OWNED","reclaimed":False}
     proc=load(state/"supervisor-process-instance.json")
-    heartbeat=load(state/"supervisor-generation-heartbeat.json")
-    progress=load(state/"supervisor-progress.json")
     if proc.get("process_instance_id") != active_id:
         return {"status":"RECLAIM_IDENTITY_MISMATCH","reclaimed":False}
-    health=evaluate_supervisor_health(process=proc,heartbeat=heartbeat,progress=progress,now=now)
-    if health.get("status") != "SUPERVISOR_STALLED" or health.get("reclaimable") is not True:
-        return {"status":health.get("status","RECLAIM_NOT_AUTHORIZED"),"reclaimed":False}
-    verified=verify_reclaim_identity(health,fingerprint_fn=fingerprint_fn or process_start_fingerprint)
-    if verified.get("verified") is not True:
-        return {**verified,"reclaimed":False}
-    fence=fence_generation(state,verified,now=now)
+    decision=recovery_decision(state,now=now,confirmation_seconds=confirmation_seconds)
+    if decision.get("status") != "STALL_CONFIRMED":
+        return {"status":decision.get("status","RECLAMATION_NOT_CONFIRMED"),"reclaimed":False}
+    prepared=prepare_reclamation(
+        state,fingerprint_fn=fingerprint_fn or process_start_fingerprint,now=now)
+    if prepared.get("prepared") is not True:
+        return {**prepared,"reclaimed":False}
+    fence=prepared["fence"]
+    verified={"status":"RECLAIM_IDENTITY_VERIFIED","verified":True,
+              "pid":fence["pid"],"process_start_fingerprint":fence["process_start_fingerprint"],
+              "process_instance_id":fence["process_instance_id"],"burst_id":fence["burst_id"]}
     retire=retire_fn or retire_verified_generation
     retired=retire(
         verified,fingerprint_fn=fingerprint_fn or process_start_fingerprint)

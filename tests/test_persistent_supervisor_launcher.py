@@ -126,8 +126,14 @@ def test_reclaim_stalled_generation_fences_exact_verified_owner(tmp_path):
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
     write(tmp_path/"supervisor-progress.json",{"process_instance_id":"old","burst_id":"burst","sequence":7,"observed_at_utc":(now-timedelta(seconds=601)).isoformat()})
-    result=reclaim_stalled_generation(
+    # First observation starts the bounded stall confirmation window.
+    first=reclaim_stalled_generation(
         tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:123",
+        retire_fn=lambda verified,**kwargs:{"status":"PROCESS_RETIRED","retired":True,"pid":verified["pid"]})
+    assert first["status"]=="STALL_CONFIRMING"
+    later=now+timedelta(seconds=31)
+    result=reclaim_stalled_generation(
+        tmp_path,"old",now=later,fingerprint_fn=lambda pid:"windows:123",
         retire_fn=lambda verified,**kwargs:{"status":"PROCESS_RETIRED","retired":True,"pid":verified["pid"]})
     assert result["status"]=="GENERATION_FENCED"
     assert result["reclaimed"] is True
@@ -140,7 +146,9 @@ def test_reclaim_stalled_generation_refuses_pid_reuse(tmp_path):
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
     write(tmp_path/"supervisor-progress.json",{"process_instance_id":"old","burst_id":"burst","sequence":7,"observed_at_utc":(now-timedelta(seconds=601)).isoformat()})
-    result=reclaim_stalled_generation(tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:999")
+    first=reclaim_stalled_generation(tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:999")
+    assert first["status"]=="STALL_CONFIRMING"
+    result=reclaim_stalled_generation(tmp_path,"old",now=now+timedelta(seconds=31),fingerprint_fn=lambda pid:"windows:999")
     assert result["status"]=="PROCESS_IDENTITY_CHANGED"
     assert result["reclaimed"] is False
     assert not (tmp_path/"supervisor-generation-fence.json").exists()
@@ -151,7 +159,7 @@ def test_reclaim_stalled_generation_refuses_recent_progress(tmp_path):
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
     write(tmp_path/"supervisor-progress.json",{"process_instance_id":"old","burst_id":"burst","sequence":8,"observed_at_utc":(now-timedelta(seconds=10)).isoformat()})
     result=reclaim_stalled_generation(tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:123")
-    assert result["status"]=="HEARTBEAT_STALE_PROGRESS_RECENT"
+    assert result["status"]=="NO_RECOVERY"
     assert result["reclaimed"] is False
     assert not (tmp_path/"supervisor-generation-fence.json").exists()
 
