@@ -101,3 +101,30 @@ def test_unverified_generation_cannot_create_fence(tmp_path):
         assert "not verified" in str(exc)
     else:
         raise AssertionError("unverified generation was fenced")
+
+
+def test_retire_verified_generation_requires_exact_identity_and_proves_exit():
+    from types import SimpleNamespace
+    from project_orchestrator.supervisor_health import retire_verified_generation
+    calls=[]
+    fingerprints=iter(["windows:123",None])
+    verified={"status":"RECLAIM_IDENTITY_VERIFIED","verified":True,"pid":42,
+              "process_start_fingerprint":"windows:123"}
+    result=retire_verified_generation(
+        verified,
+        run_fn=lambda cmd,**kwargs:(calls.append(cmd) or SimpleNamespace(returncode=0)),
+        fingerprint_fn=lambda pid:next(fingerprints))
+    assert result["status"]=="PROCESS_RETIRED"
+    assert result["retired"] is True
+    assert calls==[["taskkill","/PID","42","/T","/F"]]
+
+
+def test_retire_verified_generation_refuses_changed_identity():
+    from project_orchestrator.supervisor_health import retire_verified_generation
+    verified={"status":"RECLAIM_IDENTITY_VERIFIED","verified":True,"pid":42,
+              "process_start_fingerprint":"windows:123"}
+    result=retire_verified_generation(
+        verified,run_fn=lambda *_a,**_k:(_ for _ in ()).throw(AssertionError("must not kill")),
+        fingerprint_fn=lambda pid:"windows:999")
+    assert result["status"]=="PROCESS_IDENTITY_CHANGED"
+    assert result["retired"] is False

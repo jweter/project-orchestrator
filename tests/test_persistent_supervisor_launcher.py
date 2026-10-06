@@ -126,7 +126,9 @@ def test_reclaim_stalled_generation_fences_exact_verified_owner(tmp_path):
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
     write(tmp_path/"supervisor-progress.json",{"process_instance_id":"old","burst_id":"burst","sequence":7,"observed_at_utc":(now-timedelta(seconds=601)).isoformat()})
-    result=reclaim_stalled_generation(tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:123")
+    result=reclaim_stalled_generation(
+        tmp_path,"old",now=now,fingerprint_fn=lambda pid:"windows:123",
+        retire_fn=lambda verified,**kwargs:{"status":"PROCESS_RETIRED","retired":True,"pid":verified["pid"]})
     assert result["status"]=="GENERATION_FENCED"
     assert result["reclaimed"] is True
     fence=json.loads((tmp_path/"supervisor-generation-fence.json").read_text())
@@ -176,3 +178,19 @@ def test_stale_generation_reclaim_requires_matching_process_and_heartbeat_identi
         "heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
     assert stale_generation_requires_reclaim(
         tmp_path,"current",now=now,max_age_seconds=60) is False
+
+
+def test_stale_generation_reclaim_rejects_unreadable_or_future_heartbeat(tmp_path):
+    now=datetime(2026,10,6,16,0,tzinfo=UTC)
+    write(tmp_path/"supervisor-process-instance.json",{
+        "process_instance_id":"current","burst_id":"burst",
+        "worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
+    write(tmp_path/"supervisor-progress.json",{
+        "process_instance_id":"current","burst_id":"burst","sequence":1,
+        "observed_at_utc":(now-timedelta(seconds=700)).isoformat()})
+    for stamp in ("not-a-time",(now+timedelta(seconds=10)).isoformat()):
+        write(tmp_path/"supervisor-generation-heartbeat.json",{
+            "process_instance_id":"current","burst_id":"burst",
+            "status":"RUNNING_CURRENT","heartbeat_at_utc":stamp})
+        assert stale_generation_requires_reclaim(
+            tmp_path,"current",now=now,max_age_seconds=60) is False

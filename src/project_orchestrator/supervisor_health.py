@@ -102,6 +102,26 @@ def fence_generation(state_root: Path, verified: dict, *, now: datetime | None =
     return payload
 
 
+def retire_verified_generation(verified: dict, *, run_fn=None,
+                               fingerprint_fn: Callable[[int | None], str | None] = process_start_fingerprint) -> dict:
+    """Boundedly retire only the exact OS process whose identity was verified."""
+    import subprocess
+    if verified.get("status") != "RECLAIM_IDENTITY_VERIFIED" or verified.get("verified") is not True:
+        return {"status": "RETIRE_NOT_AUTHORIZED", "retired": False}
+    pid=int(verified["pid"])
+    expected=verified.get("process_start_fingerprint")
+    if not expected or fingerprint_fn(pid) != expected:
+        return {"status": "PROCESS_IDENTITY_CHANGED", "retired": False, "pid": pid}
+    runner=run_fn or subprocess.run
+    result=runner(["taskkill","/PID",str(pid),"/T","/F"],
+                 text=True,capture_output=True,check=False,timeout=10)
+    if result.returncode != 0 and fingerprint_fn(pid) is not None:
+        return {"status": "PROCESS_RETIRE_FAILED", "retired": False, "pid": pid}
+    if fingerprint_fn(pid) is not None:
+        return {"status": "PROCESS_STILL_ALIVE", "retired": False, "pid": pid}
+    return {"status": "PROCESS_RETIRED", "retired": True, "pid": pid}
+
+
 def generation_is_fenced(state_root: Path, *, process_instance_id: str, burst_id: str) -> bool:
     try:
         import json

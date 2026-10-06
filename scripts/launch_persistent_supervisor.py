@@ -125,17 +125,16 @@ def stale_generation_requires_reclaim(state:Path,active_id:str,*,now:datetime|No
     Canonical supervisor publication may itself be the failed boundary, so
     process identity + generation heartbeat are the authority for reclamation.
     """
+    from project_orchestrator.supervisor_health import evaluate_supervisor_health
     proc=load(state/"supervisor-process-instance.json")
     heartbeat=load(state/"supervisor-generation-heartbeat.json")
-    return bool(
-        active_id
-        and proc.get("process_instance_id")==active_id
-        and proc.get("burst_id")
-        and heartbeat.get("process_instance_id")==active_id
-        and heartbeat.get("burst_id")==proc.get("burst_id")
-        and not supervisor_state_fresh(
-            heartbeat,now=now,max_age_seconds=max_age_seconds)
-    )
+    progress=load(state/"supervisor-progress.json")
+    if not (active_id and proc.get("process_instance_id")==active_id):
+        return False
+    health=evaluate_supervisor_health(
+        process=proc,heartbeat=heartbeat,progress=progress,now=now,
+        heartbeat_timeout_seconds=max_age_seconds)
+    return health.get("status")=="SUPERVISOR_STALLED" and health.get("reclaimable") is True
 
 def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|None=None)->dict:
     payload={"schema_version":1,"status":"TAKEOVER_REQUESTED",
@@ -145,11 +144,12 @@ def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|Non
     return payload
 
 def reclaim_stalled_generation(state:Path,active_id:str,*,now:datetime|None=None,
-                               fingerprint_fn=None)->dict:
+                               fingerprint_fn=None,retire_fn=None)->dict:
     """Fence only an exact generation proven stalled and still owning its PID."""
     from project_orchestrator.recovery_manager import process_start_fingerprint
     from project_orchestrator.supervisor_health import (
-        evaluate_supervisor_health, fence_generation, verify_reclaim_identity,
+        evaluate_supervisor_health, fence_generation, retire_verified_generation,
+        verify_reclaim_identity,
     )
     proc=load(state/"supervisor-process-instance.json")
     heartbeat=load(state/"supervisor-generation-heartbeat.json")
@@ -163,7 +163,13 @@ def reclaim_stalled_generation(state:Path,active_id:str,*,now:datetime|None=None
     if verified.get("verified") is not True:
         return {**verified,"reclaimed":False}
     fence=fence_generation(state,verified,now=now)
-    return {**fence,"reclaimed":True}
+    retire=retire_fn or retire_verified_generation
+    retired=retire(
+        verified,fingerprint_fn=fingerprint_fn or process_start_fingerprint)
+    if retired.get("retired") is not True:
+        return {**fence,"status":retired.get("status","PROCESS_RETIRE_FAILED"),
+                "reclaimed":False,"retirement":retired}
+    return {**fence,"reclaimed":True,"retirement":retired}
 
 def main()->int:
     p=argparse.ArgumentParser()
