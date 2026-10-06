@@ -125,7 +125,7 @@ def runner_verified_history(state_root: Path) -> dict[str, dict[str, int]]:
         row = history.setdefault(runner_id, {"success": 0, "failure": 0})
         status = str(record.get("result_status") or "")
         if record.get("state") == "COMPLETED" and status not in {
-            "BUILDER_FAILED", "PREFLIGHT_FAILED", "PUSH_FAILED", "PR_CREATE_FAILED"
+            "NO_OP", "SELF_REPAIRED_TO_NO_OP", "BUILDER_FAILED", "PREFLIGHT_FAILED", "PUSH_FAILED", "PR_CREATE_FAILED"
         } and "FAILED" not in status:
             row["success"] += 1
         else:
