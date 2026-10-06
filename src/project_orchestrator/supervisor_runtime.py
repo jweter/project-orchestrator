@@ -15,6 +15,7 @@ from typing import Callable
 from .decision_learning import compile_decision_learning
 from .decision_outcome import attribute as attribute_decision_outcome
 from .grant_issuance import finalize_unclaimed_grant
+from .grant_lifecycle import recovery_lifecycle_write_budget
 from .jev_evidence import load_jsonl
 from .parallel_worker_pool import ParallelWorkerPool
 from .recovery_manager import UNKNOWN_LIVENESS_MAX_CHECKS, process_start_fingerprint, worker_liveness
@@ -784,18 +785,19 @@ def run_lifecycle_recovery_pass(
     pending_fn: Callable, preserved_fn: Callable, quarantined_fn: Callable,
 ) -> dict:
     """Defer persistent Windows lifecycle contention without losing atomic authority."""
-    try:
-        abandoned = recover_claims_fn(state_root)
-        return {
-            "publication_blocked": False,
-            "released": recover_generations_fn(state_root),
-            "abandoned": abandoned,
-            "queue": pending_fn(state_root, abandoned),
-            "preserved": preserved_fn(workspace_root, state_root),
-            "quarantine_rechecks": quarantined_fn(state_root),
-        }
-    except PermissionError:
-        return {
-            "publication_blocked": True, "released": [], "abandoned": [],
-            "queue": [], "preserved": {}, "quarantine_rechecks": {},
-        }
+    with recovery_lifecycle_write_budget():
+        try:
+            abandoned = recover_claims_fn(state_root)
+            return {
+                "publication_blocked": False,
+                "released": recover_generations_fn(state_root),
+                "abandoned": abandoned,
+                "queue": pending_fn(state_root, abandoned),
+                "preserved": preserved_fn(workspace_root, state_root),
+                "quarantine_rechecks": quarantined_fn(state_root),
+            }
+        except PermissionError:
+            return {
+                "publication_blocked": True, "released": [], "abandoned": [],
+                "queue": [], "preserved": {}, "quarantine_rechecks": {},
+            }

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Callable, BinaryIO
 
@@ -10,14 +12,26 @@ from .state_io import atomic_json
 
 GrantMutator = Callable[[dict[str, Any]], bool]
 
-# Lifecycle state must remain atomic, but a contended Windows destination must
-# not monopolize the supervisor long enough to trip generation liveness.
-# Persistent contention is fail-closed by callers and retried on a later pass.
-LIFECYCLE_REPLACE_ATTEMPTS = 20
+LIFECYCLE_REPLACE_ATTEMPTS = 120
+RECOVERY_LIFECYCLE_REPLACE_ATTEMPTS = 20
+_lifecycle_replace_attempts = ContextVar(
+    "lifecycle_replace_attempts", default=LIFECYCLE_REPLACE_ATTEMPTS
+)
+
+
+@contextmanager
+def recovery_lifecycle_write_budget():
+    """Use the shorter retry budget only for supervisor recovery mutations."""
+    token = _lifecycle_replace_attempts.set(RECOVERY_LIFECYCLE_REPLACE_ATTEMPTS)
+    try:
+        yield
+    finally:
+        _lifecycle_replace_attempts.reset(token)
+
 
 def atomic_lifecycle_json(path: Path, payload: dict[str, Any]) -> None:
-    """Persist the shared lifecycle through a bounded Windows contention window."""
-    atomic_json(path, payload, replace_attempts=LIFECYCLE_REPLACE_ATTEMPTS)
+    """Persist shared lifecycle state with the caller-appropriate contention budget."""
+    atomic_json(path, payload, replace_attempts=_lifecycle_replace_attempts.get())
 
 
 CANONICAL_JOB_STATES = frozenset({
