@@ -86,3 +86,26 @@ def test_revision_drain_disables_new_dispatch_and_recovery():
     assert 'if products and not revision_rollover["requested"] else []' in source
     assert 'if not revision_rollover["requested"] and not dispatched_workers' in source
     assert 'if products and not revision_rollover["requested"] and parallel_results' in source
+
+
+def test_revision_rollover_keeps_current_generation_when_successor_launch_fails(tmp_path: Path):
+    repo = tmp_path / "repo"
+    workspace = tmp_path / "work"
+    state = tmp_path / "state"
+    (repo / "scripts").mkdir(parents=True)
+    workspace.mkdir()
+    state.mkdir()
+
+    def fail_launch(*_args, **_kwargs):
+        raise OSError("transient CreateProcess failure")
+
+    result = runtime.prepare_actor_revision_rollover(
+        repo, workspace, state,
+        loaded_actor_revision="old", current_actor_revision="new",
+        process_instance_id="generation-a", worker_pool=Pool(0),
+        builder_seconds=300, merge_seconds=60,
+        popen_fn=fail_launch, fingerprint_fn=lambda pid: f"fp:{pid}",
+    )
+
+    assert result == {"requested": False, "status": "SUCCESSOR_LAUNCH_FAILED"}
+    assert not (state / "supervisor-takeover-request.json").exists()

@@ -841,8 +841,11 @@ def prepare_actor_revision_rollover(
                  | getattr(subprocess, "CREATE_NO_WINDOW", 0))
         env = os.environ.copy()
         env["PYTHONPATH"] = str(repo_root / "src") + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-        child = popen_fn(cmd, cwd=repo_root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL, creationflags=flags, close_fds=True, env=env)
+        try:
+            child = popen_fn(cmd, cwd=repo_root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, creationflags=flags, close_fds=True, env=env)
+        except OSError:
+            return {"requested": False, "status": "SUCCESSOR_LAUNCH_FAILED"}
         fingerprint = fingerprint_fn(child.pid)
         if not fingerprint:
             try:
