@@ -127,18 +127,26 @@ def merge(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
 def cycle(dry_run:bool=False)->list[dict[str,Any]]:
     results=[]
     for repo in PORTFOLIO_REPOS:
-        for pr in open_prs(repo):
-            if pr.get("isDraft"):
-                promotion=promote(repo,pr,dry_run)
-                results.append(promotion)
-                # Promotion changes GitHub state. Re-fetch the exact PR before any
-                # merge decision so a stale draft snapshot can never authorize merge.
-                if promotion.get("promoted") and not dry_run:
-                    refreshed=gh_json(["pr","view",str(pr["number"]),"--repo",repo,"--json",
-                        "number,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"])
-                    results.append(merge(repo,refreshed,dry_run))
-            else:
-                results.append(merge(repo,pr,dry_run))
+        try:
+            prs=open_prs(repo)
+        except Exception as exc:
+            results.append({"repository":repo,"decision":"REPOSITORY_QUERY_FAILED","merged":False,"error_class":type(exc).__name__})
+            continue
+        for pr in prs:
+            try:
+                if pr.get("isDraft"):
+                    promotion=promote(repo,pr,dry_run)
+                    results.append(promotion)
+                    # Promotion changes GitHub state. Re-fetch the exact PR before any
+                    # merge decision so a stale draft snapshot can never authorize merge.
+                    if promotion.get("promoted") and not dry_run:
+                        refreshed=gh_json(["pr","view",str(pr["number"]),"--repo",repo,"--json",
+                            "number,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"])
+                        results.append(merge(repo,refreshed,dry_run))
+                else:
+                    results.append(merge(repo,pr,dry_run))
+            except Exception as exc:
+                results.append({"repository":repo,"pr":pr.get("number"),"head":pr.get("headRefOid"),"decision":"PR_PROCESSING_FAILED","merged":False,"error_class":type(exc).__name__})
     return results
 
 if __name__=="__main__":

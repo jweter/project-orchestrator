@@ -57,3 +57,35 @@ def test_review_usage_limit_is_blocking_evidence(monkeypatch):
     import scripts.green_pr_merger as merger
     monkeypatch.setattr(merger,"gh_json",lambda args:[{"commit_id":"head","body":"You have reached your Codex usage limits for code reviews."}] if args[-1].endswith("/comments") else [])
     assert merger.blocking_review_findings("o/r",1,"head") is True
+
+
+def test_repository_failure_does_not_block_other_repositories(monkeypatch):
+    import scripts.green_pr_merger as merger
+    good=pr(number=8,headRefOid="good",createdAt="2020-01-01T00:00:00Z")
+    monkeypatch.setattr(merger,"PORTFOLIO_REPOS",("broken/repo","good/repo"))
+    def fake_open(repo):
+        if repo=="broken/repo": raise RuntimeError("transient GitHub failure")
+        return [good]
+    monkeypatch.setattr(merger,"open_prs",fake_open)
+    monkeypatch.setattr(merger,"merge",lambda repo,p,dry_run=False:{"repository":repo,"pr":p["number"],"merged":True})
+    results=merger.cycle(False)
+    assert results[0]["decision"]=="REPOSITORY_QUERY_FAILED"
+    assert results[1]["repository"]=="good/repo"
+    assert results[1]["merged"] is True
+
+
+def test_pr_failure_does_not_block_next_pr(monkeypatch):
+    import scripts.green_pr_merger as merger
+    bad=pr(number=1,headRefOid="bad",createdAt="2020-01-01T00:00:00Z")
+    good=pr(number=2,headRefOid="good",createdAt="2020-01-01T00:00:00Z")
+    monkeypatch.setattr(merger,"PORTFOLIO_REPOS",("owner/repo",))
+    monkeypatch.setattr(merger,"open_prs",lambda repo:[bad,good])
+    def fake_merge(repo,p,dry_run=False):
+        if p["number"]==1: raise RuntimeError("one PR failed")
+        return {"repository":repo,"pr":p["number"],"merged":True}
+    monkeypatch.setattr(merger,"merge",fake_merge)
+    results=merger.cycle(False)
+    assert results[0]["decision"]=="PR_PROCESSING_FAILED"
+    assert results[0]["pr"]==1
+    assert results[1]["pr"]==2
+    assert results[1]["merged"] is True
