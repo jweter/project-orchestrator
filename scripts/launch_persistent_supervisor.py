@@ -222,9 +222,10 @@ def main()->int:
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
                 and stale_generation_requires_reclaim(
                     state,active_id,max_age_seconds=max(1,a.stale_seconds))):
+            # Ask the proven stale generation to drain gracefully before the
+            # bounded confirmation window can authorize forced retirement.
+            request_stale_generation_handoff(state,active_id)
             reclaim=reclaim_stalled_generation(state,active_id)
-            if reclaim.get("reclaimed") is True:
-                request_stale_generation_handoff(state,active_id)
             receipt.update({"status":"GENERATION_FENCED" if reclaim.get("reclaimed") else "STALE_GENERATION",
                             "process_instance_id":active_id,"burst_id":proc["burst_id"],
                             "reclaim_status":reclaim.get("status"),
@@ -237,8 +238,20 @@ def main()->int:
             if reclaim.get("status")=="HUMAN_OWNED":
                 return 0
             if reclaim.get("reclaimed") is not True:
-                time.sleep(.25)
-                continue
+                # If a previously fenced predecessor has since disappeared,
+                # its vanished exact OS identity is completion of retirement,
+                # not a reason to strand the one-shot launcher.
+                fence=load(state/"supervisor-generation-fence.json")
+                worker=proc.get("worker") or {}
+                if (fence.get("process_instance_id")==active_id
+                        and fence.get("pid")==worker.get("pid")
+                        and fence.get("process_start_fingerprint")==worker.get("process_start_fingerprint")):
+                    from project_orchestrator.recovery_manager import process_start_fingerprint
+                    if process_start_fingerprint(worker.get("pid")) is None:
+                        reclaim={"status":"FENCED_PREDECESSOR_EXITED","reclaimed":True}
+                if reclaim.get("reclaimed") is not True:
+                    time.sleep(.25)
+                    continue
             if child.poll() is not None:
                 before=active_id
                 with log.open("ab") as out:
