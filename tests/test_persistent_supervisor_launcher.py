@@ -3,10 +3,18 @@ import os
 import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
-from scripts.launch_persistent_supervisor import (network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from scripts.launch_persistent_supervisor import (atomic, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
+
+def test_atomic_uses_unique_temp_file_when_legacy_temp_is_contended(tmp_path):
+    target=tmp_path/"persistent-supervisor-launch.json"
+    legacy=target.with_suffix(target.suffix+".tmp")
+    legacy.write_text("contended",encoding="utf-8")
+    atomic(target,{"status":"PASS"})
+    assert json.loads(target.read_text(encoding="utf-8"))=={"status":"PASS"}
+    assert legacy.read_text(encoding="utf-8")=="contended"
 
 def test_supervisor_command_uses_package_module_for_scripts_imports():
     repo=Path(r"C:\repo")
