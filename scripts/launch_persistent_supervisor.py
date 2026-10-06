@@ -230,9 +230,16 @@ def main()->int:
                             "reclaim_status":reclaim.get("status"),
                             "observed_at_utc":datetime.now(UTC).isoformat()})
             atomic(state/"persistent-supervisor-launch.json",receipt)
-            if not a.wait_for_takeover and reclaim.get("reclaimed") is not True:
-                return 2
-            if reclaim.get("reclaimed") is True and child.poll() is not None:
+            # A one-shot boot launcher owns recovery once a stall is
+            # observed. Do not exit during bounded confirmation or after a
+            # post-fence retirement failure; keep driving toward a verified
+            # owner until this launcher's deadline.
+            if reclaim.get("status")=="HUMAN_OWNED":
+                return 0
+            if reclaim.get("reclaimed") is not True:
+                time.sleep(.25)
+                continue
+            if child.poll() is not None:
                 before=active_id
                 with log.open("ab") as out:
                     child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,
@@ -241,6 +248,10 @@ def main()->int:
                 deadline=time.monotonic()+max(1,a.timeout_seconds)
                 receipt["launcher_pid"]=child.pid
                 receipt["status"]="TAKEOVER_RETRY"
+                atomic(state/"persistent-supervisor-launch.json",receipt)
+            # Never process stale pre-reclaim snapshots again in this
+            # iteration. Re-read authoritative state on the next pass.
+            continue
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
                 and proc.get("process_instance_id")==active_id
                 and sup.get("process_instance_id")==active_id
