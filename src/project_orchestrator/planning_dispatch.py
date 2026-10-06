@@ -555,6 +555,7 @@ def productive_liveness(
 
     records = []
     latest = None
+    latest_activity = None
     active = False
     for grant_id, record in grants.items():
         if not isinstance(record, dict):
@@ -576,21 +577,38 @@ def productive_liveness(
                 parsed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
             except ValueError:
                 parsed = None
-        if parsed and (latest is None or parsed > latest):
-            latest = parsed
+        head_sha = record.get("head_sha")
+        exact_head = record.get("exact_head")
         is_active = state in {"CLAIMED", "RUNNING"}
+        # Active execution is liveness evidence, but a terminal worker is only
+        # productive when it produced a new durable candidate head.  exact_head
+        # is the admitted base and must never turn a null-head completion into
+        # apparent production.
+        produced_candidate = (
+            state == "COMPLETED"
+            and isinstance(head_sha, str)
+            and bool(head_sha)
+            and head_sha != exact_head
+        )
+        if parsed and produced_candidate and (latest is None or parsed > latest):
+            latest = parsed
+        if parsed and is_active and (latest_activity is None or parsed > latest_activity):
+            latest_activity = parsed
         active = active or is_active
         records.append({
             "grant_id": grant_id,
             "repository": record.get("repository"),
             "slice_id": record.get("slice_id"),
-            "head_sha": record.get("head_sha") or record.get("exact_head"),
+            "head_sha": head_sha,
+            "exact_head": exact_head,
+            "produced_candidate": produced_candidate,
             "stage": record.get("execution_stage") or record.get("stage") or state,
             "state": state,
             "progress_at": stamp,
         })
 
     age = (current - latest).total_seconds() if latest else None
+    activity_age = (current - latest_activity).total_seconds() if latest_activity else None
     no_slice = builder_status == "NO_WORK"
     eligible = bool(authorized_products)
     productive = bool(records) and age is not None and age <= stale_seconds
@@ -599,8 +617,10 @@ def productive_liveness(
         status = "NO_AUTHORIZED_WORK"
     elif productive:
         status = "PRODUCTIVE"
-    elif active:
+    elif active and activity_age is not None and activity_age > stale_seconds:
         status = "STALE_ACTIVE_WORK"
+    elif active:
+        status = "ACTIVE_WORK"
     elif no_slice:
         status = "AUTHORIZED_NO_SLICE"
     else:
@@ -614,6 +634,7 @@ def productive_liveness(
         "grant_evidence": records,
         "last_productive_mutation_at": latest.isoformat() if latest else None,
         "seconds_since_productive_mutation": age,
+        "seconds_since_active_progress": activity_age,
         "stale_after_seconds": stale_seconds,
     }
 

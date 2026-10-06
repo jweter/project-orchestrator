@@ -84,6 +84,20 @@ def test_repeated_noop_exhausts_exact_slice_and_requests_replan(tmp_path):
     assert [item["grant_id"] for item in issue["recent_attempts"]] == ["g0", "g1"]
 
 
+def test_failed_nonproductive_noops_still_exhaust_exact_slice(tmp_path):
+    _write_graph(tmp_path)
+    _write_noop_lifecycle(tmp_path, count=2)
+    lifecycle_path = tmp_path / "hands-off-grant-lifecycle.json"
+    payload = json.loads(lifecycle_path.read_text(encoding="utf-8"))
+    for record in payload["grants"].values():
+        record["state"] = "FAILED"
+        record["failure_class"] = "NONPRODUCTIVE_COMPLETION"
+    lifecycle_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="EXECUTION_SLICE_EXHAUSTED:o/r:slice-v1"):
+        supervisor.load_execution_slice(tmp_path, "o/r", "head")
+
+
 def test_materially_changed_slice_authority_gets_fresh_attempt(tmp_path):
     _write_graph(tmp_path, objective="new bounded work")
     _write_noop_lifecycle(tmp_path, count=2, objective="old bounded work")
