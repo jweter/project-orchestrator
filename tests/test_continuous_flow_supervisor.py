@@ -1527,3 +1527,11 @@ def test_worker_liveness_treats_missing_process_as_dead_before_fingerprint(monke
     monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:None)
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
     assert supervisor.worker_liveness(worker)=="DEAD"
+
+
+def test_supervisor_status_requires_explicit_degradation_reason():
+    from pathlib import Path
+    source = Path("scripts/continuous_flow_supervisor.py").read_text(encoding="utf-8")
+    assert 'healthy=not degraded_reasons' in source
+    assert 'builder_status!="NO_READY_EXECUTION_SLICE"' in source
+    assert '{"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc}' in source

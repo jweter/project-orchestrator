@@ -40,4 +40,5 @@ def test_productive_liveness_sidecar_contention_is_nonfatal_and_visible():
 
 def test_productive_liveness_publication_failure_degrades_health_verdict():
     source = (Path(__file__).parents[1] / "scripts" / "continuous_flow_supervisor.py").read_text(encoding="utf-8")
-    assert "not quarantines and liveness_published" in source
+    assert 'if not liveness_published: degraded_reasons.append({"reason":"PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"})' in source
+    assert "healthy=not degraded_reasons" in source

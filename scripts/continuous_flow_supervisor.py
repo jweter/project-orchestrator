@@ -808,11 +808,10 @@ def main()->int:
             liveness_reacquire={"requested":True,"reason":"PRODUCT_CONVERGENCE_DEFECT",
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
-        healthy=(builder_ok and linear_rc in (None,0) and not quarantines and liveness_published
-                 and workspace_provisioning.get("status")=="OK"
-                 and liveness["status"] not in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}
-                 and convergence["status"]=="CONVERGED"
-                 and idle_streaks["status"]!="P1_LIVENESS_DEFECT")
+        if not builder_ok and builder_status!="NO_READY_EXECUTION_SLICE": degraded_reasons.append({"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc})
+        if linear_rc not in (None,0): degraded_reasons.append({"reason":"LINEAR_RECONCILIATION_FAILED","returncode":linear_rc})
+        if quarantines: degraded_reasons.append({"reason":"QUARANTINED_GRANTS","count":len(quarantines)})
+        healthy=not degraded_reasons
         publish_supervisor_snapshot(state,{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
             "builder_status":builder_status,
