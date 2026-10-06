@@ -801,3 +801,71 @@ def run_lifecycle_recovery_pass(
                 "publication_blocked": True, "released": [], "abandoned": [],
                 "queue": [], "preserved": {}, "quarantine_rechecks": {},
             }
+
+
+def prepare_actor_revision_rollover(
+    repo_root: Path, workspace_root: Path, state_root: Path, *, loaded_actor_revision: str | None,
+    current_actor_revision: str | None, process_instance_id: str, worker_pool,
+    builder_seconds: int, merge_seconds: int, yield_on_interactive_session: bool = False,
+    popen_fn: Callable = subprocess.Popen, fingerprint_fn: Callable = process_start_fingerprint,
+) -> dict:
+    """Launch an authorized successor before asking the current generation to drain."""
+    if not loaded_actor_revision or not current_actor_revision or current_actor_revision == loaded_actor_revision:
+        return {"requested": False, "status": "REVISION_CURRENT"}
+    receipt_path = state_root / "supervisor-revision-successor.json"
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        receipt = {}
+    successor_live = False
+    try:
+        pid = int(receipt.get("pid"))
+        expected = receipt.get("process_start_fingerprint")
+        successor_live = (
+            receipt.get("predecessor_process_instance_id") == process_instance_id
+            and bool(expected) and fingerprint_fn(pid) == expected
+        )
+    except (TypeError, ValueError):
+        successor_live = False
+    if not successor_live:
+        cmd = [
+            sys.executable, str(repo_root / "scripts" / "launch_persistent_supervisor.py"),
+            "--repo-root", str(repo_root), "--workspace-root", str(workspace_root),
+            "--state-root", str(state_root), "--builder-seconds", str(builder_seconds),
+            "--merge-seconds", str(merge_seconds), "--wait-for-takeover",
+        ]
+        if yield_on_interactive_session:
+            cmd.append("--yield-on-interactive-session")
+        flags = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                 | getattr(subprocess, "DETACHED_PROCESS", 0)
+                 | getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(repo_root / "src") + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        try:
+            child = popen_fn(cmd, cwd=repo_root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, creationflags=flags, close_fds=True, env=env)
+        except OSError:
+            return {"requested": False, "status": "SUCCESSOR_LAUNCH_FAILED"}
+        fingerprint = fingerprint_fn(child.pid)
+        if not fingerprint:
+            try:
+                child.terminate()
+            except (AttributeError, OSError):
+                pass
+            return {"requested": False, "status": "SUCCESSOR_IDENTITY_UNPROVEN"}
+        atomic_json(receipt_path, {
+            "schema_version": 1, "status": "SUCCESSOR_LAUNCHER_ALIVE", "pid": child.pid,
+            "process_start_fingerprint": fingerprint,
+            "predecessor_process_instance_id": process_instance_id,
+            "loaded_actor_revision": loaded_actor_revision, "current_actor_revision": current_actor_revision,
+            "launched_at_utc": datetime.now(UTC).isoformat(),
+        })
+    active_workers = worker_pool.snapshot()["running_total"]
+    atomic_json(state_root / "supervisor-takeover-request.json", {
+        "schema_version": 1, "status": "TAKEOVER_REQUESTED",
+        "predecessor_process_instance_id": process_instance_id, "reason": "ACTOR_REVISION_ADVANCED",
+        "loaded_actor_revision": loaded_actor_revision, "current_actor_revision": current_actor_revision,
+        "requested_at_utc": datetime.now(UTC).isoformat(),
+    })
+    return {"requested": True, "status": "WAITING_FOR_WORKERS" if active_workers else "DRAINING_FOR_TAKEOVER",
+            "active_workers": active_workers}
