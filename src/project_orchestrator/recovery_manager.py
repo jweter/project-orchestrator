@@ -236,16 +236,24 @@ def recover_stale_grant_claims(
                     heartbeat = heartbeat.replace(tzinfo=UTC)
             except (KeyError, TypeError, ValueError):
                 continue
-            if (current - heartbeat).total_seconds() <= CLAIM_LEASE_SECONDS:
-                continue
+            claim_expired = (current - heartbeat).total_seconds() > CLAIM_LEASE_SECONDS
+            # A positively identified dead local worker cannot still own useful
+            # work. Probe before the lease-age gate so that its lane is released
+            # immediately. ALIVE and UNKNOWN owners retain the existing lease
+            # protections and fail-closed timeout behavior.
             liveness = liveness_probe(record.get("worker"))
+            if liveness != "DEAD" and not claim_expired:
+                continue
             record["last_liveness_check_at"] = current.isoformat()
             record["worker_liveness"] = liveness
             changed = True
             if liveness == "DEAD":
                 record["state"] = "ABANDONED"
                 record["finished_at"] = current.isoformat()
-                record["result_status"] = "CLAIM_LEASE_EXPIRED_WORKER_DEAD"
+                record["result_status"] = (
+                    "CLAIM_WORKER_DEAD_FAST_RECOVERY"
+                    if not claim_expired else "CLAIM_LEASE_EXPIRED_WORKER_DEAD"
+                )
                 abandoned.append(grant_id)
             elif liveness == "UNKNOWN":
                 checks = int(record.get("unknown_liveness_checks", 0)) + 1
