@@ -8,6 +8,7 @@ def pr(**kw):
 def test_green_pr_is_eligible(): assert decide(pr(),age_seconds=121).eligible
 def test_draft_blocked(): assert decide(pr(isDraft=True),age_seconds=121).reason=="DRAFT"
 def test_unknown_author_blocked(): assert decide(pr(author={"login":"other"}),age_seconds=121).reason=="AUTHOR_NOT_ALLOWED"
+def test_dependabot_app_author_is_allowed(): assert decide(pr(author={"login":"app/dependabot"}),age_seconds=121).reason!="AUTHOR_NOT_ALLOWED"
 def test_review_settle_window_blocks_race(): assert decide(pr(),age_seconds=60).reason=="PR_AGE_WINDOW"
 def test_conflict_blocked(): assert not decide(pr(mergeStateStatus="DIRTY"),age_seconds=121).eligible
 def test_missing_checks_fail_closed(): assert decide(pr(statusCheckRollup=[]),age_seconds=121).reason=="CHECKS_MISSING"

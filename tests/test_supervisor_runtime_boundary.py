@@ -34,3 +34,21 @@ def test_supervisor_no_longer_owns_private_os_lock_implementation():
     source = inspect.getsource(supervisor)
     assert "def _acquire_os_file_lock(" not in source
     assert "def _release_os_file_lock(" not in source
+
+
+def test_lifecycle_recovery_pass_defers_permission_contention(tmp_path):
+    def busy(_state):
+        raise PermissionError("destination busy")
+
+    result = runtime.run_lifecycle_recovery_pass(
+        tmp_path, tmp_path,
+        recover_generations_fn=busy,
+        recover_claims_fn=lambda _state: [],
+        pending_fn=lambda _state, _abandoned: [],
+        preserved_fn=lambda _workspace, _state: {},
+        quarantined_fn=lambda _state: {},
+    )
+
+    assert result["publication_blocked"] is True
+    assert result["released"] == []
+    assert result["quarantine_rechecks"] == {}

@@ -776,3 +776,26 @@ def start_or_resume_burst(
         "previous_process_instance_id": None,
         "process_instance_id": process_instance_id,
     }
+
+
+def run_lifecycle_recovery_pass(
+    state_root: Path, workspace_root: Path, *,
+    recover_generations_fn: Callable, recover_claims_fn: Callable,
+    pending_fn: Callable, preserved_fn: Callable, quarantined_fn: Callable,
+) -> dict:
+    """Defer persistent Windows lifecycle contention without losing atomic authority."""
+    try:
+        abandoned = recover_claims_fn(state_root)
+        return {
+            "publication_blocked": False,
+            "released": recover_generations_fn(state_root),
+            "abandoned": abandoned,
+            "queue": pending_fn(state_root, abandoned),
+            "preserved": preserved_fn(workspace_root, state_root),
+            "quarantine_rechecks": quarantined_fn(state_root),
+        }
+    except PermissionError:
+        return {
+            "publication_blocked": True, "released": [], "abandoned": [],
+            "queue": [], "preserved": {}, "quarantine_rechecks": {},
+        }
