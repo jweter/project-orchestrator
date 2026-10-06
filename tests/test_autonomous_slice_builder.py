@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 import pytest
 from scripts import autonomous_slice_builder as b
 
@@ -779,3 +779,19 @@ def test_worker_workspace_retries_transient_fetch(monkeypatch,tmp_path):
     assert b.ensure_workspace("jweter/repo",root,"worker")==ws
     assert calls["fetch"]==3
     assert sleeps==[0.25,0.5]
+
+def test_finish_grant_lifecycle_preserves_transport_pending_for_recovery(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    lifecycle=tmp_path/"hands-off-grant-lifecycle.json"
+    grant=tmp_path/"grant.json"
+    grant.write_text(json.dumps({"grant_id":"g-transport"}),encoding="utf-8")
+    lifecycle.write_text(json.dumps({"grants":{"g-transport":{"state":"CLAIMED"}}}),encoding="utf-8")
+    for status in ("PUSH_PENDING","PR_OPEN_PENDING"):
+        lifecycle.write_text(json.dumps({"grants":{"g-transport":{"state":"CLAIMED"}}}),encoding="utf-8")
+        builder.finish_grant_lifecycle(grant,{"status":status,"repository":"jweter/rock","branch":"actor/x","head_sha":"b"*40})
+        record=json.loads(lifecycle.read_text(encoding="utf-8"))["grants"]["g-transport"]
+        assert record["state"]=="ABANDONED"
+        assert record["recovery_state"]=="PENDING"
+        assert record["failure_class"]=="PROMOTION_TRANSPORT_PENDING"
+        assert record["result_status"]==status

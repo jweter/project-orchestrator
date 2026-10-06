@@ -1126,6 +1126,12 @@ def finish_grant_lifecycle(grant_path:Path,result:dict[str,Any])->None:
             record["state"]="DEFERRED"
         elif result_status in {"PR_OPEN","DRY_RUN","NO_ELIGIBLE_REPOSITORY"}:
             record["state"]="COMPLETED"
+        elif result_status in {"PUSH_PENDING","PR_OPEN_PENDING"}:
+            # Engineering is verified and the workspace must remain owned until
+            # the recovery manager completes the exact-head transport handoff.
+            record["state"]="ABANDONED"
+            record["recovery_state"]="PENDING"
+            record["failure_class"]="PROMOTION_TRANSPORT_PENDING"
         elif result_status in {"NO_OP","SELF_REPAIRED_TO_NO_OP"}:
             # A clean runner exit without a candidate artifact is not
             # production.  Make it terminal and recoverable, but never let it
