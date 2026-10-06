@@ -24,7 +24,10 @@ def test_dead_recovery_generation_owner_is_released(tmp_path):
     record=json.loads(path.read_text())["grants"]["g"]
     assert "recovery_generation" not in record
     assert record["recovery_generation_result"]=="RECOVERY_GENERATION_OWNER_DEAD"
-    assert supervisor.conflicting_nonterminal_grant(tmp_path,"o/repo",execution_slice) is None
+    # The dead generation is released, but its durable verified promotion
+    # obligation remains PENDING and must continue reserving the repository.
+    assert record["recovery_state"]=="PENDING"
+    assert supervisor.conflicting_nonterminal_grant(tmp_path,"o/repo",execution_slice) is not None
 
 def test_live_recovery_generation_owner_keeps_fence(tmp_path):
     path=tmp_path/"hands-off-grant-lifecycle.json"
