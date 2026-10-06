@@ -106,7 +106,22 @@ def resume_orphan_branch(repo:str,ws:Path,branch:str,classification:str,evidence
                                 "--title","AUTO: recovered autonomous engineering slice",
                                 "--body","Recovered exact-head autonomous work after worker lease expiry. Local preflight and remote SHA were verified before PR creation."],
                                cwd=ws,text=True,capture_output=True,check=False)
-        return "RECOVERY_PR_OPENED" if created.returncode==0 else "RECOVERY_PR_CREATE_FAILED"
+        if created.returncode==0:
+            return "RECOVERY_PR_OPENED"
+        # A failed client acknowledgement cannot prove GitHub did not create
+        # the PR. Reconcile the open PR by exact branch/head before retrying.
+        existing=subprocess.run(
+            ["gh","pr","list","--repo",repo,"--head",branch,"--state","open",
+             "--json","number,url,headRefOid"],
+            cwd=ws,text=True,capture_output=True,check=False)
+        if existing.returncode==0:
+            try:
+                prs=json.loads(existing.stdout)
+            except json.JSONDecodeError:
+                prs=[]
+            if any(row.get("headRefOid")==expected for row in prs if isinstance(row,dict)):
+                return "RECOVERY_PR_OPENED"
+        return "RECOVERY_PR_CREATE_FAILED"
     return classification
 
 def builder_artifacts_only(evidence:dict)->bool:
