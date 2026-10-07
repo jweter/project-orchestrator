@@ -101,3 +101,24 @@ def test_reconcile_issue_frontier_terminal_disposition_not_actionable(tmp_path):
     }),encoding="utf-8")
     result=reconcile_issue_frontier(snapshot,tmp_path)
     assert result["ranked_actionable"]==[]
+
+
+def test_reconcile_issue_cycle_recovers_stale_snapshot_with_live_refresh(tmp_path):
+    stale={"collected_at_utc":"2020-01-01T00:00:00+00:00","projects":[]}
+    (tmp_path/"github-portfolio-snapshot.json").write_text(json.dumps(stale),encoding="utf-8")
+    fresh={"projects":[{"id":"rocksmith","repositories":[{"name":"jweter/rocksmith-cdlc-generator","open_issues_complete":True,"open_issues":[{"number":7,"title":"real work"}]}]}]}
+    result=reconcile_issue_cycle(tmp_path, refresh_fn=lambda: fresh)
+    assert result["status"]=="ACTIONABLE_ISSUES"
+    assert result["evidence_recovery"]=="LIVE_REFRESH"
+    assert result["ranked_actionable"][0]["work_id"]=="issue:jweter/rocksmith-cdlc-generator#7"
+
+
+def test_reconcile_issue_cycle_reports_refresh_failure_without_hiding_staleness(tmp_path):
+    stale={"collected_at_utc":"2020-01-01T00:00:00+00:00","projects":[]}
+    (tmp_path/"github-portfolio-snapshot.json").write_text(json.dumps(stale),encoding="utf-8")
+    def fail():
+        raise RuntimeError("auth unavailable")
+    result=reconcile_issue_cycle(tmp_path, refresh_fn=fail)
+    assert result["status"]=="ISSUE_EVIDENCE_UNAVAILABLE"
+    assert "stale" in result["reason"].lower()
+    assert "auth unavailable" in result["reason"]
