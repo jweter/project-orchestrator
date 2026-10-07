@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
-from scripts.launch_persistent_supervisor import (atomic, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, stale_generation_requires_reclaim, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from scripts.launch_persistent_supervisor import (activate_repo_imports, atomic, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, stale_generation_requires_reclaim, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
@@ -34,6 +34,17 @@ def test_network_guardian_is_part_of_existing_launcher_path():
     assert "--state-root" in cmd
     assert "--allow-reboot" in cmd
     assert cmd[cmd.index("--failures")+1]=="3"
+
+def test_launcher_import_authority_precedes_contaminating_checkout():
+    repo=Path(r"C:\actor-repo")
+    src=str(repo/"src")
+    original=list(sys.path)
+    try:
+        sys.path.insert(0,r"C:\Development\project-orchestrator\src")
+        activate_repo_imports(repo)
+        assert sys.path[0] == src
+    finally:
+        sys.path[:] = original
 
 def test_supervisor_environment_prepends_src_to_existing_pythonpath(monkeypatch):
     monkeypatch.setenv("PYTHONPATH", r"C:\existing")
