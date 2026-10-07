@@ -654,6 +654,26 @@ def test_worker_liveness_treats_unreadable_fingerprinted_pid_as_unknown(monkeypa
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
     assert supervisor.worker_liveness(worker)=="UNKNOWN"
 
+def test_worker_liveness_treats_windows_invalid_pid_as_dead(monkeypatch):
+    import socket
+    import scripts.continuous_flow_supervisor as supervisor
+    exc=OSError("Windows invalid parameter")
+    exc.winerror=87
+    monkeypatch.setattr(supervisor.os,"name","nt")
+    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(exc))
+    worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
+    assert supervisor.worker_liveness(worker)=="DEAD"
+
+def test_worker_liveness_keeps_other_windows_oserrors_unknown(monkeypatch):
+    import socket
+    import scripts.continuous_flow_supervisor as supervisor
+    exc=OSError("access ambiguity")
+    exc.winerror=5
+    monkeypatch.setattr(supervisor.os,"name","nt")
+    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(exc))
+    worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
+    assert supervisor.worker_liveness(worker)=="UNKNOWN"
+
 def test_worker_liveness_accepts_matching_process_fingerprint(monkeypatch):
     import socket
     import scripts.continuous_flow_supervisor as supervisor

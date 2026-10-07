@@ -81,7 +81,12 @@ def worker_liveness(worker: dict | None) -> str:
         return "DEAD"
     except PermissionError:
         pass
-    except OSError:
+    except OSError as exc:
+        # Windows reports a vanished PID as ERROR_INVALID_PARAMETER (WinError 87)
+        # instead of ProcessLookupError. This is definitive process absence;
+        # preserve fail-closed UNKNOWN for every other ambiguous OS error.
+        if os.name == "nt" and getattr(exc, "winerror", None) == 87:
+            return "DEAD"
         return "UNKNOWN"
     expected = worker.get("process_start_fingerprint")
     if expected:
