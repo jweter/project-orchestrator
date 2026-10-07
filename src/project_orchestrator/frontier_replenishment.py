@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
 from .state_io import atomic_json
+from .issue_closure import build_issue_work_inventory, merge_issue_dispositions, rank_actionable_issues
 
 
 def replenish_frontiers(
@@ -103,3 +104,56 @@ def replenish_frontiers(
     }
     atomic_json(state_root / "frontier-replenishment.json", payload)
     return payload
+
+
+def reconcile_issue_frontier(
+    portfolio_snapshot: dict,
+    state_root: Path,
+) -> dict:
+    """Reconcile complete live issue evidence into the executable product frontier.
+
+    Live GitHub evidence controls issue existence. Durable dispositions enrich
+    only still-live issues and cannot resurrect closed work.
+    """
+    inventory = build_issue_work_inventory(portfolio_snapshot)
+    disposition_path = state_root / "issue-dispositions.json"
+    if disposition_path.exists():
+        durable = json.loads(disposition_path.read_text(encoding="utf-8"))
+        if not isinstance(durable, dict):
+            raise ValueError("issue dispositions must be a mapping")
+    else:
+        durable = {}
+    reconciled = merge_issue_dispositions(inventory["work_items"], durable)
+    actionable = rank_actionable_issues(reconciled)
+    payload = {
+        "schema_version": 1,
+        "status": "ACTIONABLE_ISSUES" if actionable else "NO_ACTIONABLE_ISSUES",
+        "work_items": reconciled,
+        "ranked_actionable": actionable,
+        "issue_debt": inventory["issue_debt"],
+        "recorded_at_utc": datetime.now(UTC).isoformat(),
+    }
+    atomic_json(state_root / "issue-work-frontier.json", payload)
+    return payload
+
+
+def reconcile_issue_cycle(state_root: Path) -> dict:
+    snapshot_path = state_root / "github-portfolio-snapshot.json"
+    try:
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        collected = snapshot.get("collected_at_utc") or snapshot.get("collected_at")
+        if not isinstance(collected, str):
+            raise ValueError("GitHub issue snapshot missing collection timestamp")
+        stamp = datetime.fromisoformat(collected.replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        if datetime.now(UTC) - stamp > timedelta(minutes=15):
+            raise ValueError("GitHub issue snapshot is stale")
+        return reconcile_issue_frontier(snapshot, state_root)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        result = {"status": "ISSUE_EVIDENCE_UNAVAILABLE", "reason": str(exc)}
+        atomic_json(
+            state_root / "issue-work-frontier.json",
+            {"schema_version": 1, **result, "recorded_at_utc": datetime.now(UTC).isoformat()},
+        )
+        return result

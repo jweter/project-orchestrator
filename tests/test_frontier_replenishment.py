@@ -1,6 +1,6 @@
 import json
 
-from project_orchestrator.frontier_replenishment import replenish_frontiers
+from project_orchestrator.frontier_replenishment import replenish_frontiers, reconcile_issue_frontier, reconcile_issue_cycle
 
 
 def test_continuation_request_replenishes_from_compiled_authority(tmp_path):
@@ -57,3 +57,47 @@ def test_no_requests_does_not_compile(tmp_path):
         load_slice_fn=lambda *_: {},
     )
     assert result["status"] == "NO_REQUESTS"
+
+
+def test_reconcile_issue_frontier_persists_live_actionable_work(tmp_path):
+    snapshot={"projects":[{"id":"rocksmith","repositories":[
+        {"name":"jweter/rocksmith-cdlc-generator","open_issues_complete":True,
+         "open_issues":[{"number":7,"title":"generation blocked","usability_impact":4}]}
+    ]}]}
+    result=reconcile_issue_frontier(snapshot,tmp_path)
+    assert result["status"]=="ACTIONABLE_ISSUES"
+    assert result["ranked_actionable"][0]["work_id"]=="issue:jweter/rocksmith-cdlc-generator#7"
+    persisted=json.loads((tmp_path/"issue-work-frontier.json").read_text(encoding="utf-8"))
+    assert persisted["issue_debt"]["rocksmith"]["open_total"]==1
+
+
+def test_reconcile_issue_frontier_fails_closed_on_partial_inventory(tmp_path):
+    snapshot={"projects":[{"id":"rocksmith","repositories":[
+        {"name":"jweter/rocksmith-cdlc-generator","open_issues_complete":False,"open_issues":[]}
+    ]}]}
+    try:
+        reconcile_issue_frontier(snapshot,tmp_path)
+    except ValueError as exc:
+        assert "incomplete" in str(exc)
+    else:
+        raise AssertionError("partial live issue evidence must not schedule work")
+
+
+def test_reconcile_issue_cycle_rejects_stale_snapshot(tmp_path):
+    snapshot={"collected_at_utc":"2020-01-01T00:00:00+00:00","projects":[]}
+    (tmp_path/"github-portfolio-snapshot.json").write_text(json.dumps(snapshot),encoding="utf-8")
+    result=reconcile_issue_cycle(tmp_path)
+    assert result["status"]=="ISSUE_EVIDENCE_UNAVAILABLE"
+    assert "stale" in result["reason"].lower()
+
+
+def test_reconcile_issue_frontier_terminal_disposition_not_actionable(tmp_path):
+    snapshot={"projects":[{"id":"rocksmith","repositories":[
+        {"name":"jweter/rocksmith-cdlc-generator","open_issues_complete":True,
+         "open_issues":[{"number":9,"title":"already handled"}]}
+    ]}]}
+    (tmp_path/"issue-dispositions.json").write_text(json.dumps({
+        "issue:jweter/rocksmith-cdlc-generator#9":{"engineering_state":"CLOSED_VERIFIED"}
+    }),encoding="utf-8")
+    result=reconcile_issue_frontier(snapshot,tmp_path)
+    assert result["ranked_actionable"]==[]

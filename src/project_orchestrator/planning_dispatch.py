@@ -214,6 +214,11 @@ def ready_task_batch(
     conflict_check_fn: Callable,
 ) -> list[tuple[str, str, dict]]:
     candidates: list[tuple[str, str, dict]] = []
+    try:
+        issue_frontier = json.loads((state_root / "issue-work-frontier.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        issue_frontier = {}
+    issue_rows = issue_frontier.get("ranked_actionable", []) if isinstance(issue_frontier, dict) else []
     repositories = activation.get("products", {}).get(product, {}).get("repositories", {})
     for repo, head in sorted(repositories.items()):
         if not head:
@@ -268,6 +273,26 @@ def ready_task_batch(
         for task in derived.get("slices", []):
             if conflict_check_fn(state_root, repo, task) is None:
                 candidates.append((repo, head, task))
+    for issue in issue_rows:
+        if not isinstance(issue, dict) or issue.get("product") != product:
+            continue
+        repo = issue.get("repository")
+        head = repositories.get(repo) if isinstance(repo, str) else None
+        if not head:
+            continue
+        task = {
+            "slice_id": issue.get("work_id"),
+            "capability_id": issue.get("work_id"),
+            "objective": issue.get("title"),
+            "task_class": "repair",
+            "source_kind": "ISSUE",
+            "issue_number": issue.get("issue_number"),
+            "issue_url": issue.get("url"),
+            "next_gate": issue.get("next_gate"),
+            "allowed_paths": issue.get("allowed_paths", []),
+        }
+        if conflict_check_fn(state_root, repo, task) is None:
+            candidates.append((repo, head, task))
     candidates.sort(
         key=lambda item: (
             task_outcome_priority(state_root, item[2]),
