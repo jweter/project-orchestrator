@@ -175,6 +175,19 @@ class GitHubEvidenceCollector:
             "disabled": bool(metadata.get("disabled")),
             "control_plane": control_plane,
             "open_prs": open_prs,
+            "open_issues_complete": True,
+            "open_issues": [
+                {
+                    "number": issue.get("number"),
+                    "title": issue.get("title"),
+                    "html_url": issue.get("html_url"),
+                    "created_at": issue.get("created_at"),
+                    "updated_at": issue.get("updated_at"),
+                    "labels": [label.get("name") for label in issue.get("labels", [])],
+                }
+                for issue in issues if "pull_request" not in issue
+            ],
+            # Compatibility view only; scheduling must use complete open_issues.
             "recent_open_issues": [
                 {"number": issue.get("number"), "title": issue.get("title"), "updated_at": issue.get("updated_at"), "labels": [label.get("name") for label in issue.get("labels", [])]}
                 for issue in issues[:20] if "pull_request" not in issue

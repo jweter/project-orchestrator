@@ -1,5 +1,6 @@
 import pytest
 
+from project_orchestrator.run_report import PROJECT_KEYS
 from project_orchestrator.scheduler_report import build_scheduler_executive_report
 
 
@@ -339,3 +340,30 @@ def test_advancement_cannot_claim_nonactive_lane_state():
     projects["knowledge-engine"] = p(lane_state="CI_PENDING")
     with pytest.raises(ValueError, match="lane_state must be ACTIVE"):
         build(projects)
+
+
+def test_scheduler_report_accepts_explicit_issue_debt():
+    report = build_scheduler_executive_report(
+        project_evidence={
+            key: {
+                "eligibility": "NO_SAFE_ELIGIBLE_WORK",
+                "advancement": "NONE",
+                "promotion_state": "PREFLIGHT_UNVERIFIED",
+                "next_gate": "UNKNOWN",
+            }
+            for key in PROJECT_KEYS
+        },
+        results={"MERGED": [], "FIXED": [], "NEW_PRS": [], "WAITING_ON_PREFLIGHT": [], "WAITING_ON_CI": [], "BLOCKED": [], "NEEDS_JEREMY": []},
+        project_orchestrator={"state": "ACTIVE", "promotion_state": "MERGED", "implementation_verification": "VERIFIED", "active_ownership": "NONE", "next_gate": "NONE", "product_reality_debt": []},
+        product_repositories_inspected=6,
+        issue_debt={
+            "rocksmith": {
+                "open_total": 3,
+                "actionable": 2,
+                "usability_or_severity_critical": 1,
+                "orphaned_without_next_gate": 0,
+                "states": {"CONFIRMED": 2, "BLOCKED": 1},
+            }
+        },
+    )
+    assert report["issue_debt"]["rocksmith"]["actionable"] == 2

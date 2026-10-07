@@ -95,7 +95,8 @@
     "development_team_runtime_uses_ephemeral_leases_independent_qa_and_never_delegates_merge_authority",
     "human_ownership_marker_preempts_all_autonomous_execution_and_recovery_paths",
     "human_mode_preserves_remote_control_and_dashboard_availability",
-    "shared_engineering_memory_contains_only_verified_sanitized_lessons_and_never_overrides_live_authority"
+    "shared_engineering_memory_contains_only_verified_sanitized_lessons_and_never_overrides_live_authority",
+    "every_live_actionable_issue_has_explicit_disposition_and_next_gate"
   ],
   "definition_of_done": {
     "implementation_complete": true,
@@ -730,5 +731,29 @@
       "authorized workers"
     ],
     "write_rule": "agents do not write arbitrary conversation history; new lessons enter through the existing verified learning-memory contract"
+  },
+  "issue_closure_engine": {
+    "schema_version": 1,
+    "module": "project_orchestrator.issue_closure",
+    "documentation": "docs/ISSUE_CLOSURE_ENGINE.md",
+    "lifecycle": [
+      "DISCOVER",
+      "TRIAGE",
+      "REPRODUCE",
+      "CONFIRMED",
+      "IMPLEMENT",
+      "VERIFY",
+      "PR",
+      "CI",
+      "MERGE",
+      "DEFAULT_BRANCH_PROOF",
+      "CLOSE",
+      "LEARN"
+    ],
+    "inventory_rule": "use complete paginated open issue evidence from all six product repositories; truncated recent issue views are not scheduling authority",
+    "scheduling_rule": "issues enter the existing legal product frontier after P0-P4, repository authority, ownership, dependency, and Product Reality gates; within a legal issue frontier rank product impact deterministically",
+    "closure_rule": "merge alone never closes an issue; require verified disposition/reproduction, implementation verification, regression disposition, required CI, default-branch merge, default-branch proof, and Product Reality when required",
+    "orphan_rule": "every actionable live issue requires an explicit engineering state and exact next gate",
+    "merge_authority": false
   }
 }
