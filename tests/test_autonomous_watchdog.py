@@ -4,7 +4,15 @@ from project_orchestrator.autonomous_watchdog import run_persistent_watchdog, ru
 
 
 def stalled():
-    return {"knowledge-engine": {"candidate_tasks": [{"task_key": "x", "repository": "jweter/knowledge-engine-core", "exact_head": "abc"}]}}
+    return {
+        "knowledge-engine": {
+            "candidate_tasks": [{
+                "task_key": "x",
+                "repository": "jweter/knowledge-engine-core",
+                "exact_head": "abc",
+            }]
+        }
+    }
 
 
 def args(tmp_path):
@@ -25,7 +33,19 @@ def test_second_consecutive_stall_promotes_p1_and_requests_continuation(tmp_path
     assert second["watchdog"]["consecutive_stalls"] == 2
     continuation = json.loads((tmp_path / "continuation-request.json").read_text())
     assert continuation["reason"] == "PRODUCTION_STALL"
-    assert continuation["trigger"] == "WATCHDOG"\n    assert continuation["repository"] == "jweter/knowledge-engine-core"\n    assert continuation["exact_head"] == "abc"
+    assert continuation["trigger"] == "WATCHDOG"
+    assert continuation["repository"] == "jweter/knowledge-engine-core"
+    assert continuation["exact_head"] == "abc"
+
+
+def test_stall_does_not_overwrite_existing_continuation(tmp_path):
+    call_args = args(tmp_path)
+    continuation_path = tmp_path / "continuation-request.json"
+    original = {"repository": "jweter/Project-Everward", "exact_head": "keep-me"}
+    continuation_path.write_text(json.dumps(original), encoding="utf-8")
+    run_watchdog_iteration(lanes=stalled(), **call_args)
+    run_watchdog_iteration(lanes=stalled(), **call_args)
+    assert json.loads(continuation_path.read_text()) == original
 
 
 def test_progress_resets_stall_counter(tmp_path):
@@ -48,13 +68,3 @@ def test_persistent_runner_repeats_without_human_prompt(tmp_path):
     assert len(out) == 3
     assert sleeps == [1, 1]
     assert json.loads((tmp_path / "state.json").read_text())["status"] == "HEALTHY"
-
-
-def test_stall_does_not_overwrite_existing_continuation(tmp_path):
-    call_args = args(tmp_path)
-    continuation_path = tmp_path / "continuation-request.json"
-    original = {"repository": "jweter/Project-Everward", "exact_head": "keep-me"}
-    continuation_path.write_text(json.dumps(original), encoding="utf-8")
-    run_watchdog_iteration(lanes=stalled(), **call_args)
-    run_watchdog_iteration(lanes=stalled(), **call_args)
-    assert json.loads(continuation_path.read_text()) == original
