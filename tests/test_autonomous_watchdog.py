@@ -5,8 +5,8 @@ def args(tmp_path): return dict(state_path=tmp_path/"state.json",telemetry_path=
 def test_second_consecutive_stall_promotes_p1(tmp_path):
  a=args(tmp_path); first=run_watchdog_iteration(lanes=stalled(),**a); second=run_watchdog_iteration(lanes=stalled(),**a)
  assert first["watchdog"]["status"]=="STALL_OBSERVED"
- assert second["watchdog"]["status"]=="P1_REPAIR_REQUIRED"
- assert second["watchdog"]["consecutive_stalls"]==2
+ assert second["watchdog"]["status"]=="P1_PRODUCTION_STALL"
+ assert second["watchdog"]["consecutive_stalls"]==2\n continuation=json.loads((tmp_path/"continuation-request.json").read_text())\n assert continuation["reason"]=="PRODUCTION_STALL"\n assert continuation["trigger"]=="WATCHDOG"
 def test_progress_resets_stall_counter(tmp_path):
  a=args(tmp_path); run_watchdog_iteration(lanes=stalled(),**a)
  out=run_watchdog_iteration(lanes={},**a)
