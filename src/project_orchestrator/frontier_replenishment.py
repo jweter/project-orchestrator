@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from .state_io import atomic_json
-from .issue_closure import build_issue_work_inventory, merge_issue_dispositions
+from .issue_closure import build_issue_work_inventory, merge_issue_dispositions, rank_actionable_issues
 
 
 def replenish_frontiers(
@@ -117,24 +117,19 @@ def reconcile_issue_frontier(
     """
     inventory = build_issue_work_inventory(portfolio_snapshot)
     disposition_path = state_root / "issue-dispositions.json"
-    try:
+    if disposition_path.exists():
         durable = json.loads(disposition_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError):
-        durable = {}
-    if not isinstance(durable, dict):
+        if not isinstance(durable, dict):
+            raise ValueError("issue dispositions must be a mapping")
+    else:
         durable = {}
     reconciled = merge_issue_dispositions(inventory["work_items"], durable)
-    actionable = [row for row in reconciled if row.get("eligible") is True and not row.get("blocked") and not row.get("owned")]
+    actionable = rank_actionable_issues(reconciled)
     payload = {
         "schema_version": 1,
         "status": "ACTIONABLE_ISSUES" if actionable else "NO_ACTIONABLE_ISSUES",
         "work_items": reconciled,
-        "ranked_actionable": sorted(actionable, key=lambda row: (
-            -int(row.get("usability_impact", 0)),
-            -int(row.get("severity", 0)),
-            -int(row.get("roadmap_unlock", 0)),
-            str(row.get("work_id") or ""),
-        )),
+        "ranked_actionable": actionable,
         "issue_debt": inventory["issue_debt"],
         "recorded_at_utc": datetime.now(UTC).isoformat(),
     }
