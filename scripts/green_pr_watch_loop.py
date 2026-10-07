@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -164,6 +166,10 @@ def main() -> int:
     p.add_argument("--once", action="store_true")
     a = p.parse_args()
     state = Path(a.state)
+    repo_root = Path(__file__).resolve().parents[1]
+    subprocess.Popen([sys.executable, str(repo_root / "scripts" / "github_evidence_watch_loop.py"),
+                      "--repo-root", str(repo_root), "--state-root", str(state.parent)], cwd=repo_root,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     singleton = acquire_singleton(state)
     if singleton is None:
         return 0
