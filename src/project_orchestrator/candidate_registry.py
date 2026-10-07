@@ -161,6 +161,37 @@ def registry_snapshot(registry: dict[str, Any], *, capacity_evidence: dict[str, 
     return {"schema_version": 1, "candidates": candidates, "capacity_evidence": capacity_evidence or {}}
 
 
+def select_release_frontier(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Prioritize verified release blockers without overriding P0-P4 or ownership.
+
+    Only an explicit, source-revision-bound gate reference qualifies as release
+    evidence. Unknown impact never becomes a guessed score or a reason to idle.
+    """
+    snapshot = registry_snapshot(registry)
+    ready = [
+        item for item in snapshot["candidates"]
+        if item["registry_ready"] and item["dependencies_clear"]
+        and item["conflict_free"] and not item["actively_owned"]
+    ]
+
+    def release_evidence(item: dict[str, Any]) -> bool:
+        gate = item.get("usability_gate_ref")
+        return (
+            isinstance(gate, str) and bool(gate.strip())
+            and item.get("usability_gate_source_revision") == item["source_revision"]
+            and item.get("usability_gate_verified") is True
+        )
+
+    return sorted(
+        ready,
+        key=lambda item: (
+            int(item["priority"][1:]),
+            not release_evidence(item),
+            item["candidate_id"],
+        ),
+    )
+
+
 def load_registry(path: str | Path) -> dict[str, Any]:
     return validate_registry(json.loads(Path(path).read_text(encoding="utf-8")))
 

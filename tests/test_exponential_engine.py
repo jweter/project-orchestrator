@@ -57,6 +57,20 @@ def test_plan_selects_one_dependency_safe_packet_per_product():
     assert {item["id"] for item in plan["blocked_work_packets"]} == {"ke-owned", "ev-pr"}
 
 
+def test_verified_release_blocker_wins_within_same_dependency_wave():
+    state = snapshot()
+    state["candidates"].append({
+        "id": "ke-release", "project": "knowledge-engine", "state": "P5",
+        "dependencies_clear": True, "conflict_free": True,
+        "dependency_level": 0, "downstream_unlock_count": 0,
+        "source_revision": "head-a", "usability_gate_source_revision": "head-a",
+        "usability_gate_ref": "FIRST_WORKING_BUILD:ask", "usability_gate_verified": True,
+    })
+    assert build_execution_plan(state, POLICY)["selected_work_packets"][0]["id"] == "ke-release"
+    state["candidates"][-1]["usability_gate_source_revision"] = "stale-head"
+    assert build_execution_plan(state, POLICY)["selected_work_packets"][0]["id"] == "ke-a"
+
+
 def test_event_completion_immediately_requeues_and_dispatches_ready_work():
     transition = process_event(snapshot(), POLICY, {"type": "verification_completion"})
     assert transition["action"] == "DISPATCH"
