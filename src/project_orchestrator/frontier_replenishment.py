@@ -140,3 +140,22 @@ def reconcile_issue_frontier(
     }
     atomic_json(state_root / "issue-work-frontier.json", payload)
     return payload
+
+
+def reconcile_issue_cycle(state_root: Path) -> dict:
+    snapshot_path = state_root / "github-portfolio-snapshot.json"
+    try:
+        return reconcile_issue_frontier(
+            json.loads(snapshot_path.read_text(encoding="utf-8")), state_root
+        )
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        result = {"status": "ISSUE_EVIDENCE_UNAVAILABLE", "reason": str(exc)}
+        atomic_json(
+            state_root / "issue-work-frontier.json",
+            {
+                "schema_version": 1,
+                **result,
+                "recorded_at_utc": datetime.now(UTC).isoformat(),
+            },
+        )
+        return result
