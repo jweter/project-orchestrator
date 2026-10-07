@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
@@ -140,17 +140,20 @@ def reconcile_issue_frontier(
 def reconcile_issue_cycle(state_root: Path) -> dict:
     snapshot_path = state_root / "github-portfolio-snapshot.json"
     try:
-        return reconcile_issue_frontier(
-            json.loads(snapshot_path.read_text(encoding="utf-8")), state_root
-        )
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        collected = snapshot.get("collected_at_utc") or snapshot.get("collected_at")
+        if not isinstance(collected, str):
+            raise ValueError("GitHub issue snapshot missing collection timestamp")
+        stamp = datetime.fromisoformat(collected.replace("Z", "+00:00"))
+        if stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=UTC)
+        if datetime.now(UTC) - stamp > timedelta(minutes=15):
+            raise ValueError("GitHub issue snapshot is stale")
+        return reconcile_issue_frontier(snapshot, state_root)
     except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         result = {"status": "ISSUE_EVIDENCE_UNAVAILABLE", "reason": str(exc)}
         atomic_json(
             state_root / "issue-work-frontier.json",
-            {
-                "schema_version": 1,
-                **result,
-                "recorded_at_utc": datetime.now(UTC).isoformat(),
-            },
+            {"schema_version": 1, **result, "recorded_at_utc": datetime.now(UTC).isoformat()},
         )
         return result
