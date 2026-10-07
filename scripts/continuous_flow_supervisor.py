@@ -597,6 +597,16 @@ def generation_handoff_status(state:Path,*,process_instance_id:str,worker_pool:P
     })
     return status
 
+def reconcile_issue_cycle(state_root:Path)->dict:
+    snapshot_path=state_root/"github-portfolio-snapshot.json"
+    try:
+        return reconcile_issue_frontier(json.loads(snapshot_path.read_text(encoding="utf-8")),state_root)
+    except (OSError,json.JSONDecodeError,TypeError,ValueError) as exc:
+        result={"status":"ISSUE_EVIDENCE_UNAVAILABLE","reason":str(exc)}
+        atomic(state_root/"issue-work-frontier.json",{"schema_version":1,**result,
+            "recorded_at_utc":datetime.now(UTC).isoformat()})
+        return result
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
@@ -716,15 +726,7 @@ def main()->int:
                 activation_reason=refresh_reason
         products=products if authorized else []
         capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}
-        issue_frontier={"status":"NO_AUTHORIZED_PRODUCTS"}
-        if products:
-            snapshot_path=state/"github-portfolio-snapshot.json"
-            try:
-                issue_frontier=reconcile_issue_frontier(json.loads(snapshot_path.read_text(encoding="utf-8")),state)
-            except (OSError,json.JSONDecodeError,TypeError,ValueError) as exc:
-                issue_frontier={"status":"ISSUE_EVIDENCE_UNAVAILABLE","reason":str(exc)}
-                atomic(state/"issue-work-frontier.json",{"schema_version":1,**issue_frontier,
-                    "recorded_at_utc":datetime.now(UTC).isoformat()})
+        issue_frontier=reconcile_issue_cycle(state) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
         frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
         parallel_results=harvest_parallel_builders(worker_pool,state)
         # Harvest first, then reclaim dead-owner leases plus only this supervisor
