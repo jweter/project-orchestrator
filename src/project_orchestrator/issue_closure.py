@@ -219,6 +219,9 @@ def merge_issue_dispositions(
         ):
             if field in prior:
                 enriched[field] = prior[field]
+        enriched["eligible"] = state in ACTIVE_STATES
+        enriched["blocked"] = state == "BLOCKED" or prior.get("blocked") is True
+        enriched["owned"] = prior.get("owned") is True
         merged.append(enriched)
     assert_no_orphaned_actionable_issues(merged)
     return merged
