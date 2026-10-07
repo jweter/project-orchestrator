@@ -17,6 +17,7 @@ except ModuleNotFoundError:
 from project_orchestrator.activation_capability import merge_watcher_advanced
 from project_orchestrator.kpi_telemetry import append_event, load_events
 from project_orchestrator.planning_dispatch import product_for_repository
+from scripts.failed_pr_accountability import cycle as failed_pr_accountability_cycle
 
 
 def acquire_singleton(state: Path) -> BinaryIO | None:
@@ -171,11 +172,17 @@ def main() -> int:
             started = time.time()
             try:
                 results = cycle(False)
+                failed_pr_results = failed_pr_accountability_cycle(Path(__file__).resolve().parents[1], state.parent)
+                results.extend(failed_pr_results)
                 error = (
                     "PARTIAL_PROMOTION_FAILURE"
                     if any(
                         result.get("decision") in {"REPOSITORY_QUERY_FAILED", "PR_PROCESSING_FAILED"}
                         for result in results
+                    ) or (
+                        "P1_FAILED_PR_REPAIR_STALLED"
+                        if any(result.get("state") in {"REPAIR_ROUTING_FAILED", "OBSERVATION_FAILED"} for result in results)
+                        else None
                     )
                     else None
                 )
