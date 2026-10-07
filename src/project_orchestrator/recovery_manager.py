@@ -372,6 +372,8 @@ def quarantined_grants(state_root: Path) -> dict[str, dict]:
             worker = record.get("worker") if isinstance(record.get("worker"), dict) else {}
             result[grant_id] = {
                 "repository": record.get("repository"),
+                "state": record.get("state"),
+                "recovery_state": record.get("recovery_state"),
                 "result_status": record.get("result_status"),
                 "recovery_result": record.get("recovery_result"),
                 "unknown_liveness_checks": record.get("unknown_liveness_checks", 0),
