@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -32,7 +33,25 @@ class UrllibGitHubTransport:
 
     @classmethod
     def from_environment(cls) -> "UrllibGitHubTransport":
-        return cls(token=os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN"))
+        token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+        if not token:
+            try:
+                completed = subprocess.run(
+                    ["gh", "auth", "token"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                token = completed.stdout.strip() or None
+            except (OSError, subprocess.SubprocessError):
+                token = None
+        if not token:
+            raise GitHubError(
+                "authenticated GitHub transport unavailable: set GITHUB_TOKEN/GH_TOKEN "
+                "or authenticate the GitHub CLI with `gh auth login`"
+            )
+        return cls(token=token)
 
     def get_json(self, path: str) -> Any:
         url = path if path.startswith("https://") else f"{self.api_root}{path}"

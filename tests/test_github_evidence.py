@@ -73,3 +73,28 @@ def test_missing_control_plane_is_explicit_not_guessed() -> None:
     responses[path] = GitHubNotFound(path)
     evidence = GitHubEvidenceCollector(FakeTransport(responses)).collect_repository("jweter/example")
     assert evidence["control_plane"] == {"present": False}
+
+
+def test_transport_uses_gh_cli_token_when_environment_missing(monkeypatch):
+    from project_orchestrator.github_evidence import UrllibGitHubTransport
+    import subprocess
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a[0], 0, stdout="cli-token\n", stderr=""))
+    assert UrllibGitHubTransport.from_environment().token == "cli-token"
+
+
+def test_transport_fails_closed_without_authenticated_route(monkeypatch):
+    from project_orchestrator.github_evidence import GitHubError, UrllibGitHubTransport
+    import subprocess
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    def fail(*a, **k):
+        raise FileNotFoundError("gh unavailable")
+    monkeypatch.setattr(subprocess, "run", fail)
+    try:
+        UrllibGitHubTransport.from_environment()
+    except GitHubError as exc:
+        assert "authenticated GitHub transport unavailable" in str(exc)
+    else:
+        raise AssertionError("anonymous GitHub fallback must never be used")
