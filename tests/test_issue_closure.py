@@ -94,3 +94,17 @@ def test_durable_disposition_enriches_only_live_issue():
     assert len(merged) == 1
     assert merged[0]["severity"] == 4
     assert merged[0]["engineering_state"] == "CONFIRMED"
+
+
+def test_terminal_durable_disposition_cannot_remain_actionable():
+    live=[normalize_issue({"number":11,"title":"done"},product="rocksmith",repository="jweter/rocksmith-cdlc-generator")]
+    merged=merge_issue_dispositions(live,{live[0]["work_id"]:{"engineering_state":"CLOSED_VERIFIED"}})
+    assert merged[0]["eligible"] is False
+    assert rank_actionable_issues(merged)==[]
+
+
+def test_blocked_durable_disposition_cannot_remain_actionable():
+    live=[normalize_issue({"number":12,"title":"blocked"},product="rocksmith",repository="jweter/rocksmith-cdlc-generator")]
+    merged=merge_issue_dispositions(live,{live[0]["work_id"]:{"engineering_state":"BLOCKED"}})
+    assert merged[0]["blocked"] is True
+    assert rank_actionable_issues(merged)==[]
