@@ -273,14 +273,32 @@ def promote_candidate(
                 advance_grant_stage_fn,
             )
 
+    # A verified exact-head candidate remains recoverable when publication
+    # transport is temporarily unavailable; do not discard its verification.
     push = run_fn(["git", "push", "-u", "origin", branch], ws)
     if push.returncode:
+        if execution_grant is not None:
+            advance_grant_stage_fn(
+                execution_grant,
+                "PREFLIGHT_GREEN",
+                repository=repo,
+                base_sha=base,
+                branch=branch,
+                head_sha=head,
+                workspace_path=str(ws),
+                transport_state="PUSH_PENDING",
+                transport_failure="PUSH_FAILED",
+            )
         return _persist(
             state_path,
             {
-                "status": "PUSH_FAILED",
+                "status": "PUSH_PENDING",
+                "transport_failure": "PUSH_FAILED",
                 "repository": repo,
-                "head": head,
+                "branch": branch,
+                "base_sha": base,
+                "head_sha": head,
+                "workspace_path": str(ws),
                 "last_repo_index": idx,
                 "last_repository": repo,
             },
@@ -322,7 +340,7 @@ def promote_candidate(
         ],
         ws,
     )
-    status = "PR_OPEN" if created.returncode == 0 else "PR_CREATE_FAILED"
+    status = "PR_OPEN" if created.returncode == 0 else "PR_OPEN_PENDING"
     pr_url = created.stdout.strip()
     pr_number = (
         pr_number_from_url_fn(pr_url) if created.returncode == 0 else None
@@ -341,6 +359,19 @@ def promote_candidate(
             pr_url=pr_url,
             pr_number=pr_number,
         )
+    elif execution_grant is not None and status == "PR_OPEN_PENDING":
+        advance_grant_stage_fn(
+            execution_grant,
+            "PUSHED",
+            repository=repo,
+            base_sha=base,
+            branch=branch,
+            head_sha=head,
+            remote_head_sha=head,
+            workspace_path=str(ws),
+            transport_state="PR_OPEN_PENDING",
+            transport_failure="PR_CREATE_FAILED",
+        )
 
     return _persist(
         state_path,
@@ -350,6 +381,7 @@ def promote_candidate(
             "branch": branch,
             "base_sha": base,
             "head_sha": head,
+            "workspace_path": str(ws),
             "changed_paths": paths,
             "pr_url": pr_url,
             "pr_number": pr_number,

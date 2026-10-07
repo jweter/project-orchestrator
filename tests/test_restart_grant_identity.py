@@ -51,3 +51,14 @@ def test_transient_lifecycle_permission_error_retries(tmp_path,monkeypatch):
     monkeypatch.setattr(Path,"read_text",flaky_read_text)
     assert conflicting_nonterminal_grant(tmp_path,"jweter/repo",SLICE) is None
     assert attempts["count"]==2
+
+
+def test_transport_pending_recovery_keeps_repository_owned(tmp_path):
+    payload={"schema_version":1,"grants":{"grant-old":{
+        "state":"ABANDONED","recovery_state":"PENDING",
+        "authorized_repositories":["jweter/repo"],"repository":"jweter/repo",
+        "execution_slice":SLICE}}}
+    (tmp_path/"hands-off-grant-lifecycle.json").write_text(json.dumps(payload),encoding="utf-8")
+    conflict=conflicting_nonterminal_grant(tmp_path,"jweter/repo",SLICE)
+    assert conflict["grant_id"]=="grant-old"
+    assert conflict["state"]=="ABANDONED"

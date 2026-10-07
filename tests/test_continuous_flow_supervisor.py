@@ -768,6 +768,51 @@ def test_quarantine_recheck_preserves_unknown_ownership(tmp_path):
     assert saved["state"]=="QUARANTINED"
     assert saved["quarantine_rechecks"]==1
 
+
+
+def test_transport_recovery_uses_recorded_worker_worktree(tmp_path,monkeypatch):
+    import json
+    from pathlib import Path
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; canonical=wsroot/"r"; canonical.mkdir(parents=True)
+    worker=wsroot/".worker-worktrees"/"worker-1"/"r"; worker.mkdir(parents=True)
+    state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","recovery_state":"PENDING",
+        "repository":"o/r","execution_stage":"COMMITTED","branch":"actor/x","head_sha":"head",
+        "workspace_path":str(worker),"recovery_attempts":0}}}))
+    class R:
+        returncode=0; stderr=""
+        def __init__(self,out=""): self.stdout=out
+    seen=[]
+    def fake(cmd,**kwargs):
+        seen.append(Path(kwargs["cwd"]))
+        if cmd[1:3]==["branch","--show-current"]: return R("actor/x\n")
+        if cmd[1:3]==["rev-parse","HEAD"]: return R("head\n")
+        if cmd[1:3]==["ls-remote","--heads"]: return R("head refs/heads/actor/x\n")
+        return R("")
+    monkeypatch.setattr(supervisor.subprocess,"run",fake)
+    monkeypatch.setattr(supervisor,"resume_orphan_branch",lambda repo,ws,*a: "RECOVERY_PR_OPENED")
+    import project_orchestrator.workspace_recovery as recovery
+    monkeypatch.setattr(recovery,"run_repository_preflight",lambda *a,**k: R(""))
+    out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
+    assert out["g"]=="RECOVERY_PR_OPENED"
+    assert seen and all(p==worker for p in seen)
+
+def test_transport_recovery_rejects_recorded_workspace_outside_root(tmp_path):
+    import json
+    from datetime import UTC, datetime
+    import scripts.continuous_flow_supervisor as supervisor
+    wsroot=tmp_path/"ws"; wsroot.mkdir()
+    state=tmp_path/"state"; state.mkdir()
+    path=state/"hands-off-grant-lifecycle.json"
+    path.write_text(json.dumps({"grants":{"g":{"state":"ABANDONED","recovery_state":"PENDING",
+        "repository":"o/r","execution_stage":"COMMITTED","branch":"actor/x","head_sha":"head",
+        "workspace_path":str(tmp_path.parent/"outside"),"recovery_attempts":0}}}))
+    out=supervisor.reconcile_abandoned_claims(wsroot,state,["g"],datetime(2026,1,1,tzinfo=UTC))
+    assert out["g"]=="RECOVERY_WORKSPACE_OUTSIDE_ROOT"
+
 def test_stage_aware_recovery_hands_off_verified_pr_open(tmp_path,monkeypatch):
     import json
     from datetime import UTC, datetime
@@ -1546,3 +1591,41 @@ def test_supervisor_status_requires_explicit_degradation_reason():
     assert 'healthy=not degraded_reasons' in source
     assert 'builder_status!="NO_READY_EXECUTION_SLICE"' in source
     assert '{"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc}' in source
+
+def test_resume_pushed_orphan_reconciles_pr_created_despite_failed_ack(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    calls=[]
+    class Result:
+        def __init__(self,returncode=0,stdout="",stderr=""):
+            self.returncode=returncode; self.stdout=stdout; self.stderr=stderr
+    def run(cmd,**kwargs):
+        calls.append(cmd)
+        if cmd[:2]==["git","rev-parse"]: return Result(stdout="head\n")
+        if cmd[:2]==["git","ls-remote"]: return Result(stdout="head\trefs/heads/actor/autonomous-x\n")
+        if cmd[:3]==["gh","pr","create"]: return Result(returncode=1,stderr="transport acknowledgement lost")
+        if cmd[:3]==["gh","pr","list"]:
+            return Result(stdout='[{"number":42,"url":"https://github/pr/42","headRefOid":"head"}]')
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.resume_orphan_branch(
+        "jweter/rock",tmp_path,"actor/autonomous-x","ORPHAN_PUSHED_NO_PR",
+        {"head_sha":"head","remote_head_sha":"head"})=="RECOVERY_PR_OPENED"
+    assert any(cmd[:3]==["gh","pr","list"] for cmd in calls)
+
+
+def test_resume_pushed_orphan_does_not_accept_existing_pr_at_wrong_head(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+    class Result:
+        def __init__(self,returncode=0,stdout="",stderr=""):
+            self.returncode=returncode; self.stdout=stdout; self.stderr=stderr
+    def run(cmd,**kwargs):
+        if cmd[:2]==["git","rev-parse"]: return Result(stdout="head\n")
+        if cmd[:2]==["git","ls-remote"]: return Result(stdout="head\trefs/heads/actor/autonomous-x\n")
+        if cmd[:3]==["gh","pr","create"]: return Result(returncode=1)
+        if cmd[:3]==["gh","pr","list"]:
+            return Result(stdout='[{"number":42,"url":"https://github/pr/42","headRefOid":"different"}]')
+        raise AssertionError(cmd)
+    monkeypatch.setattr(supervisor.subprocess,"run",run)
+    assert supervisor.resume_orphan_branch(
+        "jweter/rock",tmp_path,"actor/autonomous-x","ORPHAN_PUSHED_NO_PR",
+        {"head_sha":"head","remote_head_sha":"head"})=="RECOVERY_PR_CREATE_FAILED"

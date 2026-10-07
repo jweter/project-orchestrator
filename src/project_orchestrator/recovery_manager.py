@@ -199,6 +199,15 @@ def recover_stale_recovery_generations(
                 record.pop("recovery_generation_worker", None)
                 record["recovery_generation_released_at"] = current.isoformat()
                 record["recovery_generation_result"] = "RECOVERY_GENERATION_OWNER_DEAD"
+                # This recovery generation is proven dead and no longer owns
+                # the repository. Only an independently durable PENDING
+                # transport obligation reserves ownership before generation
+                # acquisition; a dead RECOVERING owner must release it.
+                if record.get("recovery_state") == "RECOVERING":
+                    # Release only the dead recovery generation. The verified
+                    # promotion obligation still owns this repository until a
+                    # fresh recovery generation acquires it or promotion ends.
+                    record["recovery_state"] = "PENDING"
                 released.append(grant_id)
             elif liveness == "ALIVE":
                 record["recovery_generation_result"] = "RECOVERY_GENERATION_OWNER_ALIVE"

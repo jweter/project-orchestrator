@@ -37,11 +37,22 @@ def conflicting_nonterminal_grant(
     for grant_id, record in grants.items():
         if not isinstance(record, dict):
             continue
-        owns = record.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"} or bool(record.get("recovery_generation"))
+        owns = (record.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"}
+                or record.get("recovery_state") in {"PENDING", "RECOVERING", "QUARANTINED"}
+                or bool(record.get("recovery_generation")))
         if not owns:
             continue
         authority = record.get("execution_slice") or {}
-        if repo in record.get("authorized_repositories", []) and paths_conflict(execution_slice, authority):
+        # A transport-pending candidate still physically owns its static
+        # worker worktree. Reserve the repository until recovery has consumed
+        # that exact workspace; otherwise a non-conflicting slice can reuse
+        # the slot and overwrite the verified candidate before promotion.
+        transport_workspace_owned = (
+            record.get("recovery_state") in {"PENDING", "RECOVERING"}
+            and bool(record.get("workspace_path"))
+        )
+        if repo in record.get("authorized_repositories", []) and (
+                transport_workspace_owned or paths_conflict(execution_slice, authority)):
             return {
                 "grant_id": grant_id,
                 "state": record.get("state"),
@@ -152,7 +163,9 @@ def reserve_execution_grant(
         for existing_id, existing in grants.items():
             if not isinstance(existing, dict):
                 continue
-            owns = existing.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"} or bool(existing.get("recovery_generation"))
+            owns = (existing.get("state") in {"ISSUED", "CLAIMED", "QUARANTINED"}
+                    or existing.get("recovery_state") in {"PENDING", "RECOVERING", "QUARANTINED"}
+                    or bool(existing.get("recovery_generation")))
             existing_repos = set(existing.get("authorized_repositories", []))
             if existing.get("repository"):
                 existing_repos.add(existing["repository"])
