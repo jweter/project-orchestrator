@@ -354,7 +354,7 @@ def test_scheduler_report_accepts_explicit_issue_debt():
             for key in PROJECT_KEYS
         },
         results={"MERGED": [], "FIXED": [], "NEW_PRS": [], "WAITING_ON_PREFLIGHT": [], "WAITING_ON_CI": [], "BLOCKED": [], "NEEDS_JEREMY": []},
-        project_orchestrator={"promotion_state": "MERGED", "implementation_verification": "VERIFIED", "active_ownership": "NONE", "next_gate": "NONE", "product_reality_debt": []},
+        project_orchestrator={"state": "ACTIVE", "promotion_state": "MERGED", "implementation_verification": "VERIFIED", "active_ownership": "NONE", "next_gate": "NONE", "product_reality_debt": []},
         product_repositories_inspected=6,
         issue_debt={
             "rocksmith": {
