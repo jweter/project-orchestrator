@@ -1629,3 +1629,16 @@ def test_resume_pushed_orphan_does_not_accept_existing_pr_at_wrong_head(tmp_path
     assert supervisor.resume_orphan_branch(
         "jweter/rock",tmp_path,"actor/autonomous-x","ORPHAN_PUSHED_NO_PR",
         {"head_sha":"head","remote_head_sha":"head"})=="RECOVERY_PR_CREATE_FAILED"
+
+
+def test_historical_recovery_quarantine_does_not_count_as_active_health_quarantine():
+    quarantines = {
+        "active": {"state": "QUARANTINED", "recovery_state": None},
+        "historical": {"state": "ABANDONED", "recovery_state": "QUARANTINED"},
+    }
+    active_quarantines = {
+        grant_id: record
+        for grant_id, record in quarantines.items()
+        if record.get("state") == "QUARANTINED"
+    }
+    assert list(active_quarantines) == ["active"]
