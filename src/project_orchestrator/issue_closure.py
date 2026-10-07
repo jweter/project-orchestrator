@@ -50,14 +50,22 @@ def issue_priority_key(item: dict[str, Any]) -> tuple[int, int, int, int, int, i
     Existing P0-P4 scheduler authority remains outside this function. This ranks
     issue candidates only after they are legal in their dependency lane.
     """
+    severity = int(item.get("severity", 0))
+    usability = int(item.get("usability_impact", 0))
+    roadmap = int(item.get("roadmap_unlock", 0))
+    dependency = int(item.get("dependency_unlock", 0))
+    age = int(item.get("age_bucket", 0))
+    risk = int(item.get("risk", 0))
+    effort = int(item.get("effort", 0))
+    impact = (severity * 4) + (usability * 5) + (roadmap * 3) + (dependency * 2) + age - (risk * 2) - effort
     return (
-        -int(item.get("severity", 0)),
-        -int(item.get("usability_impact", 0)),
-        -int(item.get("roadmap_unlock", 0)),
-        -int(item.get("dependency_unlock", 0)),
-        -int(item.get("age_bucket", 0)),
-        int(item.get("risk", 0)),
-        int(item.get("effort", 0)),
+        -impact,
+        -usability,
+        -severity,
+        -roadmap,
+        -dependency,
+        risk,
+        effort,
         str(item.get("work_id") or ""),
     )
 
