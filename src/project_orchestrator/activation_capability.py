@@ -67,14 +67,14 @@ def compile_declared_capability_graphs(workspace_root:Path,state_root:Path,activ
         if not workspace.is_dir():
             results[repository]={"status":"WORKSPACE_UNAVAILABLE"}; continue
         def show(path:str)->str:
-            proc=run_fn(["git","show",f"{head}:{path}"],cwd=workspace,text=True,capture_output=True,check=False)
+            proc=run_fn(["git","show",f"{head}:{path}"],cwd=workspace,text=True,capture_output=True,check=False,timeout=30)
             if proc.returncode: raise CapabilityAuthorityError(f"AUTHORITY_FILE_UNAVAILABLE:{path}")
             return proc.stdout
         try:
             control_plane=json.loads(show("engineering/control-plane.json"))
             outcome=compile_capability_authority(state_root,repository,head,control_plane,read_authoritative_file=lambda repo,exact,path: show(path))
             results[repository]={"status":"COMPILED","source":outcome["graph"]["authority"]["source"],"exact_head":head}
-        except (CapabilityAuthorityError,json.JSONDecodeError,TypeError) as exc:
+        except (CapabilityAuthorityError,json.JSONDecodeError,TypeError,subprocess.TimeoutExpired) as exc:
             keep=False
             try:
                 prior=json.loads(target.read_text(encoding="utf-8")); keep=prior.get("authority",{}).get("exact_head")==head
