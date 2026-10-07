@@ -549,7 +549,11 @@ def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,
 
 
 def actor_revision(repo:Path)->str|None:
-    return subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False).stdout.strip() or None
+    try:
+        result=subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False,timeout=10)
+    except (subprocess.TimeoutExpired,OSError):
+        return None
+    return result.stdout.strip() or None if result.returncode == 0 else None
 
 def publish_generation_heartbeat(state:Path,*,process_instance_id:str,burst_id:str,
                                  actor_revision:str|None,status:str="RUNNING_CURRENT")->None:
