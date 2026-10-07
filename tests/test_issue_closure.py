@@ -4,6 +4,8 @@ from project_orchestrator.issue_closure import (
     issue_debt_telemetry,
     normalize_issue,
     rank_actionable_issues,
+    build_issue_work_inventory,
+    merge_issue_dispositions,
 )
 
 def test_issue_ranking_prefers_product_impact():
@@ -54,3 +56,41 @@ def test_actionable_issue_must_have_disposition():
         assert "issue:r#1" in str(exc)
     else:
         raise AssertionError("expected orphan guard to fail closed")
+
+
+def test_inventory_requires_complete_issue_evidence():
+    snapshot = {"projects": [{"id": "rocksmith", "repositories": [{"name": "r", "open_issues": []}]}]}
+    try:
+        build_issue_work_inventory(snapshot)
+    except ValueError as exc:
+        assert "incomplete" in str(exc)
+    else:
+        raise AssertionError("partial issue inventory must fail closed")
+
+
+def test_inventory_spans_every_repository_and_builds_debt():
+    snapshot = {
+        "projects": [
+            {"id": "knowledge-engine", "repositories": [
+                {"name": "core", "open_issues_complete": True, "open_issues": [{"number": 1, "title": "core bug"}]},
+                {"name": "web", "open_issues_complete": True, "open_issues": [{"number": 2, "title": "web bug"}]},
+                {"name": "ai", "open_issues_complete": True, "open_issues": []},
+            ]},
+            {"id": "rocksmith", "repositories": [{"name": "rock", "open_issues_complete": True, "open_issues": []}]},
+        ]
+    }
+    result = build_issue_work_inventory(snapshot)
+    assert {x["work_id"] for x in result["work_items"]} == {"issue:core#1", "issue:web#2"}
+    assert result["issue_debt"]["knowledge-engine"]["open_total"] == 2
+
+
+def test_durable_disposition_enriches_only_live_issue():
+    live = [normalize_issue({"number": 4, "title": "bug"}, product="p", repository="r")]
+    prior = {
+        "issue:r#4": {"engineering_state": "CONFIRMED", "severity": 4, "next_gate": "IMPLEMENT"},
+        "issue:r#99": {"engineering_state": "CONFIRMED", "severity": 4, "next_gate": "IMPLEMENT"},
+    }
+    merged = merge_issue_dispositions(live, prior)
+    assert len(merged) == 1
+    assert merged[0]["severity"] == 4
+    assert merged[0]["engineering_state"] == "CONFIRMED"
