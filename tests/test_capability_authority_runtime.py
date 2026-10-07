@@ -28,3 +28,17 @@ def test_head_advance_removes_stale_graph_when_new_head_lacks_declaration(tmp_pa
     result=compile_declared_capability_graphs(tmp_path,state,activation,run_fn=run)
     assert result["repositories"]["o/repo"]["status"]=="DIRECTION_REQUIRED"
     assert not target.exists()
+
+def test_git_show_timeout_fails_closed_and_removes_stale_authority(tmp_path):
+    import subprocess
+    ws=tmp_path/"repo"; ws.mkdir()
+    state=tmp_path/"state"; target=state/"capability-graphs"/"o__repo.json"
+    target.parent.mkdir(parents=True)
+    target.write_text(json.dumps({"authority":{"exact_head":"old"}}))
+    def run(argv,**kwargs):
+        assert kwargs["timeout"] == 30
+        raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+    activation={"products":{"p":{"enabled":True,"repositories":{"o/repo":"new"}}}}
+    result=compile_declared_capability_graphs(tmp_path,state,activation,run_fn=run)
+    assert result["repositories"]["o/repo"]["status"]=="DIRECTION_REQUIRED"
+    assert not target.exists()
