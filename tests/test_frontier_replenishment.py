@@ -111,6 +111,7 @@ def test_reconcile_issue_cycle_recovers_stale_snapshot_with_live_refresh(tmp_pat
     assert result["status"]=="ACTIONABLE_ISSUES"
     assert result["evidence_recovery"]=="LIVE_REFRESH"
     assert result["ranked_actionable"][0]["work_id"]=="issue:jweter/rocksmith-cdlc-generator#7"
+    assert json.loads((tmp_path/"github-portfolio-snapshot.json").read_text(encoding="utf-8")) == fresh
 
 
 def test_reconcile_issue_cycle_reports_refresh_failure_without_hiding_staleness(tmp_path):

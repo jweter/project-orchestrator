@@ -158,6 +158,7 @@ def reconcile_issue_cycle(state_root: Path, *, refresh_fn: Callable[[], dict] | 
             try:
                 refreshed = refresh_fn()
                 if isinstance(refreshed, dict):
+                    atomic_json(snapshot_path, refreshed)
                     result = reconcile_issue_frontier(refreshed, state_root)
                     result["evidence_recovery"] = "LIVE_REFRESH"
                     atomic_json(state_root / "issue-work-frontier.json", result)
