@@ -42,3 +42,19 @@ def test_quarantine_report_never_exposes_lease_token(tmp_path):
     report = recovery.quarantined_grants(tmp_path)
     assert "lease_token" not in report["g"]
     assert "secret" not in repr(report)
+
+
+def test_quarantined_grants_exposes_lifecycle_dimension_for_health_filtering(tmp_path):
+    import json
+    from project_orchestrator.recovery_manager import quarantined_grants
+
+    (tmp_path / "hands-off-grant-lifecycle.json").write_text(json.dumps({"grants": {
+        "active": {"repository": "jweter/active", "state": "QUARANTINED", "result_status": "CLAIM_LEASE_UNKNOWN_QUARANTINED"},
+        "historical": {"repository": "jweter/history", "state": "ABANDONED", "recovery_state": "QUARANTINED", "recovery_result": "RECOVERY_GENERATION_OWNER_UNKNOWN"},
+    }}), encoding="utf-8")
+
+    evidence = quarantined_grants(tmp_path)
+    assert evidence["active"]["state"] == "QUARANTINED"
+    assert evidence["active"]["recovery_state"] is None
+    assert evidence["historical"]["state"] == "ABANDONED"
+    assert evidence["historical"]["recovery_state"] == "QUARANTINED"
