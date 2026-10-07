@@ -46,8 +46,14 @@ def evaluate_supervisor_health(*, process: dict, heartbeat: dict, progress: dict
                         and progress.get("burst_id") == burst
                         and isinstance(progress.get("sequence"), int))
     progress_age = (current - progress_at).total_seconds() if progress_matches and progress_at else None
+    if progress_age is None:
+        return {"status": "PROGRESS_UNREADABLE", "reclaimable": False,
+                "process_instance_id": instance, "burst_id": burst}
+    if progress_age < 0:
+        return {"status": "CLOCK_SKEW", "reclaimable": False,
+                "process_instance_id": instance, "burst_id": burst}
     stalled_heartbeat = heartbeat_age > heartbeat_timeout_seconds
-    stalled_progress = progress_age is None or progress_age > progress_timeout_seconds
+    stalled_progress = progress_age > progress_timeout_seconds
     if stalled_heartbeat and stalled_progress:
         status = "SUPERVISOR_STALLED"
         reclaimable = True
@@ -100,6 +106,34 @@ def fence_generation(state_root: Path, verified: dict, *, now: datetime | None =
     }
     atomic_json(state_root / "supervisor-generation-fence.json", payload)
     return payload
+
+
+def retire_verified_generation(verified: dict, *, run_fn=None,
+                               fingerprint_fn: Callable[[int | None], str | None] = process_start_fingerprint) -> dict:
+    """Boundedly retire only the exact OS process whose identity was verified."""
+    import subprocess
+    if verified.get("status") != "RECLAIM_IDENTITY_VERIFIED" or verified.get("verified") is not True:
+        return {"status": "RETIRE_NOT_AUTHORIZED", "retired": False}
+    pid=int(verified["pid"])
+    expected=verified.get("process_start_fingerprint")
+    if not expected or fingerprint_fn(pid) != expected:
+        return {"status": "PROCESS_IDENTITY_CHANGED", "retired": False, "pid": pid}
+    runner=run_fn or subprocess.run
+    try:
+        result=runner(["taskkill","/PID",str(pid),"/T","/F"],
+                     text=True,capture_output=True,check=False,timeout=10)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return {"status": "PROCESS_RETIRE_UNCONFIRMED", "retired": False,
+                "pid": pid, "error": type(exc).__name__}
+    if result.returncode != 0:
+        return {"status": "PROCESS_RETIRE_FAILED", "retired": False, "pid": pid}
+    # A missing fingerprint is ambiguous (dead or unreadable). Require the OS
+    # kill operation itself to have succeeded; do not infer death from a
+    # failed/unknown fingerprint probe after an unsuccessful taskkill.
+    after=fingerprint_fn(pid)
+    if after is not None:
+        return {"status": "PROCESS_STILL_ALIVE", "retired": False, "pid": pid}
+    return {"status": "PROCESS_RETIRED", "retired": True, "pid": pid}
 
 
 def generation_is_fenced(state_root: Path, *, process_instance_id: str, burst_id: str) -> bool:

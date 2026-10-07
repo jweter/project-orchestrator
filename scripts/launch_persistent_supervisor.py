@@ -118,6 +118,24 @@ def publication_blocked_generation_stale(state:Path,active_id:str,*,now:datetime
         and not supervisor_state_fresh(heartbeat,now=now,max_age_seconds=max_age_seconds)
     )
 
+def stale_generation_requires_reclaim(state:Path,active_id:str,*,now:datetime|None=None,
+                                      max_age_seconds:int=900)->bool:
+    """Detect a stale authoritative generation without trusting supervisor.json.
+
+    Canonical supervisor publication may itself be the failed boundary, so
+    process identity + generation heartbeat are the authority for reclamation.
+    """
+    from project_orchestrator.supervisor_health import evaluate_supervisor_health
+    proc=load(state/"supervisor-process-instance.json")
+    heartbeat=load(state/"supervisor-generation-heartbeat.json")
+    progress=load(state/"supervisor-progress.json")
+    if not (active_id and proc.get("process_instance_id")==active_id):
+        return False
+    health=evaluate_supervisor_health(
+        process=proc,heartbeat=heartbeat,progress=progress,now=now,
+        heartbeat_timeout_seconds=max_age_seconds)
+    return health.get("status")=="SUPERVISOR_STALLED" and health.get("reclaimable") is True
+
 def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|None=None)->dict:
     payload={"schema_version":1,"status":"TAKEOVER_REQUESTED",
              "predecessor_process_instance_id":active_id,
@@ -126,25 +144,36 @@ def request_stale_generation_handoff(state:Path,active_id:str,*,now:datetime|Non
     return payload
 
 def reclaim_stalled_generation(state:Path,active_id:str,*,now:datetime|None=None,
-                               fingerprint_fn=None)->dict:
-    """Fence only an exact generation proven stalled and still owning its PID."""
+                               fingerprint_fn=None,retire_fn=None,
+                               confirmation_seconds:int=30)->dict:
+    """Fence only a confirmed stalled generation while respecting human ownership."""
+    from project_orchestrator.human_ownership import human_mode_active
+    from project_orchestrator.iron_foreman import recovery_decision, prepare_reclamation
     from project_orchestrator.recovery_manager import process_start_fingerprint
-    from project_orchestrator.supervisor_health import (
-        evaluate_supervisor_health, fence_generation, verify_reclaim_identity,
-    )
+    from project_orchestrator.supervisor_health import retire_verified_generation
+    if human_mode_active(state):
+        return {"status":"HUMAN_OWNED","reclaimed":False}
     proc=load(state/"supervisor-process-instance.json")
-    heartbeat=load(state/"supervisor-generation-heartbeat.json")
-    progress=load(state/"supervisor-progress.json")
     if proc.get("process_instance_id") != active_id:
         return {"status":"RECLAIM_IDENTITY_MISMATCH","reclaimed":False}
-    health=evaluate_supervisor_health(process=proc,heartbeat=heartbeat,progress=progress,now=now)
-    if health.get("status") != "SUPERVISOR_STALLED" or health.get("reclaimable") is not True:
-        return {"status":health.get("status","RECLAIM_NOT_AUTHORIZED"),"reclaimed":False}
-    verified=verify_reclaim_identity(health,fingerprint_fn=fingerprint_fn or process_start_fingerprint)
-    if verified.get("verified") is not True:
-        return {**verified,"reclaimed":False}
-    fence=fence_generation(state,verified,now=now)
-    return {**fence,"reclaimed":True}
+    decision=recovery_decision(state,now=now,confirmation_seconds=confirmation_seconds)
+    if decision.get("status") != "STALL_CONFIRMED":
+        return {"status":decision.get("status","RECLAMATION_NOT_CONFIRMED"),"reclaimed":False}
+    prepared=prepare_reclamation(
+        state,fingerprint_fn=fingerprint_fn or process_start_fingerprint,now=now)
+    if prepared.get("prepared") is not True:
+        return {**prepared,"reclaimed":False}
+    fence=prepared["fence"]
+    verified={"status":"RECLAIM_IDENTITY_VERIFIED","verified":True,
+              "pid":fence["pid"],"process_start_fingerprint":fence["process_start_fingerprint"],
+              "process_instance_id":fence["process_instance_id"],"burst_id":fence["burst_id"]}
+    retire=retire_fn or retire_verified_generation
+    retired=retire(
+        verified,fingerprint_fn=fingerprint_fn or process_start_fingerprint)
+    if retired.get("retired") is not True:
+        return {**fence,"status":retired.get("status","PROCESS_RETIRE_FAILED"),
+                "reclaimed":False,"retirement":retired}
+    return {**fence,"reclaimed":True,"retirement":retired}
 
 def main()->int:
     p=argparse.ArgumentParser()
@@ -191,8 +220,10 @@ def main()->int:
             time.sleep(.25)
             continue
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
-                and publication_blocked_generation_stale(
+                and stale_generation_requires_reclaim(
                     state,active_id,max_age_seconds=max(1,a.stale_seconds))):
+            # Ask the proven stale generation to drain gracefully before the
+            # bounded confirmation window can authorize forced retirement.
             request_stale_generation_handoff(state,active_id)
             reclaim=reclaim_stalled_generation(state,active_id)
             receipt.update({"status":"GENERATION_FENCED" if reclaim.get("reclaimed") else "STALE_GENERATION",
@@ -200,8 +231,40 @@ def main()->int:
                             "reclaim_status":reclaim.get("status"),
                             "observed_at_utc":datetime.now(UTC).isoformat()})
             atomic(state/"persistent-supervisor-launch.json",receipt)
-            if not a.wait_for_takeover:
-                return 2
+            # A one-shot boot launcher owns recovery once a stall is
+            # observed. Do not exit during bounded confirmation or after a
+            # post-fence retirement failure; keep driving toward a verified
+            # owner until this launcher's deadline.
+            if reclaim.get("status")=="HUMAN_OWNED":
+                return 0
+            if reclaim.get("reclaimed") is not True:
+                # If a previously fenced predecessor has since disappeared,
+                # its vanished exact OS identity is completion of retirement,
+                # not a reason to strand the one-shot launcher.
+                fence=load(state/"supervisor-generation-fence.json")
+                worker=proc.get("worker") or {}
+                if (fence.get("process_instance_id")==active_id
+                        and fence.get("pid")==worker.get("pid")
+                        and fence.get("process_start_fingerprint")==worker.get("process_start_fingerprint")):
+                    from project_orchestrator.recovery_manager import process_start_fingerprint
+                    if process_start_fingerprint(worker.get("pid")) is None:
+                        reclaim={"status":"FENCED_PREDECESSOR_EXITED","reclaimed":True}
+                if reclaim.get("reclaimed") is not True:
+                    time.sleep(.25)
+                    continue
+            if child.poll() is not None:
+                before=active_id
+                with log.open("ab") as out:
+                    child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,
+                        stdout=out,stderr=subprocess.STDOUT,creationflags=flags,close_fds=True,
+                        env=supervisor_environment(repo))
+                deadline=time.monotonic()+max(1,a.timeout_seconds)
+                receipt["launcher_pid"]=child.pid
+                receipt["status"]="TAKEOVER_RETRY"
+                atomic(state/"persistent-supervisor-launch.json",receipt)
+            # Never process stale pre-reclaim snapshots again in this
+            # iteration. Re-read authoritative state on the next pass.
+            continue
         if (reentry.get("status")=="SUPERVISOR_INSTANCE_ALREADY_ACTIVE" and active_id
                 and proc.get("process_instance_id")==active_id
                 and sup.get("process_instance_id")==active_id
