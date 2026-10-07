@@ -15,7 +15,12 @@ def run_watchdog_iteration(*,lanes:dict[str,dict[str,Any]],state_path:Path,telem
   scorecard=scorecard,claude_opener=claude_opener)
  stalled=bool(cycle["eligible_unadvanced"]) and cycle["dispatches"]==0
  count=int(prior.get("consecutive_stalls",0))+1 if stalled else 0
- status="P1_REPAIR_REQUIRED" if count>=2 else ("STALL_OBSERVED" if stalled else "HEALTHY")
+ status="P1_PRODUCTION_STALL" if count>=2 else ("STALL_OBSERVED" if stalled else "HEALTHY")
+ if status=="P1_PRODUCTION_STALL":
+  continuation={"requested_at":time.time(),"reason":"PRODUCTION_STALL","trigger":"WATCHDOG",
+   "eligible_unadvanced":cycle["eligible_unadvanced"]}
+  continuation_path=state_path.parent/"continuation-request.json"
+  continuation_path.write_text(json.dumps(continuation,sort_keys=True,indent=2),encoding="utf-8")
  state={"updated_at":time.time(),"consecutive_stalls":count,"status":status,
   "eligible_unadvanced":cycle["eligible_unadvanced"],"last_dispatches":cycle["dispatches"]}
  state_path.parent.mkdir(parents=True,exist_ok=True)
