@@ -15,7 +15,22 @@ def run_watchdog_iteration(*,lanes:dict[str,dict[str,Any]],state_path:Path,telem
   scorecard=scorecard,claude_opener=claude_opener)
  stalled=bool(cycle["eligible_unadvanced"]) and cycle["dispatches"]==0
  count=int(prior.get("consecutive_stalls",0))+1 if stalled else 0
- status="P1_REPAIR_REQUIRED" if count>=2 else ("STALL_OBSERVED" if stalled else "HEALTHY")
+ status="P1_PRODUCTION_STALL" if count>=2 else ("STALL_OBSERVED" if stalled else "HEALTHY")
+ if status=="P1_PRODUCTION_STALL":
+  continuation_path=state_path.parent/"continuation-request.json"
+  pending={}
+  if continuation_path.exists():
+   pending=json.loads(continuation_path.read_text(encoding="utf-8"))
+  if not pending.get("repository"):
+   for product in cycle["eligible_unadvanced"]:
+    tasks=lanes.get(product,{}).get("candidate_tasks",[])
+    task=next((item for item in tasks if item.get("repository")),None)
+    if task:
+     continuation={"requested_at":time.time(),"reason":"PRODUCTION_STALL","trigger":"WATCHDOG",
+      "product":product,"repository":task["repository"],"exact_head":task.get("exact_head") or task.get("head_sha"),
+      "work_id":task.get("task_key") or task.get("slice_id")}
+     continuation_path.write_text(json.dumps(continuation,sort_keys=True,indent=2),encoding="utf-8")
+     break
  state={"updated_at":time.time(),"consecutive_stalls":count,"status":status,
   "eligible_unadvanced":cycle["eligible_unadvanced"],"last_dispatches":cycle["dispatches"]}
  state_path.parent.mkdir(parents=True,exist_ok=True)
