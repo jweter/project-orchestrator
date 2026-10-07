@@ -86,6 +86,46 @@ def actions_from_snapshot(snapshot: dict[str, Any]) -> list[Action]:
     return sorted(actions, key=lambda action: action.sort_key)
 
 
+def pr_accountability(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return one deterministic disposition for every open PR in the portfolio.
+
+    This is the CAPA enforcement surface: an open PR may never disappear behind
+    priority filtering or a scheduler report.  Each PR must be explicitly owned by
+    repair, merge, resolution, or pending-CI handling on every fresh snapshot.
+    """
+    dispositions: list[dict[str, Any]] = []
+    for project in snapshot.get("projects", []):
+        for repo in project.get("repositories", []):
+            for pr in repo.get("open_prs", []):
+                state = classify_pr(pr)
+                action = {
+                    "FAILED": "repair_pr",
+                    "GREEN": "merge_pr",
+                    "CONFLICTED": "resolve_pr",
+                    "BLOCKED": "resolve_pr",
+                    "UNCERTAIN": "resolve_pr",
+                    "PENDING": "wait_pr",
+                }[state]
+                dispositions.append({
+                    "project": project["id"],
+                    "repository": repo["name"],
+                    "number": pr.get("number"),
+                    "head_sha": pr.get("head_sha"),
+                    "state": state,
+                    "required_action": action,
+                })
+    return dispositions
+
+
+def assert_pr_accountability(snapshot: dict[str, Any], handled: list[dict[str, Any]]) -> None:
+    """Fail a cycle that did not account for every exact-head open PR disposition."""
+    expected = {(d["repository"], d["number"], d["head_sha"], d["required_action"]) for d in pr_accountability(snapshot)}
+    observed = {(d.get("repository"), d.get("number"), d.get("head_sha"), d.get("required_action")) for d in handled}
+    missing = expected - observed
+    if missing:
+        raise RuntimeError(f"P1 PR_ACCOUNTABILITY_DEFECT: {sorted(missing)!r}")
+
+
 def next_actions(snapshot: dict[str, Any]) -> list[Action]:
     actions = actions_from_snapshot(snapshot)
     if not actions:
@@ -93,7 +133,11 @@ def next_actions(snapshot: dict[str, Any]) -> list[Action]:
     highest = min(PRIORITY[action.priority] for action in actions)
     candidates = [action for action in actions if PRIORITY[action.priority] == highest]
     if highest < PRIORITY["P5"]:
-        return candidates
+        # P0-P3 are ordered first, but PR obligations are work-conserving: a
+        # failed PR must never hide a simultaneously green exact-head merge,
+        # nor may either disappear behind a conflict/review resolution lane.
+        pr_actions = [a for a in actions if a.kind in {"repair_pr", "merge_pr", "resolve_pr"}]
+        return pr_actions or candidates
 
     selected: list[Action] = []
     seen_projects: set[str] = set()
