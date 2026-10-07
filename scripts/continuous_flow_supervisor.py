@@ -811,7 +811,8 @@ def main()->int:
                 "requested_at_utc":datetime.now(UTC).isoformat()}
         if not builder_ok and builder_status!="NO_READY_EXECUTION_SLICE": degraded_reasons.append({"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc})
         if linear_rc not in (None,0): degraded_reasons.append({"reason":"LINEAR_RECONCILIATION_FAILED","returncode":linear_rc})
-        if quarantines: degraded_reasons.append({"reason":"QUARANTINED_GRANTS","count":len(quarantines)})
+        active_quarantines={grant_id: record for grant_id,record in quarantines.items() if record.get("state")=="QUARANTINED"}
+        if active_quarantines: degraded_reasons.append({"reason":"QUARANTINED_GRANTS","count":len(active_quarantines)})
         healthy=not degraded_reasons
         publish_supervisor_snapshot(state,{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
