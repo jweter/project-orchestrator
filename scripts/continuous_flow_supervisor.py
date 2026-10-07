@@ -34,7 +34,6 @@ from project_orchestrator import activation_capability as _authority
 from project_orchestrator import supervisor_runtime as _supervisor_runtime
 from project_orchestrator.frontier_replenishment import replenish_frontiers
 from project_orchestrator.human_ownership import human_mode_active
-from scripts.failed_pr_accountability import cycle as failed_pr_accountability_cycle
 
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
@@ -694,7 +693,6 @@ def main()->int:
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
-        failed_pr_obligations=failed_pr_accountability_cycle(repo,state)
         lifecycle_recovery=_supervisor_runtime.run_lifecycle_recovery_pass(state,workspace,
             recover_generations_fn=recover_stale_recovery_generations,recover_claims_fn=recover_stale_grant_claims,
             pending_fn=pending_recovery_grants,preserved_fn=recheck_preserved_work_quarantines,quarantined_fn=recheck_quarantined_claims)
@@ -812,8 +810,6 @@ def main()->int:
                 "requested_at_utc":datetime.now(UTC).isoformat()}
         if not builder_ok and builder_status!="NO_READY_EXECUTION_SLICE": degraded_reasons.append({"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc})
         if linear_rc not in (None,0): degraded_reasons.append({"reason":"LINEAR_RECONCILIATION_FAILED","returncode":linear_rc})
-        failed_pr_defects=[row for row in failed_pr_obligations if row.get("state") in {"REPAIR_ROUTING_FAILED","OBSERVATION_FAILED"}]
-        if failed_pr_defects: degraded_reasons.append({"reason":"P1_FAILED_PR_REPAIR_STALLED","details":failed_pr_defects})
         if quarantines: degraded_reasons.append({"reason":"QUARANTINED_GRANTS","count":len(quarantines)})
         healthy=not degraded_reasons
         publish_supervisor_snapshot(state,{"updated_at_utc":datetime.now(UTC).isoformat(),
@@ -828,7 +824,6 @@ def main()->int:
             "productive_liveness":liveness,
             "product_convergence":convergence,
             "eligible_idle_streaks":idle_streaks,
-            "failed_pr_obligations":failed_pr_obligations,
             "workspace_provisioning":workspace_provisioning,
             "dead_builder_reconciliation":dead_builder_reconciliation,
             "degraded_reasons":degraded_reasons,
