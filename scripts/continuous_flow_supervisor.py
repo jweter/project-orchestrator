@@ -33,7 +33,6 @@ from project_orchestrator import telemetry_continuation as _telemetry
 from project_orchestrator import activation_capability as _authority
 from project_orchestrator import supervisor_runtime as _supervisor_runtime
 from project_orchestrator.frontier_replenishment import replenish_frontiers, reconcile_issue_cycle
-from project_orchestrator.github_evidence import UrllibGitHubTransport, collect_portfolio
 from project_orchestrator.human_ownership import human_mode_active
 
 
@@ -716,7 +715,7 @@ def main()->int:
             else:
                 activation_reason=refresh_reason
         products=products if authorized else []; capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}
-        issue_frontier=reconcile_issue_cycle(state, refresh_fn=lambda: collect_portfolio(str(repo/"engineering"/"portfolio.json"), UrllibGitHubTransport.from_environment())) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}; frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
+        issue_frontier=reconcile_issue_cycle(state, portfolio_path=repo/"engineering"/"portfolio.json") if products else {"status":"NO_AUTHORIZED_PRODUCTS"}; frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
         parallel_results=harvest_parallel_builders(worker_pool,state)
         # Harvest first, then reclaim dead-owner leases plus only this supervisor
         # generation's leases whose worker slots are no longer active. Generation
