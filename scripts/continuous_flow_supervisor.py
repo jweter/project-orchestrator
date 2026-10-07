@@ -32,7 +32,7 @@ from project_orchestrator import parallel_runtime as _parallel_runtime
 from project_orchestrator import telemetry_continuation as _telemetry
 from project_orchestrator import activation_capability as _authority
 from project_orchestrator import supervisor_runtime as _supervisor_runtime
-from project_orchestrator.frontier_replenishment import replenish_frontiers, reconcile_issue_frontier
+from project_orchestrator.frontier_replenishment import replenish_frontiers, reconcile_issue_cycle
 from project_orchestrator.human_ownership import human_mode_active
 
 
@@ -596,16 +596,6 @@ def generation_handoff_status(state:Path,*,process_instance_id:str,worker_pool:P
         "active_workers":active_workers,"observed_at_utc":datetime.now(UTC).isoformat(),
     })
     return status
-
-def reconcile_issue_cycle(state_root:Path)->dict:
-    snapshot_path=state_root/"github-portfolio-snapshot.json"
-    try:
-        return reconcile_issue_frontier(json.loads(snapshot_path.read_text(encoding="utf-8")),state_root)
-    except (OSError,json.JSONDecodeError,TypeError,ValueError) as exc:
-        result={"status":"ISSUE_EVIDENCE_UNAVAILABLE","reason":str(exc)}
-        atomic(state_root/"issue-work-frontier.json",{"schema_version":1,**result,
-            "recorded_at_utc":datetime.now(UTC).isoformat()})
-        return result
 
 def main()->int:
     p=argparse.ArgumentParser()
