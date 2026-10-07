@@ -57,6 +57,7 @@ def build_scheduler_executive_report(
     timeseries_store: dict[str, Any] | None = None,
     kpi_persistence: dict[str, Any] | None = None,
     generated_at: str | None = None,
+    issue_debt: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the scheduler-facing executive report from explicit run evidence.
 
@@ -259,6 +260,7 @@ def build_scheduler_executive_report(
             "control_plane_improvements": _count_or_unknown(learning.get("control_plane_improvements")),
             "learning_effectiveness": learning_effectiveness or {"status": "UNKNOWN"},
         },
+        "issue_debt": _validate_issue_debt(issue_debt or {}),
         "jeremy_can_help": _validate_help(jeremy_can_help or []),
         "management_bottom_line": _bottom_line(kpis, no_advancement, persistence),
         "rules": [
@@ -418,3 +420,21 @@ def _bottom_line(
     if no_advancement:
         return "Portfolio advanced, but at least one eligible product did not advance through this orchestrator run; inspect its recorded reason and exact next gate."
     return "No complete eligible-project denominator was proven; do not claim full portfolio utilization."
+
+
+def _validate_issue_debt(value: dict[str, Any]) -> dict[str, Any]:
+    """Validate per-product issue telemetry without inventing missing inventory."""
+    if not isinstance(value, dict):
+        raise ValueError("issue_debt must be a mapping")
+    normalized: dict[str, Any] = {}
+    for project, debt in value.items():
+        if project not in PROJECT_KEYS:
+            raise ValueError(f"issue_debt contains unknown project: {project}")
+        if not isinstance(debt, dict):
+            raise ValueError(f"issue_debt.{project} must be a mapping")
+        for field in ("open_total", "actionable", "usability_or_severity_critical", "orphaned_without_next_gate"):
+            count = debt.get(field)
+            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                raise ValueError(f"issue_debt.{project}.{field} must be a non-negative integer")
+        normalized[project] = debt
+    return normalized
