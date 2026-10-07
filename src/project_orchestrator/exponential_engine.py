@@ -77,7 +77,19 @@ def build_execution_plan(snapshot: dict[str, Any], policy: dict[str, Any]) -> di
     selected: list[dict[str, Any]] = []
     for project in PROJECTS:
         ready = [item for item in by_project[project] if item["dispatch_state"] == "READY"]
-        ready.sort(key=lambda item: (int(item.get("dependency_level", 999)), -int(item.get("downstream_unlock_count", 0)), str(item.get("id", ""))))
+        # A source-revision-bound, explicitly verified usability blocker wins
+        # within the same dependency wave. Unknown/stale claims earn no boost.
+        def release_blocker(item: dict[str, Any]) -> bool:
+            ref = item.get("usability_gate_ref")
+            return (
+                isinstance(ref, str) and bool(ref.strip())
+                and item.get("usability_gate_verified") is True
+                and item.get("usability_gate_source_revision") == item.get("source_revision")
+                and isinstance(item.get("source_revision"), str)
+                and bool(item["source_revision"])
+            )
+
+        ready.sort(key=lambda item: (int(item.get("dependency_level", 999)), not release_blocker(item), -int(item.get("downstream_unlock_count", 0)), str(item.get("id", ""))))
         if ready:
             selected.append(ready[0])
 

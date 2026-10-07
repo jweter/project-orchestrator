@@ -5,6 +5,7 @@ from project_orchestrator.candidate_registry import (
     attach_verified_learning,
     refresh_registry,
     registry_snapshot,
+    select_release_frontier,
     validate_registry,
 )
 
@@ -88,6 +89,39 @@ def test_learning_reuse_fails_closed_without_capability_index():
 def test_duplicate_authoritative_source_fails_closed():
     with pytest.raises(CandidateRegistryError):
         refresh_registry({"schema_version": 1, "entries": []}, [candidate(), candidate()])
+
+
+def test_release_frontier_prefers_verified_gate_within_same_priority():
+    ordinary = candidate(source_ref="issue:ordinary")
+    release = candidate(
+        source_ref="issue:release", usability_gate_ref="FIRST_WORKING_BUILD:ask",
+        usability_gate_source_revision="rev-a", usability_gate_verified=True,
+    )
+    reg = refresh_registry({"schema_version": 1, "entries": []}, [ordinary, release])
+    assert [x["source_ref"] for x in select_release_frontier(reg)] == ["issue:release", "issue:ordinary"]
+
+
+def test_release_frontier_does_not_override_priority_or_use_stale_evidence():
+    urgent = candidate(source_ref="issue:urgent", priority="P1")
+    stale = candidate(
+        source_ref="issue:stale", usability_gate_ref="FIRST_WORKING_BUILD:ask",
+        usability_gate_source_revision="old-head", usability_gate_verified=True,
+    )
+    current = candidate(
+        source_ref="issue:current", usability_gate_ref="FIRST_WORKING_BUILD:ask",
+        usability_gate_source_revision="rev-a", usability_gate_verified=True,
+    )
+    reg = refresh_registry({"schema_version": 1, "entries": []}, [urgent, stale, current])
+    ordered = select_release_frontier(reg)
+    assert ordered[0]["source_ref"] == "issue:urgent"
+    assert ordered[1]["source_ref"] == "issue:current"
+
+
+def test_release_frontier_excludes_owned_and_dependency_blocked_candidates():
+    owned = candidate(source_ref="issue:owned", actively_owned=True)
+    blocked = candidate(source_ref="issue:blocked", dependencies=["not-closed"])
+    reg = refresh_registry({"schema_version": 1, "entries": []}, [owned, blocked])
+    assert select_release_frontier(reg) == []
 
 
 def test_registry_rejects_unknown_project():
