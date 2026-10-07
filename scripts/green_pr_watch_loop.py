@@ -166,13 +166,15 @@ def main() -> int:
     p.add_argument("--once", action="store_true")
     a = p.parse_args()
     state = Path(a.state)
-    repo_root = Path(__file__).resolve().parents[1]
-    subprocess.Popen([sys.executable, str(repo_root / "scripts" / "github_evidence_watch_loop.py"),
-                      "--repo-root", str(repo_root), "--state-root", str(state.parent)], cwd=repo_root,
-                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     singleton = acquire_singleton(state)
     if singleton is None:
         return 0
+    repo_root = Path(__file__).resolve().parents[1]
+    evidence = subprocess.Popen(
+        [sys.executable, str(repo_root / "scripts" / "github_evidence_watch_loop.py"),
+         "--repo-root", str(repo_root), "--state-root", str(state.parent)],
+        cwd=repo_root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
     try:
         while True:
             started = time.time()
@@ -200,6 +202,8 @@ def main() -> int:
                 return 0 if error is None else 1
             time.sleep(max(30, a.poll_seconds))
     finally:
+        if evidence.poll() is None:
+            evidence.terminate()
         release_singleton(singleton)
 
 
