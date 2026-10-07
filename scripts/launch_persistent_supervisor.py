@@ -34,6 +34,13 @@ def supervisor_command(repo:Path,workspace_root:str,state:Path,builder_seconds:i
         cmd.append("--yield-on-interactive-session")
     return cmd
 
+def activate_repo_imports(repo:Path)->None:
+    """Make launcher-side control-plane imports resolve from this exact checkout."""
+    src=str(repo/"src")
+    while src in sys.path:
+        sys.path.remove(src)
+    sys.path.insert(0,src)
+
 def supervisor_environment(repo:Path)->dict[str,str]:
     """Expose the src-layout package to detached supervisor children."""
     env=os.environ.copy()
@@ -186,6 +193,7 @@ def main()->int:
     p.add_argument("--stale-seconds",type=int,default=900,
                    help="request graceful generation handoff after canonical supervisor state is this old")
     a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root);state.mkdir(parents=True,exist_ok=True)
+    activate_repo_imports(repo)
     start_network_guardian(repo,state)
     before=load(state/"supervisor-process-instance.json").get("process_instance_id")
     log=state/"persistent-supervisor.log"
