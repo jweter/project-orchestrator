@@ -152,3 +152,65 @@ def _strings(value: Any) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(x, str) and x.strip() for x in value):
         raise ValueError("evidence_refs must be a list of non-empty strings")
     return [x.strip() for x in value]
+
+
+def build_issue_work_inventory(portfolio_snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Convert complete live GitHub issue evidence into scheduler-ready work.
+
+    Fail closed when a repository reports truncated issue evidence. The scheduler
+    must never call a partial top-N view a complete issue queue.
+    """
+    work_items: list[dict[str, Any]] = []
+    debt: dict[str, Any] = {}
+    for project in portfolio_snapshot.get("projects", []):
+        product = str(project.get("id") or "")
+        product_items: list[dict[str, Any]] = []
+        for repository in project.get("repositories", []):
+            repo_name = str(repository.get("name") or "")
+            issues = repository.get("open_issues")
+            if issues is None:
+                raise ValueError(f"{repo_name} missing complete open_issues evidence")
+            if repository.get("open_issues_complete") is not True:
+                raise ValueError(f"{repo_name} open issue evidence is incomplete")
+            for issue in issues:
+                item = normalize_issue(issue, product=product, repository=repo_name)
+                product_items.append(item)
+                work_items.append(item)
+        assert_no_orphaned_actionable_issues(product_items)
+        debt[product] = issue_debt_telemetry(product_items)
+    return {
+        "work_items": work_items,
+        "ranked_actionable": rank_actionable_issues(work_items),
+        "issue_debt": debt,
+    }
+
+
+def merge_issue_dispositions(
+    live_items: list[dict[str, Any]],
+    prior_dispositions: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Project durable verified dispositions onto current live issues.
+
+    GitHub remains the live existence authority. Durable state may enrich an
+    issue only when keyed by the exact work_id; it cannot resurrect closed issues.
+    """
+    merged: list[dict[str, Any]] = []
+    for item in live_items:
+        work_id = str(item.get("work_id") or "")
+        prior = prior_dispositions.get(work_id)
+        if not isinstance(prior, dict):
+            merged.append(item)
+            continue
+        state = prior.get("engineering_state")
+        if state not in ISSUE_STATES:
+            raise ValueError(f"{work_id} has invalid durable engineering_state")
+        enriched = dict(item)
+        for field in (
+            "engineering_state", "severity", "usability_impact", "roadmap_unlock",
+            "dependency_unlock", "risk", "effort", "evidence_refs", "next_gate",
+        ):
+            if field in prior:
+                enriched[field] = prior[field]
+        merged.append(enriched)
+    assert_no_orphaned_actionable_issues(merged)
+    return merged
