@@ -1,6 +1,13 @@
 from hypothesis import given, strategies as st
 
-from project_orchestrator.decision import classify_pr, next_actions
+import pytest
+
+from project_orchestrator.decision import (
+    assert_pr_accountability,
+    classify_pr,
+    next_actions,
+    pr_accountability,
+)
 
 
 MERGEABLE_STATES = {"RESOLVED", "CONFIRMED_NONE"}
@@ -31,9 +38,7 @@ def test_failed_existing_pr_outranks_green_merge_and_new_work() -> None:
         ]
     }
     actions = next_actions(snapshot)
-    assert len(actions) == 1
-    assert actions[0].priority == "P1"
-    assert actions[0].kind == "repair_pr"
+    assert [(a.priority, a.kind) for a in actions] == [("P1", "repair_pr"), ("P2", "merge_pr")]
 
 
 def test_green_requires_completed_successful_required_checks() -> None:
@@ -99,3 +104,29 @@ def test_confirmed_no_required_checks_can_still_be_green() -> None:
     pr["required_checks"] = []
     pr["required_checks_state"] = "CONFIRMED_NONE"
     assert classify_pr(pr) == "GREEN"
+
+
+def test_pr_accountability_disposes_every_open_pr_even_when_priority_hides_it() -> None:
+    failed = green_pr(10)
+    failed["head_sha"] = "red-head"
+    failed["required_checks"][0]["conclusion"] = "failure"
+    green = green_pr(20)
+    green["head_sha"] = "green-head"
+    snapshot = {"projects": [{"id": "p", "repositories": [{"name": "o/r", "open_prs": [failed, green]}]}]}
+
+    # PR work is work-conserving: the red repair is ordered first, but the
+    # simultaneously green merge obligation remains executable in this cycle.
+    assert [a.kind for a in next_actions(snapshot)] == ["repair_pr", "merge_pr"]
+    assert [(d["number"], d["required_action"]) for d in pr_accountability(snapshot)] == [
+        (10, "repair_pr"),
+        (20, "merge_pr"),
+    ]
+
+
+def test_pr_accountability_fails_cycle_when_green_merge_is_silently_missed() -> None:
+    pr = green_pr(20)
+    pr["head_sha"] = "exact-head"
+    snapshot = {"projects": [{"id": "p", "repositories": [{"name": "o/r", "open_prs": [pr]}]}]}
+    with pytest.raises(RuntimeError, match="PR_ACCOUNTABILITY_DEFECT"):
+        assert_pr_accountability(snapshot, [])
+    assert_pr_accountability(snapshot, pr_accountability(snapshot))
