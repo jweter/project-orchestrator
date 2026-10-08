@@ -443,7 +443,6 @@ def dispatch_parallel_builders(
             continue
 
         assigned[slot.product] = index + 1
-        runner_running[runner_id] = runner_running.get(runner_id, 0) + 1
 
         lease_ids: dict[str, str] = {}
         try:
@@ -506,6 +505,9 @@ def dispatch_parallel_builders(
             for resource_id in lease_ids:
                 runtime_leases.release(f"{slot.worker_id}:{resource_id}")
             continue
+        # Only successfully submitted workers occupy runner capacity.
+        # Failed runtime leases or worker submission must not strand a free lane.
+        runner_running[runner_id] = runner_running.get(runner_id, 0) + 1
         dispatched.append(worker_id)
 
     atomic_json(state_root / "dispatch-blocks.json", {
