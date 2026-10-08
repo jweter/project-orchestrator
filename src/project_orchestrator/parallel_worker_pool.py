@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
+import time
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Callable, Generic, TypeVar
 
@@ -96,6 +97,15 @@ class ParallelWorkerPool(Generic[T]):
                 completed[worker_id] = exc
             del self._running[worker_id]
         return completed
+
+    def wait_for_completion(self, timeout: float) -> bool:
+        """Wake the supervisor when any active worker finishes, including pre-wait races."""
+        futures = tuple(work.future for work in self._running.values())
+        if not futures:
+            time.sleep(max(0.0, timeout))
+            return False
+        completed, _ = wait(futures, timeout=max(0.0, timeout), return_when=FIRST_COMPLETED)
+        return bool(completed)
 
     def snapshot(self) -> dict:
         by_product = {
