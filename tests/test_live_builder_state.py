@@ -40,7 +40,8 @@ def test_run_builder_replaces_stale_worker_failure_before_child_launch(tmp_path,
     )
 
     assert rc==0
-    assert observed["status"]=="BUILDER_RUNNING"
+    assert observed["status"]=="BUILDER_STARTING"
+    assert "worker" not in observed
     assert observed["invocation_id"]==invocation_id
     assert observed["grant_id"]=="g-live"
     assert observed["worker_id"]=="everward-worker-1"

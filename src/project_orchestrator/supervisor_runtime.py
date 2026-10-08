@@ -342,6 +342,25 @@ def write_execution_grant(
         release_issue_lock_fn(lock)
 
 
+def bind_builder_worker_identity(state_path: Path, invocation_id: str, worker: dict) -> bool:
+    """Transfer starting-state ownership from the supervisor to the concrete child."""
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return False
+    if (
+        not isinstance(payload, dict)
+        or payload.get("status") != "BUILDER_STARTING"
+        or payload.get("invocation_id") != invocation_id
+    ):
+        return False
+    payload["status"] = "BUILDER_RUNNING"
+    payload["worker"] = worker
+    payload["worker_bound_at_utc"] = datetime.now(UTC).isoformat()
+    atomic_json(state_path, payload)
+    return True
+
+
 def mark_builder_running(
     builder_state: Path,
     builder_output: Path,
@@ -359,20 +378,12 @@ def mark_builder_running(
         grant_id = None
     payload = {
         "schema_version": 1,
-        "status": "BUILDER_RUNNING",
+        "status": "BUILDER_STARTING",
         "invocation_id": invocation_id,
         "worker_id": worker_id,
         "runner_id": runner_id,
         "runtime_id": runtime_id,
         "started_at_utc": datetime.now(UTC).isoformat(),
-        # Binds this BUILDER_RUNNING record to the concrete process/incarnation
-        # holding it, so a future cycle can prove the record dead rather than
-        # trusting a status string a crashed process can never update again.
-        "worker": {
-            "host": socket.gethostname(),
-            "pid": os.getpid(),
-            "process_start_fingerprint": fingerprint_fn(None),
-        },
     }
     if grant_id:
         payload["grant_id"] = grant_id
