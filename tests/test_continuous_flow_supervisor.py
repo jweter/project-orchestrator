@@ -1641,6 +1641,9 @@ def test_actor_revision_timeout_fails_closed(tmp_path,monkeypatch):
 
 
 def test_actor_revision_rejects_failed_git_exit(tmp_path,monkeypatch):
-    from types import SimpleNamespace
-    monkeypatch.setattr(supervisor.subprocess,"run",lambda *a,**k: SimpleNamespace(returncode=128,stdout="stale"))
+    import subprocess
+    def failed(argv,**kwargs):
+        assert kwargs["check"] is True
+        raise subprocess.CalledProcessError(128,argv,output="stale")
+    monkeypatch.setattr(supervisor.subprocess,"run",failed)
     assert supervisor.actor_revision(tmp_path) is None
