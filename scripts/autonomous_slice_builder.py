@@ -15,6 +15,7 @@ from project_orchestrator.grant_lifecycle import (
     release_lifecycle_lock as _release_lifecycle_lock,
 )
 from project_orchestrator.state_io import atomic_json
+from project_orchestrator.supervisor_runtime import bind_builder_worker_identity
 from project_orchestrator.builder_promotion import promote_candidate
 
 ACTIVE_RUNTIME_ID="native-windows"
@@ -920,7 +921,7 @@ def refresh_base_before_publish(ws:Path,main_branch:str,expected_base:str)->dict
 
 
 def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_products:set[str]|None=None,eligible_repos:set[str]|None=None,
-               execution_grant:Path|None=None,worker_id:str|None=None)->dict[str,Any]:
+               execution_grant:Path|None=None,worker_id:str|None=None,invocation_id:str|None=None)->dict[str,Any]:
     if manual_human_mode_enabled(state_path):
         return {"status":"USER_ACTIVE","manual_human_mode":True}
     idle=windows_idle_seconds()
@@ -934,7 +935,6 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
     if dry_run:
         result={"status":"DRY_RUN","repository":repo,"last_repo_index":idx,"last_repository":repo}
         atomic_json(state_path,result); return result
-
     ws=ensure_workspace(repo,workspace_root,worker_id)
     main="main"
     if execution_grant is not None:
@@ -967,6 +967,8 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         worker=worker_incarnation()
         if not claim_execution_grant(execution_grant,repo,expected,worker=worker):
             return {"status":"EXECUTION_GRANT_CLAIM_FAILED","repository":repo}
+        if invocation_id is not None and not bind_builder_worker_identity(state_path,invocation_id,worker):
+            return {"status":"WORKER_STATE_BIND_FAILED","repository":repo}
         heartbeat_stop,heartbeat_thread=start_grant_heartbeat(execution_grant,worker)
         advance_grant_stage(execution_grant,"BASE_VERIFIED",repository=repo,base_sha=base,
                             capability_id=slice_authority["capability_id"],slice_id=slice_authority["slice_id"])
@@ -979,7 +981,6 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
         raise RuntimeError("branch creation failed")
     if execution_grant is not None:
         advance_grant_stage(execution_grant,"BRANCH_CREATED",repository=repo,base_sha=base,branch=branch)
-
     task_prompt=prompt_for_slice(repo,slice_authority,state_path) if slice_authority is not None else prompt_for(repo,state_path)
     selected_runner=(slice_authority or {}).get("runner_id") if slice_authority is not None else None
     execution_started_at=datetime.now(UTC)
@@ -1226,7 +1227,8 @@ def main()->int:
         else:
             eligible_repos=None
             eligible=None if args.eligible_products is None else {p for p in args.eligible_products.split(",") if p}
-        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant,worker_identity)
+        result=build_once(workspace,state,args.dry_run,eligible,eligible_repos,args.execution_grant,worker_identity,
+                          invocation_id=invocation_id)
         result={**result,"invocation_id":invocation_id}
         atomic_json(state,result)
         if args.execution_grant:

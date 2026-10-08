@@ -612,6 +612,37 @@ def test_claim_persists_concrete_worker_incarnation(tmp_path):
     assert record["worker"]==worker
     assert record["state"]=="CLAIMED"
 
+def test_bind_builder_worker_identity_transfers_starting_state_to_child(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"builder.json"
+    state.write_text(json.dumps({
+        "status":"BUILDER_STARTING",
+        "invocation_id":"inv-1",
+        "runner_id":"aider-ollama",
+        "runtime_id":"native-windows",
+    }),encoding="utf-8")
+    worker={"host":"Azathoth","pid":4242,"process_start_fingerprint":"windows:123","lease_token":"token"}
+    assert builder.bind_builder_worker_identity(state,"inv-1",worker)
+    saved=json.loads(state.read_text(encoding="utf-8"))
+    assert saved["status"]=="BUILDER_RUNNING"
+    assert saved["worker"]==worker
+    assert saved["runner_id"]=="aider-ollama"
+    assert saved["runtime_id"]=="native-windows"
+    assert saved["worker_bound_at_utc"]
+
+
+def test_bind_builder_worker_identity_rejects_stale_invocation(tmp_path):
+    import json
+    import scripts.autonomous_slice_builder as builder
+    state=tmp_path/"builder.json"
+    original={"status":"BUILDER_STARTING","invocation_id":"new"}
+    state.write_text(json.dumps(original),encoding="utf-8")
+    worker={"host":"Azathoth","pid":4242,"process_start_fingerprint":"windows:123"}
+    assert not builder.bind_builder_worker_identity(state,"old",worker)
+    assert json.loads(state.read_text(encoding="utf-8"))==original
+
+
 def test_stale_worker_cannot_heartbeat_new_incarnation(tmp_path, monkeypatch):
     import json, threading
     import scripts.autonomous_slice_builder as builder
