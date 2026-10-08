@@ -275,6 +275,46 @@ def test_observe_live_heads_refreshes_stale_origin_main_without_moving_workspace
     assert ["git","fetch","origin","main"] in calls
     assert not any(cmd[:3]==["git","rev-parse","HEAD"] for cmd in calls)
 
+def test_observe_live_heads_probes_independent_workspaces_concurrently(tmp_path):
+    import json
+    from threading import Barrier
+    from project_orchestrator.activation_capability import observe_live_heads
+
+    repo_root=tmp_path/"actor"
+    (repo_root/"engineering").mkdir(parents=True)
+    (repo_root/"engineering"/"hands-off-evolution.json").write_text(
+        json.dumps({"products":{"x":["jweter/VoiceStudio","jweter/Project-Everward"]}}))
+    workspace_root=tmp_path/"workspaces"
+    (workspace_root/"VoiceStudio").mkdir(parents=True)
+    (workspace_root/"Project-Everward").mkdir(parents=True)
+    state_root=tmp_path/"state"
+    state_root.mkdir()
+    rendezvous=Barrier(2)
+
+    class Result:
+        returncode=0
+        def __init__(self,stdout): self.stdout=stdout
+
+    def run(argv,**kwargs):
+        assert kwargs["timeout"] <= 30
+        name=kwargs["cwd"].name
+        if argv[:3]==["git","remote","get-url"]:
+            return Result(f"https://github.com/jweter/{name}.git\n")
+        if argv[:3]==["git","ls-remote","origin"]:
+            rendezvous.wait(timeout=5)
+            return Result(f"{name}-sha\trefs/heads/main\n")
+        if argv[:3]==["git","rev-parse","refs/remotes/origin/main"]:
+            return Result(f"{name}-sha\n")
+        raise AssertionError(argv)
+
+    assert observe_live_heads(repo_root,workspace_root,state_root,run_fn=run)==(
+        True,"LIVE_HEADS_OBSERVED")
+    assert json.loads((state_root/"hands-off-live-heads.json").read_text())=={
+        "jweter/VoiceStudio":"VoiceStudio-sha",
+        "jweter/Project-Everward":"Project-Everward-sha",
+    }
+
+
 def test_observe_live_heads_ignores_origin_mismatch(tmp_path, monkeypatch):
     import json
     import scripts.continuous_flow_supervisor as supervisor

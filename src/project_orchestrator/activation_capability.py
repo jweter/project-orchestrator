@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import hashlib
 import json
 import subprocess
@@ -91,33 +93,44 @@ def compile_runtime_capability_authority(workspace_root:Path,state_root:Path)->d
         activation={}
     return compile_declared_capability_graphs(workspace_root,state_root,activation)
 def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path,run_fn=subprocess.run)->tuple[bool,str]:
-    """Snapshot contract-declared workspace identity and HEAD independently of readiness certificates."""
+    """Read fresh repository heads concurrently without relaxing authority."""
     try:
         contract=json.loads((repo_root/"engineering"/"hands-off-evolution.json").read_text(encoding="utf-8"))
         repositories=sorted({repo for repos in contract.get("products",{}).values() for repo in repos})
     except (OSError,json.JSONDecodeError,TypeError):
         return False,"LIVE_HEAD_CONTRACT_UNREADABLE"
-    observed={}
-    for repo in repositories:
+
+    def probe(repo:str)->tuple[str,str]|None:
         ws=workspace_root/repo.split("/",1)[-1]
         if not ws.is_dir():
-            continue
+            return None
         try:
             origin=run_fn(["git","remote","get-url","origin"],cwd=ws,text=True,capture_output=True,check=False,timeout=10)
             remote=run_fn(["git","ls-remote","origin","refs/heads/main"],cwd=ws,text=True,capture_output=True,check=False,timeout=30)
             if origin.returncode or remote.returncode or repo.lower() not in origin.stdout.lower():
-                continue
+                return None
             value=remote.stdout.split()[0] if remote.stdout.strip() else ""
             if not value:
-                continue
+                return None
             tracking=run_fn(["git","rev-parse","refs/remotes/origin/main"],cwd=ws,text=True,capture_output=True,check=False,timeout=10)
             if tracking.returncode or tracking.stdout.strip()!=value:
                 fetched=run_fn(["git","fetch","origin","main"],cwd=ws,text=True,capture_output=True,check=False,timeout=30)
                 if fetched.returncode:
-                    continue
+                    return None
         except (subprocess.TimeoutExpired,OSError):
-            continue
-        observed[repo]=value
+            return None
+        return repo,value
+
+    # Bound network/git concurrency to three independent repository workspaces.
+    # All remote checks must still pass; stale cached heads never authorize work.
+    observed={}
+    available=[repo for repo in repositories if (workspace_root/repo.split("/",1)[-1]).is_dir()]
+    if available:
+        with ThreadPoolExecutor(max_workers=min(3,len(available))) as pool:
+            for result in pool.map(probe,available):
+                if result is not None:
+                    repo,head=result
+                    observed[repo]=head
     atomic_json(state_root/"hands-off-live-heads.json",observed)
     return bool(observed),"LIVE_HEADS_OBSERVED" if observed else "LIVE_HEADS_UNAVAILABLE"
 
