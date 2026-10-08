@@ -60,6 +60,27 @@ def process_start_fingerprint(pid: int | None = None) -> str | None:
     return None
 
 
+def _windows_pid_liveness(pid: int) -> str:
+    """Check a Windows process without sending it a signal."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if not handle:
+            return "DEAD" if ctypes.get_last_error() in {87, 1168} else "UNKNOWN"
+        try:
+            exit_code = wintypes.DWORD()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return "UNKNOWN"
+            return "ALIVE" if exit_code.value == 259 else "DEAD"
+        finally:
+            kernel32.CloseHandle(handle)
+    except (AttributeError, OSError):
+        return "UNKNOWN"
+
+
 def worker_liveness(worker: dict | None) -> str:
     """Return ALIVE, DEAD, or UNKNOWN without guessing across hosts."""
     if not isinstance(worker, dict):
@@ -72,19 +93,20 @@ def worker_liveness(worker: dict | None) -> str:
         return "UNKNOWN"
     if pid <= 0:
         return "UNKNOWN"
-    # Establish process existence separately from creation-identity probing.
-    # Fingerprint readers intentionally return None for both an absent process
-    # and an unreadable process, so they cannot safely prove death by themselves.
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return "DEAD"
-    except PermissionError:
-        pass
-    except OSError as exc:
-        if sys.platform == "win32" and getattr(exc, "winerror", None) == 87:
+    # On Windows, os.kill(pid, 0) is destructive; use a read-only handle.
+    if sys.platform == "win32":
+        existence = _windows_pid_liveness(pid)
+        if existence != "ALIVE":
+            return existence
+    else:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
             return "DEAD"
-        return "UNKNOWN"
+        except PermissionError:
+            pass
+        except OSError:
+            return "UNKNOWN"
     expected = worker.get("process_start_fingerprint")
     if expected:
         try:
