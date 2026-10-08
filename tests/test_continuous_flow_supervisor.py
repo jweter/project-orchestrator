@@ -1647,3 +1647,18 @@ def test_actor_revision_rejects_failed_git_exit(tmp_path,monkeypatch):
         raise subprocess.CalledProcessError(128,argv,output="stale")
     monkeypatch.setattr(supervisor.subprocess,"run",failed)
     assert supervisor.actor_revision(tmp_path) is None
+def test_live_head_probe_timeout_fails_closed(tmp_path,monkeypatch):
+    import subprocess
+    from project_orchestrator.activation_capability import observe_live_heads
+    repo_root=tmp_path/"actor"
+    workspace_root=tmp_path/"workspaces"
+    state_root=tmp_path/"state"
+    (repo_root/"engineering").mkdir(parents=True)
+    (repo_root/"engineering"/"hands-off-evolution.json").write_text('{"products":{"test":["jweter/example"]}}')
+    (workspace_root/"example").mkdir(parents=True)
+    def timeout(argv,**kwargs):
+        assert kwargs["timeout"] == 10
+        raise subprocess.TimeoutExpired(argv,10)
+    ok,reason=observe_live_heads(repo_root,workspace_root,state_root,run_fn=timeout)
+    assert (ok,reason)==(False,"LIVE_HEADS_UNAVAILABLE")
+    assert (state_root/"hands-off-live-heads.json").read_text().strip()=="{}"
