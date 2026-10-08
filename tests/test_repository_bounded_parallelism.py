@@ -1,4 +1,6 @@
 import json
+
+import pytest
 import scripts.continuous_flow_supervisor as supervisor
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from tests.test_parallel_worker_pool import ManualExecutor
@@ -135,3 +137,65 @@ def test_dispatch_does_not_probe_runner_health_when_cached_runner_is_available(t
         pool,tmp_path,tmp_path,tmp_path,["voicestudio"])
 
     assert workers==["voicestudio-worker-1"]
+
+
+@pytest.mark.parametrize("failure", ["lease", "submit"])
+def test_failed_worker_start_does_not_consume_runner_capacity(tmp_path, monkeypatch, failure):
+    """A failed first slot must not starve another eligible product lane."""
+    from project_orchestrator.runner_registry import RunnerManifest, RunnerRegistry
+
+    activation = {"products": {
+        "rocksmith": {"repositories": {"jweter/rocksmith": "a"}},
+        "everward": {"repositories": {"jweter/everward": "b"}},
+    }}
+    (tmp_path / "hands-off-activation.json").write_text(json.dumps(activation), encoding="utf-8")
+
+    def ready(_state, _activation, product, _limit):
+        return [(f"jweter/{product}", product, {
+            "repository": f"jweter/{product}",
+            "exact_head": product,
+            "slice_id": f"{product}-slice",
+            "allowed_paths": [f"{product}/"],
+        })]
+
+    monkeypatch.setattr(supervisor, "ready_task_batch", ready)
+    leases = supervisor.RuntimeLeasePool(supervisor.DEFAULT_RUNTIME_CAPACITIES)
+    monkeypatch.setattr(supervisor, "RUNTIME_LEASES", leases)
+    pool = ParallelWorkerPool(max_workers_per_product=1, max_total_workers=2,
+                              executor_factory=ManualExecutor)
+    runners = RunnerRegistry([
+        RunnerManifest("aider-ollama", frozenset({"code", "local", "windows", "offline"}), 1, 30),
+    ])
+    if failure == "lease":
+        original_acquire = leases.acquire
+        calls = []
+
+        def fail_first_lease(*args, **kwargs):
+            calls.append(True)
+            if len(calls) == 1:
+                raise RuntimeError("RUNTIME_LEASE_UNAVAILABLE")
+            return original_acquire(*args, **kwargs)
+
+        monkeypatch.setattr(leases, "acquire", fail_first_lease)
+    else:
+        original_submit = pool.submit
+        calls = []
+
+        def fail_first_submit(*args, **kwargs):
+            calls.append(True)
+            if len(calls) == 1:
+                raise RuntimeError("WORKER_SUBMISSION_REJECTED")
+            return original_submit(*args, **kwargs)
+
+        monkeypatch.setattr(pool, "submit", fail_first_submit)
+
+    workers = supervisor.dispatch_parallel_builders(
+        pool, tmp_path, tmp_path, tmp_path, ["rocksmith", "everward"], runners
+    )
+    assert workers == ["everward-worker-1"]
+    assert pool.snapshot()["running_total"] == 1
+    blocks = json.loads((tmp_path / "dispatch-blocks.json").read_text(encoding="utf-8"))["blocked"]
+    assert any(row["product"] == "rocksmith" and row["reason"] == (
+        "RUNTIME_LEASE_UNAVAILABLE" if failure == "lease" else "WORKER_SUBMISSION_REJECTED"
+    ) for row in blocks)
+    assert not any(row["reason"] == "NO_ELIGIBLE_RUNNER" for row in blocks)
