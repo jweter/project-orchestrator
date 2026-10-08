@@ -63,3 +63,30 @@ def test_guardian_singleton_is_atomic_and_os_released(tmp_path):
     replacement = network.acquire_guardian(tmp_path)
     assert replacement is not None
     replacement.close()
+
+
+def test_mid_recovery_human_handoff_interrupts_network_operations(tmp_path, monkeypatch):
+    commands = []
+    # Keep the actual laptop owner marker out of this isolated fixture.
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "isolated-localappdata"))
+    monkeypatch.setattr(network, "snapshot", lambda _root: None)
+    monkeypatch.setattr(network, "internet_ok", lambda: False)
+    monkeypatch.setattr(network.time, "sleep", lambda _seconds: None)
+
+    def fake_run(command):
+        commands.append(command)
+        (tmp_path / "human-mode.json").write_text('{"enabled":true}')
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(network, "run", fake_run)
+    assert network.recover(tmp_path, allow_reboot=True) is False
+    assert len(commands) == 1
+    assert commands[0][:2] == ["netsh", "wlan"]
+    assert "RECOVERY_INTERRUPTED_HUMAN_MODE" in (tmp_path / "network-recovery.jsonl").read_text()
+    assert not network.reboot_latched(tmp_path)
+
+
+def test_preexisting_human_marker_prevents_even_a_recovery_snapshot(tmp_path, monkeypatch):
+    (tmp_path / "human-mode.json").write_text("{}")
+    monkeypatch.setattr(network, "snapshot", lambda _root: (_ for _ in ()).throw(AssertionError("snapshot ran")))
+    assert network.recover(tmp_path, allow_reboot=True) is False

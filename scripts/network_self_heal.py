@@ -105,10 +105,11 @@ def snapshot(state_root: Path) -> None:
 
 
 def recover(state_root: Path, allow_reboot: bool = False) -> bool:
-    snapshot(state_root)
+    # Check ownership before even collecting a system snapshot.
     if human_mode(state_root):
         log(state_root, "RECOVERY_SUPPRESSED_HUMAN_MODE")
         return False
+    snapshot(state_root)
 
     steps = [
         ("wlan_reconnect", ["netsh", "wlan", "connect", "name=ATTgw6SIjk"]),
@@ -128,6 +129,11 @@ def recover(state_root: Path, allow_reboot: bool = False) -> bool:
         ),
     ]
     for name, command in steps:
+        # Human ownership can change during the multistep recovery sequence.
+        # Never touch the user's Wi-Fi or network adapter after that transition.
+        if human_mode(state_root):
+            log(state_root, "RECOVERY_INTERRUPTED_HUMAN_MODE", before_step=name)
+            return False
         try:
             result = run(command)
             log(state_root, name, rc=result.returncode, stderr=result.stderr[-1000:])
