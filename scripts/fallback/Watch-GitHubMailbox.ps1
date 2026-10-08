@@ -114,6 +114,9 @@ function Test-ActorRepoClean {
 }
 
 function Invoke-SafeActorSync {
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+  }
   $workers=@(Get-ActiveProductWorkers)
   if($workers.Count -gt 0){
     return @{status="DEFERRED_ACTIVE_PRODUCT_WORKERS";consume=$false;worker_count=$workers.Count}
@@ -135,6 +138,9 @@ function Invoke-SafeActorSync {
   $workers=@(Get-ActiveProductWorkers)
   if($workers.Count -gt 0){
     return @{status="DEFERRED_ACTIVE_PRODUCT_WORKERS";consume=$false;worker_count=$workers.Count}
+  }
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=$workers.Count}
   }
   git -C $ActorRepo checkout -B main origin/main --quiet
   if($LASTEXITCODE -ne 0){
@@ -177,6 +183,9 @@ function Invoke-SafeSupervisorRestart {
 }
 
 function Invoke-RemoteControlRestart {
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+  }
   $tasks=@(Get-ScheduledTask|Where-Object{
     $_.TaskName -match 'Azathoth.*Remote|Remote.*Desktop.*Commander|Desktop.*Commander'
   })
@@ -190,6 +199,9 @@ function Invoke-RemoteControlRestart {
 }
 
 function Invoke-ControlPlaneRecovery {
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+  }
   $remote=Invoke-RemoteControlRestart
   if($remote.status -ne "COMPLETED"){return $remote}
   if(Test-HumanMode){
@@ -199,6 +211,9 @@ function Invoke-ControlPlaneRecovery {
 }
 
 function Invoke-SafeMainDeploy {
+  if(Test-HumanMode){
+    return @{status="HUMAN_MODE_ACTIVE";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+  }
   $sync=Invoke-SafeActorSync
   if($sync.status -ne "COMPLETED"){return $sync}
   $restart=Invoke-SafeSupervisorRestart
@@ -207,6 +222,8 @@ function Invoke-SafeMainDeploy {
 }
 
 while($true){
+  # No Git operations, recovery, or state mutations while the owner has the laptop.
+  if(Test-HumanMode){ Start-Sleep -Seconds 30; continue }
   try{
     git -C $ControlRepo pull --ff-only --quiet
     $c=Get-Content (Join-Path $ControlRepo "control\mailbox.json") -Raw|ConvertFrom-Json
@@ -251,13 +268,23 @@ while($true){
             $result=@{status="COMPLETED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
           }
           "FULL_POWER" {
-            Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
-            Set-WorkerTasksEnabled $true
-            $result=Invoke-SafeSupervisorKick
+            # A queued control-plane command must never clear a newly asserted
+            # local owner lock. Only the deliberate local/dashboard handback may.
+            if(Test-HumanMode){
+              $result=@{status="REJECTED_USE_TAKE_THE_WHEEL";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+            } else {
+              Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
+              Set-WorkerTasksEnabled $true
+              $result=Invoke-SafeSupervisorKick
+            }
           }
           "REBOOT_WINDOWS" {
-            $result=@{status="REBOOT_ACCEPTED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
-            shutdown.exe /r /t 15 /d p:4:1 /c "Azathoth authenticated control-plane reboot"
+            if(Test-HumanMode -or (Get-Process -Name Rocksmith2014 -ErrorAction SilentlyContinue)){
+              $result=@{status="REJECTED_OWNER_CONTROL_OR_GAME";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+            } else {
+              $result=@{status="REBOOT_ACCEPTED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+              shutdown.exe /r /t 15 /d p:4:1 /c "Azathoth authenticated control-plane reboot"
+            }
           }
         }
         $receipt=@{

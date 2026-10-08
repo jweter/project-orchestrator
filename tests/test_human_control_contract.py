@@ -54,3 +54,36 @@ def test_local_human_mode_keeps_control_plane_and_dashboard_alive():
     assert "Azathoth-Dashboard-Control" not in text
     assert "Guard-GitHubMailbox.ps1" not in text
     assert "foundry_dashboard_server.py" not in text
+
+
+def test_remote_recovery_and_deploy_have_owner_veto_before_side_effects():
+    text = FALLBACK.read_text(encoding="utf-8")
+    remote = text[text.index("function Invoke-RemoteControlRestart"):text.index("function Invoke-ControlPlaneRecovery")]
+    recovery = text[text.index("function Invoke-ControlPlaneRecovery"):text.index("function Invoke-SafeMainDeploy")]
+    deploy = text[text.index("function Invoke-SafeMainDeploy"):text.index("while($true){")]
+    assert remote.index("if(Test-HumanMode)") < remote.index("Enable-ScheduledTask")
+    assert recovery.index("if(Test-HumanMode)") < recovery.index("Invoke-RemoteControlRestart")
+    assert deploy.index("if(Test-HumanMode)") < deploy.index("Invoke-SafeActorSync")
+
+
+def test_mailbox_pauses_before_git_operations_and_denies_game_reboots():
+    text = FALLBACK.read_text(encoding="utf-8")
+    loop = text[text.index("while($true){"):]
+    assert loop.index("if(Test-HumanMode)") < loop.index("git -C $ControlRepo pull")
+    action = text[text.index('"REBOOT_WINDOWS" {'):]
+    assert "REJECTED_OWNER_CONTROL_OR_GAME" in action
+    assert action.index("if(Test-HumanMode") < action.index("shutdown.exe")
+
+
+def test_stale_mailbox_full_power_cannot_clear_owner_lock():
+    text = FALLBACK.read_text(encoding="utf-8")
+    full = text[text.index('"FULL_POWER" {'):text.index('"REBOOT_WINDOWS" {')]
+    assert full.index("if(Test-HumanMode)") < full.index("Remove-Item -Force $humanMode")
+    assert "REJECTED_USE_TAKE_THE_WHEEL" in full
+
+
+def test_actor_sync_rechecks_human_lock_before_git_checkout():
+    text = FALLBACK.read_text(encoding="utf-8")
+    sync = text[text.index("function Invoke-SafeActorSync"):text.index("function Invoke-SafeSupervisorKick")]
+    assert sync.index("if(Test-HumanMode)") < sync.index("git -C $ActorRepo fetch")
+    assert sync.index("if(Test-HumanMode)", sync.index("git -C $ActorRepo fetch")) < sync.index("git -C $ActorRepo checkout")
