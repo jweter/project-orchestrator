@@ -43,7 +43,6 @@ def _acquire_lifecycle_lock(path:Path):
     """Compatibility facade over the extracted lifecycle lock authority."""
     return acquire_lifecycle_lock(path)
 
-
 def _release_lifecycle_lock(handle)->None:
     """Compatibility facade over the extracted lifecycle lock authority."""
     release_lifecycle_lock(handle)
@@ -549,7 +548,8 @@ def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,
 
 
 def actor_revision(repo:Path)->str|None:
-    return subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False).stdout.strip() or None
+    try: return subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=True,timeout=10).stdout.strip() or None
+    except (subprocess.TimeoutExpired,subprocess.CalledProcessError,OSError): return None
 
 def publish_generation_heartbeat(state:Path,*,process_instance_id:str,burst_id:str,
                                  actor_revision:str|None,status:str="RUNNING_CURRENT")->None:

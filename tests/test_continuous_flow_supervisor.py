@@ -1629,3 +1629,21 @@ def test_resume_pushed_orphan_does_not_accept_existing_pr_at_wrong_head(tmp_path
     assert supervisor.resume_orphan_branch(
         "jweter/rock",tmp_path,"actor/autonomous-x","ORPHAN_PUSHED_NO_PR",
         {"head_sha":"head","remote_head_sha":"head"})=="RECOVERY_PR_CREATE_FAILED"
+
+def test_actor_revision_timeout_fails_closed(tmp_path,monkeypatch):
+    import subprocess
+    def hung(argv,**kwargs):
+        assert argv == ["git","rev-parse","HEAD"]
+        assert kwargs["timeout"] == 10
+        raise subprocess.TimeoutExpired(argv,10)
+    monkeypatch.setattr(supervisor.subprocess,"run",hung)
+    assert supervisor.actor_revision(tmp_path) is None
+
+
+def test_actor_revision_rejects_failed_git_exit(tmp_path,monkeypatch):
+    import subprocess
+    def failed(argv,**kwargs):
+        assert kwargs["check"] is True
+        raise subprocess.CalledProcessError(128,argv,output="stale")
+    monkeypatch.setattr(supervisor.subprocess,"run",failed)
+    assert supervisor.actor_revision(tmp_path) is None
