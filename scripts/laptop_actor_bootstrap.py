@@ -117,24 +117,65 @@ def emit_state(state_dir: Path, state: str, **fields: object) -> None:
 
 
 def acquire_single_instance(state_dir: Path) -> int | None:
+    """Kernel-held singleton; a crashed process cannot strand an O_EXCL PID file.
+
+    The file itself is persistent, including when upgrading from the old
+    create-exclusive PID-file implementation. Only the OS lock is authority.
+    """
+    import errno
+
     state_dir.mkdir(parents=True, exist_ok=True)
-    lock = state_dir / "actor.lock"
+    fd = os.open(state_dir / "actor.lock", os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        return None
-    os.write(fd, str(os.getpid()).encode("ascii"))
-    return fd
+        if os.fstat(fd).st_size == 0:
+            os.write(fd, b"0")
+            os.fsync(fd)
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            if exc.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                os.close(fd)
+                return None
+            raise
+        # Update informational PID only while owning the kernel lock.
+        # PID recycling or a stale PID from an earlier crash cannot veto work.
+        os.ftruncate(fd, 0)
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.write(fd, str(os.getpid()).encode("ascii"))
+        os.fsync(fd)
+        return fd
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
 
 
 def release_single_instance(state_dir: Path, fd: int | None) -> None:
     if fd is None:
         return
-    os.close(fd)
     try:
-        (state_dir / "actor.lock").unlink()
-    except FileNotFoundError:
-        pass
+        os.lseek(fd, 0, os.SEEK_SET)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+    # Never unlink the lock: that could allow a second inode/owner race.
 
 
 def _windows_cpu_percent(sample_seconds: float = 0.1) -> float | None:
