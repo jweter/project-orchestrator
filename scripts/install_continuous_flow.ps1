@@ -12,8 +12,10 @@ $Startup = [Environment]::GetFolderPath("Startup")
 $Launcher = Join-Path $Startup "ExponentialEngine-ContinuousFlow.cmd"
 $Log = Join-Path $StateRoot "startup.log"
 $HumanMode = Join-Path $StateRoot "human-mode.json"
+$OwnerCheck = 'powershell.exe -NoProfile -Command "try{$m=Get-Content -LiteralPath ''' + $HumanMode + ''' -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop;if($m.enabled -ceq $false){exit 0}}catch{};exit 1" >nul 2>&1'
 $Line = '@echo off' + [Environment]::NewLine +
-  'if exist "' + $HumanMode + '" exit /b 0' + [Environment]::NewLine +
+  $OwnerCheck + [Environment]::NewLine +
+  'if errorlevel 1 exit /b 0' + [Environment]::NewLine +
   'start "" /min "' + $Python + '" "' + $Supervisor + '" --repo-root "' + $RepoRoot +
   '" --workspace-root "' + $WorkspaceRoot + '" --state-root "' + $StateRoot +
   '" >> "' + $Log + '" 2>&1'
@@ -21,12 +23,19 @@ Set-Content -Path $Launcher -Value $Line -Encoding ASCII
 Get-CimInstance Win32_Process | Where-Object {
   $_.CommandLine -like "*continuous_flow_supervisor.py*" -and $_.ProcessId -ne $PID
 } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-if (-not (Test-Path $HumanMode)) {
+$OwnerReleased = $false
+try {
+  $OwnerControl = Get-Content -LiteralPath $HumanMode -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+  $OwnerReleased = ($OwnerControl.enabled -ceq $false)
+} catch {
+  $OwnerReleased = $false
+}
+if ($OwnerReleased) {
   Start-Process -FilePath $Python -ArgumentList @(
     $Supervisor,"--repo-root",$RepoRoot,"--workspace-root",$WorkspaceRoot,"--state-root",$StateRoot
   ) -WorkingDirectory $RepoRoot -WindowStyle Hidden
 } else {
-  Write-Host "HUMAN MODE ACTIVE: supervisor installation completed without starting autonomous flow." -ForegroundColor Yellow
+  Write-Host "OWNER CONTROL ACTIVE OR UNVERIFIED: supervisor installation completed without starting autonomous flow." -ForegroundColor Yellow
 }
 Write-Host "CONTINUOUS LAPTOP FLOW INSTALLED (CURRENT USER)" -ForegroundColor Green
 Write-Host "Startup launcher: $Launcher"

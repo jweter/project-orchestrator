@@ -102,6 +102,9 @@ def test_installer_uses_current_user_startup_supervisor():
     assert '[Environment]::GetFolderPath("Startup")' in installer
     assert "ExponentialEngine-ContinuousFlow.cmd" in installer
     assert "continuous_flow_supervisor.py" in installer
+    assert "ConvertFrom-Json" in installer
+    assert "$OwnerControl.enabled -ceq $false" in installer
+    assert "'if exist \"' + $HumanMode + '\" exit /b 0'" not in installer
     assert "Green PR merger: 60-second poll" in installer
     assert "Autonomous builder: 5-minute loop" in installer
 
