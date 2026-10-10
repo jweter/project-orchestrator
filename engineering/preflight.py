@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -11,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "preflight-evidence.json"
 SRC = ROOT / "src"
-PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / f"{os.getpid()}-{int(time.time() * 1000)}"
+PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / ROOT.name
 PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
 PREFLIGHT_ENV = os.environ.copy()
 PREFLIGHT_ENV["PYTHONPATH"] = str(SRC)
@@ -240,4 +241,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    finally:
+        shutil.rmtree(PREFLIGHT_BASETEMP, ignore_errors=True)
