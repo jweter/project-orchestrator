@@ -794,6 +794,7 @@ def run_lifecycle_recovery_pass(
     state_root: Path, workspace_root: Path, *,
     recover_generations_fn: Callable, recover_claims_fn: Callable,
     pending_fn: Callable, preserved_fn: Callable, quarantined_fn: Callable,
+    terminalize_fn: Callable | None = None,
 ) -> dict:
     """Defer persistent Windows lifecycle contention without losing atomic authority."""
     with recovery_lifecycle_write_budget():
@@ -806,11 +807,12 @@ def run_lifecycle_recovery_pass(
                 "queue": pending_fn(state_root, abandoned),
                 "preserved": preserved_fn(workspace_root, state_root),
                 "quarantine_rechecks": quarantined_fn(state_root),
+                "terminalized_quarantines": terminalize_fn(state_root) if terminalize_fn else {},
             }
         except PermissionError:
             return {
                 "publication_blocked": True, "released": [], "abandoned": [],
-                "queue": [], "preserved": {}, "quarantine_rechecks": {},
+                "queue": [], "preserved": {}, "quarantine_rechecks": {}, "terminalized_quarantines": {},
             }
 
 
