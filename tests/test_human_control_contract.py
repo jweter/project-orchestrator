@@ -19,11 +19,22 @@ def test_supervisor_checks_human_ownership_before_instance_and_merge_work():
     assert 'status":"HUMAN_MODE_ACTIVE"' in text
 
 
-def test_startup_launcher_refuses_autonomy_while_human_marker_exists():
+def test_startup_launcher_uses_strict_owner_gate_without_killing_workers():
     text = INSTALLER.read_text(encoding="utf-8")
-    assert '$HumanMode = Join-Path $StateRoot "human-mode.json"' in text
-    assert "'if exist \"' + $HumanMode + '\" exit /b 0'" in text
-    assert "if (-not (Test-Path $HumanMode))" in text
+    assert '$OwnerGate = Join-Path $RepoRoot "scripts\\owner_control_gate.py"' in text
+    assert "'if errorlevel 1 exit /b 0'" in text
+    assert "& $Python $OwnerGate --state-root $StateRoot" in text
+    assert "Stop-Process" not in text
+    assert "$Existing.Count -eq 0" in text
+
+
+def test_fallback_owner_gate_rejects_invalid_marker_and_accepts_explicit_false():
+    text = FALLBACK.read_text(encoding="utf-8")
+    gate = text[text.index("function Test-HumanMode"):text.index("function Get-AutonomousProcesses")]
+    assert "ConvertFrom-Json -ErrorAction Stop" in gate
+    assert "$marker.enabled -isnot [bool]" in gate
+    assert "return [bool]$marker.enabled" in gate
+    assert "catch {" in gate and "return $true" in gate
 
 
 def test_fallback_recovery_cannot_restart_supervisor_during_human_mode():

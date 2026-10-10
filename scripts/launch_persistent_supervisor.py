@@ -192,14 +192,21 @@ def main()->int:
                    help="keep retrying until this launcher becomes authoritative")
     p.add_argument("--stale-seconds",type=int,default=900,
                    help="request graceful generation handoff after canonical supervisor state is this old")
-    a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root);state.mkdir(parents=True,exist_ok=True)
+    a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root)
     activate_repo_imports(repo)
+    from project_orchestrator.human_ownership import human_mode_active
+    # Owner veto precedes network guardian, state writes and supervisor spawn.
+    if human_mode_active(state):
+        return 0
+    state.mkdir(parents=True,exist_ok=True)
     start_network_guardian(repo,state)
     before=load(state/"supervisor-process-instance.json").get("process_instance_id")
     log=state/"persistent-supervisor.log"
     cmd=supervisor_command(repo,a.workspace_root,state,a.builder_seconds,a.merge_seconds,
                            yield_on_interactive_session=a.yield_on_interactive_session)
     flags=getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)|getattr(subprocess,"DETACHED_PROCESS",0)
+    if human_mode_active(state):
+        return 0
     with log.open("ab") as out:
         child=subprocess.Popen(cmd,cwd=repo,stdin=subprocess.DEVNULL,stdout=out,stderr=subprocess.STDOUT,
                                creationflags=flags,close_fds=True,env=supervisor_environment(repo))
@@ -208,6 +215,9 @@ def main()->int:
              "launcher_pid":child.pid,"previous_process_instance_id":before,"status":"PENDING"}
     atomic(state/"persistent-supervisor-launch.json",receipt)
     while time.monotonic()<deadline:
+        # A human handoff during takeover suppresses all further recovery.
+        if human_mode_active(state):
+            return 0
         identity=verified_identity(state,before)
         if identity:
             receipt.update(identity);receipt["status"]="PASS";receipt["verified_at_utc"]=datetime.now(UTC).isoformat()

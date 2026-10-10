@@ -51,8 +51,25 @@ def human_control_roots(state_root: Path) -> tuple[Path, ...]:
 
 
 def human_mode(state_root: Path) -> bool:
-    markers = ("human-mode.json", "give-me-control")
-    return any((root / marker).exists() for root in human_control_roots(state_root) for marker in markers)
+    # A verified disabled JSON marker is not an owner veto. Malformed/unreadable
+    # markers, legacy give-me-control files, and enabled:true remain vetoes.
+    for root in human_control_roots(state_root):
+        if (root / "give-me-control").exists():
+            return True
+        marker = root / "human-mode.json"
+        try:
+            raw = marker.read_text(encoding="utf-8-sig")
+        except FileNotFoundError:
+            continue
+        except (OSError, UnicodeError):
+            return True
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return True
+        if not isinstance(payload, dict) or payload.get("enabled") is not False:
+            return True
+    return False
 
 
 def log(state_root: Path, event: str, **details: object) -> None:

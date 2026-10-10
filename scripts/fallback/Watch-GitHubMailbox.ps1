@@ -37,7 +37,14 @@ function Append-History($o){
 }
 
 function Test-HumanMode {
-  Test-Path $humanMode
+  if(-not (Test-Path -LiteralPath $humanMode)){ return $false }
+  try {
+    $marker = Get-Content -LiteralPath $humanMode -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if($null -eq $marker -or $marker.enabled -isnot [bool]){ return $true }
+    return [bool]$marker.enabled
+  } catch {
+    return $true
+  }
 }
 
 function Get-AutonomousProcesses {

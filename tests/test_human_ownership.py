@@ -1,23 +1,33 @@
+import pytest
 from pathlib import Path
 
 from project_orchestrator.human_ownership import human_mode_active, human_mode_path
 
 
-def test_human_mode_absent_allows_autonomous_ownership(tmp_path: Path):
+def test_missing_legacy_marker_allows_autonomous_ownership(tmp_path: Path):
     assert human_mode_active(tmp_path) is False
 
 
-def test_human_mode_marker_presence_blocks_autonomous_ownership(tmp_path: Path):
-    path = human_mode_path(tmp_path)
-    path.write_text('{"enabled": true}\n', encoding="utf-8")
-    assert human_mode_active(tmp_path) is True
+@pytest.mark.parametrize("content,blocked", [
+    ('{"enabled": true}', True),
+    ('{"enabled": false}', False),
+    ('{"enabled": "false"}', True),
+    ('{"enabled": 0}', True),
+    ('{"enabled": null}', True),
+    ('{}', True),
+    ('{partial', True),
+    ('', True),
+])
+def test_owner_marker_is_strict_and_fail_closed(tmp_path: Path, content: str, blocked: bool):
+    human_mode_path(tmp_path).write_text(content, encoding="utf-8")
+    assert human_mode_active(tmp_path) is blocked
 
 
-def test_malformed_marker_still_blocks_autonomous_ownership(tmp_path: Path):
-    human_mode_path(tmp_path).write_text("{partial", encoding="utf-8")
-    assert human_mode_active(tmp_path) is True
+def test_bom_prefixed_false_is_accepted(tmp_path: Path):
+    human_mode_path(tmp_path).write_text('{"enabled": false}', encoding="utf-8-sig")
+    assert human_mode_active(tmp_path) is False
 
 
-def test_even_disabled_payload_requires_explicit_marker_removal(tmp_path: Path):
-    human_mode_path(tmp_path).write_text('{"enabled": false}\n', encoding="utf-8")
+def test_marker_read_failure_blocks_autonomy(tmp_path: Path):
+    human_mode_path(tmp_path).mkdir()
     assert human_mode_active(tmp_path) is True

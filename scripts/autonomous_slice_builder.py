@@ -213,12 +213,9 @@ def promote_verified_repairs(state_path:Path)->dict[str,Any]:
     return payload
 
 def manual_human_mode_enabled(state_path:Path)->bool:
-    marker=state_path.parent/"human-mode.json"
-    try:
-        payload=json.loads(marker.read_text(encoding="utf-8-sig"))
-        return bool(payload.get("enabled")) if isinstance(payload,dict) else False
-    except (OSError,json.JSONDecodeError,TypeError,ValueError):
-        return False
+    # Keep builder ownership semantics identical to supervisor/recovery gates.
+    from project_orchestrator.human_ownership import human_mode_active
+    return human_mode_active(state_path.parent)
 
 def windows_idle_seconds()->float|None:
     if os.name!="nt": return None
