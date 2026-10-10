@@ -11,7 +11,9 @@ $control = Get-Content -LiteralPath $marker -Raw -ErrorAction Stop | ConvertFrom
 if ($control.enabled -cne $false) { throw 'OWNER_CONTROL_ACTIVE_OR_UNVERIFIED' }
 $script = Join-Path $RepoRoot 'scripts\independent_pr_controller.py'
 if (-not (Test-Path -LiteralPath $script)) { throw 'PR controller script missing' }
-$python = (Get-Command python.exe -ErrorAction Stop).Source
+$consolePython = (Get-Command python.exe -ErrorAction Stop).Source
+$python = Join-Path (Split-Path -Parent $consolePython) 'pythonw.exe'
+if (-not (Test-Path -LiteralPath $python)) { throw 'PYTHONW_REQUIRED_TO_AVOID_GAME_FOCUS_STEALING' }
 $arguments = ('"{0}" --repo-root "{1}" --state-root "{2}"' -f $script, $RepoRoot, $StateRoot)
 $action = New-ScheduledTaskAction -Execute $python -Argument $arguments -WorkingDirectory $RepoRoot
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) -RepetitionInterval (New-TimeSpan -Minutes 2)

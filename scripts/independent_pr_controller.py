@@ -52,6 +52,9 @@ def reconcile(repo_root: Path, state_root: Path) -> dict:
         status = owner_status(state_root)
         if status != "AUTHORIZED":
             raise OwnerControlVeto(status)
+        # Never let gh.exe or Python repair children open a console over Rocksmith.
+        if sys.platform == "win32":
+            kwargs["creationflags"] = int(kwargs.get("creationflags", 0)) | getattr(subprocess, "CREATE_NO_WINDOW", 0)
         return real_run(*args, **kwargs)
 
     # The current conservative merger and CI router both invoke subprocess.run.

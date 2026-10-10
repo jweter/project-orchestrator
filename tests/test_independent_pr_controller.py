@@ -82,3 +82,31 @@ def test_owner_change_before_gh_command_vetoes_mutation(tmp_path, monkeypatch):
     assert intercepted == ['blocked']
     assert result['status'] == 'OWNER_CONTROL_ACTIVE'
     assert result['acted'] is False
+
+def test_controller_launches_children_without_console_on_windows(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    (tmp_path / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def pr_cycle(_):
+        subprocess.run(["gh", "pr", "list"], check=False)
+        return []
+
+    controller = load_controller(monkeypatch, pr_cycle=pr_cycle)
+    monkeypatch.setattr(controller.sys, "platform", "win32")
+    monkeypatch.setattr(controller.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    assert controller.reconcile(tmp_path, tmp_path)["status"] == "RECONCILED"
+    assert calls[0]["creationflags"] & 0x08000000
+
+
+def test_installer_uses_no_console_pythonw():
+    installer = (Path(__file__).resolve().parents[1] / "scripts" /
+                 "install_independent_pr_controller.ps1").read_text(encoding="utf-8")
+    assert "'pythonw.exe'" in installer
+    assert "PYTHONW_REQUIRED_TO_AVOID_GAME_FOCUS_STEALING" in installer
