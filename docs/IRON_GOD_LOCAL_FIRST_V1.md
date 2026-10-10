@@ -122,9 +122,22 @@ tests (idempotency, concurrent claims, strict owner veto, immutable journal,
 reopen recovery and rollback); exact-head full repository preflight; review,
 CI and merge on unchanged GitHub main policy. Never merge on a test-only pass.
 
+## Shadow recovery API (IG-014–016, subsequent local slice)
+
+`project_orchestrator.local_state_recovery` provides a **read-only** health
+assessment (SQLite integrity/schema/WAL mode/append-only triggers and lease
+claim evidence), online consistent SQLite backup, and deterministic JSON export.
+Neither health inspection nor backup turns a local commit into an accepted
+milestone. Backup/export require the explicit owner-control release marker,
+refuse to overwrite existing targets, verify source integrity, stage into a
+unique same-directory temporary file, fsync data, and publish with atomic
+no-overwrite hardlinks. A backup is sealed as a standalone SQLite file
+without a WAL sidecar. Callers are responsible for choosing an approved,
+access-controlled destination; exports may include sanitized evidence and
+must never be uploaded with private payloads or secrets.
+
 ## Next slices
 
-IG-014/015/016: state health and transactional snapshot/backup/JSON export;
 IG-020–026: protected local Git candidate/accepted/milestone/recovery refs
 and orphan-worktree reconciliation; IG-030–036: exact-head integration
 verification and atomic local accepted-baseline promotion; IG-040–049:
