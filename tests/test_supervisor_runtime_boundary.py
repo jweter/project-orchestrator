@@ -52,3 +52,22 @@ def test_lifecycle_recovery_pass_defers_permission_contention(tmp_path):
     assert result["publication_blocked"] is True
     assert result["released"] == []
     assert result["quarantine_rechecks"] == {}
+
+
+def test_lifecycle_recovery_pass_terminalizes_safe_preclaim_quarantines(tmp_path):
+    from project_orchestrator.supervisor_runtime import run_lifecycle_recovery_pass
+
+    seen = []
+    result = run_lifecycle_recovery_pass(
+        tmp_path, tmp_path,
+        recover_generations_fn=lambda _state: [],
+        recover_claims_fn=lambda _state: [],
+        pending_fn=lambda _state, _abandoned: [],
+        preserved_fn=lambda _workspace, _state: {},
+        quarantined_fn=lambda _state: {},
+        terminalize_fn=lambda state: seen.append(state) or {"g": "TERMINALIZED_PRECLAIM_NO_PRODUCT_WORK"},
+    )
+    assert seen == [tmp_path]
+    assert result["terminalized_quarantines"] == {
+        "g": "TERMINALIZED_PRECLAIM_NO_PRODUCT_WORK"
+    }

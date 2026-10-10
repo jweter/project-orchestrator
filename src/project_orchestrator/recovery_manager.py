@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +15,7 @@ from .grant_lifecycle import (
     atomic_lifecycle_json,
     release_lifecycle_lock,
 )
+from .human_ownership import human_mode_active
 
 ISSUE_LEASE_SECONDS = 60
 RECOVERY_GENERATION_LEASE_SECONDS = 60
@@ -403,3 +406,135 @@ def quarantined_grants(state_root: Path) -> dict[str, dict]:
                 "finished_at": record.get("finished_at"),
             }
     return result
+
+
+def _git_text(repo_root: Path, *args: str) -> str | None:
+    completed = subprocess.run(
+        ["git", *args], cwd=repo_root, text=True, capture_output=True, check=False
+    )
+    return completed.stdout if completed.returncode == 0 else None
+
+
+def _verified_durable_preservation(record: dict, proof: dict) -> str | None:
+    evidence = record.get("preserved_work_evidence")
+    if (
+        not isinstance(evidence, dict)
+        or evidence.get("capture_status") != "CAPTURED"
+        or record.get("preserved_work_revalidation") != "PRESERVED_WORK_EXACT"
+    ):
+        return None
+    try:
+        repo_root = Path(proof["repository_path"]).resolve()
+        commit_hint = str(proof["commit_sha"])
+        remote_ref = str(proof["remote_ref"])
+    except (KeyError, TypeError, OSError):
+        return None
+    if not repo_root.is_dir() or not remote_ref.startswith("origin/recovery/"):
+        return None
+    origin = _git_text(repo_root, "remote", "get-url", "origin")
+    repository = str(record.get("repository") or "")
+    if not origin or not repository:
+        return None
+    normalized_origin = origin.strip().replace("git@github.com:", "https://github.com/")
+    if normalized_origin.endswith(".git"):
+        normalized_origin = normalized_origin[:-4]
+    if not normalized_origin.endswith("/" + repository):
+        return None
+    commit = _git_text(repo_root, "rev-parse", f"{commit_hint}^{{commit}}")
+    remote_commit = _git_text(repo_root, "rev-parse", remote_ref)
+    if not commit or not remote_commit or commit.strip() != remote_commit.strip():
+        return None
+    commit = commit.strip()
+    base = str(record.get("base_sha") or "")
+    diff = _git_text(repo_root, "diff", "--binary", base, commit)
+    names = _git_text(repo_root, "diff", "--name-only", base, commit)
+    if diff is None or names is None:
+        return None
+    payload = diff.encode("utf-8", errors="replace")
+    if hashlib.sha256(payload).hexdigest() != evidence.get("diff_sha256"):
+        return None
+    if len(payload) != evidence.get("diff_bytes"):
+        return None
+    if [p for p in names.splitlines() if p] != evidence.get("changed_paths"):
+        return None
+    return commit
+
+
+def terminalize_abandoned_preclaim_quarantines(
+    state_root: Path,
+    now: datetime | None = None,
+    preserved_proofs: dict[str, dict] | None = None,
+) -> dict[str, str]:
+    """Release only quarantines with proof that ownership can end safely."""
+    path = state_root / "hands-off-grant-lifecycle.json"
+    lock = acquire_lifecycle_lock(path)
+    try:
+        if not path.exists() or human_mode_active(state_root):
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            grants = payload.get("grants", {})
+        except (OSError, json.JSONDecodeError, TypeError):
+            return {}
+        current = now or datetime.now(UTC)
+        outcomes: dict[str, str] = {}
+        changed = False
+        preserved_proofs = preserved_proofs or {}
+        verified_preserved: dict[str, str] = {}
+        for grant_id, proof in preserved_proofs.items():
+            record = grants.get(grant_id)
+            if (
+                not isinstance(record, dict)
+                or record.get("state") != "ABANDONED"
+                or record.get("recovery_state") != "QUARANTINED"
+                or record.get("result_status") != "CLAIM_LEASE_EXPIRED_WORKER_DEAD"
+                or not isinstance(proof, dict)
+            ):
+                return {grant_id: "PRESERVATION_PROOF_REJECTED"}
+            commit = _verified_durable_preservation(record, proof)
+            if not commit:
+                return {grant_id: "PRESERVATION_PROOF_REJECTED"}
+            verified_preserved[grant_id] = commit
+        for grant_id, record in grants.items():
+            if not isinstance(record, dict):
+                continue
+            if record.get("state") != "ABANDONED" or record.get("recovery_state") != "QUARANTINED":
+                continue
+            result_status = str(record.get("result_status") or "")
+            if result_status == "CLAIM_LEASE_EXPIRED_WORKER_DEAD":
+                proof = preserved_proofs.get(grant_id)
+                if not isinstance(proof, dict):
+                    continue
+                commit = verified_preserved[grant_id]
+                record["recovery_state"] = "RECOVERED"
+                record["recovery_result"] = "PRESERVED_AS_DURABLE_REMOTE_RECOVERY_COMMIT"
+                record["preserved_recovery_commit"] = commit
+                record["preserved_recovery_ref"] = proof["remote_ref"]
+                record["recovered_at"] = current.isoformat()
+                record.pop("recovery_next_attempt_at", None)
+                outcomes[grant_id] = "TERMINALIZED_DURABLY_PRESERVED_WORK"
+                changed = True
+                continue
+            if not result_status.startswith("BUILDER_EXITED_WITHOUT_CLAIM:"):
+                continue
+            if any((
+                record.get("repository"),
+                record.get("branch"),
+                record.get("head_sha"),
+                record.get("workspace_path"),
+                record.get("preserved_work_evidence"),
+                record.get("recovery_generation"),
+            )):
+                outcomes[grant_id] = "PRESERVED_OR_AMBIGUOUS_QUARANTINE"
+                continue
+            record["recovery_state"] = "RECOVERED"
+            record["recovery_result"] = "TERMINAL_PRECLAIM_NO_PRODUCT_WORK"
+            record["recovered_at"] = current.isoformat()
+            record.pop("recovery_next_attempt_at", None)
+            outcomes[grant_id] = "TERMINALIZED_PRECLAIM_NO_PRODUCT_WORK"
+            changed = True
+        if changed:
+            atomic_lifecycle_json(path, payload)
+        return outcomes
+    finally:
+        release_lifecycle_lock(lock)

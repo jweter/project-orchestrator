@@ -216,7 +216,6 @@ def recheck_quarantined_claims(state_root:Path,now:datetime|None=None,liveness_p
 
 def quarantined_grants(state_root:Path)->dict[str,dict]:
     return _recovery.quarantined_grants(state_root)
-
 def slice_paths_conflict(left:dict,right:dict)->bool:
     return _planning.slice_paths_conflict(left,right)
 
@@ -694,8 +693,8 @@ def main()->int:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
         linear_rc=run_linear_reconciliation(repo,state)
         lifecycle_recovery=_supervisor_runtime.run_lifecycle_recovery_pass(state,workspace,
-            recover_generations_fn=recover_stale_recovery_generations,recover_claims_fn=recover_stale_grant_claims,
-            pending_fn=pending_recovery_grants,preserved_fn=recheck_preserved_work_quarantines,quarantined_fn=recheck_quarantined_claims)
+            recover_generations_fn=recover_stale_recovery_generations,recover_claims_fn=recover_stale_grant_claims,pending_fn=pending_recovery_grants,
+            preserved_fn=recheck_preserved_work_quarantines,quarantined_fn=recheck_quarantined_claims,terminalize_fn=_recovery.terminalize_abandoned_preclaim_quarantines)
         released_recovery_generations,abandoned_grants,recovery_queue=(lifecycle_recovery["released"],lifecycle_recovery["abandoned"],lifecycle_recovery["queue"])
         recovery_results={}; preserved_work_rechecks=lifecycle_recovery["preserved"]; quarantine_rechecks=lifecycle_recovery["quarantine_rechecks"]
         newly_released=[g for g,outcome in quarantine_rechecks.items() if outcome=="RELEASED_TO_RECOVERY"]
