@@ -7,6 +7,7 @@ from project_orchestrator.human_ownership import (
     human_mode_active,
     human_mode_path,
     owner_control_status,
+    owner_state_root,
 )
 
 
@@ -38,3 +39,14 @@ def test_string_false_is_unverified_and_blocks(tmp_path: Path):
     human_mode_path(tmp_path).write_text('{"enabled": "false"}\n', encoding="utf-8")
     assert owner_control_status(tmp_path) == OWNER_CONTROL_UNVERIFIED
     assert human_mode_active(tmp_path) is True
+
+
+def test_nested_worker_uses_canonical_flow_state_marker_over_local_marker(tmp_path: Path):
+    flow = tmp_path / "flow-state"
+    worker = flow / "worker-state" / "worker-1"
+    worker.mkdir(parents=True)
+    human_mode_path(flow).write_text('{"enabled": true}\n', encoding="utf-8")
+    human_mode_path(worker).write_text('{"enabled": false}\n', encoding="utf-8")
+    state_path = worker / "builder.json"
+    assert owner_state_root(state_path) == flow
+    assert owner_control_status(owner_state_root(state_path)) == OWNER_CONTROL_ACTIVE
