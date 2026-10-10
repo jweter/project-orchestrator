@@ -47,7 +47,7 @@ def test_unverified_marker_fails_closed(tmp_path: Path, payload: str):
 
 
 def test_bom_marker_is_supported(tmp_path: Path):
-    human_mode_path(tmp_path).write_text('\ufeff{"enabled": false}', encoding="utf-8")
+    human_mode_path(tmp_path).write_text(chr(0xFEFF) + '{"enabled": false}', encoding="utf-8")
     assert owner_control_status(tmp_path) == AUTHORIZED
 
 
