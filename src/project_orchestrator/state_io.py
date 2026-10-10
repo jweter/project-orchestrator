@@ -98,7 +98,15 @@ def atomic_json(path: Path, payload: dict[str, Any], *, replace_attempts: int = 
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.tmp.{os.getpid()}.{uuid.uuid4().hex}")
     try:
-        tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        # Durability barrier: never rename a buffered, unflushed lifecycle image.
+        # An interrupted write must leave the previous canonical image intact.
+        with tmp.open("wb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        if tmp.stat().st_size != len(encoded):
+            raise OSError("ATOMIC_JSON_STAGING_SIZE_MISMATCH")
         attempts = max(1, replace_attempts)
         for attempt in range(attempts):
             try:
