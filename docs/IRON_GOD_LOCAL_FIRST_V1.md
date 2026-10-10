@@ -130,8 +130,11 @@ claim evidence), online consistent SQLite backup, and deterministic JSON export.
 Neither health inspection nor backup turns a local commit into an accepted
 milestone. Backup/export require the explicit owner-control release marker,
 refuse to overwrite existing targets, verify source integrity, stage into a
-unique same-directory temporary file, fsync data, and publish with atomic
-no-overwrite hardlinks. A backup is sealed as a standalone SQLite file
+unique same-directory temporary file, fsync data, and publish using
+Windows write-through no-replace rename or POSIX hardlink plus directory fsync.
+The health check verifies complete lease-claim evidence and canonical immutable
+trigger definitions. Quiescent inspection uses a sidecar-free immutable SQLite
+reader so TAKE THE WHEEL cannot create WAL files. A backup is sealed as a standalone SQLite file
 without a WAL sidecar. Callers are responsible for choosing an approved,
 access-controlled destination; exports may include sanitized evidence and
 must never be uploaded with private payloads or secrets.

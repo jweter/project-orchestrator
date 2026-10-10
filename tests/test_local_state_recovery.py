@@ -51,7 +51,7 @@ def test_missing_or_unreadable_database_never_returns_healthy(sample):
         db.execute("DROP TRIGGER events_immutable_update")
     result = health_check(store)
     assert result["status"] == "UNHEALTHY"
-    assert "EVENT_IMMUTABILITY_TRIGGERS_MISSING" in result["reasons"]
+    assert "EVENT_IMMUTABILITY_TRIGGERS_INVALID" in result["reasons"]
 
 
 def test_backup_is_consistent_and_does_not_change_source(sample, tmp_path):
@@ -148,3 +148,77 @@ def test_health_and_backup_handle_uri_special_database_paths(tmp_path):
     target = tmp_path / "archive#test.sqlite"
     assert online_backup(store, target)["status"] == "BACKED_UP"
     assert LocalStateStore(target, owner_state_path=owner).snapshot() == store.snapshot()
+
+
+def test_named_noop_trigger_is_not_accepted_as_immutable(sample, tmp_path):
+    store, _ = sample
+    with sqlite3.connect(store.database) as db:
+        db.execute("DROP TRIGGER events_immutable_update")
+        db.execute(
+            "CREATE TRIGGER events_immutable_update BEFORE UPDATE ON events "
+            "BEGIN SELECT 1; END"
+        )
+    result = health_check(store)
+    assert result["status"] == "UNHEALTHY"
+    assert "EVENT_IMMUTABILITY_TRIGGERS_INVALID" in result["reasons"]
+    with pytest.raises(RuntimeError, match="not healthy"):
+        online_backup(store, tmp_path / "untrusted.sqlite")
+    with pytest.raises(RuntimeError, match="not healthy"):
+        export_snapshot(store, tmp_path / "untrusted.json")
+
+
+@pytest.mark.parametrize("tamper", ["kind", "subject", "owner_id", "fingerprint", "payload"])
+def test_complete_lease_claim_evidence_is_required(sample, tmp_path, tamper):
+    store, _ = sample
+    token = store.claim_lease("voice", "worker-1", "real-fingerprint")
+    with sqlite3.connect(store.database) as db:
+        if tamper in {"kind", "subject", "payload"}:
+            db.execute("DROP TRIGGER events_immutable_update")
+            value = {
+                "kind": ("kind", "FAKE"),
+                "subject": ("subject", "not-voice"),
+                "payload": ("evidence_json", '{"lease_id":"wrong"}'),
+            }[tamper]
+            db.execute(f"UPDATE events SET {value[0]}=? WHERE event_id=?",
+                       (value[1], "lease-claimed:" + token))
+            db.execute(
+                "CREATE TRIGGER events_immutable_update BEFORE UPDATE ON events "
+                "BEGIN SELECT RAISE(ABORT, 'immutable event'); END"
+            )
+        elif tamper == "owner_id":
+            db.execute("UPDATE leases SET owner_id='impostor' WHERE lease_id=?", (token,))
+        else:
+            db.execute(
+                "UPDATE leases SET owner_fingerprint='impostor' WHERE lease_id=?", (token,)
+            )
+    health = health_check(store)
+    assert health["status"] == "UNHEALTHY"
+    assert "LEASE_CLAIM_EVIDENCE_INVALID" in health["reasons"]
+    with pytest.raises(RuntimeError, match="not healthy"):
+        online_backup(store, tmp_path / "forged.sqlite")
+
+
+def test_health_does_not_create_wal_sidecars_in_owner_mode(sample):
+    store, owner = sample
+    for suffix in ("-wal", "-shm"):
+        assert not Path(str(store.database) + suffix).exists()
+    owner.write_text('{"enabled": true}', encoding="utf-8")
+    assert health_check(store)["status"] == "HEALTHY"
+    assert not any(Path(str(store.database) + suffix).exists() for suffix in ("-wal", "-shm"))
+    assert store.snapshot()["events"]
+
+
+def test_export_and_backup_publication_is_no_overwrite_even_after_race(sample, tmp_path, monkeypatch):
+    import project_orchestrator.local_state_recovery as module
+    store, _ = sample
+    target = tmp_path / "protected.json"
+    original_publish = module._publish_durably
+
+    def race(temporary, destination):
+        destination.write_bytes(b"created by other worker")
+        return original_publish(temporary, destination)
+
+    monkeypatch.setattr(module, "_publish_durably", race)
+    with pytest.raises(OSError):
+        export_snapshot(store, target)
+    assert target.read_bytes() == b"created by other worker"
