@@ -37,7 +37,14 @@ function Append-History($o){
 }
 
 function Test-HumanMode {
-  Test-Path $humanMode
+  if(-not (Test-Path -LiteralPath $humanMode)){ return $false }
+  try {
+    $control=Get-Content -LiteralPath $humanMode -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop
+    if($control.enabled -isnot [bool]){ return $true }
+    return [bool]$control.enabled
+  } catch {
+    return $true
+  }
 }
 
 function Get-AutonomousProcesses {
@@ -268,12 +275,12 @@ while($true){
             $result=@{status="COMPLETED";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
           }
           "FULL_POWER" {
-            # A queued control-plane command must never clear a newly asserted
-            # local owner lock. Only the deliberate local/dashboard handback may.
+            # FULL_POWER may only resume services after TAKE THE WHEEL has
+            # already released owner control in the persistent marker.
+            # Automation never deletes or rewrites that marker.
             if(Test-HumanMode){
               $result=@{status="REJECTED_USE_TAKE_THE_WHEEL";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
             } else {
-              Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
               Set-WorkerTasksEnabled $true
               $result=Invoke-SafeSupervisorKick
             }

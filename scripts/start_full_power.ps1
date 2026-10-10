@@ -3,7 +3,20 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $humanMode = Join-Path $StateRoot "human-mode.json"
-Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
+$ownerReleased = $false
+if(-not (Test-Path -LiteralPath $humanMode)){
+  $ownerReleased = $true
+} else {
+  try {
+    $ownerControl = Get-Content -LiteralPath $humanMode -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    $ownerReleased = ($ownerControl.enabled -is [bool] -and $ownerControl.enabled -eq $false)
+  } catch {
+    $ownerReleased = $false
+  }
+}
+if(-not $ownerReleased){
+  throw "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL"
+}
 
 $tasks = @(
   "ExponentialEngine-ContinuousFlow-Watchdog",

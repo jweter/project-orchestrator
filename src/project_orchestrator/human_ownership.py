@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 
@@ -14,6 +15,20 @@ OWNER_CONTROL_UNVERIFIED = "OWNER_CONTROL_UNVERIFIED"
 
 def human_mode_path(state_root: Path) -> Path:
     return state_root / HUMAN_MODE_FILENAME
+
+
+def owner_state_root(state_path: Path) -> Path:
+    """Resolve owner authority for top-level or nested per-worker state."""
+    direct = state_path.parent
+    if human_mode_path(direct).exists():
+        return direct
+    for parent in state_path.parents:
+        if parent.name == "flow-state":
+            return parent
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / "ExponentialEngine" / "flow-state"
+    return direct
 
 
 def owner_control_status(state_root: Path) -> str:

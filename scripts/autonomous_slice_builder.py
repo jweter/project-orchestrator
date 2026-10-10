@@ -17,6 +17,7 @@ from project_orchestrator.grant_lifecycle import (
 from project_orchestrator.state_io import atomic_json
 from project_orchestrator.supervisor_runtime import bind_builder_worker_identity
 from project_orchestrator.builder_promotion import promote_candidate
+from project_orchestrator.human_ownership import AUTHORIZED, owner_control_status, owner_state_root
 
 ACTIVE_RUNTIME_ID="native-windows"
 ACTIVE_RUNTIME_FENCE=None
@@ -213,12 +214,8 @@ def promote_verified_repairs(state_path:Path)->dict[str,Any]:
     return payload
 
 def manual_human_mode_enabled(state_path:Path)->bool:
-    marker=state_path.parent/"human-mode.json"
-    try:
-        payload=json.loads(marker.read_text(encoding="utf-8-sig"))
-        return bool(payload.get("enabled")) if isinstance(payload,dict) else False
-    except (OSError,json.JSONDecodeError,TypeError,ValueError):
-        return False
+    """Fail closed unless the owner marker is absent or explicitly disabled."""
+    return owner_control_status(owner_state_root(state_path)) != AUTHORIZED
 
 def windows_idle_seconds()->float|None:
     if os.name!="nt": return None
