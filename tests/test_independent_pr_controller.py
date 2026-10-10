@@ -110,3 +110,5 @@ def test_installer_uses_no_console_pythonw():
                  "install_independent_pr_controller.ps1").read_text(encoding="utf-8")
     assert "'pythonw.exe'" in installer
     assert "PYTHONW_REQUIRED_TO_AVOID_GAME_FOCUS_STEALING" in installer
+    assert "-LogonType Interactive -RunLevel Limited" in installer
+    assert "InteractiveToken" not in installer
