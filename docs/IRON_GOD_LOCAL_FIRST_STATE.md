@@ -1,4 +1,4 @@
-# Iron God — Local-First State Foundation (IG-010/IG-012)
+# Iron God — Local-First State and Git Recovery Foundation (IG-010/012/020)
 
 Status: isolated local engineering candidate; NOT deployed, published, or integrated.
 Parent commit: 9bc3d3c83d36f0a93a20ede86c54f9a0cbd65113
@@ -31,6 +31,16 @@ State transitions require an exact expected state under BEGIN IMMEDIATE. Lost
 races fail closed. This store makes no GitHub requests and has no network
 dependency.
 
+`src/project_orchestrator/local_git_refs.py` provides Git-backed protection
+for candidates, milestones, recovery checkpoints, and publication staging.
+Immutable anchors cannot be retargeted. The accepted baseline uses an atomic
+expected-head compare-and-swap and rejects non-fast-forward candidates.
+Bootstrap of an accepted baseline requires a separately verified release head.
+Mutating operations require the central owner-control gate to be AUTHORIZED;
+malformed/active owner states veto writes. Tests exercise real Git repositories,
+branch deletion plus garbage collection, ref conflicts, stale CAS, and TAKE THE
+WHEEL veto. Neither layer changes any production repository by itself.
+
 ## Deliberate limits
 
 - The acceptance-writing API is **internal only**. It is not wired to workers.
@@ -48,8 +58,10 @@ dependency.
   before any mutating operation. Never remove or toggle human-mode.json
   automatically. Reconcile the source-versus-runtime ownership gate before
   promotion.
-- No protected refs, GitHub branches, PRs, schedules, worker configurations,
-  or user-owned files have been changed by this state-layer candidate.
+- No product-repository refs, GitHub branches, PRs, schedules, worker
+  configurations, or user-owned files were modified. The work is isolated
+  in a local orchestrator Git worktree, and a pre-rebase recovery ref protects
+  the previous candidate SHA. GitHub publication is intentionally deferred.
 
 ## Verification policy
 
@@ -63,7 +75,7 @@ A changed Git head invalidates prior exact-head evidence.
 ## Next build gates
 
 1. IG-011: explicit forward-only SQLite migrations and state backup.
-2. IG-020/026: protected local Git ref creation and orphan worktree recovery.
+2. IG-026: orphaned worktree recovery and protected-ref inventory.
 3. IG-030/036: verified exact-head integration receipts and native preflight.
 4. IG-040/049: publisher transport with retry/backoff and independent CI.
 5. IG-050+: storage governor, off-device checkpoints, and owner-control gates.
