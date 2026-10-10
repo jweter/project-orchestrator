@@ -103,7 +103,12 @@ def test_failed_journal_transition_rolls_back_lease(subject):
     store, _ = subject
     store.initialize()
     # A colliding journal id must never leave a lease with no claiming event.
-    store.append_event("lease-claimed:collision", "SOME_OTHER_EVENT", "x", {})
+    # Simulate an existing legacy/corrupt reservation written outside the public API.
+    with sqlite3.connect(store.database) as db:
+        db.execute(
+            "INSERT INTO events(event_id,kind,subject,evidence_json,recorded_at) VALUES(?,?,?,?,?)",
+            ("lease-claimed:collision", "SOME_OTHER_EVENT", "x", "{}", "legacy"),
+        )
     with pytest.raises(LeaseConflict):
         store.claim_lease("voice", "worker-1", "fingerprint", lease_id="collision")
     assert store.snapshot()["leases"] == []
@@ -145,3 +150,30 @@ def test_reading_absent_database_does_not_create_it(subject):
         store.snapshot()
     assert not store.integrity_check()
     assert not store.database.exists()
+
+
+@pytest.mark.parametrize("forged_prefix", ["lease-released:", "lease-claimed:"])
+def test_user_event_cannot_reserve_internal_lease_ids(subject, forged_prefix):
+    store, _ = subject
+    store.initialize()
+    lease_id = store.claim_lease("rocksmith", "worker", "fp")
+    with pytest.raises(ValueError, match="reserved"):
+        store.append_event(forged_prefix + lease_id, "FORGED", "rocksmith", {})
+    assert store.release_lease("rocksmith", lease_id, "fp")
+    assert store.snapshot()["leases"] == []
+    assert [event["kind"] for event in store.snapshot()["events"]] == [
+        "WORKER_CLAIMED", "WORKER_RELEASED"
+    ]
+
+
+def test_read_only_uri_escapes_uri_special_characters(tmp_path):
+    import os
+
+    owner = tmp_path / "human-mode.json"
+    owner.write_text('{"enabled": false}', encoding="utf-8")
+    filename = "state#question?token.sqlite" if os.name != "nt" else "state#fragment%20.sqlite"
+    store = LocalStateStore(tmp_path / filename, owner_state_path=owner)
+    store.initialize()
+    store.append_event("safe", "SLICE_PLANNED", "s1", {"path": filename})
+    assert store.integrity_check()
+    assert store.snapshot()["events"][0]["event_id"] == "safe"

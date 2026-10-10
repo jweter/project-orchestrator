@@ -145,6 +145,8 @@ class LocalStateStore:
     def append_event(self, event_id: str, kind: str, subject: str,
                      payload: dict[str, object]) -> int:
         """Identical retries preserve event sequence; mismatched retries fail closed."""
+        if event_id.startswith(("lease-claimed:", "lease-released:")):
+            raise ValueError("lease lifecycle event IDs are reserved for internal transitions")
         with self._write() as db:
             return self._event(db, event_id, kind, subject, payload)
 
@@ -199,7 +201,7 @@ class LocalStateStore:
         """Read-only projection; no owner-control mutation authority required."""
         if not self.database.is_file():
             raise FileNotFoundError(self.database)
-        db = sqlite3.connect(f"file:{self.database.as_posix()}?mode=ro", uri=True)
+        db = sqlite3.connect(f"{self.database.resolve().as_uri()}?mode=ro", uri=True)
         db.row_factory = sqlite3.Row
         try:
             version = db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
@@ -216,7 +218,7 @@ class LocalStateStore:
     def integrity_check(self) -> bool:
         if not self.database.is_file():
             return False
-        db = sqlite3.connect(f"file:{self.database.as_posix()}?mode=ro", uri=True)
+        db = sqlite3.connect(f"{self.database.resolve().as_uri()}?mode=ro", uri=True)
         try:
             return db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         finally:
