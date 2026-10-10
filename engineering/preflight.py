@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "preflight-evidence.json"
 SRC = ROOT / "src"
-PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / ROOT.name
+PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / f"{ROOT.name}-{os.getpid()}-{time.time_ns()}"
 PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
 PREFLIGHT_ENV = os.environ.copy()
 PREFLIGHT_ENV["PYTHONPATH"] = str(SRC)
