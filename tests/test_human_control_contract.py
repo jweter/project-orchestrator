@@ -3,6 +3,7 @@ from pathlib import Path
 
 SUPERVISOR = Path("scripts/continuous_flow_supervisor.py")
 INSTALLER = Path("scripts/install_continuous_flow.ps1")
+FULL_POWER = Path("scripts/start_full_power.ps1")
 FALLBACK = Path("scripts/fallback/Watch-GitHubMailbox.ps1")
 
 
@@ -19,11 +20,20 @@ def test_supervisor_checks_human_ownership_before_instance_and_merge_work():
     assert 'status":"HUMAN_MODE_ACTIVE"' in text
 
 
-def test_startup_launcher_refuses_autonomy_while_human_marker_exists():
+def test_startup_launcher_uses_marker_payload_not_marker_presence():
     text = INSTALLER.read_text(encoding="utf-8")
     assert '$HumanMode = Join-Path $StateRoot "human-mode.json"' in text
-    assert "'if exist \"' + $HumanMode + '\" exit /b 0'" in text
-    assert "if (-not (Test-Path $HumanMode))" in text
+    assert "ConvertFrom-Json" in text
+    assert "$OwnerControl.enabled -ceq $false" in text
+    assert "'if exist \"' + $HumanMode + '\" exit /b 0'" not in text
+
+
+def test_full_power_script_requires_prior_owner_release_and_preserves_marker():
+    text = FULL_POWER.read_text(encoding="utf-8")
+    assert "ConvertFrom-Json" in text
+    assert "$ownerControl.enabled -is [bool]" in text
+    assert "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL" in text
+    assert "Remove-Item -Force $humanMode" not in text
 
 
 def test_fallback_recovery_cannot_restart_supervisor_during_human_mode():
@@ -36,14 +46,14 @@ def test_fallback_recovery_cannot_restart_supervisor_during_human_mode():
     assert "Invoke-SafeSupervisorKick" in recovery
 
 
-def test_human_mode_stops_workers_and_full_power_explicitly_removes_lock():
+def test_human_mode_stops_workers_and_full_power_preserves_owner_marker():
     text = FALLBACK.read_text(encoding="utf-8")
     human = text[text.index('"HUMAN_MODE" {'):text.index('"FULL_POWER" {')]
     full = text[text.index('"FULL_POWER" {'):text.index('"REBOOT_WINDOWS" {')]
     assert "Set-Content -Encoding UTF8 $humanMode" in human
     assert "Set-WorkerTasksEnabled $false" in human
     assert "Stop-AutonomousProcesses" in human
-    assert "Remove-Item -Force $humanMode" in full
+    assert "REJECTED_USE_TAKE_THE_WHEEL" in full
     assert "Set-WorkerTasksEnabled $true" in full
     assert "Invoke-SafeSupervisorKick" in full
 
@@ -78,8 +88,9 @@ def test_mailbox_pauses_before_git_operations_and_denies_game_reboots():
 def test_stale_mailbox_full_power_cannot_clear_owner_lock():
     text = FALLBACK.read_text(encoding="utf-8")
     full = text[text.index('"FULL_POWER" {'):text.index('"REBOOT_WINDOWS" {')]
-    assert full.index("if(Test-HumanMode)") < full.index("Remove-Item -Force $humanMode")
+    assert "if(Test-HumanMode)" in full
     assert "REJECTED_USE_TAKE_THE_WHEEL" in full
+    assert "Set-WorkerTasksEnabled $true" in full
 
 
 def test_actor_sync_rechecks_human_lock_before_git_checkout():

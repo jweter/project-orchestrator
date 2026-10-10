@@ -41,6 +41,20 @@ def test_human_mode_suppresses_recovery(tmp_path, monkeypatch):
     assert not network.reboot_latched(tmp_path)
 
 
+def test_disabled_owner_marker_allows_network_recovery(tmp_path, monkeypatch):
+    isolated = tmp_path / "isolated-localappdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(isolated))
+    (tmp_path / "human-mode.json").write_text('{"enabled": false}')
+    assert network.human_mode(tmp_path) is False
+
+
+def test_enabled_owner_marker_blocks_network_recovery(tmp_path, monkeypatch):
+    isolated = tmp_path / "isolated-localappdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(isolated))
+    (tmp_path / "human-mode.json").write_text('{"enabled": true}')
+    assert network.human_mode(tmp_path) is True
+
+
 def test_canonical_human_control_marker_suppresses_recovery(tmp_path, monkeypatch):
     state_root = tmp_path / "repo-state"
     local_app_data = tmp_path / "LocalAppData"

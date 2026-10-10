@@ -10,6 +10,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from project_orchestrator.human_ownership import AUTHORIZED, owner_control_status
+
 HOSTS = ("1.1.1.1", "8.8.8.8")
 REBOOT_LATCH = "network-reboot-cooldown.json"
 GUARDIAN_PID = "network-guardian.pid"
@@ -51,8 +53,11 @@ def human_control_roots(state_root: Path) -> tuple[Path, ...]:
 
 
 def human_mode(state_root: Path) -> bool:
-    markers = ("human-mode.json", "give-me-control")
-    return any((root / marker).exists() for root in human_control_roots(state_root) for marker in markers)
+    """Fail closed unless every relevant owner marker explicitly allows autonomy."""
+    return any(
+        owner_control_status(root) != AUTHORIZED
+        for root in human_control_roots(state_root)
+    )
 
 
 def log(state_root: Path, event: str, **details: object) -> None:

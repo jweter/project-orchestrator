@@ -102,6 +102,9 @@ def test_installer_uses_current_user_startup_supervisor():
     assert '[Environment]::GetFolderPath("Startup")' in installer
     assert "ExponentialEngine-ContinuousFlow.cmd" in installer
     assert "continuous_flow_supervisor.py" in installer
+    assert "ConvertFrom-Json" in installer
+    assert "$OwnerControl.enabled -ceq $false" in installer
+    assert "'if exist \"' + $HumanMode + '\" exit /b 0'" not in installer
     assert "Green PR merger: 60-second poll" in installer
     assert "Autonomous builder: 5-minute loop" in installer
 
@@ -358,9 +361,19 @@ def test_heartbeat_grant_renews_claim(tmp_path):
     stop=threading.Event()
     thread=threading.Thread(target=builder.heartbeat_grant,args=(grant,stop,0.01))
     thread.start()
-    import time; time.sleep(0.04); stop.set(); thread.join()
-    record=json.loads(lifecycle.read_text())["grants"]["g1"]
-    assert record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00"
+    import time
+    deadline=time.monotonic()+1.0
+    renewed=False
+    while time.monotonic()<deadline:
+        record=json.loads(lifecycle.read_text())["grants"]["g1"]
+        if record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00":
+            renewed=True
+            break
+        time.sleep(0.01)
+    stop.set()
+    thread.join(timeout=1)
+    assert renewed
+    assert not thread.is_alive()
 
 def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
     import json
@@ -756,6 +769,39 @@ def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
+
+
+def test_disabled_owner_marker_allows_builder_to_reach_idle_gate(tmp_path, monkeypatch):
+    state=tmp_path/"builder.json"
+    (tmp_path/"human-mode.json").write_text('{"enabled":false}',encoding="utf-8")
+    monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
+    result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
+    assert result["status"]=="USER_ACTIVE"
+    assert result["idle_seconds"]==0
+    assert "manual_human_mode" not in result
+
+
+def test_malformed_owner_marker_fails_closed_before_idle_probe(tmp_path, monkeypatch):
+    state=tmp_path/"builder.json"
+    (tmp_path/"human-mode.json").write_text("{partial",encoding="utf-8")
+    monkeypatch.setattr(
+        b,"windows_idle_seconds",
+        lambda: (_ for _ in ()).throw(AssertionError("idle probe must not run")),
+    )
+    result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
+    assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
+
+
+def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch):
+    flow=tmp_path/"flow-state"
+    worker=flow/"worker-state"/"everward-worker-1"
+    worker.mkdir(parents=True)
+    state=worker/"builder.json"
+    (flow/"human-mode.json").write_text('{"enabled":true}',encoding="utf-8")
+    monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
+    assert b.build_once(tmp_path/"workspaces",state,dry_run=True)=={
+        "status":"USER_ACTIVE","manual_human_mode":True
+    }
 
 
 def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
