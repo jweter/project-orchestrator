@@ -11,7 +11,6 @@ from typing import Any
 
 from .grant_lifecycle import acquire_lifecycle_lock, atomic_lifecycle_json, release_lifecycle_lock
 from .ledger_forensics import LedgerRecoveryRefused, preview_ledger
-from .human_ownership import AUTHORIZED, owner_control_status
 
 OWNING_STATES = {"ISSUED", "CLAIMED", "RUNNING", "QUARANTINED"}
 
@@ -32,6 +31,16 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RecoveryPublicationRefused(f"invalid evidence object: {path.name}")
     return value
+
+
+def _explicit_owner_release(state_root: Path) -> bool:
+    """Require a present, readable owner marker with literal enabled:false."""
+    marker = state_root / "human-mode.json"
+    try:
+        value = json.loads(marker.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError, TypeError):
+        return False
+    return isinstance(value, dict) and type(value.get("enabled")) is bool and value["enabled"] is False
 
 
 def validate_evidence(evidence: dict[str, Any]) -> None:
@@ -148,7 +157,7 @@ def publish_reconciled_ledger(
 
     lock = acquire_lifecycle_lock(live)
     try:
-        if owner_control_status(state_root) != AUTHORIZED:
+        if not _explicit_owner_release(state_root):
             raise RecoveryPublicationRefused("owner control changed before publication")
         locked = live.read_bytes()
         if _sha256(locked) != expected_live_sha256 or locked != before:
@@ -193,7 +202,7 @@ def main() -> int:
     parser.add_argument("--expected-live-sha256", required=True)
     args = parser.parse_args()
 
-    if owner_control_status(args.state_root) != AUTHORIZED:
+    if not _explicit_owner_release(args.state_root):
         raise RecoveryPublicationRefused("OWNER_CONTROL_UNVERIFIED")
 
     result = publish_reconciled_ledger(

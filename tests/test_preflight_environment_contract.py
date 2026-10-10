@@ -7,5 +7,9 @@ def test_preflight_isolates_imports_and_temp_root():
     )
     assert 'PREFLIGHT_ENV["PYTHONPATH"] = str(SRC)' in text
     assert 'PREFLIGHT_ENV.get("PYTHONPATH"' not in text
+    assert 'PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / ROOT.name' in text
     assert 'PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)' in text
     assert '"--basetemp", str(PREFLIGHT_BASETEMP)' in text
+    assert "import shutil" in text
+    assert "shutil.rmtree(PREFLIGHT_BASETEMP, ignore_errors=True)" in text
+    assert "os.getpid()" not in text

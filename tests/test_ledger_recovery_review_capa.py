@@ -45,3 +45,37 @@ def test_owner_change_blocks_publication(tmp_path):
             expected_live_sha256=hashlib.sha256(before).hexdigest(),
         )
     assert live.read_bytes() == before
+
+
+def test_missing_owner_marker_refuses_publication(tmp_path):
+    state, live, snapshot = incident(tmp_path)
+    (state / "human-mode.json").unlink()
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(evidence()), encoding="utf-8")
+    before = live.read_bytes()
+    with pytest.raises(RecoveryPublicationRefused, match="owner control changed"):
+        publish_reconciled_ledger(
+            state_root=state,
+            snapshot=snapshot,
+            evidence_path=evidence_path,
+            backup_path=tmp_path / "forensics" / "corrupt.bin",
+            expected_live_sha256=hashlib.sha256(before).hexdigest(),
+        )
+    assert live.read_bytes() == before
+
+
+def test_malformed_owner_marker_refuses_publication(tmp_path):
+    state, live, snapshot = incident(tmp_path)
+    (state / "human-mode.json").write_text("{bad", encoding="utf-8")
+    evidence_path = tmp_path / "evidence.json"
+    evidence_path.write_text(json.dumps(evidence()), encoding="utf-8")
+    before = live.read_bytes()
+    with pytest.raises(RecoveryPublicationRefused, match="owner control changed"):
+        publish_reconciled_ledger(
+            state_root=state,
+            snapshot=snapshot,
+            evidence_path=evidence_path,
+            backup_path=tmp_path / "forensics" / "corrupt.bin",
+            expected_live_sha256=hashlib.sha256(before).hexdigest(),
+        )
+    assert live.read_bytes() == before
