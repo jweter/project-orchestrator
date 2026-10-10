@@ -11,8 +11,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "preflight-evidence.json"
 SRC = ROOT / "src"
+PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / f"{os.getpid()}-{int(time.time() * 1000)}"
+PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
 PREFLIGHT_ENV = os.environ.copy()
-PREFLIGHT_ENV["PYTHONPATH"] = str(SRC) + os.pathsep + PREFLIGHT_ENV.get("PYTHONPATH", "")
+PREFLIGHT_ENV["PYTHONPATH"] = str(SRC)
 DEFAULT_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_CHECK_TIMEOUT_SECONDS", "180"))
 TEST_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_TEST_TIMEOUT_SECONDS", "900"))
 
@@ -51,7 +53,7 @@ checks = [
     ("tooling_capabilities", [sys.executable, "engineering/validate_tooling_capabilities.py"]),
     ("n8n_policy", [sys.executable, "engineering/validate_n8n.py"]),
     ("compile", [sys.executable, "-m", "compileall", "-q", "src", "tests", "engineering"]),
-    ("tests", [sys.executable, "-m", "pytest", "-q"]),
+    ("tests", [sys.executable, "-m", "pytest", "-q", "--basetemp", str(PREFLIGHT_BASETEMP)]),
     ("cli_validate", [sys.executable, "-m", "project_orchestrator.cli", "validate"]),
     ("reinvestment_plan_smoke", [sys.executable, "-m", "project_orchestrator.cli", "reinvestment-plan"]),
 ]
@@ -161,6 +163,7 @@ def run_check(name: str, argv: list[str]) -> dict:
 def main() -> int:
     results: list[dict] = []
     started_at = datetime.now(timezone.utc).isoformat()
+    PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
     expected_head = git_head(ROOT)
     if not expected_head or expected_head == "UNKNOWN":
         results.append(exact_head_fence_result("KNOWN_HEAD_REQUIRED", expected_head))

@@ -4,12 +4,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from .grant_lifecycle import acquire_lifecycle_lock, atomic_lifecycle_json, release_lifecycle_lock
 from .ledger_forensics import LedgerRecoveryRefused, preview_ledger
+from .human_ownership import AUTHORIZED, owner_control_status
 
 OWNING_STATES = {"ISSUED", "CLAIMED", "RUNNING", "QUARANTINED"}
 
@@ -50,6 +52,9 @@ def validate_evidence(evidence: dict[str, Any]) -> None:
     proofs = evidence.get("historical_active_proofs")
     if not isinstance(proofs, dict):
         raise RecoveryPublicationRefused("historical active-grant proof missing")
+    quarantine_proofs = evidence.get("post_snapshot_quarantine_proofs")
+    if not isinstance(quarantine_proofs, dict):
+        raise RecoveryPublicationRefused("post-snapshot quarantine proof missing")
 
 
 def reconcile_ledger(
@@ -65,15 +70,23 @@ def reconcile_ledger(
     post_snapshot_retired = 0
     historical_retired = 0
     proofs = evidence["historical_active_proofs"]
+    quarantine_proofs = evidence["post_snapshot_quarantine_proofs"]
 
     for grant_id, record in grants.items():
         if not isinstance(record, dict):
             raise RecoveryPublicationRefused(f"invalid grant record: {grant_id}")
         if record.get("state") == "QUARANTINED" and record.get("result_status") == "LEDGER_LOSS_OUTCOME_UNVERIFIED":
+            proof = quarantine_proofs.get(grant_id)
+            if not isinstance(proof, dict):
+                raise RecoveryPublicationRefused(f"quarantined grant lacks proof: {grant_id}")
+            if proof.get("owner_alive") is not False:
+                raise RecoveryPublicationRefused(f"quarantined owner not proven dead: {grant_id}")
+            if proof.get("no_product_work") is not True:
+                raise RecoveryPublicationRefused(f"quarantined grant has unresolved product work: {grant_id}")
             record["state"] = "ABANDONED"
             record["recovery_state"] = "RECOVERED"
             record["result_status"] = "LEDGER_LOSS_RECONCILED_NO_LIVE_OWNER"
-            record["recovery_result"] = "RETIRED_AFTER_PROCESS_WORKTREE_AND_REF_RECONCILIATION"
+            record["recovery_result"] = "RETIRED_AFTER_GRANT_SPECIFIC_NO_WORK_PROOF"
             record["recovery_capa"] = "grant-ledger-nul-recovery-v1"
             post_snapshot_retired += 1
             continue
@@ -135,6 +148,8 @@ def publish_reconciled_ledger(
 
     lock = acquire_lifecycle_lock(live)
     try:
+        if owner_control_status(state_root) != AUTHORIZED:
+            raise RecoveryPublicationRefused("owner control changed before publication")
         locked = live.read_bytes()
         if _sha256(locked) != expected_live_sha256 or locked != before:
             raise RecoveryPublicationRefused("live ledger changed before publication")
@@ -142,6 +157,7 @@ def publish_reconciled_ledger(
         with backup_path.open("xb") as out:
             out.write(locked)
             out.flush()
+            os.fsync(out.fileno())
         atomic_lifecycle_json(live, recovered)
     finally:
         release_lifecycle_lock(lock)
@@ -177,8 +193,7 @@ def main() -> int:
     parser.add_argument("--expected-live-sha256", required=True)
     args = parser.parse_args()
 
-    marker = _load_json(args.state_root / "human-mode.json")
-    if marker.get("enabled") is not False:
+    if owner_control_status(args.state_root) != AUTHORIZED:
         raise RecoveryPublicationRefused("OWNER_CONTROL_UNVERIFIED")
 
     result = publish_reconciled_ledger(

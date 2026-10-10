@@ -30,6 +30,7 @@ def issue(grant_id, repo="o/r", head="a" * 40):
 def incident(tmp_path):
     state = tmp_path / "state"
     state.mkdir()
+    (state / "human-mode.json").write_text('{"enabled": false}\n', encoding="utf-8")
     live = state / "hands-off-grant-lifecycle.json"
     live.write_bytes(bytes(4096))
     snapshot = tmp_path / "snapshot.json"
@@ -74,6 +75,12 @@ def evidence():
             "old-active": {
                 "owner_alive": False,
                 "branch_head_equals_base": True,
+            }
+        },
+        "post_snapshot_quarantine_proofs": {
+            "new-grant": {
+                "owner_alive": False,
+                "no_product_work": True,
             }
         },
     }
