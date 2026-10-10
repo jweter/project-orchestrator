@@ -38,8 +38,11 @@ roadmap.
 - [ ] IG-030–031: strict exact-head FULL preflight receipt validation, candidate
   ref matching, fail-closed Product Reality policy; needs final exact-head
   repository-native preflight on current candidate.
-- [ ] IG-032–036: isolated integration worktree, conflict detection, accepted
-  baseline advancement, repair routing, combined regression test.
+- [ ] IG-032–033: isolated integration staging and Git conflict detector
+  implemented locally; focused two-candidate and owner-veto tests passed.
+  Await exact-head FULL preflight before marking verified.
+- [ ] IG-034–036: evidence-gated accepted-baseline advancement, repair
+  routing, combined regression verification and full Phase 3 demonstration.
 
 ## Phase 4 — Publication
 
