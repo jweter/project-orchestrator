@@ -9,6 +9,7 @@ def write(path,payload):
     path.write_text(json.dumps(payload),encoding="utf-8")
 
 def stalled_state(root):
+    write(root/"human-mode.json",{"enabled":False})
     write(root/"supervisor-process-instance.json",{"process_instance_id":"gen","burst_id":"burst",
         "worker":{"pid":42724,"process_start_fingerprint":"windows:123"}})
     write(root/"supervisor-generation-heartbeat.json",{"process_instance_id":"gen","burst_id":"burst",

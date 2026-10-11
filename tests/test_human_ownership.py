@@ -11,9 +11,9 @@ from project_orchestrator.human_ownership import (
 )
 
 
-def test_human_mode_absent_allows_autonomous_ownership(tmp_path: Path):
-    assert owner_control_status(tmp_path) == AUTHORIZED
-    assert human_mode_active(tmp_path) is False
+def test_human_mode_absent_fails_closed(tmp_path: Path):
+    assert owner_control_status(tmp_path) == OWNER_CONTROL_UNVERIFIED
+    assert human_mode_active(tmp_path) is True
 
 
 def test_human_mode_marker_enabled_true_blocks_autonomous_ownership(tmp_path: Path):
