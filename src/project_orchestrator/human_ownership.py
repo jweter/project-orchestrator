@@ -39,6 +39,8 @@ def owner_control_status(state_root: Path) -> str:
     False. Malformed or schema-drifted markers fail closed.
     """
     path = human_mode_path(state_root)
+    if path.is_symlink():
+        return OWNER_CONTROL_UNVERIFIED
     if not path.exists():
         return AUTHORIZED
     try:

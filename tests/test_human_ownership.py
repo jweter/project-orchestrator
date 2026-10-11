@@ -16,6 +16,14 @@ def test_human_mode_absent_allows_autonomous_ownership(tmp_path: Path):
     assert human_mode_active(tmp_path) is False
 
 
+def test_symlink_marker_blocks_autonomous_ownership(tmp_path: Path):
+    target = tmp_path / 'marker-target.json'
+    target.write_text('{"enabled": false}\n', encoding='utf-8')
+    human_mode_path(tmp_path).symlink_to(target)
+    assert owner_control_status(tmp_path) == OWNER_CONTROL_UNVERIFIED
+    assert human_mode_active(tmp_path) is True
+
+
 def test_human_mode_marker_enabled_true_blocks_autonomous_ownership(tmp_path: Path):
     path = human_mode_path(tmp_path)
     path.write_text('{"enabled": true}\n', encoding="utf-8")
