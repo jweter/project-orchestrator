@@ -35,12 +35,11 @@ roadmap.
 
 ## Phase 3 — Verification and integration
 
-- [ ] IG-030–031: strict exact-head FULL preflight receipt validation, candidate
-  ref matching, fail-closed Product Reality policy; needs final exact-head
-  repository-native preflight on current candidate.
-- [ ] IG-032–033: isolated integration staging and Git conflict detector
-  implemented locally; focused two-candidate and owner-veto tests passed.
-  Await exact-head FULL preflight before marking verified.
+- [x] IG-030–031: strict exact-head FULL preflight receipt validation,
+  candidate-ref matching and fail-closed Product Reality policy verified on
+  committed candidate 9ae0c915a304cb5766423ad430e62553d1301224.
+- [x] IG-032–033: isolated integration staging and Git conflict detection
+  verified locally; focused tests plus repository-native FULL preflight passed.
 - [ ] IG-034–036: evidence-gated accepted-baseline advancement, repair
   routing, combined regression verification and full Phase 3 demonstration.
   - ~~IG-034A crash-recovery classification~~ — focused verified: 9/9
@@ -51,12 +50,16 @@ roadmap.
     receipt-byte pinning, Product Reality refusal, and owner takeover veto.
   - ~~IG-034C combined Phase 3 focused regression~~ — 70/70 tests pass across
     local state, Git refs, exact-head verification, recovery, and acceptance.
-  - [ ] IG-034D exact-head FULL repository-native preflight on a committed
-    candidate, with required Product Reality evidence where policy requires it.
-  - [ ] IG-035–036 repair routing, combined regression/full Phase 3 demo.
-  No production accepted-ref advancement, release authority or Product Reality
-  proof has been claimed; the older FULL receipt still applies only to committed
-  d29ca147ab12d71e368b969b5b89b1547cfa2c80.
+  - ~~IG-034D exact-head FULL repository-native preflight~~ — 26/26 checks
+    GREEN on 9ae0c915a304cb5766423ad430e62553d1301224; native pytest gate reports
+    1976 passed in 102.08s. The first run exposed 12 legacy owner-marker tests;
+    those contracts were repaired to require explicit authorization and then
+    the exact-head rerun passed.
+  - [ ] IG-035 repair routing from failed verification/integration.
+  - [ ] IG-036 full Phase 3 exit demonstration: two independent candidates,
+    accepted-baseline advancement without GitHub, combined regression evidence.
+  No production accepted-ref advancement or Product Reality adapter proof has
+  been claimed; repositories that require Product Reality still fail closed.
 
 ## Phase 4 — Publication
 
