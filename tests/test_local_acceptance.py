@@ -180,3 +180,47 @@ def test_owner_takeover_between_prepare_and_commit_stops(case):
         commit(case)
     assert refs.accepted() == base
     assert state.acceptance_intent("m1")["state"] == "PREPARED"
+
+
+def test_linked_integration_worktree_can_verify_and_commit(case):
+    repo, owner, refs, state, base, target, evidence, policy, payload = case
+    worktree = repo.parent / "integration-worktree"
+    git(repo, "worktree", "add", "--detach", "--", str(worktree), target)
+    prepare_verified_acceptance(
+        repo=worktree,
+        state=state,
+        refs=refs,
+        milestone_id="m1",
+        accepted_base_sha=base,
+        target_sha=target,
+        evidence_path=evidence,
+        policy=policy,
+    )
+    commit_or_recover_prepared_acceptance(
+        repo=worktree,
+        state=state,
+        refs=refs,
+        milestone_id="m1",
+        evidence_path=evidence,
+        policy=policy,
+    )
+    assert refs.accepted() == target
+    assert state.acceptance_intent("m1")["state"] == "COMMITTED"
+
+
+def test_unrelated_repository_cannot_use_ref_store(case):
+    repo, owner, refs, state, base, target, evidence, policy, payload = case
+    other = repo.parent / "unrelated"
+    other.mkdir()
+    git(other, "init", "-q")
+    with pytest.raises(AcceptanceError, match="REPOSITORY_REF_STORE_MISMATCH"):
+        prepare_verified_acceptance(
+            repo=other,
+            state=state,
+            refs=refs,
+            milestone_id="m1",
+            accepted_base_sha=base,
+            target_sha=target,
+            evidence_path=evidence,
+            policy=policy,
+        )

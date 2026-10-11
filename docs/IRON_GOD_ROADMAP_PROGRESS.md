@@ -55,8 +55,17 @@ roadmap.
     1976 passed in 102.08s. The first run exposed 12 legacy owner-marker tests;
     those contracts were repaired to require explicit authorization and then
     the exact-head rerun passed.
-  - [ ] IG-035 repair routing from failed verification/integration.
-  - [ ] IG-036 full Phase 3 exit demonstration: two independent candidates,
+  - ~~IG-035 repair routing from failed verification/integration~~ —
+    deterministic fail-closed routing implemented; 12/12 focused tests pass.
+    Exact-head FULL preflight is GREEN on
+    d10b1822dc3300031f6c72cfd893da3f8cbae92b (26/26 checks; 1988 pytest
+    tests passed in 103.07s).
+  - ~~IG-036A linked integration-worktree acceptance plumbing~~ — acceptance
+    now verifies that the integration worktree and protected ref store share the
+    same Git common directory rather than requiring the same checkout path.
+    8/8 acceptance tests pass, including linked-worktree prepare/CAS/finalize
+    and rejection of unrelated repositories.
+  - [ ] IG-036B full Phase 3 exit demonstration: two independent candidates,
     accepted-baseline advancement without GitHub, combined regression evidence.
   No production accepted-ref advancement or Product Reality adapter proof has
   been claimed; repositories that require Product Reality still fail closed.

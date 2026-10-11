@@ -9,6 +9,7 @@ requires Product Reality remain blocked until the repository adapter exists.
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 from project_orchestrator.human_ownership import AUTHORIZED, owner_control_status
@@ -27,12 +28,36 @@ class AcceptanceError(ValueError):
     """Acceptance invariant failed. Stop rather than infer authority."""
 
 
-def _same_repo(repo: Path, refs: LocalGitRefs) -> None:
+def _common_git_dir(repo: Path) -> Path:
     try:
-        if Path(repo).resolve() != refs.repo.resolve():
-            raise AcceptanceError("REPOSITORY_REF_STORE_MISMATCH")
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise AcceptanceError("REPOSITORY_PATH_UNAVAILABLE") from exc
+    if result.returncode != 0 or not result.stdout.strip():
+        raise AcceptanceError("REPOSITORY_PATH_UNAVAILABLE")
+    try:
+        return Path(result.stdout.strip()).resolve()
     except OSError as exc:
         raise AcceptanceError("REPOSITORY_PATH_UNAVAILABLE") from exc
+
+
+def _same_repo(repo: Path, refs: LocalGitRefs) -> None:
+    """Require the verification worktree and ref store to share Git authority."""
+    if _common_git_dir(Path(repo)) != _common_git_dir(refs.repo):
+        raise AcceptanceError("REPOSITORY_REF_STORE_MISMATCH")
 
 
 def _owner(refs: LocalGitRefs) -> None:
