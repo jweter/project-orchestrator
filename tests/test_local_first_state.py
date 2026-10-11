@@ -33,7 +33,7 @@ def test_database_survives_reopen_with_milestone_and_queue(store: LocalFirstStat
     assert accept(store)
     reopened = LocalFirstState(store.path)
     snapshot = reopened.snapshot()
-    assert snapshot["schema_version"] == 1
+    assert snapshot["schema_version"] == 2
     assert snapshot["milestones"][0]["accepted_sha"] == HEAD
     assert snapshot["publications"][0]["state"] == "READY"
     assert [row["event_type"] for row in snapshot["journal"]] == [
@@ -164,7 +164,7 @@ def test_concurrent_initialization_is_transactional(tmp_path: Path):
         snapshots = list(executor.map(
             lambda _: LocalFirstState(path).snapshot()["schema_version"], range(12)
         ))
-    assert snapshots == [1] * 12
+    assert snapshots == [2] * 12
 
 
 def test_competing_publication_claims_have_exactly_one_winner(store: LocalFirstState):
@@ -186,3 +186,109 @@ def test_competing_publication_claims_have_exactly_one_winner(store: LocalFirstS
         results = list(executor.map(claim, ("s1", "s2")))
     assert results.count("CLAIMED") == 1
     assert results.count("REPOSITORY_PUBLICATION_LANE_OCCUPIED") == 1
+
+
+def test_prepared_acceptance_fences_legacy_acceptance(store: LocalFirstState):
+    """A pending CAS intent must block the old direct acceptance path."""
+    assert store.prepare_acceptance(
+        repository=REPO,
+        milestone_id="pending",
+        accepted_base_sha="b" * 40,
+        accepted_sha=HEAD,
+        verification_sha256=RECEIPT,
+        product_reality="PASSED",
+        context_json="{}",
+    )
+    before = store.snapshot()
+    with pytest.raises(LocalStateError, match="REPOSITORY_ACCEPTANCE_LANE_OCCUPIED"):
+        accept(store, "legacy", sha="c" * 40)
+    after = store.snapshot()
+    assert after["milestones"] == before["milestones"]
+    assert after["publications"] == before["publications"]
+    assert after["journal"] == before["journal"]
+    assert store.pending_acceptances()[0]["milestone_id"] == "pending"
+
+
+def test_prepared_acceptance_replay_is_idempotent(store: LocalFirstState):
+    kwargs = dict(repository=REPO, milestone_id="prepared", accepted_base_sha="b" * 40,
+                  accepted_sha=HEAD, verification_sha256=RECEIPT,
+                  product_reality="PASSED", context_json="{}")
+    assert store.prepare_acceptance(**kwargs) is True
+    assert store.prepare_acceptance(**kwargs) is False
+    assert [r["event_type"] for r in store.snapshot()["journal"]] == ["ACCEPTANCE_PREPARED"]
+
+
+def test_prepared_acceptance_finish_is_atomic_and_idempotent(store: LocalFirstState):
+    assert store.prepare_acceptance(repository=REPO, milestone_id="prepared",
+        accepted_base_sha="b" * 40, accepted_sha=HEAD,
+        verification_sha256=RECEIPT, product_reality="PASSED", context_json="{}")
+    assert store.finish_prepared_acceptance(milestone_id="prepared",
+        expected_sha=HEAD, expected_verification_sha256=RECEIPT)
+    assert not store.finish_prepared_acceptance(milestone_id="prepared",
+        expected_sha=HEAD, expected_verification_sha256=RECEIPT)
+    snapshot = store.snapshot()
+    assert len(snapshot["milestones"]) == 1
+    assert len(snapshot["publications"]) == 1
+    assert [r["event_type"] for r in snapshot["journal"]] == [
+        "ACCEPTANCE_PREPARED", "MILESTONE_ACCEPTED", "PUBLICATION_QUEUED"]
+    assert store.pending_acceptances() == []
+
+
+def test_finish_prepared_acceptance_rejects_wrong_receipt_without_mutation(store: LocalFirstState):
+    store.prepare_acceptance(repository=REPO, milestone_id="prepared",
+        accepted_base_sha="b" * 40, accepted_sha=HEAD,
+        verification_sha256=RECEIPT, product_reality="PASSED", context_json="{}")
+    before = store.snapshot()
+    with pytest.raises(LocalStateError, match="ACCEPTANCE_INTENT_IDENTITY_CONFLICT"):
+        store.finish_prepared_acceptance(milestone_id="prepared",
+            expected_sha=HEAD, expected_verification_sha256="0" * 64)
+    assert store.snapshot() == before
+
+
+def test_competing_prepared_acceptance_preserves_first_intent(store: LocalFirstState):
+    first = dict(repository=REPO, milestone_id="first", accepted_base_sha="b" * 40,
+                 accepted_sha=HEAD, verification_sha256=RECEIPT,
+                 product_reality="PASSED", context_json="{}")
+    assert store.prepare_acceptance(**first)
+    before = store.snapshot()
+    with pytest.raises(LocalStateError, match="REPOSITORY_ACCEPTANCE_LANE_OCCUPIED"):
+        store.prepare_acceptance(**{**first, "milestone_id": "second"})
+    assert store.snapshot() == before
+
+
+def test_prepared_acceptances_are_isolated_by_repository(store: LocalFirstState):
+    first = dict(repository=REPO, milestone_id="first", accepted_base_sha="b" * 40,
+                 accepted_sha=HEAD, verification_sha256=RECEIPT,
+                 product_reality="PASSED", context_json="{}")
+    assert store.prepare_acceptance(**first)
+    assert store.prepare_acceptance(**{**first, "repository": "jweter/Everward",
+                                      "milestone_id": "second"})
+    assert len(store.pending_acceptances()) == 2
+
+
+def test_prepared_intent_survives_process_reopen_for_recovery(store: LocalFirstState):
+    """A crash after PREPARE must leave a durable recoverable intent."""
+    assert store.prepare_acceptance(repository=REPO, milestone_id="crash-window",
+        accepted_base_sha="b" * 40, accepted_sha=HEAD,
+        verification_sha256=RECEIPT, product_reality="PASSED", context_json="{}")
+    reopened = LocalFirstState(store.path)
+    pending = reopened.pending_acceptances()
+    assert len(pending) == 1
+    assert pending[0]["milestone_id"] == "crash-window"
+    assert pending[0]["accepted_base_sha"] == "b" * 40
+    assert reopened.snapshot()["milestones"] == []
+    assert reopened.snapshot()["publications"] == []
+    assert reopened.finish_prepared_acceptance(milestone_id="crash-window",
+        expected_sha=HEAD, expected_verification_sha256=RECEIPT)
+    assert LocalFirstState(store.path).pending_acceptances() == []
+
+
+def test_prepared_intent_replay_rejects_divergent_context(store: LocalFirstState):
+    kwargs = dict(repository=REPO, milestone_id="replay", accepted_base_sha="b" * 40,
+                  accepted_sha=HEAD, verification_sha256=RECEIPT,
+                  product_reality="PASSED", context_json="{}")
+    assert store.prepare_acceptance(**kwargs)
+    before = store.snapshot()
+    with pytest.raises(LocalStateError, match="ACCEPTANCE_INTENT_IDENTITY_CONFLICT"):
+        store.prepare_acceptance(**{**kwargs, "context_json": '{"different":true}'})
+    assert store.snapshot() == before

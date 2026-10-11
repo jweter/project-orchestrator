@@ -43,6 +43,20 @@ roadmap.
   Await exact-head FULL preflight before marking verified.
 - [ ] IG-034–036: evidence-gated accepted-baseline advancement, repair
   routing, combined regression verification and full Phase 3 demonstration.
+  - ~~IG-034A crash-recovery classification~~ — focused verified: 9/9
+    real-Git/SQLite tests pass, including missing accepted-ref and owner-marker
+    fail-closed cases.
+  - ~~IG-034B evidence-gated prepare/CAS/finalize controller~~ — implemented
+    and focused verified: 6/6 tests pass, including crash replay after Git CAS,
+    receipt-byte pinning, Product Reality refusal, and owner takeover veto.
+  - ~~IG-034C combined Phase 3 focused regression~~ — 70/70 tests pass across
+    local state, Git refs, exact-head verification, recovery, and acceptance.
+  - [ ] IG-034D exact-head FULL repository-native preflight on a committed
+    candidate, with required Product Reality evidence where policy requires it.
+  - [ ] IG-035–036 repair routing, combined regression/full Phase 3 demo.
+  No production accepted-ref advancement, release authority or Product Reality
+  proof has been claimed; the older FULL receipt still applies only to committed
+  d29ca147ab12d71e368b969b5b89b1547cfa2c80.
 
 ## Phase 4 — Publication
 
