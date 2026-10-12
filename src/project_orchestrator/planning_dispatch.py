@@ -329,6 +329,13 @@ def select_execution_target(
     usability_policy: dict | None = None,
 ) -> tuple[str, str]:
     """Allocate one execution target with product fairness and optional usability pressure."""
+    # Owner-approved Iron God exclusive development phase. Fail closed rather than
+    # assigning product work when the engine has no eligible execution target.
+    priority_directive = state_root / "iron-god-exclusive.json"
+    if priority_directive.is_file():
+        products = [product for product in products if product == "iron-god"]
+        if not products:
+            raise RuntimeError("IRON_GOD_EXCLUSIVE_NO_ENGINE_TARGET")
     reserved = reserved_quarantine_repositories(state_root)
     product_repositories: dict[str, list[tuple[str, str]]] = {}
     for product in products:

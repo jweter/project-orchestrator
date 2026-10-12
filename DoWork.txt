@@ -1,3 +1,6 @@
+IRON GOD EXCLUSIVE PRIORITY OVERRIDE (2026-10-12)
+Owner-approved: All NEW development slices target project-orchestrator / Iron God until roadmap Definition of Done is evidenced. No new product-repo feature slices. Preserve in-flight work and all safety/owner gates. See engineering/IRON_GOD_PRIORITY_DIRECTIVE.md. This override supersedes four-product round-robin requirements below until owner release.
+
 PROJECT ORCHESTRATOR — AUTHORITATIVE OPERATING CONTRACT
 
 SCOPE
