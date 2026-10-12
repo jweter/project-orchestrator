@@ -7,6 +7,7 @@ from typing import Callable
 
 from .state_io import atomic_json
 from .issue_closure import build_issue_work_inventory, merge_issue_dispositions, rank_actionable_issues
+from .github_evidence import UrllibGitHubTransport, collect_portfolio
 
 
 def replenish_frontiers(
@@ -137,7 +138,7 @@ def reconcile_issue_frontier(
     return payload
 
 
-def reconcile_issue_cycle(state_root: Path) -> dict:
+def reconcile_issue_cycle(state_root: Path, *, refresh_fn: Callable[[], dict] | None = None, portfolio_path: Path | None = None) -> dict:
     snapshot_path = state_root / "github-portfolio-snapshot.json"
     try:
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
@@ -151,6 +152,18 @@ def reconcile_issue_cycle(state_root: Path) -> dict:
             raise ValueError("GitHub issue snapshot is stale")
         return reconcile_issue_frontier(snapshot, state_root)
     except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        if refresh_fn is None and portfolio_path is not None:
+            refresh_fn = lambda: collect_portfolio(str(portfolio_path), UrllibGitHubTransport.from_environment())
+        if refresh_fn is not None:
+            try:
+                refreshed = refresh_fn()
+                if isinstance(refreshed, dict):
+                    result = reconcile_issue_frontier(refreshed, state_root)
+                    result["evidence_recovery"] = "LIVE_REFRESH"
+                    atomic_json(state_root / "issue-work-frontier.json", result)
+                    return result
+            except Exception as refresh_exc:
+                exc = ValueError(f"{exc}; live refresh failed: {type(refresh_exc).__name__}: {refresh_exc}")
         result = {"status": "ISSUE_EVIDENCE_UNAVAILABLE", "reason": str(exc)}
         atomic_json(
             state_root / "issue-work-frontier.json",

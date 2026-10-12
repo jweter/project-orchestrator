@@ -43,7 +43,6 @@ def _acquire_lifecycle_lock(path:Path):
     """Compatibility facade over the extracted lifecycle lock authority."""
     return acquire_lifecycle_lock(path)
 
-
 def _release_lifecycle_lock(handle)->None:
     """Compatibility facade over the extracted lifecycle lock authority."""
     release_lifecycle_lock(handle)
@@ -549,7 +548,8 @@ def start_or_resume_burst(state_root:Path,*,process_instance_id:str|None=None,
 
 
 def actor_revision(repo:Path)->str|None:
-    return subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=False).stdout.strip() or None
+    try: return subprocess.run(["git","rev-parse","HEAD"],cwd=repo,text=True,capture_output=True,check=True,timeout=10).stdout.strip() or None
+    except (subprocess.TimeoutExpired,subprocess.CalledProcessError,OSError): return None
 
 def publish_generation_heartbeat(state:Path,*,process_instance_id:str,burst_id:str,
                                  actor_revision:str|None,status:str="RUNNING_CURRENT")->None:
@@ -715,11 +715,11 @@ def main()->int:
             else:
                 activation_reason=refresh_reason
         products=products if authorized else []
-        # Exclusive focus must not silently dispatch product work when engine authority is absent.
+        # Exclusive focus cannot authorize a product absent readiness.
         if (state / 'iron-god-exclusive.json').is_file():
             products = ['iron-god'] if 'iron-god' in products else []
         capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}
-        issue_frontier=reconcile_issue_cycle(state) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}; frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
+        issue_frontier=reconcile_issue_cycle(state, portfolio_path=repo/"engineering"/"portfolio.json") if products else {"status":"NO_AUTHORIZED_PRODUCTS"}; frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
         parallel_results=harvest_parallel_builders(worker_pool,state)
         # Harvest first, then reclaim dead-owner leases plus only this supervisor
         # generation's leases whose worker slots are no longer active. Generation
@@ -899,6 +899,6 @@ def main()->int:
             "previous_process_instance_id":burst.get("previous_process_instance_id"),
             "resumed":burst["resumed"],"pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
-        time.sleep(delay)
+        worker_pool.wait_for_completion(delay)
 if __name__=="__main__": raise SystemExit(main())
 

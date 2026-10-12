@@ -275,6 +275,46 @@ def test_observe_live_heads_refreshes_stale_origin_main_without_moving_workspace
     assert ["git","fetch","origin","main"] in calls
     assert not any(cmd[:3]==["git","rev-parse","HEAD"] for cmd in calls)
 
+def test_observe_live_heads_probes_independent_workspaces_concurrently(tmp_path):
+    import json
+    from threading import Barrier
+    from project_orchestrator.activation_capability import observe_live_heads
+
+    repo_root=tmp_path/"actor"
+    (repo_root/"engineering").mkdir(parents=True)
+    (repo_root/"engineering"/"hands-off-evolution.json").write_text(
+        json.dumps({"products":{"x":["jweter/VoiceStudio","jweter/Project-Everward"]}}))
+    workspace_root=tmp_path/"workspaces"
+    (workspace_root/"VoiceStudio").mkdir(parents=True)
+    (workspace_root/"Project-Everward").mkdir(parents=True)
+    state_root=tmp_path/"state"
+    state_root.mkdir()
+    rendezvous=Barrier(2)
+
+    class Result:
+        returncode=0
+        def __init__(self,stdout): self.stdout=stdout
+
+    def run(argv,**kwargs):
+        assert kwargs["timeout"] <= 30
+        name=kwargs["cwd"].name
+        if argv[:3]==["git","remote","get-url"]:
+            return Result(f"https://github.com/jweter/{name}.git\n")
+        if argv[:3]==["git","ls-remote","origin"]:
+            rendezvous.wait(timeout=5)
+            return Result(f"{name}-sha\trefs/heads/main\n")
+        if argv[:3]==["git","rev-parse","refs/remotes/origin/main"]:
+            return Result(f"{name}-sha\n")
+        raise AssertionError(argv)
+
+    assert observe_live_heads(repo_root,workspace_root,state_root,run_fn=run)==(
+        True,"LIVE_HEADS_OBSERVED")
+    assert json.loads((state_root/"hands-off-live-heads.json").read_text())=={
+        "jweter/VoiceStudio":"VoiceStudio-sha",
+        "jweter/Project-Everward":"Project-Everward-sha",
+    }
+
+
 def test_observe_live_heads_ignores_origin_mismatch(tmp_path, monkeypatch):
     import json
     import scripts.continuous_flow_supervisor as supervisor
@@ -640,6 +680,8 @@ def test_worker_liveness_rejects_pid_reuse(monkeypatch):
     import socket
     import scripts.continuous_flow_supervisor as supervisor
     import scripts.autonomous_slice_builder as builder
+    import project_orchestrator.recovery_manager as recovery
+    monkeypatch.setattr(recovery.sys, "platform", "linux")
     monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: None)
     monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:"linux:boot:new")
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"linux:boot:old"}
@@ -649,19 +691,22 @@ def test_worker_liveness_treats_unreadable_fingerprinted_pid_as_unknown(monkeypa
     import socket
     import scripts.continuous_flow_supervisor as supervisor
     import scripts.autonomous_slice_builder as builder
+    import project_orchestrator.recovery_manager as recovery
+    monkeypatch.setattr(recovery.sys, "platform", "linux")
     monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:None)
     monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(OSError("Windows invalid parameter")))
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
     assert supervisor.worker_liveness(worker)=="UNKNOWN"
 
-def test_worker_liveness_treats_windows_error_87_as_dead(monkeypatch):
+def test_worker_liveness_uses_nondestructive_windows_probe(monkeypatch):
     import socket
     import project_orchestrator.recovery_manager as recovery
     import scripts.continuous_flow_supervisor as supervisor
-    err=OSError("Windows invalid parameter")
-    err.winerror=87
-    monkeypatch.setattr(recovery.sys,"platform","win32")
-    monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(err))
+    monkeypatch.setattr(recovery.sys, "platform", "win32")
+    monkeypatch.setattr(recovery, "_windows_pid_liveness", lambda pid: "DEAD")
+    def forbidden_kill(pid, sig):
+        raise AssertionError("Windows worker liveness must never signal a PID")
+    monkeypatch.setattr(supervisor.os, "kill", forbidden_kill)
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
     assert supervisor.worker_liveness(worker)=="DEAD"
 
@@ -669,6 +714,8 @@ def test_worker_liveness_accepts_matching_process_fingerprint(monkeypatch):
     import socket
     import scripts.continuous_flow_supervisor as supervisor
     import scripts.autonomous_slice_builder as builder
+    import project_orchestrator.recovery_manager as recovery
+    monkeypatch.setattr(recovery.sys, "platform", "linux")
     monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: None)
     monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:"linux:boot:same")
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"linux:boot:same"}
@@ -1579,6 +1626,8 @@ def test_worker_liveness_treats_missing_process_as_dead_before_fingerprint(monke
     import socket
     import scripts.continuous_flow_supervisor as supervisor
     import scripts.autonomous_slice_builder as builder
+    import project_orchestrator.recovery_manager as recovery
+    monkeypatch.setattr(recovery.sys, "platform", "linux")
     monkeypatch.setattr(supervisor.os,"kill",lambda pid,sig: (_ for _ in ()).throw(ProcessLookupError()))
     monkeypatch.setattr(builder,"process_start_fingerprint",lambda pid:None)
     worker={"host":socket.gethostname(),"pid":77,"process_start_fingerprint":"windows:old"}
@@ -1629,3 +1678,36 @@ def test_resume_pushed_orphan_does_not_accept_existing_pr_at_wrong_head(tmp_path
     assert supervisor.resume_orphan_branch(
         "jweter/rock",tmp_path,"actor/autonomous-x","ORPHAN_PUSHED_NO_PR",
         {"head_sha":"head","remote_head_sha":"head"})=="RECOVERY_PR_CREATE_FAILED"
+
+def test_actor_revision_timeout_fails_closed(tmp_path,monkeypatch):
+    import subprocess
+    def hung(argv,**kwargs):
+        assert argv == ["git","rev-parse","HEAD"]
+        assert kwargs["timeout"] == 10
+        raise subprocess.TimeoutExpired(argv,10)
+    monkeypatch.setattr(supervisor.subprocess,"run",hung)
+    assert supervisor.actor_revision(tmp_path) is None
+
+
+def test_actor_revision_rejects_failed_git_exit(tmp_path,monkeypatch):
+    import subprocess
+    def failed(argv,**kwargs):
+        assert kwargs["check"] is True
+        raise subprocess.CalledProcessError(128,argv,output="stale")
+    monkeypatch.setattr(supervisor.subprocess,"run",failed)
+    assert supervisor.actor_revision(tmp_path) is None
+def test_live_head_probe_timeout_fails_closed(tmp_path,monkeypatch):
+    import subprocess
+    from project_orchestrator.activation_capability import observe_live_heads
+    repo_root=tmp_path/"actor"
+    workspace_root=tmp_path/"workspaces"
+    state_root=tmp_path/"state"
+    (repo_root/"engineering").mkdir(parents=True)
+    (repo_root/"engineering"/"hands-off-evolution.json").write_text('{"products":{"test":["jweter/example"]}}')
+    (workspace_root/"example").mkdir(parents=True)
+    def timeout(argv,**kwargs):
+        assert kwargs["timeout"] == 10
+        raise subprocess.TimeoutExpired(argv,10)
+    ok,reason=observe_live_heads(repo_root,workspace_root,state_root,run_fn=timeout)
+    assert (ok,reason)==(False,"LIVE_HEADS_UNAVAILABLE")
+    assert (state_root/"hands-off-live-heads.json").read_text().strip()=="{}"

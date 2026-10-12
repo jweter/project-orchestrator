@@ -80,7 +80,7 @@ def test_phone_control_records_progress_history_and_human_mode():
     assert "Append-History" in text
     assert '"HUMAN_MODE"' in text and '"FULL_POWER"' in text
     assert 'Set-Content -Encoding UTF8 $humanMode' in text
-    assert 'Remove-Item -Force $humanMode' in text
+    assert 'REJECTED_USE_TAKE_THE_WHEEL' in text
 
 
 def test_fallback_sync_rejects_unpushed_actor_commits_before_reset():

@@ -122,7 +122,25 @@ def test_single_instance_lock_is_exclusive(tmp_path):
         assert bootstrap.acquire_single_instance(state) is None
     finally:
         bootstrap.release_single_instance(state, first)
-    assert not (state / "actor.lock").exists()
+    # Persistent kernel lock file is safe; an old PID is never authority.
+    assert (state / "actor.lock").exists()
+    second = bootstrap.acquire_single_instance(state)
+    assert second is not None
+    bootstrap.release_single_instance(state, second)
+
+
+def test_stale_pid_lock_is_reclaimed_after_owner_crash(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "actor.lock").write_text("6368", encoding="ascii")
+    lease = bootstrap.acquire_single_instance(state)
+    assert lease is not None
+    try:
+        # Windows locks the byte against readers as well as writers.
+        assert bootstrap.acquire_single_instance(state) is None
+    finally:
+        bootstrap.release_single_instance(state, lease)
+    assert (state / "actor.lock").read_text(encoding="ascii") == str(os.getpid())
 
 
 def test_emit_state_writes_structured_jsonl(tmp_path):

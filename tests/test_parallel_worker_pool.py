@@ -1,4 +1,6 @@
 from concurrent.futures import Future
+from threading import Timer
+from time import monotonic
 
 import pytest
 
@@ -68,3 +70,40 @@ def test_product_limit_and_global_limit_fail_closed():
     pool.submit(WorkerSlot("rocksmith", 1), lambda: None)
     with pytest.raises(RuntimeError, match="saturated"):
         pool.submit(WorkerSlot("everward", 1), lambda: None)
+
+
+def test_completion_before_wait_wakes_immediately_for_harvest():
+    executor = ManualExecutor(max_workers=1, thread_name_prefix="x")
+    pool = ParallelWorkerPool(max_total_workers=1, executor_factory=lambda **_: executor)
+    worker_id = pool.submit(WorkerSlot("rocksmith", 1), lambda: None)
+    executor.submissions[0][0].set_result("PR_OPEN")
+    start = monotonic()
+    assert pool.wait_for_completion(5.0)
+    assert monotonic() - start < 0.5
+    assert pool.harvest() == {worker_id: "PR_OPEN"}
+    assert pool.available_slots(["rocksmith"])[0].worker_id == worker_id
+
+
+def test_completion_during_wait_wakes_before_normal_builder_interval():
+    executor = ManualExecutor(max_workers=1, thread_name_prefix="x")
+    pool = ParallelWorkerPool(max_total_workers=1, executor_factory=lambda **_: executor)
+    worker_id = pool.submit(WorkerSlot("everward", 1), lambda: None)
+    future = executor.submissions[0][0]
+    timer = Timer(0.03, lambda: future.set_result("CI_GREEN"))
+    timer.start()
+    try:
+        start = monotonic()
+        assert pool.wait_for_completion(5.0)
+        assert monotonic() - start < 0.5
+        assert pool.harvest() == {worker_id: "CI_GREEN"}
+    finally:
+        timer.join()
+
+
+def test_idle_pool_retains_normal_delay_without_busy_spin(monkeypatch):
+    import project_orchestrator.parallel_worker_pool as workers
+    slept = []
+    monkeypatch.setattr(workers.time, "sleep", slept.append)
+    pool = ParallelWorkerPool(executor_factory=ManualExecutor)
+    assert not pool.wait_for_completion(12.0)
+    assert slept == [12.0]

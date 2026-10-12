@@ -10,6 +10,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from project_orchestrator.human_ownership import AUTHORIZED, owner_control_status
+
 HOSTS = ("1.1.1.1", "8.8.8.8")
 REBOOT_LATCH = "network-reboot-cooldown.json"
 GUARDIAN_PID = "network-guardian.pid"
@@ -51,8 +53,11 @@ def human_control_roots(state_root: Path) -> tuple[Path, ...]:
 
 
 def human_mode(state_root: Path) -> bool:
-    markers = ("human-mode.json", "give-me-control")
-    return any((root / marker).exists() for root in human_control_roots(state_root) for marker in markers)
+    """Fail closed unless every relevant owner marker explicitly allows autonomy."""
+    return any(
+        owner_control_status(root) != AUTHORIZED
+        for root in human_control_roots(state_root)
+    )
 
 
 def log(state_root: Path, event: str, **details: object) -> None:
@@ -105,10 +110,11 @@ def snapshot(state_root: Path) -> None:
 
 
 def recover(state_root: Path, allow_reboot: bool = False) -> bool:
-    snapshot(state_root)
+    # Check ownership before even collecting a system snapshot.
     if human_mode(state_root):
         log(state_root, "RECOVERY_SUPPRESSED_HUMAN_MODE")
         return False
+    snapshot(state_root)
 
     steps = [
         ("wlan_reconnect", ["netsh", "wlan", "connect", "name=ATTgw6SIjk"]),
@@ -128,6 +134,11 @@ def recover(state_root: Path, allow_reboot: bool = False) -> bool:
         ),
     ]
     for name, command in steps:
+        # Human ownership can change during the multistep recovery sequence.
+        # Never touch the user's Wi-Fi or network adapter after that transition.
+        if human_mode(state_root):
+            log(state_root, "RECOVERY_INTERRUPTED_HUMAN_MODE", before_step=name)
+            return False
         try:
             result = run(command)
             log(state_root, name, rc=result.returncode, stderr=result.stderr[-1000:])
