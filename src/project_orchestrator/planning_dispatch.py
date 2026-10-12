@@ -11,6 +11,7 @@ from .portfolio_advancement import build_resilient_advancement_plan
 from .state_io import atomic_json
 
 PRODUCT_BY_REPOSITORY = {
+    "jweter/project-orchestrator": "iron-god",
     "jweter/knowledge-engine-core": "knowledge-engine",
     "jweter/knowledge-engine-web": "knowledge-engine",
     "jweter/knowledge-engine-ai": "knowledge-engine",
