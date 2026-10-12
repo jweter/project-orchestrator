@@ -232,3 +232,57 @@ def test_daily_hygiene_is_bounded_to_owned_transient_files(monkeypatch, tmp_path
 
     second = bootstrap.run_daily_hygiene(state, now=now)
     assert second["status"] == "SKIPPED_RECENT"
+
+def test_local_exact_head_promotion(monkeypatch, tmp_path):
+    actor = tmp_path / 'actor'
+    source = tmp_path / 'accepted'
+    (actor / '.git').mkdir(parents=True)
+    (source / '.git').mkdir(parents=True)
+    monkeypatch.setenv('IRON_GOD_ACCEPTED_REPO', str(source))
+    monkeypatch.setenv('IRON_GOD_ACCEPTED_SHA', SHA)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append((cmd, cwd))
+        if cmd == ['git', 'rev-parse', 'HEAD']:
+            return completed(stdout=SHA + '\n')
+        if cmd == ['git', 'rev-parse', 'FETCH_HEAD']:
+            return completed(stdout=SHA + '\n')
+        return completed()
+
+    monkeypatch.setattr(bootstrap, 'run', fake_run)
+    assert bootstrap.update_actor_checkout(actor) == SHA
+    assert ['git', 'fetch', '--no-tags', str(source), SHA] in [c[0] for c in calls]
+    assert not any(c[0] == ['git', 'fetch', 'origin', 'main'] for c in calls)
+
+
+def test_local_promotion_rejects_mismatched_head_before_fetch(monkeypatch, tmp_path):
+    actor = tmp_path / 'actor'
+    source = tmp_path / 'accepted'
+    (actor / '.git').mkdir(parents=True)
+    (source / '.git').mkdir(parents=True)
+    monkeypatch.setenv('IRON_GOD_ACCEPTED_REPO', str(source))
+    monkeypatch.setenv('IRON_GOD_ACCEPTED_SHA', SHA)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd == ['git', 'rev-parse', 'HEAD']:
+            return completed(stdout='b' * 40 + '\n')
+        return completed()
+
+    monkeypatch.setattr(bootstrap, 'run', fake_run)
+    with pytest.raises(RuntimeError, match='clean exact HEAD'):
+        bootstrap.update_actor_checkout(actor)
+    assert not any(cmd[:2] == ['git', 'fetch'] for cmd in calls)
+    assert not any(cmd[:3] == ['git', 'reset', '--hard'] for cmd in calls)
+
+
+def test_local_promotion_rejects_partial_configuration(monkeypatch, tmp_path):
+    actor = tmp_path / 'actor'
+    (actor / '.git').mkdir(parents=True)
+    monkeypatch.setenv('IRON_GOD_ACCEPTED_REPO', str(tmp_path))
+    monkeypatch.delenv('IRON_GOD_ACCEPTED_SHA', raising=False)
+    monkeypatch.setattr(bootstrap, 'run', lambda *args: pytest.fail('no Git mutation allowed'))
+    with pytest.raises(RuntimeError, match='both repository and exact SHA'):
+        bootstrap.update_actor_checkout(actor)
