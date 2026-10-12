@@ -60,12 +60,27 @@ def update_actor_checkout(actor_repo: Path) -> str:
     """
     if not (actor_repo / ".git").is_dir():
         raise RuntimeError("actor repository is not a Git checkout")
-    fetch = run(["git", "fetch", "origin", "main"], actor_repo)
-    if fetch.returncode != 0:
-        raise RuntimeError("actor checkout fetch failed")
-    remote = run(["git", "rev-parse", "origin/main"], actor_repo)
-    if remote.returncode != 0:
-        raise RuntimeError("origin/main is unavailable")
+    # Local-first promotion is opt-in and pinned to an immutable commit.
+    # Never infer permission to deploy from a mutable development branch.
+    local_repo = os.environ.get("IRON_GOD_ACCEPTED_REPO")
+    accepted_head = os.environ.get("IRON_GOD_ACCEPTED_SHA")
+    if bool(local_repo) != bool(accepted_head):
+        raise RuntimeError("local actor promotion requires both repository and exact SHA")
+    if local_repo:
+        source = Path(local_repo).resolve()
+        if not (source / ".git").exists():
+            raise RuntimeError("accepted local source is not a Git repository")
+        head = run(["git", "rev-parse", "HEAD"], source)
+        clean = run(["git", "status", "--porcelain", "--untracked-files=no"], source)
+        if head.returncode != 0 or head.stdout.strip() != accepted_head or clean.returncode != 0 or clean.stdout.strip():
+            raise RuntimeError("accepted local source does not match clean exact HEAD")
+        fetch = run(["git", "fetch", "--no-tags", str(source), accepted_head], actor_repo)
+        remote = run(["git", "rev-parse", "FETCH_HEAD"], actor_repo)
+    else:
+        fetch = run(["git", "fetch", "origin", "main"], actor_repo)
+        remote = run(["git", "rev-parse", "origin/main"], actor_repo)
+    if fetch.returncode != 0 or remote.returncode != 0:
+        raise RuntimeError("actor checkout source fetch failed")
     target = remote.stdout.strip()
     if len(target) != 40 or any(c not in "0123456789abcdef" for c in target):
         raise RuntimeError("origin/main did not resolve to an exact SHA")
