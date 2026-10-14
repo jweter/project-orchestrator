@@ -38,7 +38,7 @@ def test_dispatch_capacity_is_driven_by_ready_tasks_not_repository_count(tmp_pat
         "voicestudio-worker-1",
     ]
     assert pool.snapshot()["running_by_product"]=={
-        "knowledge-engine":1,"rocksmith":1,"everward":1,"voicestudio":1,
+        "knowledge-engine":1,"rocksmith":1,"everward":1,"voicestudio":1,"iron-god":0,
     }
 
 
