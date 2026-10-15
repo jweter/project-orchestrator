@@ -243,12 +243,41 @@ def reconcile_dispatch_outcomes(
             ):
                 outcomes.append(_result(row, "WORKER_EVIDENCE_UNVERIFIED"))
                 continue
-            # Even a structurally valid worker outcome is NEVER sufficient for
-            # acceptance: no claim token accompanies this worker's lease record.
+            # A token-to-lease row is additive in the *existing* worker DB.
+            # Older workers without that table retain the unbound disposition.
+            binding_table = work_db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='dispatch_attempt_bindings'"
+            ).fetchone()
+            binding = (
+                work_db.execute(
+                    "SELECT * FROM dispatch_attempt_bindings WHERE slice_id=?",
+                    (slice_id,),
+                ).fetchone()
+                if binding_table is not None
+                else None
+            )
+            if binding is None:
+                disposition = "WORKER_OUTCOME_UNBOUND_NEEDS_INDEPENDENT_GIT_PROOF"
+            elif (
+                binding["claim_token"] != row["claim_token"]
+                or binding["source_db"] != row["source_db"]
+                or not _same_root(binding["owner_root"], owner_state_root)
+                or binding["acceptance_event_id"] != row["acceptance_event_id"]
+                or binding["accepted_base_sha"] != accepted_sha
+                or binding["attempt_id"] != attempt
+                or binding["generation"] != generation
+            ):
+                outcomes.append(_result(row, "WORKER_CLAIM_BINDING_CONFLICT"))
+                continue
+            else:
+                disposition = "WORKER_OUTCOME_BOUND_NEEDS_INDEPENDENT_GIT_PROOF"
+            # Binding proves lineage, not correctness of a reported build.
+            # Always require separate exact-HEAD native Git evidence.
             outcomes.append(
                 _result(
                     row,
-                    "WORKER_OUTCOME_UNBOUND_NEEDS_INDEPENDENT_GIT_PROOF",
+                    disposition,
                     candidate_sha=candidate_sha,
                     receipt_sha256=digest,
                     **kwargs,
