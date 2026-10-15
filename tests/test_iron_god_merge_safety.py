@@ -25,28 +25,44 @@ def _job(current_state: str, github_base_sha: str | None):
     )
 
 
-def test_rejects_job_not_in_merge_ready():
-    job = _job("READY_TO_PUBLISH", github_base_sha=None)
-    with pytest.raises(ValueError):
-        decide_safe_to_merge(job, current_default_branch_sha="b" * 40)
+def test_requires_merge_ready():
+    with pytest.raises(ValueError, match="MERGE_READY"):
+        decide_safe_to_merge(
+            _job("READY_TO_PUBLISH", "b" * 40),
+            current_default_branch_sha="b" * 40,
+        )
 
 
-def test_no_recorded_base_sha_is_safe():
-    job = _job("MERGE_READY", github_base_sha=None)
+@pytest.mark.parametrize("recorded_base", [None, "", "b" * 39, "b" * 41, "G" * 40])
+def test_missing_or_invalid_recorded_base_never_authorizes_merge(recorded_base):
+    job = _job("MERGE_READY", recorded_base)
+    decision = decide_safe_to_merge(job, current_default_branch_sha="b" * 40)
+    assert decision.safe_to_merge is False
+    assert decision.resulting_job is job
+    assert "recorded GitHub base SHA" in decision.reason
+
+
+@pytest.mark.parametrize("observed", [None, "", "b" * 39, "z" * 40, "B" * 40])
+def test_missing_or_invalid_remote_observation_never_authorizes_merge(observed):
+    job = _job("MERGE_READY", "b" * 40)
+    decision = decide_safe_to_merge(job, current_default_branch_sha=observed)
+    assert decision.safe_to_merge is False
+    assert decision.resulting_job is job
+    assert "observed remote" in decision.reason
+
+
+def test_only_exact_matching_40_digit_shas_allow_provisional_merge():
+    job = _job("MERGE_READY", "b" * 40)
     decision = decide_safe_to_merge(job, current_default_branch_sha="b" * 40)
     assert decision.safe_to_merge is True
     assert decision.resulting_job is job
+    assert "provisional" in decision.reason
+    assert "atomic" in decision.reason
 
 
-def test_matching_base_sha_is_safe():
-    job = _job("MERGE_READY", github_base_sha="b" * 40)
-    decision = decide_safe_to_merge(job, current_default_branch_sha="b" * 40)
-    assert decision.safe_to_merge is True
-    assert decision.resulting_job.current_state == "MERGE_READY"
-
-
-def test_mismatched_base_sha_is_unsafe_and_transitions_to_base_diverged():
-    job = _job("MERGE_READY", github_base_sha="b" * 40)
+def test_mismatched_valid_base_transitions_to_base_diverged():
+    job = _job("MERGE_READY", "b" * 40)
     decision = decide_safe_to_merge(job, current_default_branch_sha="c" * 40)
     assert decision.safe_to_merge is False
     assert decision.resulting_job.current_state == "BASE_DIVERGED"
+    assert job.current_state == "MERGE_READY"
