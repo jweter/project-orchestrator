@@ -29,7 +29,8 @@ def test_release_does_not_delete_newer_metadata(tmp_path):
 def test_main_exits_cleanly_when_supervisor_already_active(tmp_path, monkeypatch):
     repo=tmp_path/"repo"; repo.mkdir()
     work=tmp_path/"work"; work.mkdir()
-    state=tmp_path/"state"
+    state=tmp_path/"state"; state.mkdir()
+    (state/"human-mode.json").write_text('{"enabled":false}',encoding="utf-8")
     monkeypatch.setattr(supervisor,"acquire_supervisor_instance_lock",lambda *_args, **_kwargs: None)
     monkeypatch.setattr(sys,"argv",["supervisor",
         "--repo-root",str(repo),"--workspace-root",str(work),"--state-root",str(state),"--once"])
