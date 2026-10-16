@@ -118,6 +118,32 @@ def test_no_status_implies_automatic_advancement():
     }
 
 
+def test_missing_policy_for_next_stage_raises_never_infers_readiness():
+    """2026-10-16 fail-closed regression: a missing policy entry for
+    the next stage must never be treated as 'no requirements' (and
+    therefore ready) -- it must raise."""
+    with pytest.raises(MigrationReadinessError):
+        assess_migration_readiness(
+            STAGE_A_SHADOW,
+            SHADOW_STATE,
+            evidence_capabilities=frozenset({"cap-1"}),
+            required_capabilities_by_stage={},
+        )
+
+
+def test_explicitly_empty_policy_for_next_stage_raises_never_infers_readiness():
+    """2026-10-16 fail-closed regression: an explicitly empty
+    frozenset policy for the next stage must also raise, not be
+    treated as trivially satisfied."""
+    with pytest.raises(MigrationReadinessError):
+        assess_migration_readiness(
+            STAGE_A_SHADOW,
+            SHADOW_STATE,
+            evidence_capabilities=frozenset({"cap-1"}),
+            required_capabilities_by_stage={STAGE_B_CANDIDATE: frozenset()},
+        )
+
+
 def test_real_world_stage_a_to_b_readiness_using_ledger_activation_fences():
     """Composes the actual, ledger-declared activation_fences for
     candidate_mode (controller-handoff-state.json's own

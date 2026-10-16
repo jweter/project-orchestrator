@@ -101,10 +101,13 @@ def assess_migration_readiness(
     """Decide whether evidence supports entering the stage after
     `current_stage`.
 
-    Raises MigrationReadinessError if `current_stage` is unrecognized
-    or inconsistent with `controller_state`. Never returns a status
-    implying automatic advancement -- OWNER_ACTION_REQUIRED still
-    means a human must perform the authority change.
+    Raises MigrationReadinessError if `current_stage` is unrecognized,
+    is inconsistent with `controller_state`, or if the next stage has
+    no explicit, non-empty entry in `required_capabilities_by_stage` --
+    readiness is never inferred from a missing or empty policy. Never
+    returns a status implying automatic advancement --
+    OWNER_ACTION_REQUIRED still means a human must perform the
+    authority change.
     """
     if current_stage not in STAGE_ORDER:
         raise MigrationReadinessError(f"unknown stage: {current_stage!r}")
@@ -121,7 +124,13 @@ def assess_migration_readiness(
         )
 
     next_stage = STAGE_ORDER[stage_index + 1]
-    required = required_capabilities_by_stage.get(next_stage, frozenset())
+    required = required_capabilities_by_stage.get(next_stage)
+    if not required:
+        raise MigrationReadinessError(
+            f"no explicit, non-empty required-capabilities policy is declared "
+            f"for {next_stage}; readiness must never be inferred from a "
+            "missing or empty policy"
+        )
     missing = required - evidence_capabilities
 
     if missing:
