@@ -68,3 +68,46 @@ def test_independent_slices_both_selected_within_capacity():
     footprints = [footprint("s1", ["a.py"]), footprint("s2", ["b.py"])]
     decisions = schedule_conflict_aware(footprints, available_slots=2)
     assert all(d.status == SELECTED for d in decisions)
+
+
+def test_duplicate_slice_id_raises():
+    footprints = [footprint("s1", ["a.py"]), footprint("s1", ["b.py"])]
+    with pytest.raises(SchedulingError):
+        schedule_conflict_aware(footprints, available_slots=2)
+
+
+# 2026-10-16 fail-closed regressions, per
+# IG073_CAPACITY_CONFLICT_AUDIT_20261015.md /
+# IRON_GOD_FAIL_CLOSED_REGRESSION_HANDOFF_20261016.md: conflict
+# attribution must never name a candidate that was itself rejected
+# for capacity, and zero capacity must reject every candidate as
+# REJECTED_CAPACITY, never REJECTED_CONFLICT.
+
+
+def test_zero_capacity_rejects_all_overlapping_candidates_as_capacity():
+    footprints = [footprint("A", ["same.py"]), footprint("B", ["same.py"])]
+    decisions = schedule_conflict_aware(footprints, available_slots=0)
+    assert [d.status for d in decisions] == [REJECTED_CAPACITY, REJECTED_CAPACITY]
+    assert all(d.reason for d in decisions)
+
+
+def test_rejected_capacity_candidate_is_not_a_conflict_winner():
+    footprints = [
+        footprint("A", ["a.py"]),
+        footprint("B", ["b.py"]),
+        footprint("C", ["b.py"]),
+    ]
+    decisions = schedule_conflict_aware(footprints, available_slots=1)
+    assert [d.status for d in decisions] == [
+        SELECTED,
+        REJECTED_CAPACITY,
+        REJECTED_CAPACITY,
+    ]
+    assert "B" not in decisions[2].reason
+
+
+def test_conflict_with_actually_selected_candidate_is_reported():
+    footprints = [footprint("A", ["a.py"]), footprint("B", ["a.py"])]
+    decisions = schedule_conflict_aware(footprints, available_slots=1)
+    assert [d.status for d in decisions] == [SELECTED, REJECTED_CONFLICT]
+    assert "A" in decisions[1].reason
