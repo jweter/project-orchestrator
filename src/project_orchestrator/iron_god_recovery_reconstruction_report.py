@@ -19,6 +19,16 @@ pure, read-only, dry-run proof: run it any time (not only after an
 actual reboot) to answer whether reconstruction would be correct
 right now. Ambiguous or orphaned state is always surfaced, never
 silently resolved, per the roadmap's own quarantine principle.
+
+2026-10-16 fail-closed fix: `clean` previously returned True for a
+report built from zero evidence (no slices requested, no worktrees
+scanned) -- checking nothing was being conflated with checking
+everything and finding it clean. `clean` now also requires
+`has_coverage`. Note: this report's current coverage is limited to
+worktrees and per-slice candidate/milestone refs; it does not yet
+independently cover queued publications, active work, leases, or
+event-journal state -- broadening that is a larger, separate
+composition slice, not folded into this fix.
 """
 
 from __future__ import annotations
@@ -58,10 +68,25 @@ class RecoveryReconstructionReport:
         )
 
     @property
+    def has_coverage(self) -> bool:
+        """True only when at least one slice was reconstructed and at
+        least one worktree was scanned. Checking nothing must never
+        be reported as clean -- a report built from zero evidence
+        answers nothing about recovery correctness."""
+        return len(self.slice_states) > 0 and len(self.worktree_classifications) > 0
+
+    @property
     def clean(self) -> bool:
-        """True only when nothing ambiguous or orphaned was found --
-        the proof that reconstruction would be unambiguous right now."""
-        return not self.has_ambiguous_slice and not self.has_orphaned_worktree
+        """True only when there is coverage AND nothing ambiguous or
+        orphaned was found within it -- the proof that reconstruction
+        would be unambiguous right now. A report with no coverage
+        (nothing was actually checked) is never clean, regardless of
+        the absence of findings."""
+        return (
+            self.has_coverage
+            and not self.has_ambiguous_slice
+            and not self.has_orphaned_worktree
+        )
 
 
 def build_recovery_reconstruction_report(
