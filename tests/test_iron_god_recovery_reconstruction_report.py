@@ -7,6 +7,7 @@ from pathlib import Path
 from project_orchestrator.iron_god_candidate_refs import set_candidate
 from project_orchestrator.iron_god_milestone_refs import create_milestone
 from project_orchestrator.iron_god_recovery_reconstruction_report import (
+    RecoveryReconstructionReport,
     SliceReconstructionRequest,
     build_recovery_reconstruction_report,
 )
@@ -112,3 +113,33 @@ def test_unregistered_worktree_is_orphaned_not_silently_dropped(tmp_path):
         if entry.classification == "ORPHANED"
     }
     assert "wt-stray" in orphaned_names
+
+
+def test_fully_empty_report_is_not_clean():
+    """2026-10-16 fail-closed regression: a report built from zero
+    evidence (nothing requested, nothing scanned) must never report
+    clean=True -- checking nothing is not the same as checking
+    everything and finding it clean."""
+    report = RecoveryReconstructionReport(
+        slice_states=(), worktree_bootstrap=(), worktree_classifications=()
+    )
+    assert report.has_coverage is False
+    assert report.clean is False
+
+
+def test_zero_slice_requests_with_real_worktree_scan_is_not_clean(tmp_path):
+    """Even when a real worktree scan ran, zero slice_requests means
+    no candidate/milestone/accepted-baseline evidence was ever
+    checked -- still incomplete, not clean."""
+    repo = _init_repo(tmp_path / "repo")
+
+    report = build_recovery_reconstruction_report(
+        repo,
+        _authorized_state_root(tmp_path),
+        (),
+        known_worktree_names=frozenset({repo.name}),
+    )
+
+    assert report.slice_states == ()
+    assert report.has_coverage is False
+    assert report.clean is False
