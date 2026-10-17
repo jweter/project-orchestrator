@@ -17,7 +17,6 @@ conflict resolution.
 from __future__ import annotations
 
 import contextlib
-import shutil
 import subprocess
 import uuid
 from collections.abc import Iterator
@@ -53,9 +52,10 @@ def ephemeral_integration_worktree(
     *,
     scratch_root: Path,
 ) -> Iterator[Path]:
-    """Create a throwaway worktree at `base_sha` under `scratch_root`,
-    yield its path, and always remove it (and its throwaway branch) on
-    exit, whether the caller's block succeeds or raises.
+    """Create an isolated worktree and clean it up only when unchanged.
+
+    Preserve its path and branch, with an explicit error, if cleanup finds
+    unresolved changes, new commits, or a failed Git worktree removal.
     """
     verify = _run_git(
         repo_root, "rev-parse", "--verify", "--quiet", base_sha + "^{commit}"
@@ -86,13 +86,28 @@ def ephemeral_integration_worktree(
     try:
         yield worktree_path
     finally:
-        remove = _run_git(
-            repo_root, "worktree", "remove", "--force", str(worktree_path)
-        )
-        if remove.returncode != 0 and worktree_path.exists():
-            shutil.rmtree(worktree_path, ignore_errors=True)
-            _run_git(repo_root, "worktree", "prune")
-        _run_git(repo_root, "branch", "-D", branch_name)
+        head = _run_git(worktree_path, "rev-parse", "HEAD")
+        status = _run_git(worktree_path, "status", "--porcelain=v1")
+        if (
+            head.returncode != 0
+            or head.stdout.strip() != resolved_base_sha
+            or status.returncode != 0
+            or status.stdout.strip()
+        ):
+            raise IntegrationWorktreeError(
+                f"preserved integration worktree and branch: {worktree_path}"
+            )
+        remove = _run_git(repo_root, "worktree", "remove", str(worktree_path))
+        if remove.returncode != 0:
+            raise IntegrationWorktreeError(
+                f"could not remove integration worktree; preserved {worktree_path}: "
+                f"{remove.stderr.strip()}"
+            )
+        delete = _run_git(repo_root, "branch", "-D", branch_name)
+        if delete.returncode != 0:
+            raise IntegrationWorktreeError(
+                f"integration branch preserved: {branch_name}: {delete.stderr.strip()}"
+            )
 
 
 def apply_candidate(worktree_path: Path, candidate_sha: str) -> CandidateApplyResult:

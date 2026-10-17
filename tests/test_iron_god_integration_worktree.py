@@ -90,12 +90,17 @@ def test_apply_candidate_clean_when_non_conflicting(tmp_path):
     candidate_sha = _git(repo, "rev-parse", "HEAD")
 
     scratch = tmp_path / "scratch"
-    with ephemeral_integration_worktree(
-        repo, base_sha, scratch_root=scratch
-    ) as worktree_path:
-        result = apply_candidate(worktree_path, candidate_sha)
-        assert result.clean is True
-        assert (worktree_path / "other.txt").exists()
+    with pytest.raises(
+        IntegrationWorktreeError, match="preserved integration worktree"
+    ):
+        with ephemeral_integration_worktree(
+            repo, base_sha, scratch_root=scratch
+        ) as worktree_path:
+            result = apply_candidate(worktree_path, candidate_sha)
+            assert result.clean is True
+            assert (worktree_path / "other.txt").exists()
+
+    assert (worktree_path / "other.txt").exists()
 
 
 def test_apply_candidate_reports_conflict_and_leaves_no_unresolved_state(tmp_path):
@@ -138,3 +143,73 @@ def test_apply_candidate_rejects_invalid_sha(tmp_path):
     ) as worktree_path:
         with pytest.raises(IntegrationWorktreeError):
             apply_candidate(worktree_path, "f" * 40)
+
+
+def test_dirty_integration_worktree_and_branch_are_preserved(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    scratch = tmp_path / "scratch"
+    worktree_path = None
+
+    with pytest.raises(
+        IntegrationWorktreeError, match="preserved integration worktree"
+    ):
+        with ephemeral_integration_worktree(
+            repo, base_sha, scratch_root=scratch
+        ) as worktree_path:
+            (worktree_path / "unresolved.txt").write_text("keep me\n", encoding="utf-8")
+
+    assert worktree_path is not None
+    assert (worktree_path / "unresolved.txt").read_text(encoding="utf-8") == "keep me\n"
+    assert worktree_path.as_posix() in _git(repo, "worktree", "list")
+    assert _git(worktree_path, "branch", "--show-current").startswith(
+        "iron-god/integration-scratch/"
+    )
+
+
+def test_new_integration_commit_is_preserved(tmp_path):
+    repo = _init_repo(tmp_path / "repo")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    worktree_path = None
+
+    with pytest.raises(
+        IntegrationWorktreeError, match="preserved integration worktree"
+    ):
+        with ephemeral_integration_worktree(
+            repo, base_sha, scratch_root=tmp_path / "scratch"
+        ) as worktree_path:
+            (worktree_path / "new.txt").write_text("valuable\n", encoding="utf-8")
+            _git(worktree_path, "add", "new.txt")
+            _git(worktree_path, "commit", "-q", "-m", "valuable change")
+
+    assert worktree_path is not None
+    assert worktree_path.exists()
+    assert _git(worktree_path, "rev-parse", "HEAD") != base_sha
+
+
+def test_failed_git_removal_preserves_worktree_and_branch(tmp_path, monkeypatch):
+    import project_orchestrator.iron_god_integration_worktree as module
+
+    repo = _init_repo(tmp_path / "repo")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    real_run_git = module._run_git
+    worktree_path = None
+
+    def refuse_removal(repo_root, *args):
+        if args[:2] == ("worktree", "remove"):
+            return subprocess.CompletedProcess(args, 1, "", "simulated refusal")
+        return real_run_git(repo_root, *args)
+
+    monkeypatch.setattr(module, "_run_git", refuse_removal)
+    with pytest.raises(IntegrationWorktreeError, match="simulated refusal"):
+        with ephemeral_integration_worktree(
+            repo, base_sha, scratch_root=tmp_path / "scratch"
+        ) as worktree_path:
+            pass
+
+    assert worktree_path is not None
+    assert worktree_path.exists()
+    assert worktree_path.as_posix() in _git(repo, "worktree", "list")
+    assert _git(worktree_path, "branch", "--show-current").startswith(
+        "iron-god/integration-scratch/"
+    )
