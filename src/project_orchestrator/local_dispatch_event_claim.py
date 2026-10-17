@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -44,11 +45,25 @@ def _store_identity(state: LocalFirstState) -> str:
 
 def _connect(path: Path) -> sqlite3.Connection:
     db = sqlite3.connect(path, timeout=15, isolation_level=None)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout=15000")
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("PRAGMA synchronous=FULL")
-    return db
+    try:
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA busy_timeout=15000")
+        # Two first-time contenders may race while switching a new DB to WAL.
+        # Retry only that transient lock; claim uniqueness remains transactional.
+        deadline = time.monotonic() + 15
+        while True:
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.05)
+        db.execute("PRAGMA synchronous=FULL")
+        return db
+    except BaseException:
+        db.close()
+        raise
 
 
 def _initialize(db: sqlite3.Connection) -> None:

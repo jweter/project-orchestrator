@@ -291,3 +291,39 @@ def test_claim_cannot_be_invoked_under_unrelated_authorized_owner_root(demo, tmp
         )
     assert callbacks == []
     assert inspect_claims(store(demo))[0]["state"] == "CLAIMED"
+
+
+def test_wal_initialization_retries_transient_lock(tmp_path, monkeypatch):
+    import project_orchestrator.local_dispatch_event_claim as module
+
+    real_connect = sqlite3.connect
+    observed = []
+
+    class OneLockConnection:
+        def __init__(self, connection):
+            object.__setattr__(self, "connection", connection)
+
+        def __getattr__(self, name):
+            return getattr(self.connection, name)
+
+        def __setattr__(self, name, value):
+            setattr(self.connection, name, value)
+
+        def execute(self, sql, *args):
+            if sql == "PRAGMA journal_mode=WAL":
+                observed.append(sql)
+                if len(observed) == 1:
+                    raise sqlite3.OperationalError("database is locked")
+            return self.connection.execute(sql, *args)
+
+    monkeypatch.setattr(
+        module.sqlite3,
+        "connect",
+        lambda *args, **kwargs: OneLockConnection(real_connect(*args, **kwargs)),
+    )
+    db = module._connect(tmp_path / "claims.sqlite")
+    try:
+        assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    finally:
+        db.close()
+    assert len(observed) == 2
