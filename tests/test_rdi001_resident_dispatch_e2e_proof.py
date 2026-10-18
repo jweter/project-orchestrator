@@ -68,7 +68,7 @@ CONTROLLER_PATH = Path(
 )
 CONTROLLER_BACKUP_PATH = Path(
     r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal"
-    r"\local_continuous_worker.py.pre-rdi001-backup-20261016.py"
+    r"\local_continuous_worker.py.post-pathfix-verified-20261018.py"
 )
 
 # accepted_event_dispatch_coordinator.py is a bare module living alongside
