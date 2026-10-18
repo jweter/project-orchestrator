@@ -239,9 +239,11 @@ def test_claim_lifecycle_distinguishes_claimed_from_leased_from_executed(tmp_pat
 
 def test_transition_rejects_any_state_outside_the_fixed_three(tmp_path):
     """Direct proof: _transition's own validation rejects ANY target
-    state that is not CLAIMED/INVOCATION_RESERVED/RESULT_RECORDED --
-    there is no way, through this function, to write a fourth
-    'voided'/'abandoned' terminal disposition without a schema change."""
+    state that is not CLAIMED/INVOCATION_RESERVED/RESULT_RECORDED. Only
+    the dedicated, evidence-gated recover_non_executed_claim function may
+    ever write the terminal ABORTED_NON_EXECUTED disposition added by the
+    2026-10-18 schema migration; this general-purpose transition helper
+    still cannot write it, or any other unrecognized state."""
     repo = _init_repo(tmp_path / "repo")
     base_sha = _git(repo, "rev-parse", "HEAD")
     flow = tmp_path / "flow-state"
@@ -263,17 +265,24 @@ def test_transition_rejects_any_state_outside_the_fixed_three(tmp_path):
         )
 
 
-def test_sqlite_check_constraint_also_rejects_a_fourth_state(tmp_path):
-    """A second, independent layer of the same guarantee: even a raw
-    SQL UPDATE bypassing all Python-level validation is rejected by the
-    table's own CHECK constraint."""
+def test_sqlite_check_constraint_also_rejects_a_fifth_state(tmp_path):
+    """A second, independent layer of the same guarantee: even a raw SQL
+    UPDATE bypassing all Python-level validation is rejected by the
+    table's own CHECK constraint -- which now allows exactly four states
+    (CLAIMED, INVOCATION_RESERVED, RESULT_RECORDED, and the 2026-10-18
+    terminal ABORTED_NON_EXECUTED disposition), never a fifth."""
     from project_orchestrator.local_dispatch_event_claim import _connect, _initialize
 
     claims_path = tmp_path / "claims.sqlite"
     db = _connect(claims_path)
-    _initialize(db)
+    _initialize(db, claims_path)
     db.execute(
-        "INSERT INTO acceptance_dispatch_claims VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO acceptance_dispatch_claims "
+        "(source_db, owner_root, acceptance_event_id, milestone_id, repository, "
+        "slice_id, accepted_sha, claim_token, attempt, state, result_status, "
+        "recovered_from_token, recovery_authorized_by, recovery_reason, "
+        "recovery_evidence_json, claimed_utc, updated_utc) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             "source",
             "root",
@@ -283,7 +292,12 @@ def test_sqlite_check_constraint_also_rejects_a_fourth_state(tmp_path):
             "X",
             "a" * 40,
             "t" * 32,
+            1,
             "CLAIMED",
+            None,
+            None,
+            None,
+            None,
             None,
             "2026-10-18T00:00:00+00:00",
             "2026-10-18T00:00:00+00:00",
