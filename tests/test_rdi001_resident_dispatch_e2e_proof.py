@@ -58,6 +58,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -526,3 +527,457 @@ def test_wrong_branch_worktree_rejected_before_any_lease(proof_env, monkeypatch)
     # have been invoked for a worktree on the wrong branch.
     claims = inspect_claims(claims_path)
     assert all(row["state"] != "RESULT_RECORDED" for row in claims)
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-17 Phase 1 extension: comprehensive preclaim Git identity
+# verification and failure-scenario coverage (dirty worktree, incorrect
+# HEAD, invalid repository, expired lease recovery, interrupted
+# execution / crash recovery). Same isolated-scope discipline as above:
+# the real, unedited local_continuous_worker.py, only
+# build_candidate/verify_and_commit substituted.
+# ---------------------------------------------------------------------------
+
+
+def _lease_has_any_row(lease_path: Path, slice_id: str) -> bool:
+    import sqlite3
+
+    db = sqlite3.connect(lease_path)
+    try:
+        row = db.execute(
+            "SELECT 1 FROM slice_leases WHERE slice_id=?", (slice_id,)
+        ).fetchone()
+        return row is not None
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        db.close()
+
+
+def test_dirty_worktree_rejected_before_any_lease(proof_env, monkeypatch):
+    env = proof_env
+    worker_module = env["worker_module"]
+
+    monkeypatch.setattr(worker_module, "build_candidate", _fake_builder)
+    monkeypatch.setattr(worker_module, "verify_and_commit", _fake_verifier)
+
+    wt = env["tmp_path"] / "wt-slice1"
+    _git(
+        env["repo"],
+        "worktree",
+        "add",
+        "-b",
+        "iron-god/proof-slice-1",
+        str(wt),
+        env["base_sha"],
+    )
+    # A dirty worktree -- an untracked file present before the builder ever runs.
+    (wt / "unexpected.txt").write_text("not part of the plan\n", encoding="utf-8")
+
+    ledger = _write_handoff_and_ledger_row(
+        env,
+        slice_id="PROOF-SLICE-1",
+        worktree_name="wt-slice1",
+        branch="iron-god/proof-slice-1",
+    )
+    task = _build_task(
+        env,
+        slice_id="PROOF-SLICE-1",
+        worktree_name="wt-slice1",
+        branch="iron-god/proof-slice-1",
+    )
+
+    from project_orchestrator.iron_god_milestone_resolution import (
+        resolve_latest_committed_milestone,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    latest = resolve_latest_committed_milestone(
+        env["state"].snapshot(), REPO_IDENTIFIER
+    )
+    claims_path = env["tmp_path"] / "claims.sqlite"
+    lease_path = env["tmp_path"] / "leases.sqlite"
+    worker_executor = _make_worker_executor(
+        env, claims_path=claims_path, lease_path=lease_path
+    )
+    handoffs = {
+        "PROOF-SLICE-1": json.loads(
+            (worker_module.HANDOFF_DIR / "PROOF-SLICE-1.json").read_text()
+        )
+    }
+
+    # check_paths(work, set()) -- called first, inside
+    # validate_candidate_worktree -- is strictly stricter than the
+    # SLICE_WORKTREE_NOT_CLEAN check that follows it (an empty allowed-set
+    # means "nothing may differ"), so in practice any dirty worktree is
+    # always rejected as UNEXPECTED_WORKTREE_CHANGE before
+    # SLICE_WORKTREE_NOT_CLEAN is ever reached. Verified directly against
+    # the real function before writing this assertion.
+    with pytest.raises(RuntimeError, match="UNEXPECTED_WORKTREE_CHANGE:unexpected.txt"):
+        dispatch_existing_accepted_event(
+            controller=ledger,
+            owner_state_root=env["flow"],
+            expected_owner_state_root=env["flow"],
+            state_db=env["tmp_path"] / "accepted.sqlite",
+            repo=env["repo"],
+            milestone_id=latest.milestone_id,
+            handoffs=handoffs,
+            claims_path=claims_path,
+            worktree_root=env["tmp_path"],
+            task=task,
+            worker_executor=worker_executor,
+        )
+
+    # No lease may ever have been created for a worktree rejected as dirty.
+    assert not lease_path.exists() or not _lease_has_any_row(
+        lease_path, "PROOF-SLICE-1"
+    )
+
+
+def test_incorrect_head_rejected_before_any_lease(proof_env, monkeypatch):
+    env = proof_env
+    worker_module = env["worker_module"]
+
+    monkeypatch.setattr(worker_module, "build_candidate", _fake_builder)
+    monkeypatch.setattr(worker_module, "verify_and_commit", _fake_verifier)
+
+    wt = env["tmp_path"] / "wt-slice1"
+    _git(
+        env["repo"],
+        "worktree",
+        "add",
+        "-b",
+        "iron-god/proof-slice-1",
+        str(wt),
+        env["base_sha"],
+    )
+    # Advance the worktree's HEAD past the handoff's exact_base_sha.
+    (wt / "drift.txt").write_text("drift\n", encoding="utf-8")
+    _git(wt, "add", "drift.txt")
+    _git(wt, "commit", "-q", "-m", "unexpected drift")
+
+    ledger = _write_handoff_and_ledger_row(
+        env,
+        slice_id="PROOF-SLICE-1",
+        worktree_name="wt-slice1",
+        branch="iron-god/proof-slice-1",
+    )
+    task = _build_task(
+        env,
+        slice_id="PROOF-SLICE-1",
+        worktree_name="wt-slice1",
+        branch="iron-god/proof-slice-1",
+    )
+
+    from project_orchestrator.iron_god_milestone_resolution import (
+        resolve_latest_committed_milestone,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    latest = resolve_latest_committed_milestone(
+        env["state"].snapshot(), REPO_IDENTIFIER
+    )
+    claims_path = env["tmp_path"] / "claims.sqlite"
+    lease_path = env["tmp_path"] / "leases.sqlite"
+    worker_executor = _make_worker_executor(
+        env, claims_path=claims_path, lease_path=lease_path
+    )
+    handoffs = {
+        "PROOF-SLICE-1": json.loads(
+            (worker_module.HANDOFF_DIR / "PROOF-SLICE-1.json").read_text()
+        )
+    }
+
+    with pytest.raises(RuntimeError, match="SLICE_BASE_SHA_MISMATCH"):
+        dispatch_existing_accepted_event(
+            controller=ledger,
+            owner_state_root=env["flow"],
+            expected_owner_state_root=env["flow"],
+            state_db=env["tmp_path"] / "accepted.sqlite",
+            repo=env["repo"],
+            milestone_id=latest.milestone_id,
+            handoffs=handoffs,
+            claims_path=claims_path,
+            worktree_root=env["tmp_path"],
+            task=task,
+            worker_executor=worker_executor,
+        )
+
+
+def test_invalid_repository_rejected_before_any_claim(proof_env, monkeypatch):
+    env = proof_env
+    worker_module = env["worker_module"]
+
+    monkeypatch.setattr(worker_module, "build_candidate", _fake_builder)
+    monkeypatch.setattr(worker_module, "verify_and_commit", _fake_verifier)
+
+    wt = env["tmp_path"] / "wt-slice1"
+    _git(
+        env["repo"],
+        "worktree",
+        "add",
+        "-b",
+        "iron-god/proof-slice-1",
+        str(wt),
+        env["base_sha"],
+    )
+
+    # The accepted milestone is for REPO_IDENTIFIER; the handoff packet
+    # (constructed by hand here, bypassing the normal helper) declares a
+    # different, invalid repository identity.
+    packet = {
+        "schema_version": 1,
+        "slice_id": "PROOF-SLICE-1",
+        "state": "ELIGIBLE",
+        "worktree_name": "wt-slice1",
+        "branch": "iron-god/proof-slice-1",
+        "exact_base_sha": env["base_sha"],
+        "objective": "proof slice objective",
+        "allowed_paths": ["src/proof.py", "tests/test_proof.py"],
+        "forbidden": [],
+        "acceptance": [],
+        "repository": "wrong-owner/wrong-repo",
+        "requires_milestones": [],
+    }
+    (worker_module.HANDOFF_DIR / "PROOF-SLICE-1.json").write_text(
+        json.dumps(packet), encoding="utf-8"
+    )
+    ledger = {
+        "controller": "iron-god-handoff-v1",
+        "mode": "candidate_mode",
+        "candidate_execution_authorized": True,
+        "slices": [{"id": "PROOF-SLICE-1", "state": "ELIGIBLE"}],
+    }
+    worker_module.CONTROLLER_STATE.write_text(json.dumps(ledger), encoding="utf-8")
+
+    task = _build_task(
+        env,
+        slice_id="PROOF-SLICE-1",
+        worktree_name="wt-slice1",
+        branch="iron-god/proof-slice-1",
+    )
+
+    from project_orchestrator.iron_god_milestone_resolution import (
+        resolve_latest_committed_milestone,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    latest = resolve_latest_committed_milestone(
+        env["state"].snapshot(), REPO_IDENTIFIER
+    )
+    claims_path = env["tmp_path"] / "claims.sqlite"
+    lease_path = env["tmp_path"] / "leases.sqlite"
+    worker_executor = _make_worker_executor(
+        env, claims_path=claims_path, lease_path=lease_path
+    )
+    handoffs = {"PROOF-SLICE-1": packet}
+
+    # select_next_after_acceptance itself filters eligible handoffs by
+    # packet["repository"] == intent["repository"] -- a repository
+    # mismatch is rejected at the selector, before any claim is ever
+    # created, not merely before RESULT_RECORDED. Verified directly
+    # against the real selector before writing this assertion.
+    with pytest.raises(
+        RuntimeError, match="DISPATCH_SELECTOR_NOT_READY:NO_DEPENDENCY_READY_SLICE"
+    ):
+        dispatch_existing_accepted_event(
+            controller=ledger,
+            owner_state_root=env["flow"],
+            expected_owner_state_root=env["flow"],
+            state_db=env["tmp_path"] / "accepted.sqlite",
+            repo=env["repo"],
+            milestone_id=latest.milestone_id,
+            handoffs=handoffs,
+            claims_path=claims_path,
+            worktree_root=env["tmp_path"],
+            task=task,
+            worker_executor=worker_executor,
+        )
+
+    from project_orchestrator.local_dispatch_event_claim import inspect_claims
+
+    claims = inspect_claims(claims_path)
+    assert claims == [], (
+        "an invalid-repository handoff must be rejected before any claim is ever created"
+    )
+
+
+def test_expired_lease_recovers_with_incremented_generation(proof_env, monkeypatch):
+    """Proves claim_slice_lease's own real stale-lease recovery directly.
+
+    Scoped to the lease layer alone, not the full dispatch chain: the
+    dispatch-provenance binder (local_dispatch_worker_binding.bind_worker_lease)
+    independently asserts exactly one historical SLICE_LEASED event per
+    slice_id ever recorded against its claims_path -- a stricter,
+    one-shot-per-slice invariant that a directly pre-seeded lease (bypassing
+    the claim/reservation layer entirely, as this test deliberately does to
+    isolate the lease mechanism) is not a legitimate case of in the real
+    flow. That invariant is real and correct; it is simply a different
+    layer than the one this test is proving.
+    """
+    env = proof_env
+    worker_module = env["worker_module"]
+    lease_path = env["tmp_path"] / "leases.sqlite"
+
+    first = worker_module.claim_slice_lease(
+        slice_id="PROOF-SLICE-1",
+        base_sha=env["base_sha"],
+        owner_pid=11111,
+        ttl_seconds=1,
+        path=lease_path,
+        now=1_700_000_000.0,
+    )
+    assert first["generation"] == 1
+    assert first["state"] == "LEASED"
+
+    # Attempting to claim again while the lease is still live must refuse.
+    with pytest.raises(RuntimeError, match="SLICE_LEASE_OCCUPIED"):
+        worker_module.claim_slice_lease(
+            slice_id="PROOF-SLICE-1",
+            base_sha=env["base_sha"],
+            owner_pid=22222,
+            ttl_seconds=1,
+            path=lease_path,
+            now=1_700_000_000.5,
+        )
+
+    # Once lease_until has passed, a fresh claim must recover the stale
+    # lease with an incremented generation, not be blocked indefinitely.
+    recovered = worker_module.claim_slice_lease(
+        slice_id="PROOF-SLICE-1",
+        base_sha=env["base_sha"],
+        owner_pid=33333,
+        ttl_seconds=1800,
+        path=lease_path,
+        now=1_700_000_100.0,
+    )
+    assert recovered["generation"] == 2, (
+        "an expired lease must recover with an incremented generation"
+    )
+    assert recovered["state"] == "LEASED"
+    assert recovered["owner_pid"] == 33333
+
+    import sqlite3
+
+    db = sqlite3.connect(lease_path)
+    try:
+        events = db.execute(
+            "SELECT event_type, generation FROM slice_lease_events "
+            "WHERE slice_id='PROOF-SLICE-1' ORDER BY rowid"
+        ).fetchall()
+    finally:
+        db.close()
+    event_types = [row[0] for row in events]
+    assert "STALE_LEASE_RECOVERED" in event_types, (
+        "the real recovery path must durably log STALE_LEASE_RECOVERED, not silently overwrite"
+    )
+
+
+def test_interrupted_execution_leaves_claim_reserved_never_auto_retried(
+    proof_env, monkeypatch
+):
+    env = proof_env
+    worker_module = env["worker_module"]
+
+    def crashing_builder(task, *, lease_heartbeat=None):
+        raise RuntimeError("SIMULATED_WORKER_CRASH")
+
+    monkeypatch.setattr(worker_module, "build_candidate", crashing_builder)
+    monkeypatch.setattr(worker_module, "verify_and_commit", _fake_verifier)
+
+    wt = env["tmp_path"] / "wt-slice1"
+    _git(
+        env["repo"],
+        "worktree",
+        "add",
+        "-b",
+        "iron-god/proof-slice-1",
+        str(wt),
+        env["base_sha"],
+    )
+    ledger = _write_handoff_and_ledger_row(
+        env,
+        slice_id="PROOF-SLICE-1",
+        worktree_name="wt-slice1",
+        branch="iron-god/proof-slice-1",
+    )
+    task = _build_task(
+        env,
+        slice_id="PROOF-SLICE-1",
+        worktree_name="wt-slice1",
+        branch="iron-god/proof-slice-1",
+    )
+
+    from project_orchestrator.iron_god_milestone_resolution import (
+        resolve_latest_committed_milestone,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    latest = resolve_latest_committed_milestone(
+        env["state"].snapshot(), REPO_IDENTIFIER
+    )
+    claims_path = env["tmp_path"] / "claims.sqlite"
+    lease_path = env["tmp_path"] / "leases.sqlite"
+    worker_executor = _make_worker_executor(
+        env, claims_path=claims_path, lease_path=lease_path
+    )
+    handoffs = {
+        "PROOF-SLICE-1": json.loads(
+            (worker_module.HANDOFF_DIR / "PROOF-SLICE-1.json").read_text()
+        )
+    }
+
+    with pytest.raises(RuntimeError, match="SIMULATED_WORKER_CRASH"):
+        dispatch_existing_accepted_event(
+            controller=ledger,
+            owner_state_root=env["flow"],
+            expected_owner_state_root=env["flow"],
+            state_db=env["tmp_path"] / "accepted.sqlite",
+            repo=env["repo"],
+            milestone_id=latest.milestone_id,
+            handoffs=handoffs,
+            claims_path=claims_path,
+            worktree_root=env["tmp_path"],
+            task=task,
+            worker_executor=worker_executor,
+        )
+
+    from project_orchestrator.local_dispatch_event_claim import (
+        DispatchFenceError,
+        inspect_claims,
+    )
+
+    claims = inspect_claims(claims_path)
+    assert len(claims) == 1
+    assert claims[0]["state"] == "INVOCATION_RESERVED", (
+        "a crashed executor must leave the claim uncertain, never RESULT_RECORDED"
+    )
+
+    # A second attempt for the same accepted event must never silently
+    # relaunch the crashed work -- it must be fenced, not retried.
+    with pytest.raises(DispatchFenceError):
+        dispatch_existing_accepted_event(
+            controller=ledger,
+            owner_state_root=env["flow"],
+            expected_owner_state_root=env["flow"],
+            state_db=env["tmp_path"] / "accepted.sqlite",
+            repo=env["repo"],
+            milestone_id=latest.milestone_id,
+            handoffs=handoffs,
+            claims_path=claims_path,
+            worktree_root=env["tmp_path"],
+            task=task,
+            worker_executor=worker_executor,
+        )
+    claims_after = inspect_claims(claims_path)
+    assert len(claims_after) == 1, (
+        "no second claim row must ever be created for the same event"
+    )
