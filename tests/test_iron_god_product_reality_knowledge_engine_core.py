@@ -37,6 +37,39 @@ class SearchResult:
     evidence_alignment_score: float = 0.0
 """
 
+# Matches the REAL knowledge_engine/search.py's own shape: a sibling,
+# package-qualified import (`from knowledge_engine.utils import ...`).
+# The adapter must resolve this via a real package import, not a loose
+# spec_from_file_location load under an ad-hoc module name.
+_UTILS_MODULE_SOURCE = """
+from __future__ import annotations
+
+def normalize_doi(doi: str | None) -> str | None:
+    return doi.strip().lower() if doi else doi
+"""
+
+_SEARCH_MODULE_SOURCE_WITH_SIBLING_IMPORT = """
+from __future__ import annotations
+from dataclasses import dataclass
+
+from knowledge_engine.utils import normalize_doi
+
+@dataclass(frozen=True)
+class SearchResult:
+    paper_id: int
+    title: str
+    abstract: str | None
+    publication_year: int | None
+    doi: str | None
+    score: float
+    snippet: str
+    matched_query: str
+    evidence_alignment_score: float = 0.0
+
+    def normalized_doi(self) -> str | None:
+        return normalize_doi(self.doi)
+"""
+
 _CORRECT_HYBRID_SEARCH_SOURCE = """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -101,7 +134,11 @@ def _git(cwd: Path, *args: str) -> None:
 
 
 def _build_fake_candidate_worktree(
-    tmp_path: Path, hybrid_search_source: str
+    tmp_path: Path,
+    hybrid_search_source: str,
+    *,
+    search_source: str = _SEARCH_MODULE_SOURCE,
+    utils_source: str | None = None,
 ) -> tuple[Path, str]:
     repo = tmp_path / "fake-ke-core"
     (repo / "knowledge_engine").mkdir(parents=True)
@@ -109,11 +146,15 @@ def _build_fake_candidate_worktree(
     _git(repo, "config", "user.email", "proof@example.com")
     _git(repo, "config", "user.name", "Proof")
     (repo / "knowledge_engine" / "search.py").write_text(
-        _SEARCH_MODULE_SOURCE, encoding="utf-8"
+        search_source, encoding="utf-8"
     )
     (repo / "knowledge_engine" / "hybrid_search.py").write_text(
         hybrid_search_source, encoding="utf-8"
     )
+    if utils_source is not None:
+        (repo / "knowledge_engine" / "utils.py").write_text(
+            utils_source, encoding="utf-8"
+        )
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "candidate")
     head = subprocess.run(
@@ -149,6 +190,26 @@ def test_mismatched_candidate_sha_fails_without_evaluating(tmp_path):
     evidence = adapter.evaluate(REPOSITORY, "0" * 40)
     assert evidence.overall_status == FAIL
     assert "does not match" in evidence.category_results[0].detail
+
+
+def test_search_module_with_real_sibling_package_import_resolves(tmp_path):
+    """Regression: the REAL knowledge_engine/search.py does `from
+    knowledge_engine.utils import normalize_doi` -- a genuine
+    package-qualified sibling import. The adapter must load the
+    candidate's modules as the real `knowledge_engine` package (so this
+    resolves) rather than under an ad-hoc module name (which raised
+    ModuleNotFoundError against the real repo and was never caught here
+    because this file's own search fixture had no such import)."""
+    repo, head = _build_fake_candidate_worktree(
+        tmp_path,
+        _CORRECT_HYBRID_SEARCH_SOURCE,
+        search_source=_SEARCH_MODULE_SOURCE_WITH_SIBLING_IMPORT,
+        utils_source=_UTILS_MODULE_SOURCE,
+    )
+    adapter = KnowledgeEngineCoreHybridSearchAdapter(repo)
+    evidence = adapter.evaluate(REPOSITORY, head)
+    assert evidence.overall_status == PASS
+    assert evidence.category_results[0].status == PASS
 
 
 def test_missing_module_fails_cleanly_not_raises(tmp_path):

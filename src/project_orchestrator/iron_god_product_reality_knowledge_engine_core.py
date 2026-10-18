@@ -31,7 +31,6 @@ vocabulary.
 from __future__ import annotations
 
 import importlib
-import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -75,21 +74,34 @@ class KnowledgeEngineCoreHybridSearchAdapter:
                 f"knowledge_engine/hybrid_search.py does not exist in "
                 f"{self._worktree_path}"
             )
-        search_module_path = self._worktree_path / "knowledge_engine" / "search.py"
-        spec = importlib.util.spec_from_file_location(
-            "ke_core_candidate_search", search_module_path
-        )
-        search_module = importlib.util.module_from_spec(spec)
-        sys.modules["ke_core_candidate_search"] = search_module
-        spec.loader.exec_module(search_module)
-
-        spec2 = importlib.util.spec_from_file_location(
-            "ke_core_candidate_hybrid_search", module_path
-        )
-        hybrid_module = importlib.util.module_from_spec(spec2)
-        sys.modules["ke_core_candidate_hybrid_search"] = hybrid_module
-        spec2.loader.exec_module(hybrid_module)
-        return search_module, hybrid_module
+        # knowledge_engine.search itself does `from knowledge_engine.utils
+        # import normalize_doi`, and hybrid_search.py does `from
+        # knowledge_engine.search import SearchResult` -- both are real
+        # intra-package absolute imports, not loadable via
+        # spec_from_file_location under an ad-hoc module name. The worktree
+        # must be importable as the REAL `knowledge_engine` package so
+        # those imports resolve, and so the SearchResult class this
+        # function returns is the SAME class object hybrid_search.py's own
+        # merge function constructs instances against (two independently
+        # loaded copies of the same class would not satisfy isinstance/
+        # equality checks against each other).
+        worktree_str = str(self._worktree_path)
+        stale = {
+            name: sys.modules.pop(name)
+            for name in list(sys.modules)
+            if name == "knowledge_engine" or name.startswith("knowledge_engine.")
+        }
+        sys.path.insert(0, worktree_str)
+        try:
+            search_module = importlib.import_module("knowledge_engine.search")
+            hybrid_module = importlib.import_module("knowledge_engine.hybrid_search")
+            return search_module, hybrid_module
+        finally:
+            sys.path.remove(worktree_str)
+            for name in list(sys.modules):
+                if name == "knowledge_engine" or name.startswith("knowledge_engine."):
+                    del sys.modules[name]
+            sys.modules.update(stale)
 
     def evaluate(self, repository: str, candidate_sha: str) -> ProductRealityEvidence:
         try:
