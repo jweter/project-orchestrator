@@ -202,9 +202,28 @@ def provision_candidate_worktree(
 
 
 def _build_task_for_slice(packet: Mapping[str, Any], *, worktree_root: Path) -> dict:
+    # Repository-aware source-root (2026-10-18, owner-reviewer finding):
+    # this duplicated the exact "src/"-hardcoding bug already fixed in
+    # accepted_event_dispatch_coordinator.py and local_continuous_worker.py
+    # -- reuses that same trusted, closed mapping rather than
+    # re-implementing it a third time. Deliberately imported locally, not
+    # at module level: accepted_event_dispatch_coordinator.py is a bare
+    # module living in IronGodLocal, not part of the installed
+    # project_orchestrator package, and every real caller of this
+    # function already puts IronGodLocal on sys.path before importing
+    # anything from project_orchestrator (the same precondition every
+    # proof test and the standalone entry point this session built
+    # already satisfies).
+    from accepted_event_dispatch_coordinator import _source_root_for_repository
+
     allowed_paths = packet["allowed_paths"]
-    source = next(p for p in allowed_paths if p.startswith("src/"))
-    tests = next(p for p in allowed_paths if p.startswith("tests/"))
+    slice_id = packet.get("slice_id", "<unknown>")
+    source_root = _source_root_for_repository(packet.get("repository"))
+    try:
+        source = next(p for p in allowed_paths if p.startswith(source_root))
+        tests = next(p for p in allowed_paths if p.startswith("tests/"))
+    except StopIteration as exc:
+        raise RuntimeError("HANDOFF_PATH_SHAPE_UNSUPPORTED:" + slice_id) from exc
     objective = packet.get("objective", "")
     forbidden = packet.get("forbidden", [])
     acceptance = packet.get("acceptance", [])
@@ -338,6 +357,18 @@ def run_continuous_development_cycle(
 
         slice_id = decision.next_slice_id
         packet = handoffs[slice_id]
+        # Validate and build the task BEFORE provisioning any real Git
+        # worktree (2026-10-18, owner-reviewer finding): an invalid
+        # handoff (e.g. an unsupported path shape) must never leave
+        # behind a real `git worktree add` with nothing to build in it.
+        try:
+            task = _build_task_for_slice(packet, worktree_root=worktree_root)
+        except RuntimeError as exc:
+            raise OrchestrationBlockedError(
+                f"task construction failed for slice {slice_id!r} before any "
+                f"worktree was provisioned: {exc}",
+                outcomes=outcomes,
+            ) from exc
         worktree = provision_candidate_worktree(
             repo,
             worktree_root=worktree_root,
@@ -345,7 +376,6 @@ def run_continuous_development_cycle(
             branch=packet["branch"],
             base_sha=packet["exact_base_sha"],
         )
-        task = _build_task_for_slice(packet, worktree_root=worktree_root)
 
         try:
             result = dispatch_fn(
