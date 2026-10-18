@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import subprocess
 import time
 import uuid
 from dataclasses import dataclass
@@ -75,6 +76,53 @@ class NonExecutionEvidence:
     disposition: str | None
     candidate_commit_sha: str | None
     reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ReviewedNonExecutionAttestation:
+    """A human reviewer's explicit, attributed finding -- never inferred.
+
+    `authorization_rejected_before_leasing=True` asserts the reviewer's
+    own finding that execution was rejected (e.g. by the owner-control
+    gate, the global authorization flag, or a resource check) BEFORE any
+    worker lease could have been acquired. `rejection_evidence_reference`
+    must point at the concrete record supporting that (a diagnostic
+    output, a log line, a session transcript reference) -- this module
+    never re-derives that finding on its own, since the failure being
+    adjudicated happened in the past and cannot be reconstructed from
+    current state alone.
+    """
+
+    reviewer_identity: str
+    justification: str
+    authorization_rejected_before_leasing: bool
+    rejection_evidence_reference: str
+
+
+@dataclass(frozen=True)
+class MissingLeaseStoreAdjudication:
+    """Read-only verdict for the specific case the automatic
+    `assess_non_execution_evidence` deliberately refuses: the lease store
+    itself does not exist. Eligibility here requires BOTH an attested
+    human finding AND every independently-checkable signal (candidate
+    ref absence, accepted-ref stability, the lease store's genuine
+    absence) to be consistent with it -- any contradiction is reported
+    and makes the claim ineligible."""
+
+    eligible: bool
+    reasons: tuple[str, ...]
+    acceptance_event_id: int
+    claim_token: str
+    slice_id: str
+    repository: str
+    accepted_sha: str
+    claimed_utc: str | None
+    worker_store_exists: bool
+    candidate_commit_sha: str | None
+    accepted_ref_matches_claim: bool
+    worktree_checked: bool
+    worktree_clean: bool | None
+    worktree_head_matches_base: bool | None
 
 
 def _store_identity(state: LocalFirstState) -> str:
@@ -552,49 +600,28 @@ def assess_non_execution_evidence(
     )
 
 
-def recover_non_executed_claim(
+def _write_terminal_non_execution(
     *,
     claim: DispatchClaim,
-    state: LocalFirstState,
-    refs: LocalGitRefs,
-    owner_state_root: Path,
     claims_path: Path,
-    worker_db_path: Path,
-    repo_root: Path,
+    owner_state_root: Path,
     authorized_by: str,
     reason: str,
+    evidence_json: str,
 ) -> DispatchClaim:
-    """Give an existing CLAIMED/INVOCATION_RESERVED claim a terminal,
-    non-executed disposition -- ONLY when `assess_non_execution_evidence`
-    finds it eligible. The original row's identity (event, slice, token,
-    accepted_sha) is never changed; only its state and recovery metadata
-    columns are updated. This never launches, retries, or reconciles the
-    original invocation, and does not by itself authorize a new attempt --
-    `claim_accepted_next` separately consults this row's terminal state to
-    allow (or not allow) a replacement attempt.
+    """Shared, atomic write path for BOTH non-execution recovery routes
+    (the automatic `recover_non_executed_claim` and the human-reviewed
+    `record_reviewed_non_execution_disposition`). Each caller independently
+    computes and validates its own eligibility BEFORE calling this; this
+    function only ever performs the identity-checked, race-guarded
+    CLAIMED/INVOCATION_RESERVED -> ABORTED_NON_EXECUTED transition itself,
+    so the two eligibility gates can never drift from two different copies
+    of the same SQL.
 
-    A concurrent recovery attempt on the same claim is resolved by the
-    guarded UPDATE's affected-row count: only one caller's transaction can
-    observe the pre-recovery state and successfully flip it.
+    A concurrent attempt on the same claim is resolved by the guarded
+    UPDATE's affected-row count: only one caller's transaction can observe
+    the pre-recovery state and successfully flip it.
     """
-    _authorized(owner_state_root)
-    if not isinstance(authorized_by, str) or not authorized_by.strip():
-        raise DispatchFenceError("RECOVERY_AUTHORIZATION_IDENTITY_REQUIRED")
-    if not isinstance(reason, str) or not reason.strip():
-        raise DispatchFenceError("RECOVERY_REASON_REQUIRED")
-    evidence = assess_non_execution_evidence(
-        claim=claim,
-        state=state,
-        refs=refs,
-        owner_state_root=owner_state_root,
-        claims_path=claims_path,
-        worker_db_path=worker_db_path,
-        repo_root=repo_root,
-    )
-    if not evidence.eligible:
-        raise DispatchFenceError(
-            "NON_EXECUTION_EVIDENCE_INCONCLUSIVE:" + ";".join(evidence.reasons)
-        )
     _authorized(owner_state_root)
     db = _connect(claims_path)
     try:
@@ -617,12 +644,6 @@ def recover_non_executed_claim(
             if Path(row["owner_root"]).resolve() != Path(owner_state_root).resolve():
                 raise DispatchFenceError("OWNER_ROOT_MISMATCH")
             _authorized(owner_state_root)
-            evidence_json = json.dumps(
-                {
-                    "disposition": evidence.disposition,
-                    "candidate_commit_sha": evidence.candidate_commit_sha,
-                }
-            )
             cur = db.execute(
                 "UPDATE acceptance_dispatch_claims SET state=?, result_status=?, "
                 "recovery_authorized_by=?, recovery_reason=?, recovery_evidence_json=?, "
@@ -630,8 +651,8 @@ def recover_non_executed_claim(
                 (
                     _TERMINAL_NON_EXECUTED,
                     "NON_EXECUTION_VERIFIED",
-                    authorized_by.strip(),
-                    reason.strip(),
+                    authorized_by,
+                    reason,
                     evidence_json,
                     _now(),
                     claim.token,
@@ -652,6 +673,271 @@ def recover_non_executed_claim(
         accepted_sha=claim.accepted_sha,
         token=claim.token,
         state=_TERMINAL_NON_EXECUTED,
+    )
+
+
+def recover_non_executed_claim(
+    *,
+    claim: DispatchClaim,
+    state: LocalFirstState,
+    refs: LocalGitRefs,
+    owner_state_root: Path,
+    claims_path: Path,
+    worker_db_path: Path,
+    repo_root: Path,
+    authorized_by: str,
+    reason: str,
+) -> DispatchClaim:
+    """Give an existing CLAIMED/INVOCATION_RESERVED claim a terminal,
+    non-executed disposition -- ONLY when `assess_non_execution_evidence`
+    finds it eligible (a lease store that was actually checked and found
+    definitively empty). The original row's identity (event, slice, token,
+    accepted_sha) is never changed; only its state and recovery metadata
+    columns are updated. This never launches, retries, or reconciles the
+    original invocation, and does not by itself authorize a new attempt --
+    `claim_accepted_next` separately consults this row's terminal state to
+    allow (or not allow) a replacement attempt.
+
+    A claim whose lease store does not exist AT ALL is never eligible
+    through this function -- see `record_reviewed_non_execution_disposition`
+    for that deliberately separate, human-reviewed path.
+    """
+    _authorized(owner_state_root)
+    if not isinstance(authorized_by, str) or not authorized_by.strip():
+        raise DispatchFenceError("RECOVERY_AUTHORIZATION_IDENTITY_REQUIRED")
+    if not isinstance(reason, str) or not reason.strip():
+        raise DispatchFenceError("RECOVERY_REASON_REQUIRED")
+    evidence = assess_non_execution_evidence(
+        claim=claim,
+        state=state,
+        refs=refs,
+        owner_state_root=owner_state_root,
+        claims_path=claims_path,
+        worker_db_path=worker_db_path,
+        repo_root=repo_root,
+    )
+    if not evidence.eligible:
+        raise DispatchFenceError(
+            "NON_EXECUTION_EVIDENCE_INCONCLUSIVE:" + ";".join(evidence.reasons)
+        )
+    evidence_json = json.dumps(
+        {
+            "path": "AUTOMATIC_LEASE_STORE_CHECKED_EMPTY",
+            "disposition": evidence.disposition,
+            "candidate_commit_sha": evidence.candidate_commit_sha,
+        }
+    )
+    return _write_terminal_non_execution(
+        claim=claim,
+        claims_path=claims_path,
+        owner_state_root=owner_state_root,
+        authorized_by=authorized_by.strip(),
+        reason=reason.strip(),
+        evidence_json=evidence_json,
+    )
+
+
+_GIT_ENV_REDIRECT_VARS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CEILING_DIRECTORIES",
+)
+
+
+def _worktree_cleanliness(worktree_path: Path, expected_head: str) -> tuple[bool, bool]:
+    """Returns (clean, head_matches_expected). Read-only: status + rev-parse."""
+    env = dict(os.environ)
+    for key in _GIT_ENV_REDIRECT_VARS:
+        env.pop(key, None)
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    status = subprocess.run(
+        ["git", "-C", str(worktree_path), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    head = subprocess.run(
+        ["git", "-C", str(worktree_path), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    clean = status.returncode == 0 and not status.stdout.strip()
+    head_matches = head.returncode == 0 and head.stdout.strip() == expected_head
+    return clean, head_matches
+
+
+def adjudicate_missing_lease_store_claim(
+    *,
+    claim: DispatchClaim,
+    refs: LocalGitRefs,
+    owner_state_root: Path,
+    claims_path: Path,
+    worker_db_path: Path,
+    repo_root: Path,
+    attestation: ReviewedNonExecutionAttestation,
+    worktree_path: Path | None = None,
+) -> MissingLeaseStoreAdjudication:
+    """Read-only. Never writes, resets, or replays anything.
+
+    For the specific case the automatic `assess_non_execution_evidence`
+    deliberately refuses: the lease STORE itself does not exist, so its
+    absence cannot be distinguished by that classifier from lost or
+    deleted evidence. This function never makes that distinction on its
+    own either -- it REQUIRES an explicit, attributed human attestation
+    that execution was rejected before leasing, and then independently
+    cross-checks every OTHER piece of evidence it can read directly: the
+    claim row's own identity, whether the lease store genuinely does not
+    exist (if it does, this is the wrong function -- see
+    `assess_non_execution_evidence`), whether a candidate commit ref
+    exists for the slice, whether the accepted Git reference for the
+    claim's milestone has moved since the claim was made, and -- when a
+    worktree path is supplied and still exists -- whether it is clean and
+    at the expected base SHA. Any contradiction between the attestation
+    and this independently-read evidence is reported and makes the claim
+    ineligible; it is never resolved in the attestation's favor.
+    """
+    reasons: list[str] = []
+
+    if refs.owner_state_root.resolve() != Path(owner_state_root).resolve():
+        reasons.append("OWNER_ROOT_MISMATCH")
+
+    if (
+        not isinstance(attestation.reviewer_identity, str)
+        or not attestation.reviewer_identity.strip()
+    ):
+        reasons.append("ATTESTATION_REVIEWER_IDENTITY_REQUIRED")
+    if (
+        not isinstance(attestation.justification, str)
+        or not attestation.justification.strip()
+    ):
+        reasons.append("ATTESTATION_JUSTIFICATION_REQUIRED")
+    if (
+        not isinstance(attestation.rejection_evidence_reference, str)
+        or not attestation.rejection_evidence_reference.strip()
+    ):
+        reasons.append("ATTESTATION_REJECTION_EVIDENCE_REFERENCE_REQUIRED")
+    if attestation.authorization_rejected_before_leasing is not True:
+        reasons.append("ATTESTATION_DOES_NOT_ESTABLISH_REJECTION_BEFORE_LEASING")
+
+    rows = inspect_claims(claims_path)
+    row = next((r for r in rows if r["claim_token"] == claim.token), None)
+    if (
+        row is None
+        or row["state"] not in ("CLAIMED", "INVOCATION_RESERVED")
+        or row["acceptance_event_id"] != claim.event_id
+        or row["slice_id"] != claim.slice_id
+        or row["accepted_sha"] != claim.accepted_sha
+    ):
+        reasons.append("STALE_OR_MISSING_CLAIM_ROW")
+        row = row or {}
+
+    worker_store_exists = worker_db_path.is_file()
+    if worker_store_exists:
+        reasons.append("WORKER_STORE_EXISTS_USE_AUTOMATIC_RECOVERY_PATH")
+
+    candidate_sha = get_candidate(repo_root, claim.slice_id)
+    if candidate_sha is not None:
+        reasons.append(f"CANDIDATE_COMMIT_EXISTS:{candidate_sha}")
+
+    milestone_id = row.get("milestone_id")
+    accepted_ref_matches = False
+    if milestone_id:
+        accepted_ref_matches = (
+            refs.accepted() == claim.accepted_sha
+            and refs.get("milestone", milestone_id) == claim.accepted_sha
+        )
+        if not accepted_ref_matches:
+            reasons.append("ACCEPTED_REF_MOVED_SINCE_CLAIM")
+    else:
+        reasons.append("MILESTONE_ID_UNAVAILABLE_FOR_REF_CHECK")
+
+    worktree_checked = False
+    worktree_clean: bool | None = None
+    worktree_head_matches: bool | None = None
+    if worktree_path is not None and worktree_path.is_dir():
+        worktree_checked = True
+        worktree_clean, worktree_head_matches = _worktree_cleanliness(
+            worktree_path, claim.accepted_sha
+        )
+        if not worktree_clean or not worktree_head_matches:
+            reasons.append("WORKTREE_NOT_CLEAN_OR_HEAD_MISMATCH")
+
+    return MissingLeaseStoreAdjudication(
+        eligible=not reasons,
+        reasons=tuple(reasons),
+        acceptance_event_id=claim.event_id,
+        claim_token=claim.token,
+        slice_id=claim.slice_id,
+        repository=row.get("repository", ""),
+        accepted_sha=claim.accepted_sha,
+        claimed_utc=row.get("claimed_utc"),
+        worker_store_exists=worker_store_exists,
+        candidate_commit_sha=candidate_sha,
+        accepted_ref_matches_claim=accepted_ref_matches,
+        worktree_checked=worktree_checked,
+        worktree_clean=worktree_clean,
+        worktree_head_matches_base=worktree_head_matches,
+    )
+
+
+def record_reviewed_non_execution_disposition(
+    *,
+    claim: DispatchClaim,
+    refs: LocalGitRefs,
+    owner_state_root: Path,
+    claims_path: Path,
+    worker_db_path: Path,
+    repo_root: Path,
+    attestation: ReviewedNonExecutionAttestation,
+    worktree_path: Path | None = None,
+) -> DispatchClaim:
+    """Apply a human-reviewed non-execution disposition to a claim whose
+    lease store does not exist at all -- ONLY when
+    `adjudicate_missing_lease_store_claim` finds it eligible. Shares the
+    same atomic, race-guarded write as the automatic recovery path (see
+    `_write_terminal_non_execution`) so the two routes can never diverge
+    in how they actually mutate the claims database, only in how each
+    independently decides whether to call it.
+    """
+    _authorized(owner_state_root)
+    adjudication = adjudicate_missing_lease_store_claim(
+        claim=claim,
+        refs=refs,
+        owner_state_root=owner_state_root,
+        claims_path=claims_path,
+        worker_db_path=worker_db_path,
+        repo_root=repo_root,
+        attestation=attestation,
+        worktree_path=worktree_path,
+    )
+    if not adjudication.eligible:
+        raise DispatchFenceError(
+            "REVIEWED_NON_EXECUTION_EVIDENCE_INCONCLUSIVE:"
+            + ";".join(adjudication.reasons)
+        )
+    evidence_json = json.dumps(
+        {
+            "path": "HUMAN_REVIEWED_MISSING_STORE_ADJUDICATION",
+            "rejection_evidence_reference": attestation.rejection_evidence_reference,
+            "candidate_commit_sha": adjudication.candidate_commit_sha,
+            "worker_store_exists": adjudication.worker_store_exists,
+            "accepted_ref_matches_claim": adjudication.accepted_ref_matches_claim,
+            "worktree_checked": adjudication.worktree_checked,
+        }
+    )
+    return _write_terminal_non_execution(
+        claim=claim,
+        claims_path=claims_path,
+        owner_state_root=owner_state_root,
+        authorized_by=attestation.reviewer_identity.strip(),
+        reason=attestation.justification.strip(),
+        evidence_json=evidence_json,
     )
 
 
