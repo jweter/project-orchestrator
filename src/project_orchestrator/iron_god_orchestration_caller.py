@@ -201,45 +201,38 @@ def provision_candidate_worktree(
     return target
 
 
-def _build_task_for_slice(packet: Mapping[str, Any], *, worktree_root: Path) -> dict:
-    # Repository-aware source-root (2026-10-18, owner-reviewer finding):
-    # this duplicated the exact "src/"-hardcoding bug already fixed in
-    # accepted_event_dispatch_coordinator.py and local_continuous_worker.py
-    # -- reuses that same trusted, closed mapping rather than
-    # re-implementing it a third time. Deliberately imported locally, not
-    # at module level: accepted_event_dispatch_coordinator.py is a bare
-    # module living in IronGodLocal, not part of the installed
-    # project_orchestrator package, and every real caller of this
-    # function already puts IronGodLocal on sys.path before importing
-    # anything from project_orchestrator (the same precondition every
-    # proof test and the standalone entry point this session built
-    # already satisfies).
-    from accepted_event_dispatch_coordinator import _source_root_for_repository
+def _build_task_for_slice(
+    packet: Mapping[str, Any], *, slice_id: str, accepted_sha: str, worktree_root: Path
+) -> dict:
+    """Delegates entirely to the one canonical task-construction
+    function, accepted_event_dispatch_coordinator.build_expected_task
+    (2026-10-18, owner-reported integration defect: this function
+    previously had its own independent prompt-construction logic --
+    joining forbidden/acceptance with ", " and not .strip()-ing the
+    objective -- that silently drifted from the coordinator's own
+    "; "-joined, .strip()-ed version. The coordinator's own identity
+    check caught the resulting mismatch, but only AFTER a real
+    worktree had already been provisioned for the wrong task. Calling
+    the SAME function the coordinator uses internally for validation
+    makes this a structural guarantee, not something that depends on
+    two independently maintained implementations staying in sync.
 
-    allowed_paths = packet["allowed_paths"]
-    slice_id = packet.get("slice_id", "<unknown>")
-    source_root = _source_root_for_repository(packet.get("repository"))
-    try:
-        source = next(p for p in allowed_paths if p.startswith(source_root))
-        tests = next(p for p in allowed_paths if p.startswith("tests/"))
-    except StopIteration as exc:
-        raise RuntimeError("HANDOFF_PATH_SHAPE_UNSUPPORTED:" + slice_id) from exc
-    objective = packet.get("objective", "")
-    forbidden = packet.get("forbidden", [])
-    acceptance = packet.get("acceptance", [])
-    prompt = (
-        f"Objective: {objective} Allowed paths: {source}, {tests}. "
-        f"Forbidden: {', '.join(forbidden)}. Acceptance: {', '.join(acceptance)}"
+    Deliberately imported locally, not at module level:
+    accepted_event_dispatch_coordinator.py is a bare module living in
+    IronGodLocal, not part of the installed project_orchestrator
+    package, and every real caller of this function already puts
+    IronGodLocal on sys.path before importing anything from
+    project_orchestrator (the same precondition every proof test and
+    the standalone entry point this session built already satisfies).
+    """
+    from accepted_event_dispatch_coordinator import build_expected_task
+
+    return build_expected_task(
+        slice_id=slice_id,
+        accepted_sha=accepted_sha,
+        packet=packet,
+        worktree_root=worktree_root,
     )
-    return {
-        "id": packet["slice_id"],
-        "base_sha": packet["exact_base_sha"],
-        "branch": packet["branch"],
-        "work": worktree_root / packet["worktree_name"],
-        "source": source,
-        "tests": tests,
-        "prompt": prompt,
-    }
 
 
 def _read_receipt_sha256(lease_path: Path, slice_id: str) -> str:
@@ -362,7 +355,12 @@ def run_continuous_development_cycle(
         # handoff (e.g. an unsupported path shape) must never leave
         # behind a real `git worktree add` with nothing to build in it.
         try:
-            task = _build_task_for_slice(packet, worktree_root=worktree_root)
+            task = _build_task_for_slice(
+                packet,
+                slice_id=slice_id,
+                accepted_sha=decision.accepted_sha,
+                worktree_root=worktree_root,
+            )
         except RuntimeError as exc:
             raise OrchestrationBlockedError(
                 f"task construction failed for slice {slice_id!r} before any "
