@@ -79,6 +79,47 @@ from .local_git_refs import LocalGitRefs
 
 VERIFIED_CANDIDATE = "VERIFIED_CANDIDATE"
 
+# The builder interface (2026-10-18, owner directive: "Iron God's
+# orchestration layer should depend on a clearly defined builder
+# interface, not on the details of how Claude Code happens to
+# launch... The production builder should ultimately be replaceable
+# without rewriting the orchestrator").
+#
+# This module does not itself take a builder parameter -- the real
+# substitution point lives one layer down, inside the real
+# local_continuous_worker.py's execute_candidate_attempt, which looks
+# up its builder_fn/verifier_fn defaults from that module's OWN
+# build_candidate/verify_and_commit globals at call time (`builder_fn
+# = build_candidate if builder_fn is None else builder_fn`). Since
+# local_continuous_worker.py is outside this session's permitted
+# modification scope, that lookup cannot be threaded through as an
+# explicit parameter of execute_reserved_dispatch_claim today. The
+# existing, already-used substitution mechanism -- replacing the
+# loaded worker module's `build_candidate`/`verify_and_commit`
+# attributes before constructing `worker_executor` -- IS the builder
+# interface boundary; every proof test this session (including
+# test_iron_god_orchestration_caller.py's real two-slice chain) already
+# depends on exactly this contract, not on anything claude-cli-specific.
+# BuilderFn/VerifierFn below name that contract explicitly so a future
+# caller (a different model, a different CLI, a non-LLM code generator)
+# can be substituted by installing a different callable matching this
+# same shape, without this orchestration module -- or its callers --
+# changing at all.
+BuilderFn = Callable[..., None]
+"""`(task: dict, *, lease_heartbeat: Callable[[], None] | None = None) -> None`
+-- writes real files into `task["work"]`. Must raise on failure, never
+return a value. Installed by replacing the loaded worker module's
+`build_candidate` attribute."""
+
+VerifierFn = Callable[..., dict]
+"""`(task: dict, *, lease_heartbeat: Callable[[], None] | None = None) ->
+dict` -- returns at minimum `{"head_sha": str, "receipt_sha256": str,
+"checks": int}` for the real candidate commit it verified. Must raise
+`RuntimeError` on failure (see local_continuous_worker.py's own
+`repairable` failure-code set for which codes route to repair rather
+than propagate). Installed by replacing the loaded worker module's
+`verify_and_commit` attribute."""
+
 
 class OrchestrationNotAuthorizedError(RuntimeError):
     """Raised when run_continuous_development_cycle is called without
