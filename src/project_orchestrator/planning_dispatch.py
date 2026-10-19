@@ -214,6 +214,11 @@ def ready_task_batch(
     derive_slices_fn: Callable,
     conflict_check_fn: Callable,
 ) -> list[tuple[str, str, dict]]:
+    # The parallel planner must enforce the same terminal NO_OP budget as the
+    # single-target selector. Import here to avoid planning/authority cycles.
+    from .activation_capability import (
+        repeated_noop_slice_evidence, record_exhausted_slice_direction,
+    )
     candidates: list[tuple[str, str, dict]] = []
     try:
         issue_frontier = json.loads((state_root / "issue-work-frontier.json").read_text(encoding="utf-8"))
@@ -272,6 +277,10 @@ def ready_task_batch(
             continue
         request_path.unlink(missing_ok=True)
         for task in derived.get("slices", []):
+            exhaustion = repeated_noop_slice_evidence(state_root, repo, task)
+            if exhaustion["exhausted"]:
+                record_exhausted_slice_direction(state_root, repo, head, task, exhaustion)
+                continue
             if conflict_check_fn(state_root, repo, task) is None:
                 candidates.append((repo, head, task))
     for issue in issue_rows:
