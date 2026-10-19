@@ -73,6 +73,7 @@ from .iron_god_candidate_local_acceptance import (
 from .iron_god_failure_classification import classify
 from .iron_god_milestone_resolution import resolve_latest_committed_milestone
 from .iron_god_product_reality_adapter import ProductRealityAdapter
+from .iron_god_scoped_dispatch_authorization import scoped_worker_executor
 from .local_acceptance_refill import select_next_after_acceptance
 from .local_first_state import LocalFirstState
 from .local_git_refs import LocalGitRefs
@@ -125,7 +126,13 @@ class OrchestrationNotAuthorizedError(RuntimeError):
     """Raised when run_continuous_development_cycle is called without
     its own explicit orchestration_authorized=True -- never defaulted,
     never inferred from controller["candidate_execution_authorized"]
-    alone."""
+    alone. Also raised when the cycle's own target `repository` falls
+    outside the caller-declared `authorized_repositories` set (owner
+    directive, 2026-10-18, "OPTION 2 APPROVED": the repository boundary
+    must be enforced by this shared orchestration primitive itself, not
+    only by whichever entrypoint script happens to remember to wrap its
+    worker_executor -- see the per-slice scoped_worker_executor wrapping
+    below for the second, packet-level layer of the same boundary)."""
 
 
 class OrchestrationBlockedError(RuntimeError):
@@ -270,6 +277,7 @@ def run_continuous_development_cycle(
     refs: LocalGitRefs,
     repo: Path,
     repository: str,
+    authorized_repositories: frozenset[str],
     owner_state_root: Path,
     controller: dict[str, Any],
     handoffs: dict[str, dict[str, Any]],
@@ -319,6 +327,27 @@ def run_continuous_development_cycle(
         )
     if max_cycles < 1:
         raise ValueError("max_cycles must be >= 1")
+    # Repository scope is enforced HERE, by this shared primitive, not left
+    # to whatever entrypoint script happens to wrap its own worker_executor
+    # (owner directive, 2026-10-18, "OPTION 2 APPROVED": a coordinator-level
+    # restriction is insufficient if a caller can reach the worker without
+    # it -- this is the one real call path every current caller uses, so
+    # checking it here closes that gap for everything that calls this
+    # function, not only the one entrypoint that remembers to). Checked
+    # before any milestone lookup, selection, or worktree provisioning.
+    if not isinstance(authorized_repositories, frozenset) or not all(
+        isinstance(item, str) and item for item in authorized_repositories
+    ):
+        raise OrchestrationNotAuthorizedError(
+            "run_continuous_development_cycle requires a non-empty "
+            "frozenset[str] authorized_repositories; never inferred or "
+            "defaulted to an open scope"
+        )
+    if repository not in authorized_repositories:
+        raise OrchestrationNotAuthorizedError(
+            f"repository {repository!r} is not in the caller-declared "
+            f"authorized_repositories set {sorted(authorized_repositories)!r}"
+        )
 
     outcomes: list[CycleOutcome] = []
     active_slice_ids: list[str] = []
@@ -375,6 +404,27 @@ def run_continuous_development_cycle(
             base_sha=packet["exact_base_sha"],
         )
 
+        # Second, packet-level layer of the same boundary: reuses the
+        # existing, independently-tested scoped_worker_executor rather than
+        # a second hand-rolled check. This catches a handoff packet whose
+        # OWN declared "repository" disagrees with the cycle's repository
+        # (the top-level check above only compares the cycle's repository
+        # argument against authorized_repositories, which cannot by itself
+        # detect a packet that lies about which repository it targets) --
+        # and it never invokes the real worker_executor for an out-of-scope
+        # repository, regardless of what the global candidate_execution_
+        # authorized flag says.
+        def _scoped_worker_executor(*, claim, task, state, refs):
+            return scoped_worker_executor(
+                claim,
+                task,
+                packet=packet,
+                authorized_repositories=authorized_repositories,
+                inner_executor=lambda c, t: worker_executor(
+                    claim=c, task=t, state=state, refs=refs
+                ),
+            )
+
         try:
             result = dispatch_fn(
                 controller=controller,
@@ -387,7 +437,7 @@ def run_continuous_development_cycle(
                 claims_path=claims_path,
                 worktree_root=worktree_root,
                 task=task,
-                worker_executor=worker_executor,
+                worker_executor=_scoped_worker_executor,
                 active_slice_ids=tuple(active_slice_ids),
             )
         except RuntimeError as exc:

@@ -266,6 +266,7 @@ def test_two_consecutive_slices_complete_automatically_without_manual_continuati
         refs=env["refs"],
         repo=env["repo"],
         repository=REPO_IDENTIFIER,
+        authorized_repositories=frozenset({REPO_IDENTIFIER}),
         owner_state_root=env["flow"],
         controller=controller,
         handoffs=handoffs,
@@ -321,6 +322,7 @@ def test_requires_its_own_explicit_authorization(env):
             refs=env["refs"],
             repo=env["repo"],
             repository=REPO_IDENTIFIER,
+            authorized_repositories=frozenset({REPO_IDENTIFIER}),
             owner_state_root=env["flow"],
             controller={"candidate_execution_authorized": True, "slices": []},
             handoffs={},
@@ -384,6 +386,7 @@ def test_stops_cleanly_with_no_dependency_ready_slice_and_no_planner(env, monkey
             refs=env["refs"],
             repo=env["repo"],
             repository=REPO_IDENTIFIER,
+            authorized_repositories=frozenset({REPO_IDENTIFIER}),
             owner_state_root=env["flow"],
             controller=controller,
             handoffs=handoffs,
@@ -450,6 +453,7 @@ def test_engineering_failure_stops_cycle_with_classified_reason_not_retried(
             refs=env["refs"],
             repo=env["repo"],
             repository=REPO_IDENTIFIER,
+            authorized_repositories=frozenset({REPO_IDENTIFIER}),
             owner_state_root=env["flow"],
             controller=controller,
             handoffs=handoffs,
@@ -487,3 +491,359 @@ def test_engineering_failure_stops_cycle_with_classified_reason_not_retried(
     claims = inspect_claims(env["tmp_path"] / "claims.sqlite")
     assert len(claims) == 1
     assert claims[0]["state"] == "RESULT_RECORDED"
+
+
+# -- Repository-authorization boundary regression tests (owner directive,
+# 2026-10-18, "OPTION 2 APPROVED: CLOSE THE AUTHORIZATION GAP AND PREPARE
+# FOR LIVE EXECUTION"). These prove the boundary is enforced by this
+# shared orchestration primitive itself -- the one real call path every
+# existing caller uses -- not only by an entrypoint script's own
+# discipline. ---------------------------------------------------------
+
+
+def test_authorized_repository_task_passes_the_scope_check(env, monkeypatch):
+    worker_module = env["worker_module"]
+    monkeypatch.setattr(worker_module, "build_candidate", _fake_builder)
+    monkeypatch.setattr(worker_module, "verify_and_commit", _fake_verifier)
+
+    from project_orchestrator.iron_god_candidate_local_acceptance import ACCEPTED
+    from project_orchestrator.iron_god_orchestration_caller import (
+        VERIFIED_CANDIDATE,
+        run_continuous_development_cycle,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    packet = _write_handoff_packet(
+        env,
+        slice_id="PROOF-SLICE-SCOPE-OK",
+        worktree_name="wt-scope-ok",
+        branch="iron-god/proof-scope-ok",
+        exact_base_sha=env["base_sha"],
+    )
+    handoffs = {"PROOF-SLICE-SCOPE-OK": packet}
+    controller = {
+        "controller": "iron-god-handoff-v1",
+        "mode": "candidate_mode",
+        "candidate_execution_authorized": True,
+        "slices": [{"id": "PROOF-SLICE-SCOPE-OK", "state": "ELIGIBLE"}],
+    }
+    worker_module.CONTROLLER_STATE.write_text(json.dumps(controller), encoding="utf-8")
+
+    def worker_executor(claim, task, state, refs):
+        return worker_module.execute_reserved_dispatch_claim(
+            claim=claim,
+            task=task,
+            claims_path=env["tmp_path"] / "claims.sqlite",
+            state=state,
+            refs=refs,
+            owner_state_root=env["flow"],
+            lease_path=env["tmp_path"] / "leases.sqlite",
+        )
+
+    outcomes = run_continuous_development_cycle(
+        orchestration_authorized=True,
+        dispatch_fn=dispatch_existing_accepted_event,
+        worker_executor=worker_executor,
+        state=env["state"],
+        state_db_path=env["tmp_path"] / "accepted.sqlite",
+        refs=env["refs"],
+        repo=env["repo"],
+        repository=REPO_IDENTIFIER,
+        authorized_repositories=frozenset({REPO_IDENTIFIER}),
+        owner_state_root=env["flow"],
+        controller=controller,
+        handoffs=handoffs,
+        claims_path=env["tmp_path"] / "claims.sqlite",
+        lease_path=env["tmp_path"] / "leases.sqlite",
+        worktree_root=env["tmp_path"],
+        next_milestone_id_fn=lambda i: f"M-proof-{i + 1}",
+        product_reality_adapter=None,
+        product_reality_required=False,
+        max_cycles=1,
+    )
+    assert len(outcomes) == 1
+    assert outcomes[0].dispatch_status == VERIFIED_CANDIDATE
+    assert outcomes[0].acceptance_status == ACCEPTED
+
+
+def test_cycle_repository_outside_authorized_set_is_rejected_before_any_dispatch(env):
+    """An unauthorized target repository must never reach milestone
+    resolution, selection, worktree provisioning, or the worker --
+    the check is the very first thing this function does."""
+    from project_orchestrator.iron_god_orchestration_caller import (
+        OrchestrationNotAuthorizedError,
+        run_continuous_development_cycle,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    calls = []
+
+    def worker_executor(claim, task, state, refs):
+        calls.append((claim, task))
+        raise AssertionError("worker_executor must never be invoked")
+
+    with pytest.raises(
+        OrchestrationNotAuthorizedError, match="not in the caller-declared"
+    ):
+        run_continuous_development_cycle(
+            orchestration_authorized=True,
+            dispatch_fn=dispatch_existing_accepted_event,
+            worker_executor=worker_executor,
+            state=env["state"],
+            state_db_path=env["tmp_path"] / "accepted.sqlite",
+            refs=env["refs"],
+            repo=env["repo"],
+            repository=REPO_IDENTIFIER,
+            authorized_repositories=frozenset({"someone-else/other-repo"}),
+            owner_state_root=env["flow"],
+            controller={"candidate_execution_authorized": True, "slices": []},
+            handoffs={},
+            claims_path=env["tmp_path"] / "claims.sqlite",
+            lease_path=env["tmp_path"] / "leases.sqlite",
+            worktree_root=env["tmp_path"],
+            next_milestone_id_fn=lambda i: f"M-{i}",
+            product_reality_adapter=None,
+            product_reality_required=False,
+            max_cycles=1,
+        )
+    assert calls == []
+
+
+def test_mismatched_accepted_baseline_in_a_handoff_packet_is_rejected(env):
+    """A handoff packet whose exact_base_sha no longer matches the real
+    accepted sha must never be selected for dispatch, even once the
+    repository itself is correctly authorized."""
+    from project_orchestrator.iron_god_orchestration_caller import (
+        OrchestrationBlockedError,
+        run_continuous_development_cycle,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    packet = _write_handoff_packet(
+        env,
+        slice_id="PROOF-SLICE-STALE-BASELINE",
+        worktree_name="wt-stale-baseline",
+        branch="iron-god/proof-stale-baseline",
+        exact_base_sha="f" * 40,  # does not match env["base_sha"]
+    )
+    handoffs = {"PROOF-SLICE-STALE-BASELINE": packet}
+    controller = {
+        "controller": "iron-god-handoff-v1",
+        "mode": "candidate_mode",
+        "candidate_execution_authorized": True,
+        "slices": [{"id": "PROOF-SLICE-STALE-BASELINE", "state": "ELIGIBLE"}],
+    }
+    env["worker_module"].CONTROLLER_STATE.write_text(
+        json.dumps(controller), encoding="utf-8"
+    )
+
+    calls = []
+
+    def worker_executor(claim, task, state, refs):
+        calls.append((claim, task))
+        raise AssertionError("worker_executor must never be invoked")
+
+    with pytest.raises(OrchestrationBlockedError, match="NO_DEPENDENCY_READY_SLICE"):
+        run_continuous_development_cycle(
+            orchestration_authorized=True,
+            dispatch_fn=dispatch_existing_accepted_event,
+            worker_executor=worker_executor,
+            state=env["state"],
+            state_db_path=env["tmp_path"] / "accepted.sqlite",
+            refs=env["refs"],
+            repo=env["repo"],
+            repository=REPO_IDENTIFIER,
+            authorized_repositories=frozenset({REPO_IDENTIFIER}),
+            owner_state_root=env["flow"],
+            controller=controller,
+            handoffs=handoffs,
+            claims_path=env["tmp_path"] / "claims.sqlite",
+            lease_path=env["tmp_path"] / "leases.sqlite",
+            worktree_root=env["tmp_path"],
+            next_milestone_id_fn=lambda i: f"M-proof-{i + 1}",
+            product_reality_adapter=None,
+            product_reality_required=False,
+            max_cycles=1,
+        )
+    assert calls == []
+
+
+def test_owner_takeover_still_blocks_execution_even_when_repository_is_authorized(
+    env,
+):
+    """Flipping owner control ON (human-mode.json enabled=true) must still
+    stop dispatch -- the new repository boundary is additive, it never
+    substitutes for or weakens the existing owner-control veto."""
+    import json as _json
+
+    from project_orchestrator.iron_god_orchestration_caller import (
+        OrchestrationBlockedError,
+        run_continuous_development_cycle,
+    )
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    packet = _write_handoff_packet(
+        env,
+        slice_id="PROOF-SLICE-OWNER-VETO",
+        worktree_name="wt-owner-veto",
+        branch="iron-god/proof-owner-veto",
+        exact_base_sha=env["base_sha"],
+    )
+    handoffs = {"PROOF-SLICE-OWNER-VETO": packet}
+    controller = {
+        "controller": "iron-god-handoff-v1",
+        "mode": "candidate_mode",
+        "candidate_execution_authorized": True,
+        "slices": [{"id": "PROOF-SLICE-OWNER-VETO", "state": "ELIGIBLE"}],
+    }
+    env["worker_module"].CONTROLLER_STATE.write_text(
+        _json.dumps(controller), encoding="utf-8"
+    )
+
+    # The real owner-takeover switch: flip it ON after the fixture set it
+    # off, exactly as a human reclaiming control would.
+    (env["flow"] / "human-mode.json").write_text(
+        _json.dumps({"enabled": True}), encoding="utf-8"
+    )
+
+    calls = []
+
+    def worker_executor(claim, task, state, refs):
+        calls.append((claim, task))
+        raise AssertionError("worker_executor must never be invoked")
+
+    with pytest.raises(OrchestrationBlockedError):
+        run_continuous_development_cycle(
+            orchestration_authorized=True,
+            dispatch_fn=dispatch_existing_accepted_event,
+            worker_executor=worker_executor,
+            state=env["state"],
+            state_db_path=env["tmp_path"] / "accepted.sqlite",
+            refs=env["refs"],
+            repo=env["repo"],
+            repository=REPO_IDENTIFIER,
+            authorized_repositories=frozenset({REPO_IDENTIFIER}),
+            owner_state_root=env["flow"],
+            controller=controller,
+            handoffs=handoffs,
+            claims_path=env["tmp_path"] / "claims.sqlite",
+            lease_path=env["tmp_path"] / "leases.sqlite",
+            worktree_root=env["tmp_path"],
+            next_milestone_id_fn=lambda i: f"M-proof-{i + 1}",
+            product_reality_adapter=None,
+            product_reality_required=False,
+            max_cycles=1,
+        )
+    assert calls == []
+
+
+def test_direct_coordinator_call_has_no_repository_scope_concept_at_all(
+    env, monkeypatch
+):
+    """Honest boundary documentation, not a desired property: calling
+    dispatch_existing_accepted_event directly -- skipping
+    run_continuous_development_cycle entirely -- dispatches a real task
+    with zero regard for any "authorized repository" notion, because
+    neither this function nor dispatch_one_accepted_event beneath it
+    accept or check an authorized_repositories parameter at all (asserted
+    below against the real signature, not assumed). Repository scoping is
+    not a structural property of this layer; it is added one layer up, by
+    run_continuous_development_cycle, which is the only actual caller of
+    this layer anywhere in this codebase today (confirmed by direct
+    search). A new caller that skipped the orchestration layer would
+    skip the scoping too -- this test proves that fact rather than
+    hiding it, per the owner's explicit instruction to verify this
+    rather than claim the system is fully scoped merely because its
+    preferred entry point is scoped."""
+    import inspect
+
+    worker_module = env["worker_module"]
+    monkeypatch.setattr(worker_module, "build_candidate", _fake_builder)
+    monkeypatch.setattr(worker_module, "verify_and_commit", _fake_verifier)
+
+    from project_orchestrator.resident_dispatch_binding import (
+        dispatch_existing_accepted_event,
+    )
+
+    assert (
+        "authorized_repositories"
+        not in inspect.signature(dispatch_existing_accepted_event).parameters
+    )
+
+    packet = _write_handoff_packet(
+        env,
+        slice_id="PROOF-SLICE-DIRECT-CALL",
+        worktree_name="wt-direct-call",
+        branch="iron-god/proof-direct-call",
+        exact_base_sha=env["base_sha"],
+    )
+    handoffs = {"PROOF-SLICE-DIRECT-CALL": packet}
+    controller = {
+        "controller": "iron-god-handoff-v1",
+        "mode": "candidate_mode",
+        "candidate_execution_authorized": True,
+        "slices": [{"id": "PROOF-SLICE-DIRECT-CALL", "state": "ELIGIBLE"}],
+    }
+    worker_module.CONTROLLER_STATE.write_text(json.dumps(controller), encoding="utf-8")
+
+    calls = []
+
+    def worker_executor(claim, task, state, refs):
+        calls.append((claim, task))
+        return worker_module.execute_reserved_dispatch_claim(
+            claim=claim,
+            task=task,
+            claims_path=env["tmp_path"] / "claims.sqlite",
+            state=state,
+            refs=refs,
+            owner_state_root=env["flow"],
+            lease_path=env["tmp_path"] / "leases.sqlite",
+        )
+
+    from accepted_event_dispatch_coordinator import build_expected_task
+
+    from project_orchestrator.iron_god_orchestration_caller import (
+        provision_candidate_worktree,
+    )
+
+    task = build_expected_task(
+        slice_id="PROOF-SLICE-DIRECT-CALL",
+        accepted_sha=env["base_sha"],
+        packet=packet,
+        worktree_root=env["tmp_path"],
+    )
+    provision_candidate_worktree(
+        env["repo"],
+        worktree_root=env["tmp_path"],
+        worktree_name=packet["worktree_name"],
+        branch=packet["branch"],
+        base_sha=packet["exact_base_sha"],
+    )
+
+    result = dispatch_existing_accepted_event(
+        controller=controller,
+        owner_state_root=env["flow"],
+        expected_owner_state_root=env["flow"],
+        state_db=env["tmp_path"] / "accepted.sqlite",
+        repo=env["repo"],
+        milestone_id="M-proof-0",
+        handoffs=handoffs,
+        claims_path=env["tmp_path"] / "claims.sqlite",
+        worktree_root=env["tmp_path"],
+        task=task,
+        worker_executor=worker_executor,
+    )
+
+    # Dispatch simply succeeded -- no authorized_repositories check exists
+    # at this layer to have blocked anything. Proves the boundary is NOT
+    # a structural property of this function; it is added one layer up.
+    assert len(calls) == 1
+    assert result["status"] in ("VERIFIED_CANDIDATE", "REPAIR_QUEUED")

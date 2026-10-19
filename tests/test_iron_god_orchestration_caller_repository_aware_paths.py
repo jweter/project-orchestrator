@@ -355,6 +355,7 @@ def test_invalid_handoff_never_creates_a_worktree(tmp_path, monkeypatch):
             refs=refs,
             repo=repo,
             repository=KE_CORE_REPOSITORY,
+            authorized_repositories=frozenset({KE_CORE_REPOSITORY}),
             owner_state_root=flow,
             controller=controller,
             handoffs={"IG-BAD": bad_packet},
