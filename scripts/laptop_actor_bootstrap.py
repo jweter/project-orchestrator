@@ -53,10 +53,10 @@ def windows_idle_seconds() -> float | None:
 
 
 def update_actor_checkout(actor_repo: Path) -> str:
-    """Fast-forward the disposable actor checkout to exact origin/main.
+    """Update the isolated actor checkout from a pinned or forward-only source.
 
-    The checkout is owned by the laptop actor, never by the user's development
-    workspace, so discarding actor-checkout drift is safe and intentional.
+    An unpinned GitHub update must never roll an actor release backward or
+    discard checkout changes. A verified exact-head local promotion is explicit.
     """
     if not (actor_repo / ".git").is_dir():
         raise RuntimeError("actor repository is not a Git checkout")
@@ -83,7 +83,24 @@ def update_actor_checkout(actor_repo: Path) -> str:
         raise RuntimeError("actor checkout source fetch failed")
     target = remote.stdout.strip()
     if len(target) != 40 or any(c not in "0123456789abcdef" for c in target):
-        raise RuntimeError("origin/main did not resolve to an exact SHA")
+        raise RuntimeError("actor release did not resolve to an exact SHA")
+    current = run(["git", "rev-parse", "HEAD"], actor_repo)
+    if current.returncode != 0 or len(current.stdout.strip()) != 40:
+        raise RuntimeError("actor checkout current HEAD is unverified")
+    current_sha = current.stdout.strip()
+    # Never destroy unique actor-checkout changes, even when the checkout is
+    # nominally disposable. The old post-reset cleanliness check came too late.
+    clean_before = run(["git", "status", "--porcelain"], actor_repo)
+    if clean_before.returncode != 0 or clean_before.stdout.strip():
+        raise RuntimeError("actor checkout is dirty; refusing release replacement")
+    if not local_repo and current_sha != target:
+        # An unpinned origin/main update may FAST-FORWARD, but it may never
+        # silently roll back an explicitly promoted or divergent local version.
+        ancestor = run(["git", "merge-base", "--is-ancestor", current_sha, target], actor_repo)
+        if ancestor.returncode != 0:
+            raise RuntimeError("origin/main is older or divergent; pinned verified release required")
+    if current_sha == target:
+        return target
     reset = run(["git", "reset", "--hard", target], actor_repo)
     if reset.returncode != 0:
         raise RuntimeError("actor checkout reset failed")

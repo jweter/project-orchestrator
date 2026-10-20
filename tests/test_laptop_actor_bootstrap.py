@@ -28,6 +28,8 @@ def test_update_actor_checkout_tracks_exact_origin_main(monkeypatch, tmp_path):
         calls.append((cmd, cwd))
         if cmd[:3] == ["git", "rev-parse", "origin/main"]:
             return completed(stdout=SHA + "\n")
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout="b" * 40 + "\n")
         return completed()
 
     monkeypatch.setattr(bootstrap, "run", fake_run)
@@ -286,3 +288,157 @@ def test_local_promotion_rejects_partial_configuration(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, 'run', lambda *args: pytest.fail('no Git mutation allowed'))
     with pytest.raises(RuntimeError, match='both repository and exact SHA'):
         bootstrap.update_actor_checkout(actor)
+
+
+def test_default_origin_main_refuses_rollback_or_divergence(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    (actor / ".git").mkdir(parents=True)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd == ["git", "rev-parse", "origin/main"]:
+            return completed(stdout="a" * 40 + "\n")
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout="b" * 40 + "\n")
+        if cmd[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return completed(returncode=1)
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="older or divergent"):
+        bootstrap.update_actor_checkout(actor)
+    assert ["git", "reset", "--hard", "a" * 40] not in calls
+
+
+def test_actor_update_refuses_to_erase_dirty_source_before_reset(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    (actor / ".git").mkdir(parents=True)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd == ["git", "rev-parse", "origin/main"]:
+            return completed(stdout="a" * 40 + "\n")
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout="b" * 40 + "\n")
+        if cmd == ["git", "status", "--porcelain"]:
+            return completed(stdout=" M unique-user-work.txt\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="dirty"):
+        bootstrap.update_actor_checkout(actor)
+    assert not any(cmd[:3] == ["git", "reset", "--hard"] for cmd in calls)
+
+
+def test_actor_update_is_noop_if_revision_already_loaded(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    (actor / ".git").mkdir(parents=True)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd in (["git", "rev-parse", "origin/main"], ["git", "rev-parse", "HEAD"]):
+            return completed(stdout=SHA + "\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    assert bootstrap.update_actor_checkout(actor) == SHA
+    assert not any(cmd[:3] == ["git", "reset", "--hard"] for cmd in calls)
+
+
+def test_local_exact_pin_allows_intentional_divergent_upgrade(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    source = tmp_path / "accepted"
+    (actor / ".git").mkdir(parents=True)
+    (source / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append((cmd, cwd))
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout=(SHA if cwd == source.resolve() else "b" * 40) + "\n")
+        if cmd == ["git", "rev-parse", "FETCH_HEAD"]:
+            return completed(stdout=SHA + "\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    assert bootstrap.update_actor_checkout(actor) == SHA
+    assert ["git", "reset", "--hard", SHA] in [c[0] for c in calls]
+    assert not any(c[0][:3] == ["git", "merge-base", "--is-ancestor"] for c in calls)
+
+
+def test_origin_main_must_not_roll_back_advanced_actor(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    (actor / ".git").mkdir(parents=True)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd == ["git", "rev-parse", "origin/main"]:
+            return completed(stdout=SHA + "\n")
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout="b" * 40 + "\n")
+        if cmd[:3] == ["git", "merge-base", "--is-ancestor"]:
+            return completed(returncode=1)
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="older or divergent"):
+        bootstrap.update_actor_checkout(actor)
+    assert not any(c[:3] == ["git", "reset", "--hard"] for c in calls)
+
+
+def test_local_actor_refuses_preexisting_checkout_changes(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    (actor / ".git").mkdir(parents=True)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd == ["git", "rev-parse", "origin/main"]:
+            return completed(stdout=SHA + "\n")
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout="b" * 40 + "\n")
+        if cmd == ["git", "status", "--porcelain"]:
+            return completed(stdout=" M scripts/continuous_flow_supervisor.py\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="actor checkout is dirty"):
+        bootstrap.update_actor_checkout(actor)
+    assert not any(c[:3] == ["git", "reset", "--hard"] for c in calls)
+
+
+def test_pinned_local_release_can_update_divergent_clean_actor(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    source = tmp_path / "source"
+    (actor / ".git").mkdir(parents=True)
+    (source / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append((cmd, cwd))
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout=(SHA if cwd == source else "b" * 40) + "\n")
+        if cmd == ["git", "rev-parse", "FETCH_HEAD"]:
+            return completed(stdout=SHA + "\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    assert bootstrap.update_actor_checkout(actor) == SHA
+    assert ["git", "reset", "--hard", SHA] in [c[0] for c in calls]
+    assert not any(c[0][:2] == ["git", "merge-base"] for c in calls)
