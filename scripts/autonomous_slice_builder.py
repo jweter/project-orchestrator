@@ -801,9 +801,8 @@ def slice_path_failure(paths:list[str],authority:dict[str,Any]|None)->str|None:
     forbidden_n=[normalize(x) for x in forbidden]
     if any(x is None for x in allowed_n+forbidden_n):
         return "invalid_slice_path_authority"
-    def matches(path:str,prefix:str)->bool:
-        path=path.replace(chr(92),"/").strip("/")
-        return path==prefix or path.startswith(prefix+"/")
+    from project_orchestrator.slice_path_globs import matches_authorized_path
+    matches=matches_authorized_path
     for path in paths:
         if any(matches(path,prefix) for prefix in forbidden_n):
             return f"slice_forbidden_path:{path}"
