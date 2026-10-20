@@ -150,6 +150,10 @@ def test_readiness_refuses_active_workers_and_unknown_state(tmp_path):
                              owner_marker=marker)["status"] == "WAIT_FOR_WORKER_DRAIN"
     assert release.readiness(receipt, current_sha="b"*40, active_workers=None,
                              owner_marker=marker)["status"] == "BLOCKED_WORKER_STATE_UNKNOWN"
+    assert release.readiness(receipt, current_sha=None, active_workers=0,
+                             owner_marker=marker)["status"] == "BLOCKED_RUNNING_REVISION_UNKNOWN"
+    assert release.readiness(receipt, current_sha="unverified", active_workers=0,
+                             owner_marker=marker)["ready"] is False
     assert release.readiness(receipt, current_sha=sha, active_workers=0,
                              owner_marker=marker)["status"] == "REVISION_ALREADY_LOADED"
     assert release.readiness(receipt, current_sha="b"*40, active_workers=0,
@@ -221,4 +225,13 @@ def test_invalid_receipt_fails_closed(tmp_path):
     receipt = staging(tmp_path, source, sha, marker)
     receipt["verification"]["exact_head"] = "b"*40
     with pytest.raises(release.ReleaseError, match="does not match"):
+        release.validate_staged_release(receipt)
+
+
+@pytest.mark.parametrize("bad_path", [None, "", "relative/release", 5])
+def test_receipt_without_absolute_release_path_fails_closed(tmp_path, bad_path):
+    source, sha = source_repo(tmp_path)
+    receipt = staging(tmp_path, source, sha, mode_file(tmp_path))
+    receipt["release_repo"] = bad_path
+    with pytest.raises(release.ReleaseError, match="absolute checkout path"):
         release.validate_staged_release(receipt)

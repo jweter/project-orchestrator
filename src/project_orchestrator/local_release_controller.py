@@ -122,7 +122,10 @@ def validate_staged_release(receipt: dict[str, Any]) -> dict[str, Any]:
     if receipt.get("status") != "VERIFIED_STAGED":
         raise ReleaseError("release has not passed staging")
     sha = _valid_sha(receipt.get("accepted_sha"))
-    release = Path(receipt["release_repo"])
+    release_path = receipt.get("release_repo")
+    if not isinstance(release_path, str) or not Path(release_path).is_absolute():
+        raise ReleaseError("release receipt has no absolute checkout path")
+    release = Path(release_path)
     identified = verify_clean_checkout(release, sha)
     if identified["tree"] != receipt.get("tree"):
         raise ReleaseError("release tree differs from verified candidate")
@@ -150,6 +153,10 @@ def stage_local_release(
         if not target.is_dir() or not receipt_path.is_file():
             raise ReleaseError("partial release exists; manual reconciliation required")
         payload = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
+        if (payload.get("accepted_sha") != sha
+                or Path(payload.get("release_repo", "")).resolve() != target.resolve()
+                or Path(payload.get("source_repo", "")).resolve() != candidate.resolve()):
+            raise ReleaseError("existing release receipt conflicts with requested source")
         validate_staged_release(payload)
         return {**payload, "status": "ALREADY_VERIFIED_STAGED"}
     verification = _verify_native_preflight(candidate, sha)
@@ -198,6 +205,8 @@ def readiness(receipt: dict[str, Any], *, current_sha: str | None,
     validate_staged_release(receipt)
     if active_workers is None:
         return {"status": "BLOCKED_WORKER_STATE_UNKNOWN", "ready": False}
+    if not isinstance(current_sha, str) or _SHA.fullmatch(current_sha) is None:
+        return {"status": "BLOCKED_RUNNING_REVISION_UNKNOWN", "ready": False}
     if active_workers != 0:
         return {"status": "WAIT_FOR_WORKER_DRAIN", "ready": False, "active_workers": active_workers}
     if current_sha == receipt["accepted_sha"]:

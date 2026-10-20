@@ -81,18 +81,25 @@ machine records. Do not commit them or include raw runtime ledgers in GitHub.
    preserving the old actor revision/ref and existing task-action backup.
    Never run a hard reset of an active supervisor's own source checkout.
 4. Only under the existing authorization and owner-control protocol, use
-   the installed `install_local_actor_cutover.ps1` pinned-source integration
-   against the independently staged checkout. Preserve rollback XML/config.
-5. Verify the actor checkout `HEAD` equals the release SHA, the persistent
+   `install_local_actor_cutover.ps1` with `-RepoRoot` pointing to the **staged
+   release checkout** and `-ReceiptPath` pointing to the matching verified
+   release receipt; source and exact Git tree must match that receipt.
+   The installer refuses an omitted receipt or dirty checkout and preserves
+   rollback XML/config. **Do not point it at a mutable development checkout.**
+5. Reconcile the separate ContinuousFlow-Watchdog launch target so it loads
+   the same pinned release, not an obsolete actor-repo. That watchdog must
+   remain disabled until its replacement is tested and independently
+   authorized; enabling only the LaptopActor task is not a supervisor cutover.
+6. Verify the actor checkout `HEAD` equals the release SHA, the persistent
    supervisor's **live heartbeat** reports that same SHA, exactly one active
    supervisor has exclusive authority, and workers resume without duplicate
    claims or exhausted `NO_OP` redispatch.
-6. On any mismatch or failed canary, stop promotion and use the existing
+7. On any mismatch or failed canary, stop promotion and use the existing
    reviewed rollback procedure. Do not claim successful deployment based
    solely on a staged receipt, process startup, or one passing unit test.
 
 The release controller v1 implements steps 1's artifact preparation and
-the read-only part of step 2. **It does not perform steps 3–6 unattended.**
+the read-only part of step 2. **It does not perform steps 3–7 unattended.**
 That division is deliberate while the active worker/guardian process
 ownership and the baseline upgrade races remain unresolved.
 
