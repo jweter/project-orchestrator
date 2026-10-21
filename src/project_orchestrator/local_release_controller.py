@@ -101,6 +101,28 @@ def _verify_native_preflight(repo: Path, sha: str) -> dict[str, str]:
     }
 
 
+def _clone_exact_commit(source: Path, destination: Path, sha: str, tree: str) -> Path:
+    """Create a clean detached checkout of one verified commit."""
+    subprocess.run(
+        [
+            "git",
+            "clone",
+            "--quiet",
+            "--no-local",
+            "--no-checkout",
+            str(source),
+            str(destination),
+        ],
+        capture_output=True,
+        check=True,
+        timeout=300,
+    )
+    _git(destination, "checkout", "--detach", sha)
+    if verify_clean_checkout(destination, sha)["tree"] != tree:
+        raise ReleaseError("cloned Git tree does not match verified source")
+    return destination
+
+
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix=".release-receipt-", suffix=".json", dir=path.parent)
@@ -159,29 +181,36 @@ def stage_local_release(
             raise ReleaseError("existing release receipt conflicts with requested source")
         validate_staged_release(payload)
         return {**payload, "status": "ALREADY_VERIFIED_STAGED"}
-    verification = _verify_native_preflight(candidate, sha)
+    verification_tempdir = Path(tempfile.mkdtemp(prefix="iron-god-release-verify-"))
+    try:
+        verification_checkout = _clone_exact_commit(
+            candidate,
+            verification_tempdir / "checkout",
+            sha,
+            source["tree"],
+        )
+        verification = _verify_native_preflight(verification_checkout, sha)
+    finally:
+        shutil.rmtree(verification_tempdir, ignore_errors=True)
     if verify_clean_checkout(candidate, sha)["tree"] != source["tree"]:
         raise ReleaseError("candidate tree changed during verification")
     owner_allows_preparation(owner_marker)
     releases_root.mkdir(parents=True, exist_ok=True)
-    tempdir = Path(tempfile.mkdtemp(prefix=".local-release-", dir=releases_root))
+    staging_tempdir = Path(tempfile.mkdtemp(prefix=".local-release-", dir=releases_root))
     try:
-        subprocess.run(
-            ["git", "clone", "--quiet", "--no-local", "--no-checkout",
-             str(candidate), str(tempdir / "checkout")],
-            capture_output=True, check=True, timeout=300,
+        staged = _clone_exact_commit(
+            candidate,
+            staging_tempdir / "checkout",
+            sha,
+            source["tree"],
         )
-        staged = tempdir / "checkout"
-        _git(staged, "checkout", "--detach", sha)
-        if verify_clean_checkout(staged, sha)["tree"] != source["tree"]:
-            raise ReleaseError("staged Git tree does not match verified source")
         owner_allows_preparation(owner_marker)
         if target.exists():
             raise ReleaseError("release target appeared during staging")
         os.replace(staged, target)
     finally:
         # Only delete the uniquely created staging directory, never a pre-existing release.
-        shutil.rmtree(tempdir, ignore_errors=True)
+        shutil.rmtree(staging_tempdir, ignore_errors=True)
     receipt = {
         "schema_version": _SCHEMA,
         "status": "VERIFIED_STAGED",

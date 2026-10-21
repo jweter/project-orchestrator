@@ -121,6 +121,50 @@ def test_native_preflight_must_pass(tmp_path):
     assert not (tmp_path / "releases").exists()
 
 
+def test_preflight_generated_files_never_dirty_development_checkout(tmp_path):
+    source, _ = source_repo(tmp_path)
+    (source / "engineering" / "preflight.py").write_text(
+        "from pathlib import Path\n"
+        "Path('preflight-output.txt').write_text('generated\\n')\n"
+        "Path('src.txt').write_text('changed by preflight\\n')\n"
+        "print('native preflight passed')\n",
+        encoding="utf-8",
+    )
+    git(source, "add", ".")
+    git(source, "commit", "-qm", "generating preflight")
+    sha = git(source, "rev-parse", "HEAD")
+
+    result = staging(tmp_path, source, sha, mode_file(tmp_path))
+
+    assert git(source, "status", "--porcelain", "--untracked-files=normal") == ""
+    assert (source / "src.txt").read_text() == "tested software\n"
+    assert not (source / "preflight-output.txt").exists()
+    staged = Path(result["release_repo"])
+    assert git(staged, "status", "--porcelain", "--untracked-files=normal") == ""
+    assert (staged / "src.txt").read_text() == "tested software\n"
+    assert not (staged / "preflight-output.txt").exists()
+
+
+def test_failing_generating_preflight_never_dirties_development_checkout(tmp_path):
+    source, _ = source_repo(tmp_path)
+    (source / "engineering" / "preflight.py").write_text(
+        "from pathlib import Path\n"
+        "Path('preflight-output.txt').write_text('generated\\n')\n"
+        "raise SystemExit(4)\n",
+        encoding="utf-8",
+    )
+    git(source, "add", ".")
+    git(source, "commit", "-qm", "failing generating preflight")
+    sha = git(source, "rev-parse", "HEAD")
+
+    with pytest.raises(release.ReleaseError, match="preflight FAILED"):
+        staging(tmp_path, source, sha, mode_file(tmp_path))
+
+    assert git(source, "status", "--porcelain", "--untracked-files=normal") == ""
+    assert not (source / "preflight-output.txt").exists()
+    assert not (tmp_path / "releases" / sha).exists()
+
+
 def test_partial_release_is_not_overwritten(tmp_path):
     source, sha = source_repo(tmp_path)
     marker = mode_file(tmp_path)
