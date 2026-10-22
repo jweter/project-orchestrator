@@ -57,35 +57,70 @@ class NativeWindowsRuntime:
         return RuntimeResult(self.runtime_id,completed.returncode,completed.stdout,completed.stderr)
 
     def execute_supervised(self,request:RuntimeRequest,authority_check,interval:float=1.0)->RuntimeResult:
-        """Execute while authority remains valid without blocking on full output pipes."""
+        """Execute with owned process-tree containment and live authority checks."""
         env=os.environ.copy()
         if request.env: env.update(request.env)
-        # PIPE + poll is unsafe here: a verbose child can fill the OS pipe buffer
-        # and block forever before poll() observes exit. Spool output to disk while
-        # the parent remains free to heartbeat/revoke the execution authority.
+        # Never rely only on taskkill /T: if a root exits early, a descendant
+        # may survive outside the process-tree snapshot. On Windows, create a
+        # KILL_ON_JOB_CLOSE job and assign the root while it is still suspended.
+        from .windows_process_job import WindowsProcessJob
+        # PIPE + poll can deadlock on verbose output. Spool instead.
         with tempfile.TemporaryFile(mode="w+",encoding="utf-8",errors="replace") as stdout_file, \
              tempfile.TemporaryFile(mode="w+",encoding="utf-8",errors="replace") as stderr_file:
-            process=subprocess.Popen(list(request.argv),cwd=request.cwd,env=env,text=True,
-                                     stdout=stdout_file,stderr=stderr_file)
-            deadline=None if request.timeout_seconds is None else time.monotonic()+request.timeout_seconds
+            job = WindowsProcessJob() if os.name=="nt" else None
+            process = None
             try:
+                process=subprocess.Popen(
+                    list(request.argv),cwd=request.cwd,env=env,text=True,
+                    stdout=stdout_file,stderr=stderr_file,
+                    creationflags=0x00000004 if job is not None else 0,
+                )
+                if job is not None:
+                    # Attach while suspended, verify current authority, THEN
+                    # resume: a revoked launch cannot execute child code.
+                    job.attach_suspended(process)
+                    try:
+                        authority_check()
+                    except Exception as exc:
+                        job.terminate()
+                        self._terminate_tree(process)
+                        raise RuntimeError("EXECUTION_AUTHORITY_REVOKED") from exc
+                    job.resume(process.pid)
+                deadline=None if request.timeout_seconds is None else time.monotonic()+request.timeout_seconds
                 while process.poll() is None:
                     try: authority_check()
-                    except Exception:
+                    except Exception as exc:
+                        if job is not None:
+                            job.terminate()
                         self._terminate_tree(process)
-                        raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
+                        raise RuntimeError("EXECUTION_AUTHORITY_REVOKED") from exc
                     if deadline is not None and time.monotonic()>=deadline:
+                        if job is not None:
+                            job.terminate()
                         self._terminate_tree(process)
                         assert request.timeout_seconds is not None
                         raise subprocess.TimeoutExpired(request.argv,float(request.timeout_seconds))
                     time.sleep(interval)
                 process.wait()
+                # A fast-exiting root is not evidence that its job-owned
+                # descendants finished or that owner authority persisted.
+                # Recheck before returning any apparently successful result.
+                try:
+                    authority_check()
+                except Exception as exc:
+                    if job is not None:
+                        job.terminate()
+                    raise RuntimeError("EXECUTION_AUTHORITY_REVOKED") from exc
                 stdout_file.seek(0); stderr_file.seek(0)
                 return RuntimeResult(
                     self.runtime_id,process.returncode,stdout_file.read(),stderr_file.read()
                 )
             finally:
-                if process.poll() is None:
+                # Closing the last handle kills descendants even when the root
+                # exited and taskkill can no longer locate a parent PID.
+                if job is not None:
+                    job.close()
+                if process is not None and process.poll() is None:
                     self._terminate_tree(process)
 
 class LaptopActorRuntime(NativeWindowsRuntime):
