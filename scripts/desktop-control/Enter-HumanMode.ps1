@@ -55,11 +55,25 @@ function Get-OwnerState {
  }
  $active
 }
+function Save-ControlReceipt($value) {
+ $tmp=Join-Path $state ('owner-stop-'+[guid]::NewGuid().ToString('N')+'.tmp')
+ try {
+  [IO.File]::WriteAllText($tmp,($value|ConvertTo-Json -Depth 6),(New-Object Text.UTF8Encoding($false)))
+  for($attempt=0;$attempt -lt 8;$attempt++) {
+   try {
+    if(Test-Path -LiteralPath $receipt){[IO.File]::Replace($tmp,$receipt,[NullString]::Value)}
+    else{[IO.File]::Move($tmp,$receipt)}
+    return $true
+   } catch {if($attempt -eq 7){throw};Start-Sleep -Milliseconds 100}
+  }
+ } catch { $events.Add('RECEIPT_WRITE_FAILED: '+$_.Exception.Message); return $false }
+ finally {if(Test-Path -LiteralPath $tmp){Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue}}
+}
+$receiptSaved=$true
 if(-not $AuditOnly) {
  $json = @{enabled=$true;since=[DateTimeOffset]::UtcNow.ToString('o');source='master-owner-control'} | ConvertTo-Json
  $json | Set-Content -LiteralPath $marker -Encoding UTF8 -ErrorAction Stop
- @{schema_version=1;status='OWNER_HANDOFF_IN_PROGRESS';checked_at=[DateTimeOffset]::UtcNow.ToString('o');human_mode=$true} |
-    ConvertTo-Json | Set-Content -LiteralPath $receipt -Encoding UTF8
+ $null=Save-ControlReceipt @{schema_version=1;status='OWNER_HANDOFF_IN_PROGRESS';checked_at=[DateTimeOffset]::UtcNow.ToString('o');human_mode=$true}
  # Immediately stop workers and the remote transport before slower scheduled-task cleanup.
  $targets = @(Find-OwnerWorkers)
  foreach($p in $targets) {
@@ -109,7 +123,8 @@ $report = [ordered]@{
  changes=@($events)
 }
 if(-not $AuditOnly) {
- $report|ConvertTo-Json -Depth 6|Set-Content -LiteralPath $receipt -Encoding UTF8
+ $receiptSaved=Save-ControlReceipt $report
+ if(-not $receiptSaved){$status='PARTIAL_RECEIPT_UNAVAILABLE';$report.status=$status}
  Add-Content -LiteralPath $log -Value ("{0:o} {1}: workers={2} running_tasks={3}" -f (Get-Date),$status,$remaining.Count,$taskRunning.Count)
 }
 $report|ConvertTo-Json -Depth 6

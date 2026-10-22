@@ -58,6 +58,7 @@ if (Test-Path -LiteralPath $runtime) { throw 'Existing actor runtime requires re
 if ($LASTEXITCODE -ne 0) { throw 'Actor runtime clone failed' }
 & git -C $runtime checkout --quiet --detach $head
 if ($LASTEXITCODE -ne 0) { throw 'Actor runtime checkout failed' }
+& (Join-Path $PSScriptRoot 'set_local_runtime_access.ps1') -RepoRoot $RepoRoot -RuntimeRoot $runtime -TaskUser $task.Principal.UserId
 $mode = Get-Content -LiteralPath $owner -Raw | ConvertFrom-Json
 if ($mode.enabled -cne $false) { throw 'Owner took control during actor preparation' }
 $xml = Export-ScheduledTask -TaskName $TaskName
@@ -66,7 +67,7 @@ $xml = Export-ScheduledTask -TaskName $TaskName
 try {
   & powershell -NoProfile -ExecutionPolicy Bypass -File $launcher -VerifyOnly
   if ($LASTEXITCODE -ne 0) { throw 'Pinned launcher preflight failed' }
-  $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments -WorkingDirectory $RepoRoot
+  $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument $arguments -WorkingDirectory $RepoRoot
   Set-ScheduledTask -TaskName $TaskName -Action $action | Out-Null
   $installed = Get-ScheduledTask -TaskName $TaskName
   if ($installed.Actions[0].Execute -notmatch 'powershell' -or $installed.Actions[0].Arguments -notlike '*launch_local_actor.ps1*') { throw 'Task action verification failed' }

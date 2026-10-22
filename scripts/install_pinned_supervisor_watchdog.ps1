@@ -74,7 +74,7 @@ try {
     throw 'Pinned watcher validation failed'
   }
   $args = "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$launcher`" -StateRoot `"$StateRoot`" -PinPath `"$pinPath`""
-  $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $args -WorkingDirectory $RepoRoot
+  $action = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument $args -WorkingDirectory $RepoRoot
   Set-ScheduledTask -TaskName $TaskName -Action $action | Out-Null
   $installed = Get-ScheduledTask -TaskName $TaskName
   if ($installed.State -ne 'Disabled' -or $installed.Actions[0].Arguments -notlike '*watch_pinned_continuous_flow.ps1*') {
