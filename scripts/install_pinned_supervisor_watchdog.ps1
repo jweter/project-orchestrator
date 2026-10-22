@@ -73,7 +73,7 @@ try {
   if ($LASTEXITCODE -ne 0 -or "$check" -cne "PINNED_SUPERVISOR_RELEASE_VERIFIED $head") {
     throw 'Pinned watcher validation failed'
   }
-  $args = "-NoProfile -NonInteractive -File `"$launcher`" -StateRoot `"$StateRoot`" -PinPath `"$pinPath`""
+  $args = "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$launcher`" -StateRoot `"$StateRoot`" -PinPath `"$pinPath`""
   $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $args -WorkingDirectory $RepoRoot
   Set-ScheduledTask -TaskName $TaskName -Action $action | Out-Null
   $installed = Get-ScheduledTask -TaskName $TaskName

@@ -40,7 +40,7 @@ if (-not (Test-Path -LiteralPath $launcher)) { throw 'Pinned launcher missing' }
 $python = (Get-Command python -ErrorAction Stop).Source
 $cfg = Join-Path $StateRoot 'actor-local-promotion.json'
 $backup = Join-Path $StateRoot 'actor-task-before-local-cutover.xml'
-$arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$launcher`""
+$arguments = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$launcher`""
 if (-not $Apply) {
   Write-Output "CUTOVER_PLAN_OK head=$head task=$TaskName"
   Write-Output "Original task backup: $backup"
