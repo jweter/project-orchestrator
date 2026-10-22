@@ -69,3 +69,21 @@ anything.
 Until an independently approved engine-side transition is implemented and
 verified, **the icons are not certified working**, even if their .lnk targets
 exist or the old supervisor remains running.
+
+
+## Pinned release capability drift after GitHub merges
+
+The read-only diagnostic additionally inspects **only the source files inside the
+installed release path reported by `supervisor-pinned-release.json`** for two
+specific capabilities: `worker_failure_diagnostics` (PR #567) and
+`desktop_control_readiness` (PR #568). It reports presence individually under
+`pinned_release_capabilities`; missing source reports
+`PINNED_RELEASE_CAPABILITY_MISSING:<capability>`.
+
+This distinction matters: **a merged GitHub PR is not a deployed Azathoth
+release**. An existing supervisor heartbeat, matching local pin, or successful
+quality gate is not proof that the installed release contains a merged repair.
+The audit does not fetch GitHub, alter any protected refs, or promote a
+release. Source presence also is not proof that a running process loaded that
+code. Required independent release receipt, process identity, controller
+acknowledgment, and authorization checks remain separate.

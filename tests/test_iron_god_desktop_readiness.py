@@ -174,3 +174,66 @@ def test_diagnostic_cli_never_signals_success_to_a_caller(tmp_path, capsys):
     assert code == 2
     assert result["status"] == "OWNER_CONTROL_UNVERIFIED"
     assert result["transition_performed"] is False
+
+
+def test_detects_merged_capabilities_missing_from_installed_release(tmp_path):
+    from project_orchestrator.iron_god_desktop_readiness import (
+        REQUIRED_RUNTIME_CAPABILITIES,
+    )
+
+    base, controller = fixture_install(tmp_path)
+    accepted = tmp_path / "accepted-release"
+    accepted.mkdir()
+    pin_path = base / "flow-state" / "supervisor-pinned-release.json"
+    pin_path.write_text(
+        json.dumps({"accepted_sha": SHA, "accepted_repo": str(accepted)}),
+        encoding="utf-8",
+    )
+    result = audit_desktop_control(base=base, controller_file=controller, now=NOW)
+    assert result["pinned_release_capabilities"] == {
+        name: False for name in REQUIRED_RUNTIME_CAPABILITIES
+    }
+    for name in REQUIRED_RUNTIME_CAPABILITIES:
+        assert f"PINNED_RELEASE_CAPABILITY_MISSING:{name}" in result["reasons"]
+    assert result["status"] == "OWNER_CONTROL_UNVERIFIED"
+
+
+def test_capability_presence_is_source_only_not_authority(tmp_path):
+    from project_orchestrator.iron_god_desktop_readiness import (
+        REQUIRED_RUNTIME_CAPABILITIES,
+    )
+
+    base, controller = fixture_install(tmp_path)
+    accepted = tmp_path / "accepted-release"
+    accepted.mkdir()
+    pin_path = base / "flow-state" / "supervisor-pinned-release.json"
+    pin_path.write_text(
+        json.dumps({"accepted_sha": SHA, "accepted_repo": str(accepted)}),
+        encoding="utf-8",
+    )
+    for relative, token in REQUIRED_RUNTIME_CAPABILITIES.values():
+        file = accepted / relative
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(token + "\n", encoding="utf-8")
+
+    result = audit_desktop_control(base=base, controller_file=controller, now=NOW)
+    assert all(result["pinned_release_capabilities"].values())
+    assert not any(
+        item.startswith("PINNED_RELEASE_CAPABILITY_MISSING:")
+        for item in result["reasons"]
+    )
+    assert result["status"] == "OWNER_CONTROL_UNVERIFIED"
+    assert result["candidate_execution_authorized_by_audit"] is False
+
+
+def test_invalid_pinned_release_path_is_never_treated_as_proof(tmp_path):
+    base, controller = fixture_install(tmp_path)
+    pin_path = base / "flow-state" / "supervisor-pinned-release.json"
+    pin_path.write_text(
+        json.dumps({"accepted_sha": SHA, "accepted_repo": str(tmp_path / "missing")}),
+        encoding="utf-8",
+    )
+    result = audit_desktop_control(base=base, controller_file=controller, now=NOW)
+    assert "PINNED_RELEASE_SOURCE_UNAVAILABLE" in result["reasons"]
+    assert result["pinned_release_capabilities"] == {}
+    assert result["status"] == "OWNER_CONTROL_UNVERIFIED"
