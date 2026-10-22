@@ -17,6 +17,12 @@ $actual = (& git -C $source rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $actual -cne $sha) { throw 'Local accepted HEAD changed' }
 $dirty = & git -C $source status --porcelain --untracked-files=no
 if ($LASTEXITCODE -ne 0 -or $dirty) { throw 'Local accepted source is dirty' }
+if ($config.actor_repo) { $ActorRoot = [string]$config.actor_repo }
+if (-not [IO.Path]::IsPathRooted($ActorRoot)) { throw 'Actor runtime path must be absolute' }
+$runtimeHead = & git -C $ActorRoot rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $runtimeHead.Trim() -cne $sha) { throw 'Actor runtime does not match release' }
+$runtimeDirty = & git -C $ActorRoot status --porcelain --untracked-files=normal
+if ($LASTEXITCODE -ne 0 -or $runtimeDirty) { throw 'Actor runtime is dirty; preserving changes' }
 $bootstrap = Join-Path $source 'scripts\laptop_actor_bootstrap.py'
 if (-not (Test-Path -LiteralPath $bootstrap -PathType Leaf)) { throw 'Local bootstrap missing' }
 if ($VerifyOnly) { Write-Output "LOCAL_ACTOR_PREFLIGHT_OK $sha"; exit 0 }

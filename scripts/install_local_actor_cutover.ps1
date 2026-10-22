@@ -11,6 +11,15 @@ if (-not (Test-Path -LiteralPath $owner)) { throw 'Owner-control marker missing;
 $mode = Get-Content -LiteralPath $owner -Raw | ConvertFrom-Json
 if ($mode.enabled -ne $false) { throw 'Owner has control; refusing cutover' }
 $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+if ($task.State -ne 'Disabled') { throw 'Actor task must be disabled before release cutover' }
+$watchdog = Get-ScheduledTask -TaskName 'ExponentialEngine-ContinuousFlow-Watchdog' -ErrorAction Stop
+if ($watchdog.State -ne 'Disabled') { throw 'Continuous-flow watchdog must be disabled before actor cutover' }
+$instanceFile = Join-Path $StateRoot 'supervisor-process-instance.json'
+if (-not (Test-Path -LiteralPath $instanceFile -PathType Leaf)) { throw 'Supervisor ownership history unavailable' }
+$instance = Get-Content -LiteralPath $instanceFile -Raw | ConvertFrom-Json
+$supervisorPid = [int]$instance.worker.pid
+if ($supervisorPid -le 0) { throw 'Supervisor process identity unavailable' }
+if (Get-Process -Id $supervisorPid -ErrorAction SilentlyContinue) { throw 'Old supervisor is still running; cutover refused' }
 $head = (& git -C $RepoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $head -cnotmatch '^[0-9a-f]{40}$') { throw 'No exact accepted commit' }
 if (& git -C $RepoRoot status --porcelain --untracked-files=normal) { throw 'Release checkout is dirty' }
@@ -40,9 +49,20 @@ if (-not $Apply) {
 }
 if (Test-Path -LiteralPath $backup) { throw 'Existing rollback backup; refusing overwrite' }
 if (Test-Path -LiteralPath $cfg) { throw 'Existing promotion config; refusing overwrite' }
+$mode = Get-Content -LiteralPath $owner -Raw | ConvertFrom-Json
+if ($mode.enabled -cne $false) { throw 'Owner took control during migration' }
+# Preserve the former actor checkout, including all unique untracked work.
+$runtime = Join-Path (Split-Path -Parent $StateRoot) ("runtime-actors\" + $head)
+if (Test-Path -LiteralPath $runtime) { throw 'Existing actor runtime requires reconciliation' }
+& git clone --quiet --no-local --no-checkout $RepoRoot $runtime
+if ($LASTEXITCODE -ne 0) { throw 'Actor runtime clone failed' }
+& git -C $runtime checkout --quiet --detach $head
+if ($LASTEXITCODE -ne 0) { throw 'Actor runtime checkout failed' }
+$mode = Get-Content -LiteralPath $owner -Raw | ConvertFrom-Json
+if ($mode.enabled -cne $false) { throw 'Owner took control during actor preparation' }
 $xml = Export-ScheduledTask -TaskName $TaskName
 [IO.File]::WriteAllText($backup, $xml)
-@{enabled=$true;accepted_repo=$RepoRoot;accepted_sha=$head} | ConvertTo-Json | Set-Content -LiteralPath $cfg -Encoding UTF8
+@{enabled=$true;accepted_repo=$RepoRoot;accepted_sha=$head;actor_repo=$runtime} | ConvertTo-Json | Set-Content -LiteralPath $cfg -Encoding UTF8
 try {
   & powershell -NoProfile -ExecutionPolicy Bypass -File $launcher -VerifyOnly
   if ($LASTEXITCODE -ne 0) { throw 'Pinned launcher preflight failed' }
