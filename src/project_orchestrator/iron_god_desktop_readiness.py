@@ -123,6 +123,7 @@ def audit_desktop_control(
     base: Path,
     controller_file: Path,
     now: datetime | None = None,
+    shortcut_rows: list[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Inspect only source text and advisory runtime records; never trigger a transition.
 
@@ -151,6 +152,12 @@ def audit_desktop_control(
     pin = _read_json(state_root / "supervisor-pinned-release.json", issues, "PIN")
     controller = _read_json(controller_file, issues, "CONTROLLER")
     installed_capabilities = inspect_pinned_release_sources(pin, issues)
+    shortcut_result = None
+    if shortcut_rows is not None:
+        from .iron_god_shortcut_bindings import audit_shortcut_routes
+
+        shortcut_result = audit_shortcut_routes(shortcut_rows)
+        issues.extend(shortcut_result["reasons"])
 
     if mode.get("acknowledged_by_engine") is not True:
         issues.append("ENGINE_ACKNOWLEDGEMENT_NOT_PROVEN")
@@ -189,6 +196,7 @@ def audit_desktop_control(
         else UNKNOWN,
         "pinned_supervisor_sha": pin_sha if isinstance(pin_sha, str) else UNKNOWN,
         "pinned_release_capabilities": installed_capabilities,
+        "shortcut_binding_status": shortcut_result,
         "reasons": sorted(set(issues)),
     }
 
@@ -201,15 +209,30 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(os.environ.get("LOCALAPPDATA", ".")) / "ExponentialEngine",
     )
     parser.add_argument("--controller", type=Path, default=None)
+    parser.add_argument(
+        "--inspect-shortcuts",
+        action="store_true",
+        help="Read actual Windows .lnk targets without clicking or running them.",
+    )
     args = parser.parse_args(argv)
     controller = (
         args.controller or args.base / "IronGodLocal" / "controller-handoff-state.json"
     )
-    print(
-        json.dumps(
-            audit_desktop_control(base=args.base, controller_file=controller), indent=2
-        )
+    shortcut_rows = None
+    shortcut_issue = None
+    if args.inspect_shortcuts:
+        from .iron_god_shortcut_bindings import read_windows_shortcut_routes
+
+        try:
+            shortcut_rows = read_windows_shortcut_routes()
+        except (RuntimeError, OSError) as exc:
+            shortcut_issue = str(exc)
+    result = audit_desktop_control(
+        base=args.base, controller_file=controller, shortcut_rows=shortcut_rows
     )
+    if shortcut_issue is not None:
+        result["reasons"] = sorted(set(result["reasons"]) | {shortcut_issue})
+    print(json.dumps(result, indent=2))
     return 2  # A read-only diagnostic never issues execution or owner-control approval.
 
 

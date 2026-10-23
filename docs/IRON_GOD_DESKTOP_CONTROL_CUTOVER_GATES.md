@@ -87,3 +87,54 @@ The audit does not fetch GitHub, alter any protected refs, or promote a
 release. Source presence also is not proof that a running process loaded that
 code. Required independent release receipt, process identity, controller
 acknowledgment, and authorization checks remain separate.
+
+## Inspect the actual desktop links without launching them
+
+The original audit checked script text, controller records and release evidence,
+but did not interrogate Windows shortcut targets. The optional read-only
+shortcut probe inspects .lnk targets/arguments using Windows Script Host
+COM CreateShortcut (property reads only). It does not click, invoke, modify,
+or launch any shortcut, disable tasks, or read retired owner-control state.
+
+Run from an environment containing project_orchestrator:
+
+    python -m project_orchestrator.iron_god_desktop_readiness --base C:\Users\jerem\AppData\Local\ExponentialEngine --inspect-shortcuts
+
+Or run the targeted, read-only shortcut inventory:
+
+    python -m project_orchestrator.iron_god_shortcut_bindings
+
+Both diagnostics always exit nonzero and never grant control authority.
+SHORTCUT_USES_RETIRED_CONTROL_ROUTE confirms a primary icon still routes
+through DesktopControlSilent.vbs. MODE_ICON_NOT_ENGINE_ACKNOWLEDGED flags
+ModeController icons that only record an advisory request. Missing/unknown
+targets are unverified, not accepted as replacements. This complements
+rather than supersedes the release, controller and owner-control checks.
+
+Live pause/resume and desktop task mutation remain outside this change.
+Cutover requires independently authorized, engine-acknowledged control,
+matching supervisor process identity, lease protection and gaming veto.
+
+## User-facing contract: exactly two desktop icons
+
+The owner requires only:
+
+- 1 - GIVE ME CONTROL: request a pause of all Iron God-owned dispatch,
+  prevent new development slices, preserve outstanding claims/leases and
+  active unrelated processes, and report success only after a process-bound
+  acknowledgment from the real resident engine that dispatch is paused.
+- 2 - TAKE THE WHEEL: request a safe resume of that SAME engine, subject
+  to the owner consent, gaming veto, current accepted release, platform
+  approvals, controller authorization, and independent lease validation.
+  Report success only after the engine acknowledges the requested resume.
+
+No third mode control is required. The two .lnk files must not route through
+the legacy retired-marker/VBS control implementation or silently restart
+the historical supervisor. No owner shortcut may terminate remote transport
+or unrelated workers as an undocumented side effect. No operating system
+process or Windows task modification is permitted by this diagnostic PR.
+
+An owner click or a successful Windows process exit is NOT an engine ack.
+The switch is NOT considered repaired until the two real icons are clicked
+under separately authorized supervision and their effects are observed on
+the pinned process with correct ownership and lease protection.
