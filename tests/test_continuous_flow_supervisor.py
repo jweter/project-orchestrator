@@ -1619,7 +1619,12 @@ def test_parallel_worker_failure_is_recorded_without_blocking_pool(tmp_path):
     rows=supervisor.harvest_parallel_builders(pool,tmp_path)
     assert rows["rocksmith-worker-1"]["status"]=="WORKER_EXCEPTION"
     assert rows["rocksmith-worker-1"]["error_class"]=="RuntimeError"
+    assert rows["rocksmith-worker-1"]["error_code"]=="UNCLASSIFIED"
     assert "private detail" not in json.dumps(rows)
+    pool.submit(WorkerSlot("rocksmith",1),lambda:None)
+    executor.submissions[1][0].set_exception(RuntimeError("RUNTIME_LEASE_LOCK_TIMEOUT"))
+    rows=supervisor.harvest_parallel_builders(pool,tmp_path)
+    assert rows["rocksmith-worker-1"]["error_code"]=="RUNTIME_LEASE_LOCK_TIMEOUT"
 
 
 def test_worker_liveness_treats_missing_process_as_dead_before_fingerprint(monkeypatch):

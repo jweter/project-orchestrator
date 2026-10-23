@@ -652,6 +652,11 @@ def harvest_parallel_builders(
             rows[worker_id] = {
                 "status": "WORKER_EXCEPTION",
                 "error_class": type(result).__name__,
+                "error_code": (
+                    str(result) if len(str(result)) <= 100
+                    and str(result).isascii() and str(result).isidentifier()
+                    and str(result).isupper() else "UNCLASSIFIED"
+                ),
             }
         else:
             returncode, invocation_id = result
