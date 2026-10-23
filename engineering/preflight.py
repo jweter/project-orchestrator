@@ -63,7 +63,19 @@ checks = [
     ("tooling_capabilities", [sys.executable, "engineering/validate_tooling_capabilities.py"]),
     ("n8n_policy", [sys.executable, "engineering/validate_n8n.py"]),
     ("compile", [sys.executable, "-m", "compileall", "-q", "src", "tests", "engineering"]),
-    ("tests", [sys.executable, "-m", "pytest", "-q", "--basetemp", str(PREFLIGHT_BASETEMP)]),
+    # Run the real local controller proof files in a fresh process so their
+    # physical-memory safety gate is not biased by the accumulated main suite.
+    ("tests", [sys.executable, "-m", "pytest", "-q", "--basetemp", str(PREFLIGHT_BASETEMP),
+               "--ignore=tests/test_iron_god_complete_loop_proof.py",
+               "--ignore=tests/test_iron_god_orchestration_caller.py",
+               "--ignore=tests/test_iron_god_orchestration_caller_product_reality_blocking.py",
+               "--ignore=tests/test_iron_god_worker_authorization_boundary.py"]),
+    ("controller_proofs", [sys.executable, "-m", "pytest", "-q",
+                            "tests/test_iron_god_complete_loop_proof.py",
+                            "tests/test_iron_god_orchestration_caller.py",
+                            "tests/test_iron_god_orchestration_caller_product_reality_blocking.py",
+                            "tests/test_iron_god_worker_authorization_boundary.py",
+                            "--basetemp", str(PREFLIGHT_BASETEMP / "controller-proofs")]),
     ("cli_validate", [sys.executable, "-m", "project_orchestrator.cli", "validate"]),
     ("reinvestment_plan_smoke", [sys.executable, "-m", "project_orchestrator.cli", "reinvestment-plan"]),
 ]
