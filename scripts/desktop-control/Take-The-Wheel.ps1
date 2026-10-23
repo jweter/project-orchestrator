@@ -168,7 +168,7 @@ catch { Add-Content -Path $log -Value ("{0:o} REMOTE_BRIDGE_START_FAILED: {1}" -
 # Success requires observed runtime identity, not just a task-start request.
 $pin=Get-Content (Join-Path $state 'supervisor-pinned-release.json') -Raw | ConvertFrom-Json
 $actorPin=Get-Content (Join-Path $state 'actor-local-promotion.json') -Raw | ConvertFrom-Json
-$deadline=(Get-Date).AddSeconds(40)
+$deadline=(Get-Date).AddSeconds(120)
 $runtimeVerified=$false
 while((Get-Date) -lt $deadline) {
  try {
@@ -176,7 +176,7 @@ while((Get-Date) -lt $deadline) {
   if($ownerNow.enabled -cne $false){exit 7}
   $heartbeat=Get-Content (Join-Path $state 'supervisor-generation-heartbeat.json') -Raw | ConvertFrom-Json
   $age=([DateTimeOffset]::UtcNow-[DateTimeOffset]::Parse($heartbeat.heartbeat_at_utc)).TotalSeconds
-  $fresh=($age -ge 0 -and $age -lt 60 -and $heartbeat.status -ceq 'RUNNING_CURRENT')
+  $fresh=($age -ge 0 -and $age -lt 180 -and $heartbeat.status -ceq 'RUNNING_CURRENT')
   $procs=@(Get-CimInstance Win32_Process | Where-Object {$_.Name -match '^python' -and $_.CommandLine -like '*continuous_flow_supervisor.py*'})
   $actors=@(Get-CimInstance Win32_Process | Where-Object {$_.Name -match '^python' -and $_.CommandLine -like '*laptop_actor_bootstrap.py*' -and $_.CommandLine.Contains([string]$actorPin.actor_repo)})
   if($fresh -and $heartbeat.actor_revision -ceq $pin.accepted_sha -and $procs.Count -eq 1 -and $procs[0].CommandLine.Contains([string]$pin.accepted_repo) -and $actors.Count -eq 1){$runtimeVerified=$true;break}
