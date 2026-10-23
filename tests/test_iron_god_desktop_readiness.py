@@ -237,3 +237,89 @@ def test_invalid_pinned_release_path_is_never_treated_as_proof(tmp_path):
     assert "PINNED_RELEASE_SOURCE_UNAVAILABLE" in result["reasons"]
     assert result["pinned_release_capabilities"] == {}
     assert result["status"] == "OWNER_CONTROL_UNVERIFIED"
+
+
+def test_readiness_includes_shortcut_route_evidence_without_activation(tmp_path):
+    base, controller = fixture_install(tmp_path)
+    shortcut_rows = [
+        {
+            "name": "1 - GIVE ME CONTROL.lnk",
+            "exists": True,
+            "target": r"C:\Windows\System32\wscript.exe",
+            "arguments": r'"C:\x\DesktopControlSilent.vbs" human',
+        },
+        {
+            "name": "2 - TAKE THE WHEEL.lnk",
+            "exists": True,
+            "target": r"C:\Windows\System32\wscript.exe",
+            "arguments": r'"C:\x\DesktopControlSilent.vbs" wheel',
+        },
+    ]
+    result = audit_desktop_control(
+        base=base, controller_file=controller, now=NOW, shortcut_rows=shortcut_rows
+    )
+    assert (
+        "SHORTCUT_USES_RETIRED_CONTROL_ROUTE:1 - GIVE ME CONTROL.lnk"
+        in result["reasons"]
+    )
+    assert (
+        "SHORTCUT_USES_RETIRED_CONTROL_ROUTE:2 - TAKE THE WHEEL.lnk"
+        in result["reasons"]
+    )
+    assert result["shortcut_binding_status"]["operational"] is False
+    assert result["transition_performed"] is False
+    assert result["status"] == "OWNER_CONTROL_UNVERIFIED"
+
+
+def test_explicit_cli_switch_reads_shortcut_metadata_only(
+    tmp_path, monkeypatch, capsys
+):
+    from project_orchestrator import iron_god_shortcut_bindings
+
+    base, controller = fixture_install(tmp_path)
+    seen = []
+
+    def reader():
+        seen.append("read_only")
+        return [{"name": "1 - GIVE ME CONTROL.lnk", "exists": False}]
+
+    monkeypatch.setattr(
+        iron_god_shortcut_bindings, "read_windows_shortcut_routes", reader
+    )
+    result = main(
+        ["--base", str(base), "--controller", str(controller), "--inspect-shortcuts"]
+    )
+    evidence = json.loads(capsys.readouterr().out)
+    assert result == 2
+    assert seen == ["read_only"]
+    assert evidence["shortcut_binding_status"]["operational"] is False
+    assert evidence["shortcut_click_test_performed"] is False
+    assert evidence["candidate_execution_authorized_by_audit"] is False
+
+
+def test_cli_probe_failure_stays_unverified(tmp_path, monkeypatch, capsys):
+    from project_orchestrator import iron_god_shortcut_bindings
+
+    base, controller = fixture_install(tmp_path)
+
+    def unavailable():
+        raise RuntimeError("WINDOWS_SHORTCUT_INSPECTION_FAILED")
+
+    monkeypatch.setattr(
+        iron_god_shortcut_bindings, "read_windows_shortcut_routes", unavailable
+    )
+    assert (
+        main(
+            [
+                "--base",
+                str(base),
+                "--controller",
+                str(controller),
+                "--inspect-shortcuts",
+            ]
+        )
+        == 2
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert "WINDOWS_SHORTCUT_INSPECTION_FAILED" in result["reasons"]
+    assert result["status"] == "OWNER_CONTROL_UNVERIFIED"
