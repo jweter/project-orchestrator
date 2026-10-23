@@ -173,6 +173,13 @@ def _readiness_worktrees(repos:list[Path],state_root:Path,run_fn=subprocess.run,
     A caller must establish acceptance and provenance before supplying heads.
     Never infer authorization from local HEAD or a newer development branch.
     """
+    # Do not let a basename collision or incomplete acceptance map silently
+    # select the wrong repository (or fall back to remote authority).
+    names=[repo.name for repo in repos]
+    if len(names)!=len(set(names)):
+        raise RuntimeError("readiness repository names are ambiguous")
+    if accepted_heads is not None and set(accepted_heads)!=set(names):
+        raise RuntimeError("accepted heads must exactly match readiness repositories")
     root=state_root/"readiness-worktrees"/uuid.uuid4().hex
     root.mkdir(parents=True,exist_ok=True)
     audited=[]
