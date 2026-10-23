@@ -189,7 +189,7 @@ def run_check(name: str, argv: list[str]) -> dict:
 def main() -> int:
     results: list[dict] = []
     started_at = datetime.now(timezone.utc).isoformat()
-    PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
+    PREFLIGHT_BASETEMP.mkdir(parents=True, exist_ok=True)
     expected_head = git_head(ROOT)
     if not expected_head or expected_head == "UNKNOWN":
         results.append(exact_head_fence_result("KNOWN_HEAD_REQUIRED", expected_head))
