@@ -145,3 +145,24 @@ IG-020–026: protected local Git candidate/accepted/milestone/recovery refs
 and orphan-worktree reconciliation; IG-030–036: exact-head integration
 verification and atomic local accepted-baseline promotion; IG-040–049:
 durable publication jobs/transport and independent retry controller.
+
+
+## Pinned laptop actor revision invariant (October 2026 repair)
+
+A clean staged release may contain a locally accepted commit that has not yet
+been published to GitHub main. The laptop actor is launched with both
+IRON_GOD_ACCEPTED_REPO (absolute pinned source) and IRON_GOD_ACCEPTED_SHA
+(exact 40-character lowercase Git SHA). In this mode, the actor must **never**
+run a remote fetch or a hard reset, even if origin/main is older or newer.
+Instead, validate that the source and the separate actor runtime checkout are
+clean Git roots, both are at the accepted exact commit, and the versioned actor
+checkout directory agrees with the pin. Recheck before each bridge dispatch.
+
+Missing, partial, dirty, stale or mismatched pinned release evidence stops the
+actor without fallback to GitHub main. Unversioned legacy actor checkouts
+without a pin retain their existing remote-update behavior for backward
+compatibility; they must not be selected for a pinned local release cutover.
+This validation does **not** authorize development, bypass owner control, alter
+scheduled tasks, or replace a running actor/supervisor. Promotion requires the
+existing separately authorized release and generation-handoff procedure with
+rollback, lease checks and observed runtime identity.

@@ -6,7 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "laptop_actor_bootstrap.py"
+MODULE_PATH = (
+    Path(__file__).resolve().parents[1] / "scripts" / "laptop_actor_bootstrap.py"
+)
 SPEC = importlib.util.spec_from_file_location("laptop_actor_bootstrap", MODULE_PATH)
 assert SPEC and SPEC.loader
 bootstrap = importlib.util.module_from_spec(SPEC)
@@ -67,13 +69,17 @@ def test_idle_session_does_not_start_before_threshold(monkeypatch, tmp_path):
     assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60) == 0
 
 
-def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, tmp_path):
+def test_idle_session_runs_repeated_cycles_then_yields_on_activity(
+    monkeypatch, tmp_path
+):
     idle_values = iter([600.0, 600.0, 600.0, 5.0])
     cycles = []
     updates = []
     sleeps = []
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
-    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: updates.append(True) or SHA)
+    monkeypatch.setattr(
+        bootstrap, "update_actor_checkout", lambda *_: updates.append(True) or SHA
+    )
     monkeypatch.setattr(
         bootstrap,
         "execute_bridge_once",
@@ -96,15 +102,22 @@ def test_idle_session_stops_on_bridge_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: 2)
-    monkeypatch.setattr(bootstrap.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt()))
+    monkeypatch.setattr(
+        bootstrap.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt())
+    )
     with pytest.raises(KeyboardInterrupt):
         bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60)
 
 
 def test_installer_uses_dedicated_checkout_and_idle_aware_repeating_task():
-    installer = (Path(__file__).resolve().parents[1] / "scripts" / "install_laptop_actor.ps1").read_text(encoding="utf-8")
+    installer = (
+        Path(__file__).resolve().parents[1] / "scripts" / "install_laptop_actor.ps1"
+    ).read_text(encoding="utf-8")
     assert "actor-repo" in installer
-    assert "git clone" not in installer.lower() or "clone --branch main --single-branch" in installer
+    assert (
+        "git clone" not in installer.lower()
+        or "clone --branch main --single-branch" in installer
+    )
     assert "reset --hard origin/main" in installer
     assert "laptop_actor_bootstrap.py" in installer
     assert "RepetitionInterval (New-TimeSpan -Minutes 5)" in installer
@@ -147,6 +160,7 @@ def test_emit_state_writes_structured_jsonl(tmp_path):
     state = tmp_path / "state"
     bootstrap.emit_state(state, "EXECUTING", queue_latency_seconds=12)
     import json
+
     payload = json.loads((state / "actor-telemetry.jsonl").read_text().strip())
     assert payload["state"] == "EXECUTING"
     assert payload["queue_latency_seconds"] == 12
@@ -161,20 +175,37 @@ def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: next(results))
     monkeypatch.setattr(bootstrap.time, "sleep", lambda value: sleeps.append(value))
-    assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120) == 0
+    assert (
+        bootstrap.run_idle_session(
+            tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120
+        )
+        == 0
+    )
     assert sleeps == [60, 60]
 
 
 def test_resource_budget_blocks_high_memory():
-    assert not bootstrap.resources_allow_execution({"memory_percent": 91.0, "disk_free_gb": 100.0}, max_memory_percent=85.0, min_disk_free_gb=10.0)
+    assert not bootstrap.resources_allow_execution(
+        {"memory_percent": 91.0, "disk_free_gb": 100.0},
+        max_memory_percent=85.0,
+        min_disk_free_gb=10.0,
+    )
 
 
 def test_resource_budget_blocks_low_disk():
-    assert not bootstrap.resources_allow_execution({"memory_percent": 40.0, "disk_free_gb": 4.0}, max_memory_percent=85.0, min_disk_free_gb=10.0)
+    assert not bootstrap.resources_allow_execution(
+        {"memory_percent": 40.0, "disk_free_gb": 4.0},
+        max_memory_percent=85.0,
+        min_disk_free_gb=10.0,
+    )
 
 
 def test_resource_budget_allows_safe_capacity():
-    assert bootstrap.resources_allow_execution({"memory_percent": 40.0, "disk_free_gb": 100.0}, max_memory_percent=85.0, min_disk_free_gb=10.0)
+    assert bootstrap.resources_allow_execution(
+        {"memory_percent": 40.0, "disk_free_gb": 100.0},
+        max_memory_percent=85.0,
+        min_disk_free_gb=10.0,
+    )
 
 
 def test_maintenance_marker_blocks_actor_before_checkout(monkeypatch, tmp_path):
@@ -232,3 +263,222 @@ def test_daily_hygiene_is_bounded_to_owned_transient_files(monkeypatch, tmp_path
 
     second = bootstrap.run_daily_hygiene(state, now=now)
     assert second["status"] == "SKIPPED_RECENT"
+
+
+def _make_pinned_release(tmp_path):
+    """Two real, independent Git clones at the same exact accepted commit."""
+    import subprocess
+
+    source = tmp_path / "accepted-release"
+    source.mkdir()
+
+    def git(cwd, *args):
+        proc = subprocess.run(
+            ["git", "-C", str(cwd), *args],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return proc.stdout.strip()
+
+    git(source, "init", "-q")
+    git(source, "config", "user.name", "Local Release Test")
+    git(source, "config", "user.email", "release-test@example.invalid")
+    (source / "README.md").write_text("accepted version\\n", encoding="utf-8")
+    git(source, "add", "README.md")
+    git(source, "commit", "-qm", "accepted")
+    sha = git(source, "rev-parse", "HEAD")
+    actor = tmp_path / "runtime-actors" / sha
+    actor.parent.mkdir()
+    subprocess.run(
+        ["git", "clone", "-q", "--no-local", str(source), str(actor)],
+        check=True,
+        capture_output=True,
+    )
+    return source, actor, sha, git
+
+
+def test_pinned_actor_never_fetches_or_resets_to_github(monkeypatch, tmp_path):
+    source, actor, sha, git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setattr(
+        bootstrap,
+        "update_actor_checkout",
+        lambda *_: pytest.fail("pinned actor may not fetch or reset origin/main"),
+    )
+    assert bootstrap.select_actor_revision(actor) == sha
+    assert git(actor, "rev-parse", "HEAD") == sha
+    assert git(source, "rev-parse", "HEAD") == sha
+
+
+def test_pinned_actor_rejects_dirty_source_without_reset(monkeypatch, tmp_path):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    (source / "uncommitted.txt").write_text("preserve", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="PINNED_RELEASE_DIRTY"):
+        bootstrap.select_actor_revision(actor)
+    assert (source / "uncommitted.txt").read_text() == "preserve"
+
+
+def test_pinned_actor_rejects_dirty_actor_without_reset(monkeypatch, tmp_path):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    (actor / "uncommitted.txt").write_text("preserve", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_DIRTY"):
+        bootstrap.select_actor_revision(actor)
+    assert (actor / "uncommitted.txt").read_text() == "preserve"
+
+
+def test_pinned_actor_rejects_changed_actor_commit(monkeypatch, tmp_path):
+    source, actor, sha, git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    git(actor, "config", "user.name", "Local Actor Test")
+    git(actor, "config", "user.email", "actor-test@example.invalid")
+    (actor / "change.txt").write_text("new work", encoding="utf-8")
+    git(actor, "add", "change.txt")
+    git(actor, "commit", "-qm", "actor advance")
+    advanced = git(actor, "rev-parse", "HEAD")
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_REVISION_MISMATCH"):
+        bootstrap.select_actor_revision(actor)
+    assert git(actor, "rev-parse", "HEAD") == advanced  # never reset
+
+
+def test_versioned_actor_without_pin_must_not_fall_back_to_origin(
+    monkeypatch, tmp_path
+):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.setattr(
+        bootstrap,
+        "update_actor_checkout",
+        lambda *_: pytest.fail("versioned checkout must never fetch main"),
+    )
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_IDENTITY_REQUIRED"):
+        bootstrap.select_actor_revision(actor)
+
+
+@pytest.mark.parametrize(
+    "missing_key", ["IRON_GOD_ACCEPTED_REPO", "IRON_GOD_ACCEPTED_SHA"]
+)
+def test_partial_pinned_environment_fails_closed(monkeypatch, tmp_path, missing_key):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.delenv(missing_key)
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_IDENTITY_INCOMPLETE"):
+        bootstrap.select_actor_revision(actor)
+
+
+def test_pinned_actor_rejects_wrong_directory_identity(monkeypatch, tmp_path):
+    source, actor, sha, git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", "b" * 40)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_DIRECTORY_SHA_MISMATCH"):
+        bootstrap.select_actor_revision(actor)
+
+
+def test_legacy_disposable_actor_without_pin_keeps_compatibility(monkeypatch, tmp_path):
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    actor = tmp_path / "actor-repo"
+    monkeypatch.setattr(
+        bootstrap, "update_actor_checkout", lambda a: SHA if a == actor else "wrong"
+    )
+    assert bootstrap.select_actor_revision(actor) == SHA
+
+
+def test_pinned_revision_is_rechecked_before_each_bridge(monkeypatch, tmp_path):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
+    monkeypatch.setattr(
+        bootstrap, "run_daily_hygiene", lambda *_: {"status": "SKIPPED"}
+    )
+    monkeypatch.setattr(bootstrap, "emit_state", lambda *_a, **_kw: None)
+    monkeypatch.setattr(bootstrap, "steward_maintenance_active", lambda: (False, ""))
+    monkeypatch.setattr(
+        bootstrap,
+        "system_resource_snapshot",
+        lambda: {"memory_percent": 10.0, "disk_free_gb": 100.0},
+    )
+    monkeypatch.setattr(bootstrap.time, "sleep", lambda *_: None)
+    executed = []
+    monkeypatch.setattr(
+        bootstrap,
+        "execute_bridge_once",
+        lambda *_: executed.append(1) or 0,
+    )
+    original = bootstrap.pinned_actor_revision
+    checks = []
+
+    def check(a):
+        checks.append(1)
+        if len(checks) == 3:
+            raise RuntimeError("PINNED_ACTOR_REVISION_MISMATCH")
+        return original(a)
+
+    monkeypatch.setattr(bootstrap, "pinned_actor_revision", check)
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_REVISION_MISMATCH"):
+        bootstrap.run_idle_session(
+            actor,
+            tmp_path / "queue",
+            tmp_path / "work",
+            0,
+            30,
+            tmp_path / "actor-state",
+        )
+    assert len(checks) == 3
+    assert len(executed) == 1
+
+
+def test_direct_updater_obeys_pinned_release_without_fetch_or_reset(
+    monkeypatch, tmp_path
+):
+    source, actor, sha, git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    real_run = bootstrap.run
+    commands = []
+
+    def read_only_git(cmd, cwd=None):
+        commands.append(cmd)
+        assert cmd[:2] != ["git", "fetch"]
+        assert cmd[:3] != ["git", "reset", "--hard"]
+        return real_run(cmd, cwd)
+
+    monkeypatch.setattr(bootstrap, "run", read_only_git)
+    assert bootstrap.update_actor_checkout(actor) == sha
+    assert git(actor, "rev-parse", "HEAD") == sha
+    assert commands
+
+
+def test_direct_updater_preserves_dirty_pinned_actor(monkeypatch, tmp_path):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    draft = actor / "uncommitted.txt"
+    draft.write_text("preserve", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_DIRTY"):
+        bootstrap.update_actor_checkout(actor)
+    assert draft.read_text(encoding="utf-8") == "preserve"
+
+
+def test_direct_updater_versioned_actor_without_pin_fails_closed(monkeypatch, tmp_path):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.setattr(
+        bootstrap,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "never touch Git in an unpinned versioned actor"
+        ),
+    )
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_IDENTITY_REQUIRED"):
+        bootstrap.update_actor_checkout(actor)
