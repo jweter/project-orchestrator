@@ -291,6 +291,11 @@ def ready_task_batch(
         if not head:
             continue
         task = {
+            # Bind issue-originated work to the same authoritative activation
+            # identity that the grant writer revalidates; never trust issue
+            # payload fields for repository/head authorization.
+            "repository": repo,
+            "exact_head": head,
             "slice_id": issue.get("work_id"),
             "capability_id": issue.get("work_id"),
             "objective": issue.get("title"),

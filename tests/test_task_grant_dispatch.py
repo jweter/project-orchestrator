@@ -25,6 +25,44 @@ def test_ready_task_batch_allows_two_disjoint_tasks_same_repo(tmp_path):
     assert selected=={"A","B"}
     assert rejected=={"C"}
 
+def test_issue_frontier_tasks_bind_authoritative_activation_identity(tmp_path):
+    activation = {"products": {"rocksmith": {"repositories": {"jweter/repo": "abc"}}}}
+    graphs = tmp_path / "capability-graphs"
+    graphs.mkdir()
+    (graphs / "jweter__repo.json").write_text(json.dumps(graph()))
+    (tmp_path / "issue-work-frontier.json").write_text(json.dumps({
+        "ranked_actionable": [
+            {
+                "product": "rocksmith",
+                "repository": "jweter/repo",
+                "work_id": "issue-159",
+                "title": "Repair the verified frontier defect",
+                "issue_number": 159,
+                "url": "https://example.test/issue/159",
+                "allowed_paths": ["src/repair/"],
+                "exact_head": "untrusted-stale-sha",
+            },
+            {
+                "product": "rocksmith",
+                "repository": "jweter/not-registered",
+                "work_id": "unregistered",
+                "title": "Must not dispatch",
+            },
+        ]
+    }))
+
+    batch = supervisor.ready_task_batch(tmp_path, activation, "rocksmith", 4)
+    issue = [(repo, head, task) for repo, head, task in batch
+             if task["slice_id"] == "issue-159"]
+    assert len(issue) == 1
+    repo, head, task = issue[0]
+    assert (repo, head) == ("jweter/repo", "abc")
+    assert task["repository"] == repo
+    assert task["exact_head"] == head
+    assert task["source_kind"] == "ISSUE"
+    assert all(task["slice_id"] != "unregistered" for _, _, task in batch)
+
+
 def test_ready_task_batch_surfaces_missing_graph_as_direction_required(tmp_path):
     activation={"products":{"rocksmith":{"repositories":{"jweter/repo":"abc"}}}}
     batch=supervisor.ready_task_batch(tmp_path,activation,"rocksmith",4)
