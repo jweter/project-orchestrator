@@ -435,3 +435,50 @@ def test_pinned_revision_is_rechecked_before_each_bridge(monkeypatch, tmp_path):
         )
     assert len(checks) == 3
     assert len(executed) == 1
+
+
+def test_direct_updater_obeys_pinned_release_without_fetch_or_reset(
+    monkeypatch, tmp_path
+):
+    source, actor, sha, git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    real_run = bootstrap.run
+    commands = []
+
+    def read_only_git(cmd, cwd=None):
+        commands.append(cmd)
+        assert cmd[:2] != ["git", "fetch"]
+        assert cmd[:3] != ["git", "reset", "--hard"]
+        return real_run(cmd, cwd)
+
+    monkeypatch.setattr(bootstrap, "run", read_only_git)
+    assert bootstrap.update_actor_checkout(actor) == sha
+    assert git(actor, "rev-parse", "HEAD") == sha
+    assert commands
+
+
+def test_direct_updater_preserves_dirty_pinned_actor(monkeypatch, tmp_path):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", sha)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    draft = actor / "uncommitted.txt"
+    draft.write_text("preserve", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_DIRTY"):
+        bootstrap.update_actor_checkout(actor)
+    assert draft.read_text(encoding="utf-8") == "preserve"
+
+
+def test_direct_updater_versioned_actor_without_pin_fails_closed(monkeypatch, tmp_path):
+    source, actor, sha, _git = _make_pinned_release(tmp_path)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.setattr(
+        bootstrap,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "never touch Git in an unpinned versioned actor"
+        ),
+    )
+    with pytest.raises(RuntimeError, match="PINNED_ACTOR_IDENTITY_REQUIRED"):
+        bootstrap.update_actor_checkout(actor)

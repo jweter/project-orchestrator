@@ -60,6 +60,18 @@ def update_actor_checkout(actor_repo: Path) -> str:
     """
     if not (actor_repo / ".git").is_dir():
         raise RuntimeError("actor repository is not a Git checkout")
+    # The historical direct entrypoint must obey exactly the same pin as
+    # run_idle_session. It must never reset an accepted local actor merely
+    # because a caller invokes update_actor_checkout directly.
+    if (
+        os.environ.get("IRON_GOD_ACCEPTED_REPO")
+        or os.environ.get("IRON_GOD_ACCEPTED_SHA")
+        or actor_repo.parent.name.casefold() == "runtime-actors"
+    ):
+        pinned = pinned_actor_revision(actor_repo)
+        if pinned is None:
+            raise RuntimeError("PINNED_ACTOR_IDENTITY_REQUIRED")
+        return pinned
     fetch = run(["git", "fetch", "origin", "main"], actor_repo)
     if fetch.returncode != 0:
         raise RuntimeError("actor checkout fetch failed")
