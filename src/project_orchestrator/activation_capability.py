@@ -167,15 +167,27 @@ def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path,*,ob
         stale=[]
     return p.returncode==0 and bool(products),reason,products,stale
 
-def _readiness_worktrees(repos:list[Path],state_root:Path,run_fn=subprocess.run)->tuple[list[Path],Path]:
-    """Create disposable detached origin/main trees without moving canonical workspaces."""
+def _readiness_worktrees(repos:list[Path],state_root:Path,run_fn=subprocess.run,*,accepted_heads:dict[str,str]|None=None)->tuple[list[Path],Path]:
+    """Create disposable detached trees at explicit accepted commits, if supplied.
+
+    A caller must establish acceptance and provenance before supplying heads.
+    Never infer authorization from local HEAD or a newer development branch.
+    """
     root=state_root/"readiness-worktrees"/uuid.uuid4().hex
     root.mkdir(parents=True,exist_ok=True)
     audited=[]
     try:
         for canonical in repos:
             target=root/canonical.name
-            proc=run_fn(["git","worktree","add","--detach",str(target),"refs/remotes/origin/main"],
+            revision="refs/remotes/origin/main"
+            if accepted_heads is not None:
+                revision=accepted_heads.get(canonical.name,"")
+                if not isinstance(revision,str) or len(revision)!=40 or any(c not in "0123456789abcdef" for c in revision):
+                    raise RuntimeError(f"accepted head missing or invalid: {canonical.name}")
+                check=run_fn(["git","cat-file","-t",revision],cwd=canonical,text=True,capture_output=True,check=False)
+                if check.returncode or check.stdout.strip()!="commit":
+                    raise RuntimeError(f"accepted commit unavailable: {canonical.name}")
+            proc=run_fn(["git","worktree","add","--detach",str(target),revision],
                         cwd=canonical,text=True,capture_output=True,check=False)
             if proc.returncode:
                 raise RuntimeError(f"readiness worktree creation failed: {canonical.name}")
