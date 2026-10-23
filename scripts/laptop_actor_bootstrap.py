@@ -78,6 +78,61 @@ def update_actor_checkout(actor_repo: Path) -> str:
     return target
 
 
+def pinned_actor_revision(actor_repo: Path) -> str | None:
+    """Verify both exact-head checkouts without fetching or resetting either.
+
+    A configured local release never falls back to GitHub main, even if its
+    actor checkout is missing, dirty, or on a different revision. The two
+    source paths are independent and must resolve to clean Git roots.
+    This check is not an owner-control or worker-execution authorization.
+    """
+    expected = os.environ.get("IRON_GOD_ACCEPTED_SHA")
+    source_name = os.environ.get("IRON_GOD_ACCEPTED_REPO")
+    is_versioned_actor = actor_repo.parent.name.casefold() == "runtime-actors"
+    if not expected and not source_name:
+        if is_versioned_actor:
+            raise RuntimeError("PINNED_ACTOR_IDENTITY_REQUIRED")
+        return None
+    if not expected or not source_name:
+        raise RuntimeError("PINNED_ACTOR_IDENTITY_INCOMPLETE")
+    if len(expected) != 40 or any(ch not in "0123456789abcdef" for ch in expected):
+        raise RuntimeError("PINNED_ACTOR_SHA_INVALID")
+    source = Path(source_name)
+    if not source.is_absolute() or source.is_symlink():
+        raise RuntimeError("PINNED_RELEASE_SOURCE_INVALID")
+    if is_versioned_actor and actor_repo.name != expected:
+        raise RuntimeError("PINNED_ACTOR_DIRECTORY_SHA_MISMATCH")
+    try:
+        if actor_repo.resolve(strict=True) == source.resolve(strict=True):
+            raise RuntimeError("PINNED_ACTOR_MUST_BE_ISOLATED")
+    except OSError as exc:
+        raise RuntimeError("PINNED_ACTOR_CHECKOUT_UNAVAILABLE") from exc
+
+    for label, repo in (("RELEASE", source), ("ACTOR", actor_repo)):
+        if repo.is_symlink() or not repo.is_dir() or not (repo / ".git").is_dir():
+            raise RuntimeError(f"PINNED_{label}_CHECKOUT_UNAVAILABLE")
+        result = run(["git", "rev-parse", "--show-toplevel"], repo)
+        if result.returncode or os.path.normcase(
+            os.path.abspath(result.stdout.strip())
+        ) != (os.path.normcase(os.path.abspath(str(repo)))):
+            raise RuntimeError(f"PINNED_{label}_GIT_ROOT_MISMATCH")
+        head = run(["git", "rev-parse", "HEAD"], repo)
+        if head.returncode or head.stdout.strip() != expected:
+            raise RuntimeError(f"PINNED_{label}_REVISION_MISMATCH")
+        clean = run(["git", "status", "--porcelain", "--untracked-files=normal"], repo)
+        if clean.returncode or clean.stdout.strip():
+            raise RuntimeError(f"PINNED_{label}_DIRTY")
+    return expected
+
+
+def select_actor_revision(actor_repo: Path) -> str:
+    """Select a pinned local revision, or legacy GitHub mode only when unpinned."""
+    pinned = pinned_actor_revision(actor_repo)
+    if pinned is not None:
+        return pinned
+    return update_actor_checkout(actor_repo)
+
+
 def execute_bridge_once(actor_repo: Path, queue: Path, workspace_root: Path) -> int:
     bridge = actor_repo / "scripts" / "laptop_actor_github_bridge.py"
     runner = actor_repo / "scripts" / "laptop_actor_runner.py"
@@ -379,7 +434,10 @@ def run_daily_hygiene(
         if completed.tzinfo is None:
             completed = completed.replace(tzinfo=timezone.utc)
         if current - completed < timedelta(hours=max(1, minimum_interval_hours)):
-            return {"status": "SKIPPED_RECENT", "completed_at_utc": completed.isoformat()}
+            return {
+                "status": "SKIPPED_RECENT",
+                "completed_at_utc": completed.isoformat(),
+            }
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         pass
 
@@ -398,7 +456,11 @@ def run_daily_hygiene(
         if not root.is_dir():
             continue
         for item in root.rglob("*"):
-            if not item.is_file() or item.suffix.lower() not in {".log", ".jsonl", ".tmp"}:
+            if not item.is_file() or item.suffix.lower() not in {
+                ".log",
+                ".jsonl",
+                ".tmp",
+            }:
                 continue
             if item == state_dir / "actor-telemetry.jsonl":
                 continue
@@ -432,7 +494,9 @@ def run_daily_hygiene(
         "errors": errors,
     }
     state_dir.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return report
 
 
@@ -491,7 +555,10 @@ def run_idle_session(
             )
             return 0
         emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
-        update_actor_checkout(actor_repo)
+        # A pinned release must NEVER be reset to an older GitHub main.
+        # A bad pin blocks the session rather than falling back to remote.
+        actor_revision = select_actor_revision(actor_repo)
+        emit_state(state_dir, "ACTOR_REVISION_VERIFIED", revision=actor_revision)
         run_daily_hygiene(state_dir)
         while True:
             maintenance, maintenance_status = steward_maintenance_active()
@@ -521,6 +588,14 @@ def run_idle_session(
                 )
                 time.sleep(cadence)
                 continue
+            # A long-running actor cannot trust a one-time startup check:
+            # refuse to dispatch if its pinned Git checkout has changed.
+            if (
+                os.environ.get("IRON_GOD_ACCEPTED_SHA")
+                or os.environ.get("IRON_GOD_ACCEPTED_REPO")
+                or actor_repo.parent.name.casefold() == "runtime-actors"
+            ):
+                pinned_actor_revision(actor_repo)
             started = time.monotonic()
             emit_state(
                 state_dir,
