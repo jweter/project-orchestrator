@@ -47,6 +47,7 @@ def test_run_builder_passes_and_returns_same_invocation_id(tmp_path,monkeypatch)
 
 
 def test_runtime_fence_uses_granted_worker_identity(tmp_path,monkeypatch):
+    (tmp_path / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda: builder.MIN_IDLE_SECONDS+1)
     monkeypatch.setattr(builder,"ACTIVE_RUNTIME_FENCE",None)
     monkeypatch.setattr(builder,"ACTIVE_RESOURCE_FENCES",[])

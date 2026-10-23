@@ -389,6 +389,7 @@ def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
 
 def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
+    (tmp_path / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -405,6 +406,7 @@ def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeyp
 def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    (tmp_path / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -428,6 +430,7 @@ def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, mo
 def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    (tmp_path / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -457,6 +460,7 @@ def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, mon
 def test_build_once_retains_runner_output_when_success_makes_no_changes(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    (tmp_path / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -806,6 +810,7 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
 
 def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
+    (tmp_path / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]=="USER_ACTIVE"
