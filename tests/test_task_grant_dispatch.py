@@ -1,4 +1,6 @@
 import json
+
+import pytest
 import scripts.continuous_flow_supervisor as supervisor
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from tests.test_parallel_worker_pool import ManualExecutor
@@ -40,6 +42,11 @@ def test_issue_frontier_tasks_bind_authoritative_activation_identity(tmp_path):
                 "issue_number": 159,
                 "url": "https://example.test/issue/159",
                 "allowed_paths": ["src/repair/"],
+                "engineering_state": "CONFIRMED",
+                "next_gate": "IMPLEMENT",
+                "eligible": True,
+                "blocked": False,
+                "owned": False,
                 "exact_head": "untrusted-stale-sha",
             },
             {
@@ -60,7 +67,86 @@ def test_issue_frontier_tasks_bind_authoritative_activation_identity(tmp_path):
     assert task["repository"] == repo
     assert task["exact_head"] == head
     assert task["source_kind"] == "ISSUE"
+    assert task["task_class"] == "code"
     assert all(task["slice_id"] != "unregistered" for _, _, task in batch)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"engineering_state": "NEW", "next_gate": "TRIAGE", "allowed_paths": []},
+        {"engineering_state": "CONFIRMED", "next_gate": "TRIAGE"},
+        {"engineering_state": "NEEDS_REPRODUCTION", "next_gate": "REPRODUCE"},
+        {"engineering_state": "CI_FAILED", "next_gate": "CI"},
+        {"allowed_paths": []},
+        {"allowed_paths": [""]},
+        {"allowed_paths": ["../outside/"]},
+        {"allowed_paths": ["C:/Windows/System32/"]},
+        {"allowed_paths": "src/repair/"},
+        {"eligible": False},
+        {"blocked": True},
+        {"owned": True},
+    ],
+)
+def test_issue_frontier_refuses_unready_or_unscoped_issue(tmp_path, changes):
+    activation = {"products": {"rocksmith": {"repositories": {"jweter/repo": "abc"}}}}
+    graphs = tmp_path / "capability-graphs"
+    graphs.mkdir()
+    (graphs / "jweter__repo.json").write_text(json.dumps(graph()))
+    item = {
+        "product": "rocksmith",
+        "repository": "jweter/repo",
+        "work_id": "issue:owner/repo#159",
+        "title": "Needs explicit executable authority",
+        "engineering_state": "CONFIRMED",
+        "next_gate": "IMPLEMENT",
+        "eligible": True,
+        "blocked": False,
+        "owned": False,
+        "allowed_paths": ["src/repair/"],
+    }
+    item.update(changes)
+    (tmp_path / "issue-work-frontier.json").write_text(
+        json.dumps({"ranked_actionable": [item]})
+    )
+
+    batch = supervisor.ready_task_batch(tmp_path, activation, "rocksmith", 4)
+    # Reject an unsafe issue without starving independently authorized work.
+    assert all(task["slice_id"] != item["work_id"] for _, _, task in batch)
+    assert {task["slice_id"] for _, _, task in batch} == {"A", "B"}
+
+
+def test_issue_frontier_allows_scoped_ci_failure_repair(tmp_path):
+    activation = {"products": {"rocksmith": {"repositories": {"jweter/repo": "abc"}}}}
+    graphs = tmp_path / "capability-graphs"
+    graphs.mkdir()
+    (graphs / "jweter__repo.json").write_text(json.dumps(graph()))
+    issue = {
+        "product": "rocksmith",
+        "repository": "jweter/repo",
+        "work_id": "issue:owner/repo#203",
+        "title": "Repair an independently confirmed CI failure",
+        "engineering_state": "CI_FAILED",
+        "next_gate": "REPAIR",
+        "eligible": True,
+        "blocked": False,
+        "owned": False,
+        "allowed_paths": ["src/repair/"],
+        "exact_head": "stale-untrusted-input",
+    }
+    (tmp_path / "issue-work-frontier.json").write_text(
+        json.dumps({"ranked_actionable": [issue]})
+    )
+    batch = supervisor.ready_task_batch(tmp_path, activation, "rocksmith", 4)
+    matches = [(repo, head, task) for repo, head, task in batch
+               if task["slice_id"] == issue["work_id"]]
+    assert len(matches) == 1
+    repo, head, task = matches[0]
+    assert (repo, head) == ("jweter/repo", "abc")
+    assert task["repository"] == repo
+    assert task["exact_head"] == head
+    assert task["allowed_paths"] == ["src/repair/"]
+    assert task["task_class"] == "repair"
 
 
 def test_ready_task_batch_surfaces_missing_graph_as_direction_required(tmp_path):

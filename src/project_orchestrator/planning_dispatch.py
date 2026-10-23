@@ -286,6 +286,31 @@ def ready_task_batch(
     for issue in issue_rows:
         if not isinstance(issue, dict) or issue.get("product") != product:
             continue
+        # The issue frontier also contains triage/reproduction requests.
+        # Ranking an issue as actionable is NOT execution authorization.
+        if (
+            (issue.get("engineering_state"), issue.get("next_gate"))
+            not in {("CONFIRMED", "IMPLEMENT"), ("CI_FAILED", "REPAIR")}
+            or issue.get("eligible") is not True
+            or issue.get("blocked") is not False
+            or issue.get("owned") is not False
+        ):
+            continue
+        allowed_paths = issue.get("allowed_paths")
+        if (
+            not isinstance(allowed_paths, list)
+            or not allowed_paths
+            or any(
+                not isinstance(scope, str)
+                or not scope.strip()
+                or scope != scope.strip()
+                or bool(Path(scope).anchor)
+                or not Path(scope).parts
+                or ".." in Path(scope).parts
+                for scope in allowed_paths
+            )
+        ):
+            continue
         repo = issue.get("repository")
         head = repositories.get(repo) if isinstance(repo, str) else None
         if not head:
@@ -299,12 +324,12 @@ def ready_task_batch(
             "slice_id": issue.get("work_id"),
             "capability_id": issue.get("work_id"),
             "objective": issue.get("title"),
-            "task_class": "repair",
+            "task_class": "repair" if issue["next_gate"] == "REPAIR" else "code",
             "source_kind": "ISSUE",
             "issue_number": issue.get("issue_number"),
             "issue_url": issue.get("url"),
             "next_gate": issue.get("next_gate"),
-            "allowed_paths": issue.get("allowed_paths", []),
+            "allowed_paths": allowed_paths,
         }
         if conflict_check_fn(state_root, repo, task) is None:
             candidates.append((repo, head, task))
