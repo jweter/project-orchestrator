@@ -17,7 +17,8 @@ def test_preflight_isolates_imports_and_temp_root():
         in text
     )
     assert 'PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)' in text
-    assert '"--basetemp", str(PREFLIGHT_BASETEMP)' in text
+    assert '"--basetemp", str(PREFLIGHT_BASETEMP / "main")' in text
+    assert text.index('("controller_proofs",') < text.index('("tests",')
     assert "import shutil" in text
     assert "shutil.rmtree(PREFLIGHT_BASETEMP, ignore_errors=True)" in text
     assert "os.getpid()" not in text
