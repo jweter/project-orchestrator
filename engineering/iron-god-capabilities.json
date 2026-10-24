@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "repository": "jweter/project-orchestrator",
+  "roadmap": ["iron-god-local-first-cutover"],
+  "capabilities": [
+    {
+      "id": "iron-god-local-first-cutover",
+      "capability": "Make the owner-directed Iron God-only laptop development lane persist through actor synchronization and dispatch a verified bounded slice.",
+      "state": "IN_PROGRESS",
+      "depends_on": [],
+      "completion_evidence": ["tests/test_iron_god_exclusive_dispatch.py", "engineering/IRON_GOD_PRIORITY_DIRECTIVE.md", "runtime exact-head activation and execution grant receipt"],
+      "slices": [
+        {
+          "id": "iron-god-exclusive-activation-proof",
+          "objective": "Add deterministic regression coverage proving the supervisor refuses non-Iron-God work when exclusive activation is missing, and accepts an exact-head Iron God grant only after readiness and capability authority are valid.",
+          "acceptance": ["A reproducible local test proves fail-closed behavior without Iron God readiness", "A reproducible local test proves exact-head Iron God selection with valid activation", "No product-repository worktree is modified"],
+          "allowed_paths": ["tests/test_iron_god_exclusive_dispatch.py", "tests/test_iron_god_activation.py", "src/project_orchestrator/planning_dispatch.py", "scripts/continuous_flow_supervisor.py", "engineering/iron-god-capabilities.json"],
+          "forbidden_paths": [".hands-off-state/", "telemetry/", "workspaces/"],
+          "runner_requirements": ["code", "local", "windows", "offline"],
+          "state": "PLANNED",
+          "depends_on": []
+        }
+      ]
+    }
+  ]
+}

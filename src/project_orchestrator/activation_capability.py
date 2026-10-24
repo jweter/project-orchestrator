@@ -521,7 +521,12 @@ def repeated_noop_slice_evidence(state_root:Path,repo:str,execution_slice:dict,
             "result_status":record.get("result_status"),
         })
     history.sort(key=lambda item:(item["issued_at"],item["finished_at"],item["grant_id"]))
-    recent=history[-threshold:] if threshold>0 else []
+    # In-flight claims are not outcomes. A newer CLAIMED/EXECUTING grant must
+    # not hide two consecutive, independently recorded NO_OP failures.
+    terminal_history=[item for item in history if item.get("state") in {
+        "COMPLETED","FAILED","ABANDONED","DEFERRED"
+    }]
+    recent=terminal_history[-threshold:] if threshold>0 else []
     exhausted=(len(recent)>=threshold and all(
         item.get("state") in {"COMPLETED","FAILED"}
         and item.get("result_status") in NO_OP_TERMINAL_STATUSES

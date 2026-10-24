@@ -11,6 +11,7 @@ from .portfolio_advancement import build_resilient_advancement_plan
 from .state_io import atomic_json
 
 PRODUCT_BY_REPOSITORY = {
+    "jweter/project-orchestrator": "iron-god",
     "jweter/knowledge-engine-core": "knowledge-engine",
     "jweter/knowledge-engine-web": "knowledge-engine",
     "jweter/knowledge-engine-ai": "knowledge-engine",
@@ -213,6 +214,11 @@ def ready_task_batch(
     derive_slices_fn: Callable,
     conflict_check_fn: Callable,
 ) -> list[tuple[str, str, dict]]:
+    # The parallel planner must enforce the same terminal NO_OP budget as the
+    # single-target selector. Import here to avoid planning/authority cycles.
+    from .activation_capability import (
+        repeated_noop_slice_evidence, record_exhausted_slice_direction,
+    )
     candidates: list[tuple[str, str, dict]] = []
     try:
         issue_frontier = json.loads((state_root / "issue-work-frontier.json").read_text(encoding="utf-8"))
@@ -271,6 +277,10 @@ def ready_task_batch(
             continue
         request_path.unlink(missing_ok=True)
         for task in derived.get("slices", []):
+            exhaustion = repeated_noop_slice_evidence(state_root, repo, task)
+            if exhaustion["exhausted"]:
+                record_exhausted_slice_direction(state_root, repo, head, task, exhaustion)
+                continue
             if conflict_check_fn(state_root, repo, task) is None:
                 candidates.append((repo, head, task))
     for issue in issue_rows:
@@ -329,6 +339,13 @@ def select_execution_target(
     usability_policy: dict | None = None,
 ) -> tuple[str, str]:
     """Allocate one execution target with product fairness and optional usability pressure."""
+    # Owner-approved Iron God exclusive development phase. Fail closed rather than
+    # assigning product work when the engine has no eligible execution target.
+    priority_directive = state_root / "iron-god-exclusive.json"
+    if priority_directive.is_file():
+        products = [product for product in products if product == "iron-god"]
+        if not products:
+            raise RuntimeError("IRON_GOD_EXCLUSIVE_NO_ENGINE_TARGET")
     reserved = reserved_quarantine_repositories(state_root)
     product_repositories: dict[str, list[tuple[str, str]]] = {}
     for product in products:

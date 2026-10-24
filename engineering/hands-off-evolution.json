@@ -96,6 +96,9 @@
   ],
   "activation_rule": "A product may enter Hands-Off Evolution only when all required authority checks are PASS. UNKNOWN or FAIL fails closed. Activation never overrides repository-local policy.",
   "products": {
+    "iron-god": [
+      "jweter/project-orchestrator"
+    ],
     "knowledge-engine": [
       "jweter/knowledge-engine-core",
       "jweter/knowledge-engine-web",
