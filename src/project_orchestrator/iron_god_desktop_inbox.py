@@ -88,3 +88,128 @@ def inspect_inbox(
     if age > max_age_seconds:
         return InboxDecision("EXPIRED_REQUEST", item)
     return InboxDecision("PENDING_UNAUTHORIZED", item)
+
+
+def recent_requests(
+    db: sqlite3.Connection, *, limit: int = 20
+) -> tuple[DesktopRequest, ...]:
+    """Return a bounded audit view, most recent first, without DB mutation."""
+    _connection(db)
+    if type(limit) is not int or not 1 <= limit <= 100:
+        raise ValueError("limit must be an integer between 1 and 100")
+    rows = db.execute(
+        f"SELECT {_COLUMNS} FROM iron_god_desktop_requests ORDER BY rowid DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return tuple(_record(row) for row in rows)
+
+
+def latest_matching_action(
+    db: sqlite3.Connection, action: str
+) -> DesktopRequest | None:
+    """Look up most recent action for diagnostics; not dispatch eligibility."""
+    _connection(db)
+    if action not in ("GIVE_ME_CONTROL", "TAKE_THE_WHEEL"):
+        raise ValueError("unrecognized desktop action")
+    row = db.execute(
+        f"SELECT {_COLUMNS} FROM iron_god_desktop_requests "
+        "WHERE action=? ORDER BY rowid DESC LIMIT 1",
+        (action,),
+    ).fetchone()
+    return _record(row) if row is not None else None
+
+
+@dataclass(frozen=True)
+class QueueDepth:
+    pending: int
+    observed: int
+    total: int
+    execution_authorized: bool = False
+
+
+def queue_depth(db: sqlite3.Connection) -> QueueDepth:
+    """Count all recorded requests without treating old requests as eligible."""
+    _connection(db)
+    rows = db.execute(
+        "SELECT state, COUNT(*) FROM iron_god_desktop_requests GROUP BY state"
+    ).fetchall()
+    counts = dict(rows)
+    return QueueDepth(
+        pending=counts.get("REQUESTED_NOT_AUTHORIZED", 0),
+        observed=counts.get("OBSERVED_NOT_AUTHORIZED", 0),
+        total=sum(counts.values()),
+    )
+
+
+@dataclass(frozen=True)
+class TableReadiness:
+    status: str
+    missing_columns: tuple[str, ...] = ()
+    execution_authorized: bool = False
+
+
+_REQUIRED_COLUMNS = frozenset(
+    (
+        "command_id",
+        "action",
+        "requested_at_utc",
+        "state",
+        "observed_at_utc",
+        "observer_generation",
+        "observer_release_sha",
+    )
+)
+
+
+def request_table_readiness(db: sqlite3.Connection) -> TableReadiness:
+    """Read-only schema inspection; existence alone is not a valid contract."""
+    _connection(db)
+    row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' "
+        "AND name='iron_god_desktop_requests'"
+    ).fetchone()
+    if row is None:
+        return TableReadiness("TABLE_MISSING")
+    ddl = row[0]
+    if not isinstance(ddl, str):
+        return TableReadiness("TABLE_DEFINITION_UNREADABLE")
+    cols = {
+        row[1]
+        for row in db.execute(
+            "PRAGMA table_info('iron_god_desktop_requests')"
+        ).fetchall()
+    }
+    missing = tuple(sorted(_REQUIRED_COLUMNS.difference(cols)))
+    if missing:
+        return TableReadiness("REQUIRED_COLUMNS_MISSING", missing)
+    if "REQUESTED_NOT_AUTHORIZED" not in ddl or "OBSERVED_NOT_AUTHORIZED" not in ddl:
+        return TableReadiness("NON_AUTHORIZING_STATES_NOT_ENFORCED")
+    if "CHECK" not in ddl.upper():
+        return TableReadiness("STATE_CONSTRAINTS_MISSING")
+    return TableReadiness("STAGED_SCHEMA_PRESENT_NOT_AUTHORIZED")
+
+
+def inspect_queue(
+    db: sqlite3.Connection,
+    *,
+    now: datetime | None = None,
+    max_age_seconds: int = 120,
+    pressure_threshold: int = 500,
+) -> tuple[InboxDecision, QueueDepth, TableReadiness, str]:
+    """Synthesize inbox + backlog + schema without enabling dispatch."""
+    if type(pressure_threshold) is not int or pressure_threshold < 1:
+        raise ValueError("pressure threshold must be positive")
+    schema = request_table_readiness(db)
+    if schema.status != "STAGED_SCHEMA_PRESENT_NOT_AUTHORIZED":
+        return (
+            InboxDecision("SCHEMA_UNVERIFIED", None),
+            QueueDepth(0, 0, 0),
+            schema,
+            "BLOCKED",
+        )
+    decision = inspect_inbox(db, now=now, max_age_seconds=max_age_seconds)
+    counts = queue_depth(db)
+    status = (
+        "BACKLOG_WARNING" if counts.pending > pressure_threshold else "NOT_AUTHORIZED"
+    )
+    return decision, counts, schema, status
