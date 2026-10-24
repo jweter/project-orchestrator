@@ -107,3 +107,27 @@ def test_idle_pool_retains_normal_delay_without_busy_spin(monkeypatch):
     pool = ParallelWorkerPool(executor_factory=ManualExecutor)
     assert not pool.wait_for_completion(12.0)
     assert slept == [12.0]
+
+
+def test_worker_accounting_distinguishes_executing_from_pending_harvest():
+    executor = ManualExecutor(max_workers=2, thread_name_prefix="x")
+    pool = ParallelWorkerPool(max_total_workers=2, executor_factory=lambda **_: executor)
+    pool.submit(WorkerSlot("everward", 1), lambda: "done")
+    pool.submit(WorkerSlot("iron-god", 1), lambda: "still active")
+    before = pool.snapshot()
+    assert before["running_total"] == before["executing_total"] == 2
+    assert before["completed_pending_harvest"] == 0
+    executor.submissions[0][0].set_exception(RuntimeError("mismatch"))
+    pending = pool.snapshot()
+    assert pending["running_total"] == 2  # authority still held until harvest
+    assert pending["executing_total"] == 1
+    assert pending["completed_pending_harvest"] == 1
+    by_id = {r["worker_id"]: r for r in pending["workers"]}
+    assert by_id["everward-worker-1"]["execution_state"] == "COMPLETED_PENDING_HARVEST"
+    assert by_id["iron-god-worker-1"]["execution_state"] == "EXECUTING"
+    assert pool.available_slots(["rocksmith"]) == []  # no premature slot reuse
+    errors = pool.harvest()
+    assert isinstance(errors["everward-worker-1"], RuntimeError)
+    after = pool.snapshot()
+    assert after["running_total"] == after["executing_total"] == 1
+    assert after["completed_pending_harvest"] == 0

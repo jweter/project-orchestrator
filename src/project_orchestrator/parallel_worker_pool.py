@@ -108,12 +108,19 @@ class ParallelWorkerPool(Generic[T]):
         return bool(completed)
 
     def snapshot(self) -> dict:
+        # running_total retains its historical conservative occupied-slot
+        # semantics, including completed futures pending harvest. Never free a
+        # slot/lease just because a Future is done; harvest owns that handoff.
+        # Expose actual executing vs completed-but-unharvested counts separately.
+        pending = sum(work.future.done() for work in self._running.values())
         by_product = {
             product: self._running_for(product)
             for product in PRODUCTS
         }
         return {
             "running_total": len(self._running),
+            "executing_total": len(self._running) - pending,
+            "completed_pending_harvest": pending,
             "running_by_product": by_product,
             "max_total_workers": self.max_total_workers,
             "max_workers_per_product": self.max_workers_per_product,
@@ -123,6 +130,10 @@ class ParallelWorkerPool(Generic[T]):
                     "product": work.slot.product,
                     "slot": work.slot.index,
                     "done": work.future.done(),
+                    "execution_state": (
+                        "COMPLETED_PENDING_HARVEST"
+                        if work.future.done() else "EXECUTING"
+                    ),
                 }
                 for worker_id, work in sorted(self._running.items())
             ],
