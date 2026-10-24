@@ -101,3 +101,15 @@ def test_divergent_activation_is_explicitly_rejected(tmp_path):
     assert "ACTIVATION_NOT_DESCENDANT_OF_ACCEPTED" in result["reasons"]
     assert result["dispatch_authorized"] is False
     assert git(tmp_path, "show-ref", "--verify", "--hash", "refs/iron-god/accepted") == accepted
+
+
+def test_nested_directory_cannot_impersonate_engine_git_root(tmp_path):
+    head = prepared_repo(tmp_path)
+    git(tmp_path, "update-ref", "refs/iron-god/accepted", head)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    result = inspect_self_development_source(nested, activation(head), CONTROLLER)
+    assert result["status"] == "BLOCKED"
+    assert "LOCAL_REPOSITORY_ROOT_UNVERIFIED" in result["reasons"]
+    assert result["accepted_sha"] is None
+    assert result["dispatch_authorized"] is False

@@ -48,14 +48,20 @@ def inspect_self_development_source(
         reasons.append("EXACT_ACTIVATION_HEAD_MISSING")
         selected = None
 
-    accepted = _git(repo, "show-ref", "--verify", "--hash", "refs/iron-god/accepted")
-    if accepted is None or not _SHA.fullmatch(accepted):
-        reasons.append("PROTECTED_ACCEPTED_BASELINE_MISSING")
+    root = _git(repo, "rev-parse", "--show-toplevel")
+    root_verified = root is not None and Path(root).resolve() == repo.resolve()
+    if not root_verified:
+        reasons.append("LOCAL_REPOSITORY_ROOT_UNVERIFIED")
         accepted = None
-    elif _git(repo, "cat-file", "-t", accepted) != "commit":
-        reasons.append("PROTECTED_ACCEPTED_BASELINE_NOT_COMMIT")
-        accepted = None
-    if selected is not None:
+    else:
+        accepted = _git(repo, "show-ref", "--verify", "--hash", "refs/iron-god/accepted")
+        if accepted is None or not _SHA.fullmatch(accepted):
+            reasons.append("PROTECTED_ACCEPTED_BASELINE_MISSING")
+            accepted = None
+        elif _git(repo, "cat-file", "-t", accepted) != "commit":
+            reasons.append("PROTECTED_ACCEPTED_BASELINE_NOT_COMMIT")
+            accepted = None
+    if selected is not None and root_verified:
         if _git(repo, "cat-file", "-t", selected) != "commit":
             reasons.append("ACTIVATION_COMMIT_NOT_LOCAL")
         if accepted is not None and selected != accepted:
