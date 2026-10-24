@@ -213,3 +213,75 @@ def inspect_queue(
         "BACKLOG_WARNING" if counts.pending > pressure_threshold else "NOT_AUTHORIZED"
     )
     return decision, counts, schema, status
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Read-only live inbox status CLI. Never implies command completion."""
+    import argparse
+    import json
+    from dataclasses import asdict
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(
+        description="Read-only Iron God desktop inbox diagnostics (no authorization)."
+    )
+    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--limit", type=int, default=5)
+    args = parser.parse_args(argv)
+
+    if not args.database.is_file() or args.database.is_symlink():
+        print(json.dumps({"status": "EXISTING_DATABASE_REQUIRED"}))
+        return 3
+    try:
+        db = sqlite3.connect(
+            args.database.resolve().as_uri() + "?mode=ro",
+            uri=True,
+            isolation_level=None,
+            timeout=5,
+        )
+        try:
+            decision, counts, schema, status = inspect_queue(db)
+            output = {
+                "status": status if status != "NOT_AUTHORIZED" else decision.status,
+                "inbox_status": decision.status,
+                "schema": schema.status,
+                "queue": {
+                    "pending": counts.pending,
+                    "observed": counts.observed,
+                    "total": counts.total,
+                },
+                "recent": [
+                    {
+                        "command_id": x.command_id,
+                        "action": x.action,
+                        "state": x.state,
+                        "requested_at_utc": x.requested_at_utc,
+                    }
+                    for x in (
+                        recent_requests(db, limit=args.limit)
+                        if schema.status == "STAGED_SCHEMA_PRESENT_NOT_AUTHORIZED"
+                        else ()
+                    )
+                ],
+                "execution_authorized": False,
+                "acknowledged_by_engine": False,
+            }
+            print(json.dumps(output, sort_keys=True))
+            return 5 if schema.status == "STAGED_SCHEMA_PRESENT_NOT_AUTHORIZED" else 3
+        finally:
+            db.close()
+    except (sqlite3.Error, ValueError, OSError) as exc:
+        print(
+            json.dumps(
+                {
+                    "status": "INBOX_UNVERIFIED",
+                    "reason": type(exc).__name__,
+                    "execution_authorized": False,
+                }
+            )
+        )
+        return 3
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
