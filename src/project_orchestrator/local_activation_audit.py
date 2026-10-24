@@ -13,6 +13,16 @@ from typing import Mapping
 
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+_GITHUB_REMOTE = re.compile(
+    r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?\Z",
+    re.IGNORECASE,
+)
+
+
+def _remote_repository(url: str | None) -> str | None:
+    match = _GITHUB_REMOTE.fullmatch(url) if url else None
+    return match.group(1).casefold() if match else None
 
 
 def _git(root: Path, *args: str) -> str | None:
@@ -78,6 +88,12 @@ def audit_local_activation(
         ):
             reasons.append("LOCAL_REPOSITORY_ROOT_MISMATCH")
         else:
+            remote = _git(root, "remote", "get-url", "origin")
+            remote_repo = _remote_repository(remote)
+            if remote_repo is None:
+                reasons.append("LOCAL_REMOTE_REPOSITORY_UNVERIFIED")
+            elif remote_repo != repository.casefold():
+                reasons.append("LOCAL_REMOTE_REPOSITORY_MISMATCH")
             local_head = _git(root, "rev-parse", "HEAD")
             tracked = _git(root, "status", "--porcelain", "--untracked-files=no")
             tracked_dirty = None if tracked is None else bool(tracked)

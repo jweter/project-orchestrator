@@ -24,6 +24,7 @@ def prepared(tmp_path):
     (root / "README.md").write_text("initial\n", encoding="utf-8")
     git(root, "add", "README.md")
     git(root, "commit", "-qm", "initial")
+    git(root, "remote", "add", "origin", "https://github.com/jweter/project-orchestrator.git")
     return root, git(root, "rev-parse", "HEAD")
 
 
@@ -112,3 +113,32 @@ def test_invalid_repository_id_never_traverses_workspace(tmp_path):
         ["jweter/.."], activation("a" * 40), tmp_path
     )["repositories"]["jweter/.."]
     assert result["reasons"] == ["INVALID_REPOSITORY_ID"]
+
+
+
+def test_wrong_origin_blocks_local_identity_even_with_matching_sha(tmp_path):
+    root, head = prepared(tmp_path)
+    git(root, "update-ref", "refs/iron-god/accepted", head)
+    git(root, "remote", "set-url", "origin", "https://github.com/other/project-orchestrator.git")
+    result = audit(tmp_path, head)
+    assert "LOCAL_REMOTE_REPOSITORY_MISMATCH" in result["reasons"]
+    assert result["status"] == "BLOCKED"
+    assert result["dispatch_authorized"] is False
+
+
+def test_missing_origin_cannot_establish_repository_identity(tmp_path):
+    root, head = prepared(tmp_path)
+    git(root, "update-ref", "refs/iron-god/accepted", head)
+    git(root, "remote", "remove", "origin")
+    result = audit(tmp_path, head)
+    assert "LOCAL_REMOTE_REPOSITORY_UNVERIFIED" in result["reasons"]
+    assert result["dispatch_authorized"] is False
+
+
+def test_git_ssh_origin_verifies_same_repository(tmp_path):
+    root, head = prepared(tmp_path)
+    git(root, "update-ref", "refs/iron-god/accepted", head)
+    git(root, "remote", "set-url", "origin", "git@github.com:jweter/project-orchestrator.git")
+    result = audit(tmp_path, head)
+    assert result["status"] == "LOCAL_IDENTITY_VERIFIED_ONLY"
+    assert result["reasons"] == []
