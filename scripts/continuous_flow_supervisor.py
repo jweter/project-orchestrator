@@ -13,6 +13,8 @@ from scripts.blocker_buddy import diagnose as diagnose_blocker
 from scripts.autonomous_slice_builder import ensure_workspace
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
 from project_orchestrator.worker_memory_admission import memory_admission
+from project_orchestrator.delivery_throughput import assess_delivery_throughput
+from project_orchestrator.quarantine_triage import triage_quarantines
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
@@ -797,6 +799,10 @@ def main()->int:
         if lifecycle_advanced:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
+        delivery=assess_delivery_throughput(state,products,pool_snapshot)
+        quarantine_triage=triage_quarantines(quarantines)
+        atomic(state/"verified-delivery-throughput.json",delivery)
+        atomic(state/"quarantine-triage.json",quarantine_triage)
         liveness_published=optional_atomic(state/"productive-liveness.json",liveness,replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
         convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
         idle_streaks=_planning.record_eligible_idle_streaks(
@@ -813,6 +819,10 @@ def main()->int:
             degraded_reasons.append({"reason":"P1_LIVENESS_DEFECT"})
         if liveness.get("status") in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}:
             degraded_reasons.append({"reason":liveness.get("status")})
+        if delivery["status"] == "VERIFIED_DELIVERY_STALLED":
+            degraded_reasons.append({"reason":"VERIFIED_DELIVERY_STALLED",
+                "seconds_since_start":delivery["seconds_since_start"],
+                "verified_deliveries":0})
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
@@ -833,6 +843,7 @@ def main()->int:
             "parallel_workers_dispatched":dispatched_workers,
             "parallel_worker_results":parallel_results,
             "productive_liveness":liveness,
+            "verified_delivery_throughput":delivery,
             "product_convergence":convergence,
             "eligible_idle_streaks":idle_streaks,
             "workspace_provisioning":workspace_provisioning,
@@ -846,6 +857,7 @@ def main()->int:
             "quarantine_rechecks":quarantine_rechecks,
             "quarantined_grants":quarantines,
             "quarantine_count":len(quarantines),
+            "quarantine_triage":quarantine_triage,
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None,
             "process_instance_id":process_instance_id,"burst_id":burst_id,
