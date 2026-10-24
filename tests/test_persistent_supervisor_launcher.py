@@ -222,3 +222,45 @@ def test_stale_generation_reclaim_rejects_unreadable_or_future_heartbeat(tmp_pat
             "status":"RUNNING_CURRENT","heartbeat_at_utc":stamp})
         assert stale_generation_requires_reclaim(
             tmp_path,"current",now=now,max_age_seconds=60) is False
+
+
+def test_supervisor_launcher_does_not_spawn_guardian_on_missing_owner_authority(
+    monkeypatch, tmp_path, capsys
+):
+    import scripts.launch_persistent_supervisor as launcher
+
+    state = tmp_path / "owner-unknown"
+    monkeypatch.setattr(launcher, "activate_repo_imports", lambda _repo: None)
+    monkeypatch.setattr(
+        launcher, "start_network_guardian",
+        lambda *_: (_ for _ in ()).throw(AssertionError("no guardian start allowed")),
+    )
+    monkeypatch.setattr(
+        launcher.subprocess, "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("no supervisor launch allowed")
+        ),
+    )
+    monkeypatch.setattr(
+        sys, "argv",
+        ["launch_persistent_supervisor.py", "--repo-root", str(tmp_path),
+         "--workspace-root", str(tmp_path / "workspace"),
+         "--state-root", str(state)],
+    )
+    assert launcher.main() == 3
+    assert not state.exists()
+    assert "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED" in capsys.readouterr().err
+
+
+def test_launcher_owner_gate_is_fail_closed_for_unreadable_or_held_state(tmp_path):
+    from scripts.launch_persistent_supervisor import launcher_owner_gate
+
+    state = tmp_path / "state"
+    state.mkdir()
+    assert launcher_owner_gate(state) is False
+    write(state / "human-mode.json", {"enabled": True})
+    assert launcher_owner_gate(state) is False
+    (state / "human-mode.json").write_text("{broken", encoding="utf-8")
+    assert launcher_owner_gate(state) is False
+    write(state / "human-mode.json", {"enabled": False})
+    assert launcher_owner_gate(state) is True
