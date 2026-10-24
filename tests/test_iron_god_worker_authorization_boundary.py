@@ -45,6 +45,17 @@ from pathlib import Path
 
 import pytest
 
+# This proof exercises an external, machine-installed IronGodLocal script.
+# GitHub-hosted runners do not contain Azathoth's live controller sources.
+_EXTERNAL_IRON_GOD_SCRIPT = Path(
+    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal\local_continuous_worker.py"
+)
+if not _EXTERNAL_IRON_GOD_SCRIPT.is_file():
+    pytest.skip(
+        "External IronGodLocal runtime source not installed on this runner",
+        allow_module_level=True,
+    )
+
 CONTROLLER_PATH = Path(
     r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal\local_continuous_worker.py"
 )

@@ -21,6 +21,17 @@ from pathlib import Path
 
 import pytest
 
+# This proof exercises an external, machine-installed IronGodLocal script.
+# GitHub-hosted runners do not contain Azathoth's live controller sources.
+_EXTERNAL_IRON_GOD_SCRIPT = Path(
+    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal\accepted_event_dispatch_coordinator.py"
+)
+if not _EXTERNAL_IRON_GOD_SCRIPT.is_file():
+    pytest.skip(
+        "External IronGodLocal runtime source not installed on this runner",
+        allow_module_level=True,
+    )
+
 # accepted_event_dispatch_coordinator.py is a bare module living in
 # IronGodLocal, not part of the installed project_orchestrator package --
 # _build_task_for_slice imports it by bare name, matching how it is
