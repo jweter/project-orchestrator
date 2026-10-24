@@ -43,11 +43,71 @@ if (Test-Path -LiteralPath $startup -PathType Leaf) {
 }
 $pin = Read-Record 'supervisor-pinned-release.json'
 $actorPin = Read-Record 'actor-local-promotion.json'
+
+# A task pointing at a different release can still contain the expected
+# script filename. The exact -File path AND working directory must match the
+# currently pinned accepted release, not a legacy immutable release folder.
+function Same-ResolvedPath([string]$a,[string]$b) {
+  if (-not [IO.Path]::IsPathRooted($a) -or -not [IO.Path]::IsPathRooted($b)) { return $false }
+  try { return [IO.Path]::GetFullPath($a).TrimEnd('\') -ieq [IO.Path]::GetFullPath($b).TrimEnd('\') }
+  catch { return $false }
+}
+function Test-ExactPinnedAction($task, [string]$scriptName, [string]$repo) {
+  if ($null -eq $task -or -not [IO.Path]::IsPathRooted($repo)) { return $false }
+  $actions = @($task.Actions)
+  if ($actions.Count -ne 1) { return $false }
+  $action = $actions[0]
+  if ($action.Execute -notmatch '(?i)powershell') { return $false }
+  $match = [regex]::Match([string]$action.Arguments, '(?i)(?:^|\s)-File\s+"([^"]+)"')
+  if (-not $match.Success) { return $false }
+  $actualFile = $match.Groups[1].Value
+  $expected = Join-Path $repo ('scripts\' + $scriptName)
+  if ($scriptName -eq 'watch_pinned_continuous_flow.ps1') {
+    $stateMatch = [regex]::Match([string]$action.Arguments, '(?i)(?:^|\s)-StateRoot\s+"([^"]+)"')
+    $pinMatch = [regex]::Match([string]$action.Arguments, '(?i)(?:^|\s)-PinPath\s+"([^"]+)"')
+    if (-not $stateMatch.Success -or -not $pinMatch.Success) { return $false }
+    if (-not (Same-ResolvedPath $stateMatch.Groups[1].Value $state) -or
+        -not (Same-ResolvedPath $pinMatch.Groups[1].Value (Join-Path $state 'supervisor-pinned-release.json'))) {
+      return $false
+    }
+  }
+  try {
+    return ([IO.Path]::GetFullPath($actualFile).TrimEnd('\') -ieq
+            [IO.Path]::GetFullPath($expected).TrimEnd('\') -and
+            [IO.Path]::GetFullPath([string]$action.WorkingDirectory).TrimEnd('\') -ieq
+            [IO.Path]::GetFullPath($repo).TrimEnd('\'))
+  } catch { return $false }
+}
+if ($null -ne $pin) {
+  $expectedRepo = [string]$pin.accepted_repo
+  if (-not (Test-ExactPinnedAction $watchdog 'watch_pinned_continuous_flow.ps1' $expectedRepo)) {
+    Issue 'WATCHDOG_ACTION_RELEASE_MISMATCH'
+  }
+  if (-not (Test-ExactPinnedAction $actor 'launch_local_actor.ps1' $expectedRepo)) {
+    Issue 'ACTOR_ACTION_RELEASE_MISMATCH'
+  }
+}
 if ($null -ne $pin -and $null -ne $actorPin) {
   if ($pin.schema_version -ne 1 -or $pin.enabled -cne $true) { Issue 'WATCHDOG_PIN_NOT_ENABLED' }
   if ($actorPin.enabled -cne $true) { Issue 'ACTOR_PIN_NOT_ENABLED' }
   if ($pin.accepted_sha -cne $actorPin.accepted_sha -or $pin.accepted_repo -ine $actorPin.accepted_repo) {
     Issue 'SUPERVISOR_AND_ACTOR_PINS_DISAGREE'
+  }
+}
+if ($null -ne $actorPin) {
+  $actorRoot = [string]$actorPin.actor_repo
+  if (-not [IO.Path]::IsPathRooted($actorRoot) -or
+      -not (Test-Path -LiteralPath (Join-Path $actorRoot '.git'))) {
+    Issue 'PINNED_ACTOR_CHECKOUT_MISSING'
+  } else {
+    try {
+      $actorHead = (& git -C $actorRoot rev-parse HEAD)
+      if ($LASTEXITCODE -ne 0 -or $actorHead.Trim() -cne [string]$actorPin.accepted_sha) {
+        Issue 'PINNED_ACTOR_HEAD_MISMATCH'
+      }
+      $actorDirty = & git -C $actorRoot status --porcelain --untracked-files=normal
+      if ($LASTEXITCODE -ne 0 -or $actorDirty) { Issue 'PINNED_ACTOR_DIRTY' }
+    } catch { Issue 'PINNED_ACTOR_VERIFICATION_FAILED' }
   }
 }
 if ($null -ne $pin) {
