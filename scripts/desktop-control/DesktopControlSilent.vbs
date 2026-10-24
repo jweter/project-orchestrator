@@ -21,6 +21,9 @@ If mode = "human" Then
     suffix = " -KeepRemote"
 ElseIf mode = "wheel" Then
     script = fso.BuildPath(here,"Take-The-Wheel.ps1")
+    ' The owner clicking this desktop icon is the explicit consent.
+    ' Keep the Rocksmith veto, release checks, task gates and rollback inside PS1.
+    suffix = " -ExplicitUserAuthorization"
 ElseIf mode = "testhuman" Then
     script = fso.BuildPath(here,"Enter-HumanMode.ps1")
     suffix = " -SelfTest"
@@ -38,7 +41,10 @@ cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Fi
 Dim result
 result = sh.Run(cmd, 0, True)
 If result = 0 Then
-    MsgBox "Control command completed successfully.", 64, "Azathoth Control"
+    ' Successful Take the Wheel handoff is silent: one click, no modal dialog.
+    If mode <> "wheel" Then
+        MsgBox "Control command completed successfully.", 64, "Azathoth Control"
+    End If
 ElseIf mode = "wheel" And result = 5 Then
     MsgBox "Iron God is currently stopped for a verified local-release upgrade." & vbCrLf & _
            "Take the Wheel will not restart the old supervisor." & vbCrLf & _
