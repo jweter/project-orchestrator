@@ -41,8 +41,9 @@ cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Fi
 Dim result
 result = sh.Run(cmd, 0, True)
 If result = 0 Then
-    ' Successful Take the Wheel handoff is silent: one click, no modal dialog.
-    If mode <> "wheel" Then
+    ' Both desktop controls are one-click: successful stop/start is silent.
+    ' Diagnostic modes retain success feedback; failures remain visible below.
+    If mode <> "wheel" And mode <> "human" Then
         MsgBox "Control command completed successfully.", 64, "Azathoth Control"
     End If
 ElseIf mode = "wheel" And result = 5 Then

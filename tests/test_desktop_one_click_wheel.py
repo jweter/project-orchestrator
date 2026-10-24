@@ -31,13 +31,13 @@ def test_owner_click_supplies_explicit_authorization_once():
     )
 
 
-def test_successful_wheel_path_does_not_display_a_dialog():
+def test_both_owner_buttons_succeed_without_dialogs():
     vbs = VBS.read_text(encoding="utf-8")
     success = vbs.split("If result = 0 Then", 1)[1].split(
         "ElseIf mode = \"wheel\" And result = 5 Then", 1
     )[0]
-    assert 'If mode <> "wheel" Then' in success
-    assert "MsgBox" in success  # other modes can still acknowledge success
+    assert 'If mode <> "wheel" And mode <> "human" Then' in success
+    assert "MsgBox" in success  # diagnostic modes still acknowledge success
     assert "End If" in success
 
 
