@@ -28,6 +28,7 @@ from project_orchestrator.grant_issuance import (
 )
 from project_orchestrator import recovery_manager as _recovery
 from project_orchestrator import planning_dispatch as _planning
+from project_orchestrator.local_activation_audit import verify_activation_for_dispatch
 from project_orchestrator import parallel_runtime as _parallel_runtime
 from project_orchestrator import telemetry_continuation as _telemetry
 from project_orchestrator import activation_capability as _authority
@@ -177,11 +178,17 @@ def select_execution_target(state_root:Path,activation:dict,products:list[str])-
         usability_policy=json.loads(policy_path.read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError):
         usability_policy=None
+    def source_identity_check(_state_root: Path, repo: str, head: str) -> str | None:
+        return verify_activation_for_dispatch(
+            repo, head, activation, Path.home() / "Documents" / "GitHub"
+        )
+
     return _planning.select_execution_target(
         state_root,activation,products,
         load_execution_slice_fn=load_execution_slice,
         conflict_check_fn=conflicting_nonterminal_grant,
         usability_policy=usability_policy,
+        source_identity_fn=source_identity_check,
     )
 
 

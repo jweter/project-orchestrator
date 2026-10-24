@@ -337,6 +337,7 @@ def select_execution_target(
     load_execution_slice_fn: Callable,
     conflict_check_fn: Callable,
     usability_policy: dict | None = None,
+    source_identity_fn: Callable[[Path, str, str], str | None] | None = None,
 ) -> tuple[str, str]:
     """Allocate one execution target with product fairness and optional usability pressure."""
     # Owner-approved Iron God exclusive development phase. Fail closed rather than
@@ -411,6 +412,22 @@ def select_execution_target(
 
         product_had_ready_slice = False
         for repo, head in ordered_repositories:
+            if source_identity_fn is not None:
+                try:
+                    source_reason = source_identity_fn(state_root, repo, head)
+                except Exception:
+                    source_reason = "SOURCE_IDENTITY_CHECK_FAILED"
+                if source_reason:
+                    reason = str(source_reason)
+                    decisions.append({
+                        "repository": repo,
+                        "product": product,
+                        "head_sha": head,
+                        "outcome": "SOURCE_IDENTITY_BLOCKED",
+                        "reason": reason,
+                    })
+                    blocked.append(f"{repo}={reason}")
+                    continue
             try:
                 execution = load_execution_slice_fn(state_root, repo, head)
             except RuntimeError as exc:

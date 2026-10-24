@@ -2,7 +2,10 @@
 
 import subprocess
 
-from project_orchestrator.local_activation_audit import audit_local_activation
+from project_orchestrator.local_activation_audit import (
+    audit_local_activation,
+    verify_activation_for_dispatch,
+)
 
 REPO = "jweter/project-orchestrator"
 
@@ -142,3 +145,38 @@ def test_git_ssh_origin_verifies_same_repository(tmp_path):
     result = audit(tmp_path, head)
     assert result["status"] == "LOCAL_IDENTITY_VERIFIED_ONLY"
     assert result["reasons"] == []
+
+
+def test_dispatch_gate_requires_engine_accepted_baseline(tmp_path):
+    root, head = prepared(tmp_path)
+    assert verify_activation_for_dispatch(REPO, head, activation(head), tmp_path) == (
+        "ACCEPTED_REF_MISSING"
+    )
+    assert git(root, "rev-parse", "HEAD") == head
+
+
+def test_dispatch_gate_rejects_unavailable_activation_commit(tmp_path):
+    root, head = prepared(tmp_path)
+    git(root, "update-ref", "refs/iron-god/accepted", head)
+    result = verify_activation_for_dispatch(REPO, "b" * 40, activation("b" * 40), tmp_path)
+    assert "ACTIVATION_COMMIT_NOT_LOCAL" in result
+
+
+def test_dispatch_gate_allows_local_product_without_accepted_ref(tmp_path):
+    root = tmp_path / "VoiceStudio"
+    root.mkdir()
+    git(root, "init", "-q")
+    git(root, "config", "user.name", "Test")
+    git(root, "config", "user.email", "test@example.invalid")
+    (root / "README.md").write_text("test", encoding="utf-8")
+    git(root, "add", "README.md")
+    git(root, "commit", "-qm", "initial")
+    git(root, "remote", "add", "origin", "git@github.com:jweter/VoiceStudio.git")
+    head = git(root, "rev-parse", "HEAD")
+    payload = {"heads": {"jweter/VoiceStudio": head}, "products": {
+        "voicestudio": {"enabled": True, "repositories": {"jweter/VoiceStudio": head}}
+    }}
+    assert verify_activation_for_dispatch("jweter/VoiceStudio", head, payload, tmp_path) is None
+    assert verify_activation_for_dispatch("jweter/VoiceStudio", "c" * 40, payload, tmp_path) == (
+        "DISPATCH_ACTIVATION_HEAD_MISMATCH"
+    )

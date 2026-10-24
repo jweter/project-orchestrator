@@ -120,3 +120,26 @@ def audit_local_activation(
             "dispatch_authorized": False,
         }
     return {"schema_version": 1, "repositories": rows, "dispatch_authorized": False}
+
+
+def verify_activation_for_dispatch(
+    repository: str,
+    head: str,
+    activation: Mapping[str, object],
+    workspace_root: Path,
+) -> str | None:
+    """Return a source-identity blocker, never execution authorization.
+
+    Product commissioning and acceptance are separate gates. Iron God itself
+    requires its protected accepted baseline before self-development selection.
+    """
+    row = audit_local_activation([repository], activation, workspace_root)[
+        "repositories"
+    ][repository]
+    nonblocking = {"ACCEPTED_REF_MISSING", "ACTIVATION_NOT_ACCEPTED_LOCAL_HEAD"}
+    if repository == "jweter/project-orchestrator":
+        nonblocking = set()
+    failures = [reason for reason in row["reasons"] if reason not in nonblocking]
+    if row["selected_sha"] != head:
+        failures.append("DISPATCH_ACTIVATION_HEAD_MISMATCH")
+    return ";".join(sorted(set(failures))) or None

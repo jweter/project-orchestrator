@@ -1418,6 +1418,7 @@ def test_dispatch_decision_reason_codes_include_already_owned(tmp_path,monkeypat
     import scripts.continuous_flow_supervisor as supervisor
     state=tmp_path/"state"; state.mkdir()
     activation={"products":{"knowledge-engine":{"repositories":{"jweter/knowledge-engine-core":"abc"}}}}
+    monkeypatch.setattr(supervisor,"verify_activation_for_dispatch",lambda *args:None)
     monkeypatch.setattr(supervisor,"load_execution_slice",lambda *args:{"slice_id":"s","repository":"jweter/knowledge-engine-core","exact_head":"abc"})
     monkeypatch.setattr(supervisor,"conflicting_nonterminal_grant",lambda *args:{"grant_id":"g","state":"CLAIMED"})
     try:
@@ -1711,3 +1712,29 @@ def test_live_head_probe_timeout_fails_closed(tmp_path,monkeypatch):
     ok,reason=observe_live_heads(repo_root,workspace_root,state_root,run_fn=timeout)
     assert (ok,reason)==(False,"LIVE_HEADS_UNAVAILABLE")
     assert (state_root/"hands-off-live-heads.json").read_text().strip()=="{}"
+
+
+def test_supervisor_source_identity_binding_blocks_before_slice_loading(tmp_path, monkeypatch):
+    import json
+    import pytest
+    import scripts.continuous_flow_supervisor as supervisor
+
+    state = tmp_path / "state"
+    state.mkdir()
+    activation = {"products": {"iron-god": {"repositories": {
+        "jweter/project-orchestrator": "a" * 40
+    }}}}
+    observed = []
+    monkeypatch.setattr(
+        supervisor, "verify_activation_for_dispatch",
+        lambda *args: "ACTIVATION_COMMIT_NOT_LOCAL",
+    )
+    monkeypatch.setattr(
+        supervisor, "load_execution_slice",
+        lambda *args: observed.append(args),
+    )
+    with pytest.raises(RuntimeError, match="ACTIVATION_COMMIT_NOT_LOCAL"):
+        supervisor.select_execution_target(state, activation, ["iron-god"])
+    assert observed == []
+    decision = json.loads((state / "dispatch-decision.json").read_text())
+    assert decision["decisions"][0]["outcome"] == "SOURCE_IDENTITY_BLOCKED"
