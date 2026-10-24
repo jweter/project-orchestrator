@@ -16,6 +16,9 @@ If mode = "human" Then
     stream.WriteLine "{""enabled"":true,""source"":""desktop-instant-veto""}"
     stream.Close
     script = fso.BuildPath(here,"Enter-HumanMode.ps1")
+    ' Stop autonomous work without disconnecting the owner's
+    ' authenticated Desktop Commander session needed for recovery.
+    suffix = " -KeepRemote"
 ElseIf mode = "wheel" Then
     script = fso.BuildPath(here,"Take-The-Wheel.ps1")
 ElseIf mode = "testhuman" Then

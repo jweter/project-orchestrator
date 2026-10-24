@@ -30,11 +30,14 @@ function Find-OwnerWorkers {
  @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
   if(-not $_.CommandLine -or $_.ProcessId -eq $PID) { return $false }
   $name=$_.Name; $command=$_.CommandLine
+  # The owner's remote management bridge is not an autonomous builder.
+  if($KeepRemote -and $command -match 'RemoteBridgeGuardian\.ps1|RemoteBridgeSupervisor\.ps1') { return $false }
   if($name -match '^pythonw?\.exe$') { return ($command -match $workerPattern) }
   if($name -match '^(powershell|pwsh)\.exe$') {
     return ($command -match '(?i)-File\b' -and $command -match $workerPattern)
   }
   if($name -eq 'cmd.exe') {
+    if($KeepRemote -and $command -match '(?i)Azathoth-Remote-Control-Watchdog\.cmd') { return $false }
     return ($command -match '(?i)start-dashboard\.cmd|ExponentialEngine-ContinuousFlow\.cmd|Azathoth-Remote-Control-Watchdog\.cmd')
   }
   return $false
@@ -91,6 +94,7 @@ if(-not $AuditOnly) {
  }
 }
  foreach($name in $taskNames) {
+  if($KeepRemote -and $name -match '^Azathoth-Remote-') { $events.Add('KEEP_REMOTE_TASK '+$name); continue }
   $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
   if(-not $task){continue}
   try {Stop-ScheduledTask -TaskName $name -TaskPath $task.TaskPath -ErrorAction Stop; $events.Add('STOP '+$name)}
@@ -103,12 +107,14 @@ if(-not $AuditOnly) {
 $remaining = @(Find-OwnerWorkers)
 $taskRunning = @($taskNames | ForEach-Object {
  $name = $_
- $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
- if($task -and $task.State -eq 'Running') { $name }
+ if(-not ($KeepRemote -and $name -match '^Azathoth-Remote-')) {
+   $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+   if($task -and $task.State -eq 'Running') { $name }
+ }
 })
 $ownerActive = Get-OwnerState
 $remainingRemote = @(Find-RemoteProcesses)
-$status = if(-not $ownerActive){'FAILED_MARKER'} elseif($remaining.Count -ne 0 -or $taskRunning.Count -ne 0){'PARTIAL'} elseif($remainingRemote.Count -ne 0){'PARTIAL_REMOTE_ACTIVE'} else {'OWNER_CONTROL_GRANTED'}
+$status = if(-not $ownerActive){'FAILED_MARKER'} elseif($remaining.Count -ne 0 -or $taskRunning.Count -ne 0){'PARTIAL'} elseif($remainingRemote.Count -ne 0 -and -not $KeepRemote){'PARTIAL_REMOTE_ACTIVE'} else {'OWNER_CONTROL_GRANTED'}
 $report = [ordered]@{
  schema_version=1
  checked_at=[DateTimeOffset]::UtcNow.ToString('o')
