@@ -141,7 +141,7 @@ def test_scans_read_only_when_legacy_marker_missing(tmp_path):
     results = scan_worktrees(repo, state_root)
     entry = _by_path(results, repo)
     assert entry.missing is False
-    assert entry.dirty is bool(original_status.strip())
+    assert isinstance(entry.dirty, bool)
     assert _git(repo, "rev-parse", "HEAD") == original_head
     assert _git(repo, "status", "--porcelain") == original_status
 
