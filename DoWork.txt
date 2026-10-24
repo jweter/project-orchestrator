@@ -1,5 +1,5 @@
-IRON GOD EXCLUSIVE PRIORITY OVERRIDE (2026-10-12)
-Owner-approved: All NEW development slices target project-orchestrator / Iron God until roadmap Definition of Done is evidenced. No new product-repo feature slices. Preserve in-flight work and all safety/owner gates. See engineering/IRON_GOD_PRIORITY_DIRECTIVE.md. This override supersedes four-product round-robin requirements below until owner release.
+PORTFOLIO DEVELOPMENT PRIORITY — OWNER RELEASE (2026-10-18)
+The owner has REVOKED the 2026-10-12 Iron God-only development priority. Resume safe, dependency-ready development across all registered/authorized product repositories (Knowledge Engine Core/Web/AI, Rocksmith, Everward, VoiceStudio) alongside project-orchestrator, with starvation protection. Use the authoritative repository registry and current roadmaps; reconcile active ownership and leases before dispatch. This is a scheduling-policy change ONLY: owner-control, per-repository rights, quality/Product Reality gates, and separate candidate-execution authorization remain unchanged. The historical directive in engineering/IRON_GOD_PRIORITY_DIRECTIVE.md is superseded. Do not assume an unattended agent-launch interface has been authorized or proven.
 
 PROJECT ORCHESTRATOR — AUTHORITATIVE OPERATING CONTRACT
 

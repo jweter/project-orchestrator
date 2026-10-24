@@ -81,3 +81,15 @@ def test_subset_executed_is_violation_not_conforms():
     )
     assert result.status == VIOLATION
     assert result.missing_tags == ("gpu",)
+
+
+def test_duplicate_reported_runner_tags_are_violation():
+    result = enforce_runner_manifest(_spec(), ("claude", "claude"))
+    assert result.status == VIOLATION
+
+
+def test_duplicate_declared_runner_tags_are_violation():
+    result = enforce_runner_manifest(
+        _spec(runner_requirements=("claude", "claude")), ("claude",)
+    )
+    assert result.status == VIOLATION

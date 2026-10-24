@@ -46,7 +46,9 @@ def enforce_runner_manifest(
     missing = tuple(sorted(declared - executed))
     unexpected = tuple(sorted(executed - declared))
 
-    if missing or unexpected:
+    duplicate_declared = len(declared) != len(spec.runner_requirements)
+    duplicate_executed = len(executed) != len(executed_runner_tags)
+    if missing or unexpected or duplicate_declared or duplicate_executed:
         return RunnerEnforcementDecision(
             status=VIOLATION,
             declared_runner_requirements=spec.runner_requirements,

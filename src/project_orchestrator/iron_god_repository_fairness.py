@@ -39,6 +39,8 @@ class RepositoryAllocation:
 def allocate_capacity_fairly(
     available_slots: int,
     demands: tuple[RepositoryDemand, ...],
+    *,
+    last_served_repository: str | None = None,
 ) -> tuple[RepositoryAllocation, ...]:
     """Allocate `available_slots` across `demands` via round-robin.
 
