@@ -5,6 +5,7 @@ import ctypes
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import shutil
@@ -53,10 +54,10 @@ def windows_idle_seconds() -> float | None:
 
 
 def update_actor_checkout(actor_repo: Path) -> str:
-    """Update the isolated actor checkout from a pinned or forward-only source.
+    """Update the dedicated actor only from a verified accepted LOCAL commit.
 
-    An unpinned GitHub update must never roll an actor release backward or
-    discard checkout changes. A verified exact-head local promotion is explicit.
+    Missing pins never enable a stale GitHub fallback; existing actor work is
+    never discarded by the release replacement routine.
     """
     if not (actor_repo / ".git").is_dir():
         raise RuntimeError("actor repository is not a Git checkout")
@@ -66,24 +67,30 @@ def update_actor_checkout(actor_repo: Path) -> str:
     accepted_head = os.environ.get("IRON_GOD_ACCEPTED_SHA")
     if bool(local_repo) != bool(accepted_head):
         raise RuntimeError("local actor promotion requires both repository and exact SHA")
+    if not local_repo:
+        raise RuntimeError("LOCAL_ACCEPTED_RELEASE_REQUIRED: refusing GitHub origin/main fallback")
+    if re.fullmatch(r"[0-9a-f]{40}", accepted_head) is None:
+        raise RuntimeError("LOCAL_ACCEPTED_SHA_INVALID")
+    if not Path(local_repo).is_absolute():
+        raise RuntimeError("LOCAL_ACCEPTED_SOURCE_NOT_ABSOLUTE")
     if local_repo:
         source = Path(local_repo).resolve()
+        actor = actor_repo.resolve()
+        if source == actor or source in actor.parents or actor in source.parents:
+            raise RuntimeError("LOCAL_ACTOR_SOURCE_OVERLAP")
         if not (source / ".git").exists():
             raise RuntimeError("accepted local source is not a Git repository")
         head = run(["git", "rev-parse", "HEAD"], source)
-        clean = run(["git", "status", "--porcelain", "--untracked-files=no"], source)
+        clean = run(["git", "status", "--porcelain", "--untracked-files=normal"], source)
         if head.returncode != 0 or head.stdout.strip() != accepted_head or clean.returncode != 0 or clean.stdout.strip():
             raise RuntimeError("accepted local source does not match clean exact HEAD")
         fetch = run(["git", "fetch", "--no-tags", str(source), accepted_head], actor_repo)
         remote = run(["git", "rev-parse", "FETCH_HEAD"], actor_repo)
-    else:
-        fetch = run(["git", "fetch", "origin", "main"], actor_repo)
-        remote = run(["git", "rev-parse", "origin/main"], actor_repo)
     if fetch.returncode != 0 or remote.returncode != 0:
         raise RuntimeError("actor checkout source fetch failed")
     target = remote.stdout.strip()
-    if len(target) != 40 or any(c not in "0123456789abcdef" for c in target):
-        raise RuntimeError("actor release did not resolve to an exact SHA")
+    if target != accepted_head:
+        raise RuntimeError("LOCAL_FETCHED_HEAD_MISMATCH")
     current = run(["git", "rev-parse", "HEAD"], actor_repo)
     if current.returncode != 0 or len(current.stdout.strip()) != 40:
         raise RuntimeError("actor checkout current HEAD is unverified")
@@ -93,18 +100,15 @@ def update_actor_checkout(actor_repo: Path) -> str:
     clean_before = run(["git", "status", "--porcelain"], actor_repo)
     if clean_before.returncode != 0 or clean_before.stdout.strip():
         raise RuntimeError("actor checkout is dirty; refusing release replacement")
-    if not local_repo and current_sha != target:
-        # An unpinned origin/main update may FAST-FORWARD, but it may never
-        # silently roll back an explicitly promoted or divergent local version.
-        ancestor = run(["git", "merge-base", "--is-ancestor", current_sha, target], actor_repo)
-        if ancestor.returncode != 0:
-            raise RuntimeError("origin/main is older or divergent; pinned verified release required")
     if current_sha == target:
         return target
     reset = run(["git", "reset", "--hard", target], actor_repo)
     if reset.returncode != 0:
         raise RuntimeError("actor checkout reset failed")
+    final_head = run(["git", "rev-parse", "HEAD"], actor_repo)
     clean = run(["git", "status", "--porcelain"], actor_repo)
+    if final_head.returncode != 0 or final_head.stdout.strip() != accepted_head:
+        raise RuntimeError("LOCAL_ACTOR_POST_RESET_HEAD_MISMATCH")
     if clean.returncode != 0 or clean.stdout.strip():
         raise RuntimeError("actor checkout is not clean after update")
     return target
