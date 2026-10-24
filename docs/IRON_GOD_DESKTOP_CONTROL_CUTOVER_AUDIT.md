@@ -110,3 +110,48 @@ human-controlled end-to-end cutover. Independent owner authority and live
 process/lease verification still need to be integrated with the existing
 `iron_god_desktop_control_proof` contracts before the status can be elevated
 from request/observation to genuine completion.
+
+
+## 2026-10-24: supervisor-side request observation implemented (not deployed)
+
+The current supervisor source now accepts an optional
+`--desktop-requests-db <existing-sqlite-path>` flag, defaulting to **off**.
+After its existing generation and owner-control checks, and before its
+ordinary development dispatch phase, it invokes
+`project_orchestrator.iron_god_supervisor_request_observer`.
+The result is exposed only as `desktop_request_observation` in the
+supervisor's existing status snapshot, not as a control or runtime command.
+
+When explicitly configured, the observer reads the newest request from the
+**already-created** desktop-request table in the existing dispatch-claims
+SQLite database and calls the real, transactional
+`record_observation` function from the transport. It records the specific
+command ID, singleton supervisor generation and local actor source SHA.
+A newer owner click supersedes an older, unobserved command. Re-observations
+are read-only; expired, unavailable, corrupt, uninitialized, or identity-
+unverified records yield diagnostic statuses, not execution authorization.
+
+**Observed does not mean acknowledged or applied.** Only
+`OBSERVED_NOT_AUTHORIZED` is produced for successful consumption, and its
+`execution_authorized` flag remains false. The supervisor's existing
+authorization, Rocksmith, worker lease, and candidate execution checks remain
+unchanged. No live desktop shortcut, deployed release, watchdog command line,
+protected controller record, or owner-control state was changed. The
+`--desktop-requests-db` flag must not be enabled for the production
+supervisor until separately authorized and fully preflighted.
+
+A cross-process integration probe created a temporary SQLite **backup** of
+Azathoth's existing `iron-god-dispatch-claims.sqlite`, installed only the
+new request table **in that disposable copy**, submitted a real
+`GIVE_ME_CONTROL` request, and observed it via the new module:
+`OBSERVED_NOT_AUTHORIZED`, matching command ID, no execution authority,
+`PRAGMA integrity_check=ok`. The original live database's last-modified
+timestamp was unchanged. This does **not** test an actual icon click,
+running production supervisor, pause/drain, or autonomous restart.
+
+The next integration milestone is a genuinely authorized, owner-verifiable
+command handler that executes and independently proves the requested
+pause/resume, rechecks the current owner authority on each transition,
+and issues an exact-generation, exact-release completion acknowledgment.
+The observer is only the durable **consumption** stage; it must never be
+silently upgraded to an APPLIED/PAUSED receipt.

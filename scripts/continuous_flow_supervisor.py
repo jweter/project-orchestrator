@@ -34,11 +34,10 @@ from project_orchestrator import activation_capability as _authority
 from project_orchestrator import supervisor_runtime as _supervisor_runtime
 from project_orchestrator.frontier_replenishment import replenish_frontiers, reconcile_issue_cycle
 from project_orchestrator.human_ownership import human_mode_active
-
+from project_orchestrator.iron_god_supervisor_request_observer import supervisor_observation_snapshot
 
 RUNTIME_LEASE_STATE=Path(os.environ.get("EXPONENTIAL_ENGINE_STATE",Path.home()/".exponential-engine"/"state"))/"runtime-leases.json"
 SUPERVISOR_STATE_REPLACE_ATTEMPTS=60
-
 def _acquire_lifecycle_lock(path:Path):
     """Compatibility facade over the extracted lifecycle lock authority."""
     return acquire_lifecycle_lock(path)
@@ -46,7 +45,6 @@ def _acquire_lifecycle_lock(path:Path):
 def _release_lifecycle_lock(handle)->None:
     """Compatibility facade over the extracted lifecycle lock authority."""
     release_lifecycle_lock(handle)
-
 
 def load_runtime_leases_with_recovery(state_path:Path=RUNTIME_LEASE_STATE)->tuple[RuntimeLeasePool,dict|None]:
     """Self-heal invalid lease authority once, but never displace a provable live owner."""
@@ -602,8 +600,8 @@ def main()->int:
     p.add_argument("--repo-root",required=True); p.add_argument("--workspace-root",required=True)
     p.add_argument("--state-root",required=True); p.add_argument("--builder-seconds",type=int,default=300)
     p.add_argument("--merge-seconds",type=int,default=60); p.add_argument("--once",action="store_true")
-    p.add_argument("--yield-on-interactive-session",action="store_true",
-                   help="SYSTEM cold-boot owner exits when an interactive user session appears")
+    p.add_argument("--desktop-requests-db",type=Path,default=None)
+    p.add_argument("--yield-on-interactive-session",action="store_true",help="SYSTEM boot owner yields to active user")
     a=p.parse_args(); repo=Path(a.repo_root); workspace=Path(a.workspace_root); state=Path(a.state_root)
     state.mkdir(parents=True,exist_ok=True)
     if human_mode_active(state):
@@ -689,6 +687,8 @@ def main()->int:
                 if merge is not None and merge.poll() is None:
                     merge.terminate()
                 return 0
+        # Non-authorizing observation, opt-in only; no control-plane transition.
+        desktop_observation=supervisor_observation_snapshot(a.desktop_requests_db,process_instance_id,loaded_actor_revision)
         burst_pass+=1
         if merge is None or merge.poll() is not None:
             merge=start_merge_watcher(repo,state,a.merge_seconds)
@@ -842,7 +842,8 @@ def main()->int:
             "autonomous_burst_proof":burst_proof,
             "portfolio_product_advancement_proof":product_proof,
             "async_gate_rotation":rotation_evidence,
-            "decision_learning":decision_learning},process_instance_id=process_instance_id,
+            "decision_learning":decision_learning,
+            "desktop_request_observation":desktop_observation},process_instance_id=process_instance_id,
             burst_id=burst_id,revision=loaded_actor_revision)
         # Presentation-only persona output. Never feeds control decisions.
         (state/"manager-voice.txt").write_text(
@@ -864,8 +865,7 @@ def main()->int:
         (state/"buddy-voice.txt").write_text(buddy["voice"]+"\n",encoding="utf-8")
         if a.once:
             merge.terminate(); return 0 if rc==0 else 1
-        # A merge exposes new roadmap work. Do not impose the normal idle delay
-        # after lifecycle advancement; re-enter selection immediately.
+        # After a merge, re-enter selection immediately without the idle delay.
         delay=continuation_delay(lifecycle_advanced=lifecycle_advanced,
             liveness_reacquire=liveness_reacquire,builder_ok=builder_ok,
             builder_status=builder_status,normal_seconds=a.builder_seconds)
@@ -878,9 +878,8 @@ def main()->int:
         product_proof=record_product_identity_advancement(state,repository=current_repository,
             builder_status=builder_status,lifecycle_advanced=lifecycle_advanced,burst_id=burst_id,
             process_instance_id=process_instance_id,sequence=record["sequence"])
-        # Dashboard telemetry is observational only and must never consume or block
-        # an execution opportunity. CI reconciliation failure degrades the UI but
-        # does not change lifecycle or promotion authority.
+        # Dashboard telemetry never blocks execution opportunities or changes
+        # lifecycle/promotion authority, even if reconciliation fails.
         try:
             reconcile_dashboard_ci(state,repo)
         except (OSError,TypeError,subprocess.SubprocessError):
