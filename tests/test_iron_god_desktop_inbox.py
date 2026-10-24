@@ -177,3 +177,78 @@ def test_s10_queue_diagnostics_report_backpressure_without_control(db):
     assert status == "BACKLOG_WARNING"
     with pytest.raises(ValueError, match="threshold"):
         inspect_queue(db, pressure_threshold=0)
+
+
+def test_live_read_only_cli_never_sends_success_or_alters_db(tmp_path, capsys):
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    path = tmp_path / "existing-claims.sqlite"
+    with sqlite3.connect(path, isolation_level=None) as conn:
+        install_request_table(conn)
+        submit_request(conn, action="GIVE_ME_CONTROL", now=datetime.now(UTC))
+    before = path.read_bytes()
+    source = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(source / "src")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "project_orchestrator.iron_god_desktop_inbox",
+            "--database",
+            str(path),
+            "--limit",
+            "2",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=source,
+        env=env,
+        timeout=15,
+    )
+    assert result.returncode == 5
+    status = json.loads(result.stdout)
+    assert status["execution_authorized"] is False
+    assert status["acknowledged_by_engine"] is False
+    assert status["queue"]["total"] == 1
+    assert status["recent"][0]["action"] == "GIVE_ME_CONTROL"
+    assert path.read_bytes() == before
+
+
+def test_read_only_cli_missing_schema_never_installs_it(tmp_path):
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    path = tmp_path / "old-claims.sqlite"
+    with sqlite3.connect(path, isolation_level=None) as conn:
+        conn.execute("CREATE TABLE acceptance_dispatch_claims (id INTEGER PRIMARY KEY)")
+    before = path.read_bytes()
+    source = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(source / "src")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "project_orchestrator.iron_god_desktop_inbox",
+            "--database",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=source,
+        env=env,
+        timeout=15,
+    )
+    assert result.returncode == 3
+    assert json.loads(result.stdout)["schema"] == "TABLE_MISSING"
+    assert path.read_bytes() == before
