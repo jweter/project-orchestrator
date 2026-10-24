@@ -19,34 +19,27 @@ def completed(returncode=0, stdout="", stderr=""):
     return SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
 
-def test_update_actor_checkout_tracks_exact_origin_main(monkeypatch, tmp_path):
+def test_unpinned_actor_refuses_origin_main_fallback(monkeypatch, tmp_path):
     actor = tmp_path / "actor"
     (actor / ".git").mkdir(parents=True)
-    calls = []
-
-    def fake_run(cmd, cwd=None):
-        calls.append((cmd, cwd))
-        if cmd[:3] == ["git", "rev-parse", "origin/main"]:
-            return completed(stdout=SHA + "\n")
-        return completed()
-
-    monkeypatch.setattr(bootstrap, "run", fake_run)
-    assert bootstrap.update_actor_checkout(actor) == SHA
-    assert ["git", "fetch", "origin", "main"] in [item[0] for item in calls]
-    assert ["git", "reset", "--hard", SHA] in [item[0] for item in calls]
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_REPO", raising=False)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA", raising=False)
+    monkeypatch.setattr(bootstrap, "run", lambda *args, **kwargs: pytest.fail(
+        "unpinned actor must never run git or fetch stale GitHub main"
+    ))
+    with pytest.raises(RuntimeError, match="LOCAL_ACCEPTED_RELEASE_REQUIRED"):
+        bootstrap.update_actor_checkout(actor)
 
 
-def test_update_rejects_non_exact_remote_sha(monkeypatch, tmp_path):
+def test_local_release_requires_exact_sha_before_any_git_mutation(monkeypatch, tmp_path):
     actor = tmp_path / "actor"
     (actor / ".git").mkdir(parents=True)
-
-    def fake_run(cmd, cwd=None):
-        if cmd[:3] == ["git", "rev-parse", "origin/main"]:
-            return completed(stdout="main\n")
-        return completed()
-
-    monkeypatch.setattr(bootstrap, "run", fake_run)
-    with pytest.raises(RuntimeError):
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(tmp_path / "release"))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", "main")
+    monkeypatch.setattr(bootstrap, "run", lambda *args, **kwargs: pytest.fail(
+        "non-SHA pin must be rejected before git"
+    ))
+    with pytest.raises(RuntimeError, match="LOCAL_ACCEPTED_SHA_INVALID"):
         bootstrap.update_actor_checkout(actor)
 
 
@@ -101,17 +94,15 @@ def test_idle_session_stops_on_bridge_failure(monkeypatch, tmp_path):
         bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60)
 
 
-def test_installer_uses_dedicated_checkout_and_idle_aware_repeating_task():
+def test_retired_github_actor_installer_cannot_reactivate_stale_main():
     installer = (Path(__file__).resolve().parents[1] / "scripts" / "install_laptop_actor.ps1").read_text(encoding="utf-8")
-    assert "actor-repo" in installer
-    assert "git clone" not in installer.lower() or "clone --branch main --single-branch" in installer
-    assert "reset --hard origin/main" in installer
-    assert "laptop_actor_bootstrap.py" in installer
-    assert "RepetitionInterval (New-TimeSpan -Minutes 5)" in installer
-    assert "--min-idle-seconds 300" in installer
-    assert "--poll-seconds 60" in installer
-    assert "checks for work every 60 seconds while idle" in installer
-    assert "SELF-UPDATING" in installer
+    assert "LEGACY_GITHUB_ACTOR_INSTALLER_DISABLED_USE_PINNED_LOCAL_RELEASE" in installer
+    assert "throw " in installer
+    assert "fetch origin main" not in installer
+    assert "reset --hard origin/main" not in installer
+    assert "clone --branch main" not in installer
+    assert "Start-ScheduledTask" not in installer
+    assert "Register-ScheduledTask" not in installer
 
 
 def test_single_instance_lock_is_exclusive(tmp_path):
@@ -286,3 +277,153 @@ def test_local_promotion_rejects_partial_configuration(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, 'run', lambda *args: pytest.fail('no Git mutation allowed'))
     with pytest.raises(RuntimeError, match='both repository and exact SHA'):
         bootstrap.update_actor_checkout(actor)
+
+
+def test_local_source_requires_absolute_path_before_git(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    (actor / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", "relative-release")
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+    monkeypatch.setattr(bootstrap, "run", lambda *a, **k: pytest.fail("no git"))
+    with pytest.raises(RuntimeError, match="LOCAL_ACCEPTED_SOURCE_NOT_ABSOLUTE"):
+        bootstrap.update_actor_checkout(actor)
+
+
+def test_actor_and_source_tree_cannot_overlap(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    (actor / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(actor))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+    monkeypatch.setattr(bootstrap, "run", lambda *a, **k: pytest.fail("no reset"))
+    with pytest.raises(RuntimeError, match="LOCAL_ACTOR_SOURCE_OVERLAP"):
+        bootstrap.update_actor_checkout(actor)
+
+
+def test_local_release_with_untracked_source_files_refuses_promotion(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    source = tmp_path / "release"
+    (actor / ".git").mkdir(parents=True)
+    (source / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout=SHA + "\n")
+        if cmd == ["git", "status", "--porcelain", "--untracked-files=normal"]:
+            return completed(stdout="?? untracked-control-code.py\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="clean exact HEAD"):
+        bootstrap.update_actor_checkout(actor)
+    assert not any(cmd[:2] == ["git", "fetch"] for cmd in calls)
+    assert not any(cmd[:3] == ["git", "reset", "--hard"] for cmd in calls)
+
+
+def test_fetched_sha_must_equal_local_accepted_sha_before_reset(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    source = tmp_path / "release"
+    (actor / ".git").mkdir(parents=True)
+    (source / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+    calls = []
+
+    def fake_run(cmd, cwd=None):
+        calls.append(cmd)
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout=SHA + "\n")
+        if cmd == ["git", "rev-parse", "FETCH_HEAD"]:
+            return completed(stdout="b" * 40 + "\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="LOCAL_FETCHED_HEAD_MISMATCH"):
+        bootstrap.update_actor_checkout(actor)
+    assert not any(cmd[:3] == ["git", "reset", "--hard"] for cmd in calls)
+
+
+def test_post_reset_actor_head_must_match_local_release(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    source = tmp_path / "release"
+    (actor / ".git").mkdir(parents=True)
+    (source / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+
+    def fake_run(cmd, cwd=None):
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout=(SHA if cwd == source else "b" * 40) + "\n")
+        if cmd == ["git", "rev-parse", "FETCH_HEAD"]:
+            return completed(stdout=SHA + "\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="LOCAL_ACTOR_POST_RESET_HEAD_MISMATCH"):
+        bootstrap.update_actor_checkout(actor)
+
+
+def test_local_promotion_post_reset_dirty_actor_is_not_verified(monkeypatch, tmp_path):
+    actor = tmp_path / "actor"
+    source = tmp_path / "release"
+    (actor / ".git").mkdir(parents=True)
+    (source / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+
+    def fake_run(cmd, cwd=None):
+        if cmd == ["git", "rev-parse", "HEAD"] or cmd == ["git", "rev-parse", "FETCH_HEAD"]:
+            return completed(stdout=SHA + "\n")
+        if cmd == ["git", "status", "--porcelain"] and cwd == actor:
+            return completed(stdout="?? stale-worker.py\n")
+        return completed()
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    with pytest.raises(RuntimeError, match="actor checkout is not clean"):
+        bootstrap.update_actor_checkout(actor)
+
+
+def test_local_promotion_real_git_moves_actor_to_current_sha_without_origin_main(
+    monkeypatch, tmp_path
+):
+    import subprocess
+
+    def git(repo, *args):
+        result = subprocess.run(
+            ["git", "-C", str(repo), *args], text=True, capture_output=True, check=True
+        )
+        return result.stdout.strip()
+
+    source = tmp_path / "accepted"
+    source.mkdir()
+    git(source, "init", "-q", "-b", "main")
+    git(source, "config", "user.email", "test@example.invalid")
+    git(source, "config", "user.name", "Test")
+    (source / "version.txt").write_text("old\n", encoding="utf-8")
+    git(source, "add", "version.txt")
+    git(source, "commit", "-q", "-m", "old accepted baseline")
+    old_sha = git(source, "rev-parse", "HEAD")
+
+    actor = tmp_path / "runtime-actor"
+    subprocess.run(
+        ["git", "clone", "-q", str(source), str(actor)],
+        text=True, capture_output=True, check=True,
+    )
+    assert git(actor, "rev-parse", "HEAD") == old_sha
+    (source / "version.txt").write_text("new\n", encoding="utf-8")
+    git(source, "add", "version.txt")
+    git(source, "commit", "-q", "-m", "locally accepted improvement")
+    new_sha = git(source, "rev-parse", "HEAD")
+    assert new_sha != old_sha
+
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", new_sha)
+    assert bootstrap.update_actor_checkout(actor) == new_sha
+    assert git(actor, "rev-parse", "HEAD") == new_sha
+    assert (actor / "version.txt").read_text(encoding="utf-8") == "new\n"
+    # The remote-tracking branch is still stale: correct behavior must not
+    # be achieved by falling back to origin/main.
+    assert git(actor, "rev-parse", "refs/remotes/origin/main") == old_sha
