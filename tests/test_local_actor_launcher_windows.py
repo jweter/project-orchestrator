@@ -44,10 +44,20 @@ def test_launcher_verifies_isolated_runtime_and_preserves_old_work(tmp_path, fau
     config = tmp_path / "promotion.json"
     config.write_text(json.dumps(dict(enabled=True, accepted_repo=str(source),
                                      accepted_sha=sha, actor_repo=str(runtime))))
+    # Normal verification must always use the actor checkout from the release pin.
     result = subprocess.run([PS, "-NoProfile", "-NonInteractive", "-File", str(LAUNCHER),
-                             "-ConfigPath", str(config), "-ActorRoot", str(old), "-VerifyOnly"],
+                             "-ConfigPath", str(config), "-VerifyOnly"],
                             capture_output=True, text=True)
     assert (result.returncode == 0) is (fault == "clean"), result.stderr
+    if fault == "clean":
+        assert "LOCAL_ACTOR_PREFLIGHT_OK" in result.stdout
+    # A previously passed ActorRoot override must not silently redirect runtime
+    # execution or allow a different, unpinned checkout to be used.
+    conflicting = subprocess.run([PS, "-NoProfile", "-NonInteractive", "-File", str(LAUNCHER),
+                                  "-ConfigPath", str(config), "-ActorRoot", str(old), "-VerifyOnly"],
+                                 capture_output=True, text=True)
+    assert conflicting.returncode != 0
+    assert "ActorRoot conflicts with accepted pinned actor checkout" in (conflicting.stdout + conflicting.stderr)
     assert sentinel.read_text() == "preserve"
     if fault == "dirty":
         assert (runtime / "untracked.txt").read_text() == "unique"
