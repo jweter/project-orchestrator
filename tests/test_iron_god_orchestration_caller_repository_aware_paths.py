@@ -21,12 +21,16 @@ from pathlib import Path
 
 import pytest
 
+from iron_god_local_test_support import IRON_GOD_LOCAL_DIR, requires_iron_god_local
+
+pytestmark = requires_iron_god_local("accepted_event_dispatch_coordinator.py")
+
 # accepted_event_dispatch_coordinator.py is a bare module living in
 # IronGodLocal, not part of the installed project_orchestrator package --
 # _build_task_for_slice imports it by bare name, matching how it is
 # actually deployed. Make it importable the same way every other proof
 # test this session does.
-_IRON_GOD_LOCAL = Path(r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal")
+_IRON_GOD_LOCAL = IRON_GOD_LOCAL_DIR
 if str(_IRON_GOD_LOCAL) not in sys.path:
     sys.path.insert(0, str(_IRON_GOD_LOCAL))
 

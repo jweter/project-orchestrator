@@ -23,10 +23,11 @@ from pathlib import Path
 
 import pytest
 
-COORDINATOR_PATH = Path(
-    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal"
-    r"\accepted_event_dispatch_coordinator.py"
-)
+from iron_god_local_test_support import IRON_GOD_LOCAL_DIR, requires_iron_god_local
+
+pytestmark = requires_iron_god_local("accepted_event_dispatch_coordinator.py")
+
+COORDINATOR_PATH = IRON_GOD_LOCAL_DIR / "accepted_event_dispatch_coordinator.py"
 
 
 @pytest.fixture()
