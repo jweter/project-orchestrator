@@ -174,3 +174,104 @@ def diagnose_desktop_resume(
         problems=tuple(problems),
         execution_authorized=False,
     )
+
+
+def diagnose_desktop_pause(
+    *,
+    request: Mapping[str, Any],
+    acknowledgement: Mapping[str, Any],
+    stop_receipt: Mapping[str, Any],
+    controller: Mapping[str, Any],
+    owner_authority: str = "UNVERIFIED",
+    supervisor_processes: Sequence[Mapping[str, Any]],
+    actor_processes: Sequence[Mapping[str, Any]],
+    worker_processes: Sequence[Mapping[str, Any]],
+    running_development_tasks: Sequence[str],
+    remote_connected: bool,
+    now: datetime | None = None,
+    max_age_seconds: int = 120,
+) -> DesktopResumeEvidence:
+    """Read-only proof of a *completed* Give Me Control handoff.
+
+    This never requests, grants, or releases control, and never modifies runtime.
+    The caller must independently verify the supplied process/task/remote and
+    owner observations; an old success toast or uncorrelated stop receipt
+    cannot prove a current click actually reached the supervisor.
+    """
+    current = now or datetime.now(UTC)
+    if current.tzinfo is None or max_age_seconds <= 0:
+        raise ValueError("An aware clock and positive freshness horizon are required.")
+    current = current.astimezone(UTC)
+    problems: list[str] = []
+
+    if owner_authority != "VERIFIED_HELD":
+        problems.append("OWNER_CONTROL_UNVERIFIED")
+    if controller.get("candidate_execution_authorized") is not False:
+        problems.append("CONTROLLER_EXECUTION_NOT_PROVEN_DISABLED")
+
+    command_id = request.get("command_id")
+    if (
+        not isinstance(command_id, str)
+        or len(command_id) < 16
+        or request.get("command") != "GIVE_ME_CONTROL"
+    ):
+        problems.append("PAUSE_REQUEST_IDENTITY_UNVERIFIED")
+    if not _recent(
+        request.get("requested_at_utc"), now=current, max_age_seconds=max_age_seconds
+    ):
+        problems.append("PAUSE_REQUEST_NOT_FRESH")
+
+    generation = acknowledgement.get("process_instance_id")
+    if (
+        acknowledgement.get("command_id") != command_id
+        or acknowledgement.get("status") != "PAUSED"
+        or acknowledgement.get("acknowledged_by_engine") is not True
+        or not isinstance(generation, str)
+        or not generation
+    ):
+        problems.append("SUPERVISOR_PAUSE_ACK_MISSING")
+    if not _recent(
+        acknowledgement.get("acknowledged_at_utc"),
+        now=current,
+        max_age_seconds=max_age_seconds,
+    ):
+        problems.append("SUPERVISOR_PAUSE_ACK_NOT_FRESH")
+    if (
+        stop_receipt.get("command_id") != command_id
+        or stop_receipt.get("process_instance_id") != generation
+        or stop_receipt.get("status") != "OWNER_CONTROL_GRANTED"
+        or type(stop_receipt.get("worker_count")) is not int
+        or stop_receipt["worker_count"] != 0
+        or stop_receipt.get("remote_disconnect_requested") is not False
+    ):
+        problems.append("GUARDIAN_PAUSE_RECEIPT_UNVERIFIED")
+    if not _recent(
+        stop_receipt.get("checked_at_utc"),
+        now=current,
+        max_age_seconds=max_age_seconds,
+    ):
+        problems.append("GUARDIAN_PAUSE_RECEIPT_NOT_FRESH")
+
+    request_time = _timestamp(request.get("requested_at_utc"))
+    ack_time = _timestamp(acknowledgement.get("acknowledged_at_utc"))
+    stop_time = _timestamp(stop_receipt.get("checked_at_utc"))
+    if (
+        request_time is None
+        or ack_time is None
+        or stop_time is None
+        or not (request_time <= ack_time <= stop_time)
+    ):
+        problems.append("PAUSE_HANDOFF_ORDER_UNVERIFIED")
+
+    if supervisor_processes or actor_processes or worker_processes:
+        problems.append("AUTONOMOUS_PROCESSES_STILL_PRESENT")
+    if running_development_tasks:
+        problems.append("AUTONOMOUS_TASKS_STILL_RUNNING")
+    if remote_connected is not True:
+        problems.append("REMOTE_CONTROL_NOT_PRESERVED")
+
+    return DesktopResumeEvidence(
+        status="BLOCKED" if problems else "PAUSE_EVIDENCE_ALIGNED_NOT_AUTHORIZATION",
+        problems=tuple(problems),
+        execution_authorized=False,
+    )
