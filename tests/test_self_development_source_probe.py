@@ -49,6 +49,18 @@ def test_missing_accepted_ref_blocks_without_creating_it(tmp_path):
     assert "refs/iron-god/accepted" not in git(tmp_path, "show-ref")
 
 
+def test_accepted_ref_must_point_to_commit_not_blob(tmp_path):
+    head = prepared_repo(tmp_path)
+    blob = git(tmp_path, "hash-object", "-w", "README.md")
+    git(tmp_path, "update-ref", "refs/iron-god/accepted", blob)
+    result = inspect_self_development_source(tmp_path, activation(head), CONTROLLER)
+    assert result["status"] == "BLOCKED"
+    assert result["accepted_sha"] is None
+    assert "PROTECTED_ACCEPTED_BASELINE_NOT_COMMIT" in result["reasons"]
+    assert result["dispatch_authorized"] is False
+    assert git(tmp_path, "show-ref", "--verify", "--hash", "refs/iron-god/accepted") == blob
+
+
 def test_stale_activation_is_not_accepted(tmp_path):
     original = prepared_repo(tmp_path)
     (tmp_path / "README.md").write_text("changed\\n", encoding="utf-8")

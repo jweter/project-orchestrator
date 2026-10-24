@@ -52,6 +52,9 @@ def inspect_self_development_source(
     if accepted is None or not _SHA.fullmatch(accepted):
         reasons.append("PROTECTED_ACCEPTED_BASELINE_MISSING")
         accepted = None
+    elif _git(repo, "cat-file", "-t", accepted) != "commit":
+        reasons.append("PROTECTED_ACCEPTED_BASELINE_NOT_COMMIT")
+        accepted = None
     if selected is not None:
         if _git(repo, "cat-file", "-t", selected) != "commit":
             reasons.append("ACTIVATION_COMMIT_NOT_LOCAL")
