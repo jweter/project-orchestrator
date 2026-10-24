@@ -125,6 +125,9 @@ def proof_env(tmp_path, worker_module, monkeypatch):
         worker_module, "CONTROLLER_STATE", tmp_path / "controller-handoff-state.json"
     )
     monkeypatch.setattr(worker_module, "STATUS", tmp_path / "local-worker-status.json")
+    # Isolated proof resources must not depend on the live laptop's momentary
+    # free RAM. Production still enforces the real worker resource check.
+    monkeypatch.setattr(worker_module, "resources", lambda: True)
     (tmp_path / "handoffs").mkdir()
 
     assert worker_module.gate() is True
