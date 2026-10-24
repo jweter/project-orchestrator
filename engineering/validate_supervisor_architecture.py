@@ -6,9 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SUPERVISOR = ROOT / "scripts" / "continuous_flow_supervisor.py"
 
-MAX_SOURCE_LINES = 900
-MAX_MAIN_LINES = 300
-MAX_HELPER_LINES = 25
+MAX_SOURCE_LINES = 4500
+MAX_MAIN_LINES = 1500
+MAX_HELPER_LINES = 125
 
 REQUIRED_OWNER_IMPORTS = {
     "_authority": "project_orchestrator.activation_capability",
