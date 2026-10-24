@@ -47,6 +47,8 @@ def test_run_builder_passes_and_returns_same_invocation_id(tmp_path,monkeypatch)
 
 
 def test_runtime_fence_uses_granted_worker_identity(tmp_path,monkeypatch):
+    # Isolate the downstream lease assertion from the real host owner-control gate.
+    monkeypatch.setattr(builder,"manual_human_mode_enabled",lambda _state:False)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda: builder.MIN_IDLE_SECONDS+1)
     monkeypatch.setattr(builder,"ACTIVE_RUNTIME_FENCE",None)
     monkeypatch.setattr(builder,"ACTIVE_RESOURCE_FENCES",[])

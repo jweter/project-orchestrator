@@ -388,7 +388,10 @@ def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
     assert not builder.claim_execution_grant(grant,"jweter/rock","abc",lifecycle)
 
 def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeypatch):
+    # This unit test exercises downstream grant behavior, not the host owner veto.
+    # Keep the real laptop's owner-control state out of the test's assumptions.
     import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"manual_human_mode_enabled",lambda _state:False)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -403,8 +406,11 @@ def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeyp
     assert result["actual_sha"]=="moved"
 
 def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, monkeypatch):
+    # This unit test exercises downstream grant behavior, not the host owner veto.
+    # Keep the real laptop's owner-control state out of the test's assumptions.
     import json
     import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"manual_human_mode_enabled",lambda _state:False)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -426,8 +432,11 @@ def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, mo
     assert not (tmp_path/"hands-off-grant-lifecycle.json").exists()
 
 def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, monkeypatch):
+    # This unit test exercises downstream grant behavior, not the host owner veto.
+    # Keep the real laptop's owner-control state out of the test's assumptions.
     import json
     import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"manual_human_mode_enabled",lambda _state:False)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -455,8 +464,11 @@ def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, mon
 
 
 def test_build_once_retains_runner_output_when_success_makes_no_changes(tmp_path, monkeypatch):
+    # This unit test exercises downstream grant behavior, not the host owner veto.
+    # Keep the real laptop's owner-control state out of the test's assumptions.
     import json
     import scripts.autonomous_slice_builder as builder
+    monkeypatch.setattr(builder,"manual_human_mode_enabled",lambda _state:False)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -804,12 +816,17 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
     }
 
 
-def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
+def test_missing_owner_authority_fails_closed_before_idle_probe(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
+    monkeypatch.setattr(
+        b,"windows_idle_seconds",
+        lambda: (_ for _ in ()).throw(AssertionError("idle probe must not run")),
+    )
+    # Independently isolate the missing owner marker from the actual laptop.
+    # The real production gate must refuse absent authority before the idle probe.
+    monkeypatch.setenv("LOCALAPPDATA",str(tmp_path))
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
-    assert result["status"]=="USER_ACTIVE"
-    assert result["idle_seconds"]==0
+    assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
 
 
 def test_repair_prompt_reuses_matching_promoted_capability(tmp_path):
