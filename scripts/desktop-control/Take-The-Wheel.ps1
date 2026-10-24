@@ -5,6 +5,33 @@ $root=Join-Path $env:LOCALAPPDATA 'ExponentialEngine'
 $state=Join-Path $root 'flow-state'
 New-Item -ItemType Directory -Path $state -Force | Out-Null
 $log=Join-Path $state 'control-switch.log'
+
+# A failed launch is not owner consent to leave autonomous scheduling enabled.
+# Restore the existing authoritative owner-control mechanism and preserve the
+# remote recovery channel. Exit nonzero unless the stop has been acknowledged.
+function Restore-OwnerAfterResumeFailure([string]$reason, [int]$returnCode=6) {
+  Add-Content -LiteralPath $log -Value ("{0:o} TAKE_THE_WHEEL_ROLLBACK: {1}" -f (Get-Date),$reason)
+  $human=Join-Path $root 'Enter-HumanMode.ps1'
+  if (-not (Test-Path -LiteralPath $human -PathType Leaf)) {
+    Add-Content -LiteralPath $log -Value 'OWNER_ROLLBACK_SCRIPT_MISSING'
+    exit 8
+  }
+  try {
+    $stopReport=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $human -KeepRemote 2>&1)
+    $stopCode=$LASTEXITCODE
+    if($stopCode -ne 0) {
+      Add-Content -LiteralPath $log -Value ("OWNER_ROLLBACK_NOT_VERIFIED: {0}" -f ($stopReport|Out-String))
+      exit 8
+    }
+    $ownerNow = Get-Content -LiteralPath (Join-Path $state 'human-mode.json') -Raw | ConvertFrom-Json
+    if ($ownerNow.enabled -cne $true) { exit 8 }
+    Add-Content -LiteralPath $log -Value 'OWNER_ROLLBACK_CONFIRMED_REMOTE_PRESERVED'
+  } catch {
+    Add-Content -LiteralPath $log -Value ("OWNER_ROLLBACK_EXCEPTION: {0}" -f $_.Exception.Message)
+    exit 8
+  }
+  exit $returnCode
+}
 if($SelfTest){
  $audit=Join-Path $root 'Test-DesktopControlShortcuts.ps1'
  $pass=$false
@@ -143,8 +170,7 @@ foreach($name in @('ExponentialEngine-ContinuousFlow-Watchdog','ExponentialEngin
   Enable-ScheduledTask -TaskName $name -ErrorAction Stop | Out-Null
   Start-ScheduledTask -TaskName $name -ErrorAction Stop
  } catch {
-  Add-Content -Path $log -Value ("{0:o} START_FAILED {1}: {2}" -f (Get-Date),$name,$_.Exception.Message)
-  exit 6
+  Restore-OwnerAfterResumeFailure ("START_FAILED {0}: {1}" -f $name,$_.Exception.Message) 6
  }
 }
 foreach($name in @('Azathoth-Dashboard-Guardian','Azathoth-Dashboard-Telemetry')) {
@@ -166,14 +192,24 @@ try {
 }
 catch { Add-Content -Path $log -Value ("{0:o} REMOTE_BRIDGE_START_FAILED: {1}" -f (Get-Date),$_.Exception.Message) }
 # Success requires observed runtime identity, not just a task-start request.
-$pin=Get-Content (Join-Path $state 'supervisor-pinned-release.json') -Raw | ConvertFrom-Json
-$actorPin=Get-Content (Join-Path $state 'actor-local-promotion.json') -Raw | ConvertFrom-Json
+try {
+  $pin=Get-Content (Join-Path $state 'supervisor-pinned-release.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+  $actorPin=Get-Content (Join-Path $state 'actor-local-promotion.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+} catch {
+  Restore-OwnerAfterResumeFailure ("POST_RELEASE_PIN_READ_FAILED: {0}" -f $_.Exception.Message) 6
+}
+if ($pin.accepted_sha -cne $actorPin.accepted_sha -or
+    $pin.accepted_repo -ine $actorPin.accepted_repo) {
+  Restore-OwnerAfterResumeFailure 'POST_RELEASE_PIN_MISMATCH' 6
+}
 $deadline=(Get-Date).AddSeconds(120)
 $runtimeVerified=$false
 while((Get-Date) -lt $deadline) {
  try {
   $ownerNow=Get-Content $marker -Raw | ConvertFrom-Json
-  if($ownerNow.enabled -cne $false){exit 7}
+  if($ownerNow.enabled -cne $false){
+    Restore-OwnerAfterResumeFailure 'OWNER_RECLAIMED_DURING_STARTUP' 7
+  }
   $heartbeat=Get-Content (Join-Path $state 'supervisor-generation-heartbeat.json') -Raw | ConvertFrom-Json
   $age=([DateTimeOffset]::UtcNow-[DateTimeOffset]::Parse($heartbeat.heartbeat_at_utc)).TotalSeconds
   $fresh=($age -ge 0 -and $age -lt 180 -and $heartbeat.status -ceq 'RUNNING_CURRENT')
@@ -184,6 +220,8 @@ while((Get-Date) -lt $deadline) {
  Start-Sleep -Seconds 2
 }
 @{checked_at=[DateTimeOffset]::UtcNow.ToString('o');verified=$runtimeVerified;accepted_sha=$pin.accepted_sha} | ConvertTo-Json | Set-Content (Join-Path $state 'desktop-resume-runtime.json') -Encoding UTF8
-if(-not $runtimeVerified){Add-Content $log 'TAKE_THE_WHEEL_RUNTIME_NOT_VERIFIED';exit 6}
+if(-not $runtimeVerified){
+  Restore-OwnerAfterResumeFailure 'TAKE_THE_WHEEL_RUNTIME_NOT_VERIFIED' 6
+}
 Add-Content -Path $log -Value ("{0:o} TAKE_THE_WHEEL_CONFIRMED revision={1}" -f (Get-Date),$pin.accepted_sha)
 exit 0

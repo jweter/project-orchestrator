@@ -1,0 +1,79 @@
+"""Regression tests for owner-control rollback after failed wheel start."""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+WHEEL = ROOT / "scripts" / "desktop-control" / "Take-The-Wheel.ps1"
+PS = shutil.which("powershell.exe")
+pytestmark = pytest.mark.skipif(PS is None, reason="PowerShell is required")
+
+
+def test_wheel_has_rollback_after_real_release_but_not_before_confirmation():
+    source = WHEEL.read_text(encoding="utf-8")
+    release = source.index("enabled = $false")
+    rollback_function = source.index("function Restore-OwnerAfterResumeFailure")
+    assert rollback_function < release
+    assert "Enter-HumanMode.ps1" in source
+    assert "-KeepRemote" in source
+    assert 'OWNER_ROLLBACK_CONFIRMED_REMOTE_PRESERVED' in source
+    assert "Restore-OwnerAfterResumeFailure" in source[source.index("START_FAILED"):]
+    assert "POST_RELEASE_PIN_MISMATCH" in source
+    assert "TAKE_THE_WHEEL_RUNTIME_NOT_VERIFIED" in source
+    assert "OWNER_RECLAIMED_DURING_STARTUP" in source
+    assert source.index("Check-Development-ResumeReady.ps1") < release
+
+
+@pytest.mark.parametrize("helper_exit,expected_exit,expect_owner", [
+    (0, 6, True),
+    (3, 8, True),
+])
+def test_isolated_resume_failure_handoff_returns_nonzero_and_retains_remote(
+    tmp_path, helper_exit, expected_exit, expect_owner
+):
+    """Exercise the rollback function with an isolated non-operational helper."""
+    source = WHEEL.read_text(encoding="utf-8")
+    start = source.index("function Restore-OwnerAfterResumeFailure(")
+    stop = source.index("if($SelfTest){", start)
+    fn = source[start:stop]
+
+    base = tmp_path / "local" / "ExponentialEngine"
+    state = base / "flow-state"
+    state.mkdir(parents=True)
+    marker = state / "human-mode.json"
+    marker.write_text('{"enabled":false}', encoding="utf-8")
+    helper = base / "Enter-HumanMode.ps1"
+    helper.write_text(
+        '$marker=Join-Path $env:LOCALAPPDATA "ExponentialEngine\\flow-state\\human-mode.json"\n'
+        'Set-Content -Path $marker -Value \'{"enabled":true}\' -Encoding UTF8\n'
+        f"exit {helper_exit}\n",
+        encoding="utf-8",
+    )
+    harness = tmp_path / "invoke-rollback.ps1"
+    harness.write_text(
+        '$root=Join-Path $env:LOCALAPPDATA "ExponentialEngine"\n'
+        '$state=Join-Path $root "flow-state"\n'
+        '$log=Join-Path $state "control-switch.log"\n'
+        + fn
+        + '\nRestore-OwnerAfterResumeFailure "INJECTED_START_FAILED" 6\n',
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["LOCALAPPDATA"] = str(base.parent)
+    process = subprocess.run(
+        [PS, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-File", str(harness)], env=env, text=True, capture_output=True,
+        timeout=25,
+    )
+    assert process.returncode == expected_exit, process.stdout + process.stderr
+    assert json.loads(marker.read_text(encoding="utf-8-sig"))["enabled"] is expect_owner
+    assert "INJECTED_START_FAILED" in (state / "control-switch.log").read_text()
+    # This fake helper intentionally neither touches scheduled tasks nor closes
+    # the real Remote Desktop Commander session.
