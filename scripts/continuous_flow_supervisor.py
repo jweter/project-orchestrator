@@ -12,6 +12,7 @@ from scripts.agent_voice import manager_status, worker_status
 from scripts.blocker_buddy import diagnose as diagnose_blocker
 from scripts.autonomous_slice_builder import ensure_workspace
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+from project_orchestrator.worker_memory_admission import memory_admission
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
@@ -392,7 +393,8 @@ def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,i
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str],
                                runner_registry:RunnerRegistry|None=None,
-                               dispatch_invocation_id:str|None=None)->list[str]:
+                               dispatch_invocation_id:str|None=None,
+                               new_worker_budget:int|None=None)->list[str]:
     return _parallel_runtime.dispatch_parallel_builders(
         pool,repo_root,workspace_root,state_root,products,
         ready_task_batch_fn=ready_task_batch,
@@ -401,6 +403,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         runtime_lease_recovery=RUNTIME_LEASE_RECOVERY,
         runner_registry=runner_registry,
         dispatch_invocation_id=dispatch_invocation_id,
+        new_worker_budget=new_worker_budget,
     )
 
 
@@ -719,9 +722,18 @@ def main()->int:
             RUNTIME_LEASES,worker_pool
         )
         dispatch_invocation_id=uuid.uuid4().hex if products else None
+        # Use a fresh OS memory sample every pass, never stale cooldown data.
+        # Running workers retain their leases; only NEW submissions are capped.
+        memory_gate=memory_admission(worker_pool.snapshot()["running_total"])
+        atomic(state/"worker-memory-admission.json",{
+            "schema_version":1,
+            **memory_gate,
+            "observed_at_utc":datetime.now(UTC).isoformat(),
+        })
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
-            dispatch_invocation_id=dispatch_invocation_id
+            dispatch_invocation_id=dispatch_invocation_id,
+            new_worker_budget=memory_gate["new_worker_budget"],
         ) if products and not revision_rollover["requested"] else []
         # Historical abandoned-work recovery is idle-capacity work. Never make
         # an active or newly dispatched product lane wait behind backlog cleanup.
@@ -739,10 +751,13 @@ def main()->int:
         # This turns ownership/no-work/exception outcomes into routing feedback.
         if products and not revision_rollover["requested"] and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
             dispatch_invocation_id=uuid.uuid4().hex
-            dispatched_workers.extend(
-                dispatch_parallel_builders(worker_pool,repo,workspace,state,products,
-                                           dispatch_invocation_id=dispatch_invocation_id)
-            )
+            retry_memory_gate=memory_admission(worker_pool.snapshot()["running_total"])
+            if retry_memory_gate["new_worker_budget"]:
+                dispatched_workers.extend(
+                    dispatch_parallel_builders(worker_pool,repo,workspace,state,products,
+                                               dispatch_invocation_id=dispatch_invocation_id,
+                                               new_worker_budget=retry_memory_gate["new_worker_budget"])
+                )
         pool_snapshot=worker_pool.snapshot()
         # Persist authoritative post-harvest/post-dispatch pool so completed futures cannot remain as phantom RUNNING workers.
         atomic(state/"parallel-worker-pool.json",{

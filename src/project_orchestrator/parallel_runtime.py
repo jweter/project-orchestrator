@@ -308,8 +308,13 @@ def dispatch_parallel_builders(
     runtime_lease_recovery: dict | None,
     runner_registry: RunnerRegistry | None = None,
     dispatch_invocation_id: str | None = None,
+    new_worker_budget: int | None = None,
 ) -> list[str]:
-    """Saturate safe product lanes while preserving runner/runtime capacity authority."""
+    """Saturate safe product lanes without exceeding host admission capacity."""
+    if new_worker_budget is not None and (
+        type(new_worker_budget) is not int or new_worker_budget < 0
+    ):
+        raise ValueError("new_worker_budget must be nonnegative")
     dispatched = []
     blocked = []
     dispatch_invocation_id = dispatch_invocation_id or uuid.uuid4().hex
@@ -382,6 +387,10 @@ def dispatch_parallel_builders(
     runner_running = durable_runner_occupancy(state_root)
 
     for slot in pool.available_slots(products):
+        # The caller may apply a stricter memory governor than the executor's
+        # theoretical worker count. Never stop existing work to honor this cap.
+        if new_worker_budget is not None and len(dispatched) >= new_worker_budget:
+            break
         batch = task_batches.get(slot.product, [])
         index = assigned.get(slot.product, 0)
         if index >= len(batch):
