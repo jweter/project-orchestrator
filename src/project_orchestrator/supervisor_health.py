@@ -66,6 +66,10 @@ def evaluate_supervisor_health(*, process: dict, heartbeat: dict, progress: dict
     elif heartbeat.get("status") == "STATE_PUBLICATION_BLOCKED":
         status = "DEGRADED_PUBLICATION_BLOCKED"
         reclaimable = False
+    elif heartbeat.get("status") != "RUNNING_CURRENT":
+        # A fresh timestamp from a stopped or unknown generation is not health proof.
+        status = "HEARTBEAT_STATUS_UNVERIFIED"
+        reclaimable = False
     else:
         status = "HEALTHY"
         reclaimable = False

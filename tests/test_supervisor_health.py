@@ -128,3 +128,27 @@ def test_retire_verified_generation_refuses_changed_identity():
         fingerprint_fn=lambda pid:"windows:999")
     assert result["status"]=="PROCESS_IDENTITY_CHANGED"
     assert result["retired"] is False
+
+
+def test_fresh_heartbeat_with_stopped_status_is_not_healthy():
+    result = evaluate_supervisor_health(
+        process=process(), heartbeat=heartbeat(status="STOPPED"), progress=progress(), now=NOW
+    )
+    assert result["status"] == "HEARTBEAT_STATUS_UNVERIFIED"
+    assert result["reclaimable"] is False
+
+
+def test_fresh_heartbeat_with_unknown_status_is_not_healthy():
+    result = evaluate_supervisor_health(
+        process=process(), heartbeat=heartbeat(status="UNRECOGNIZED"), progress=progress(), now=NOW
+    )
+    assert result["status"] == "HEARTBEAT_STATUS_UNVERIFIED"
+    assert result["reclaimable"] is False
+
+
+def test_fresh_heartbeat_without_status_is_not_healthy():
+    hb = heartbeat()
+    hb.pop("status")
+    result = evaluate_supervisor_health(process=process(), heartbeat=hb, progress=progress(), now=NOW)
+    assert result["status"] == "HEARTBEAT_STATUS_UNVERIFIED"
+    assert result["reclaimable"] is False
