@@ -108,6 +108,10 @@ def env(tmp_path, worker_module, monkeypatch):
         worker_module, "CONTROLLER_STATE", tmp_path / "controller-handoff-state.json"
     )
     monkeypatch.setattr(worker_module, "STATUS", tmp_path / "local-worker-status.json")
+    # Only the disposable proof fixture uses a stable resource supply.
+    # The live worker still checks actual disk/RAM; the explicit veto
+    # regression overrides this fixture to False to prove denial.
+    monkeypatch.setattr(worker_module, "resources", lambda: True)
     (tmp_path / "handoffs").mkdir()
 
     repo = _init_repo(tmp_path / "repo")
