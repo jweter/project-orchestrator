@@ -86,3 +86,18 @@ def test_malformed_or_missing_activation_never_selects_default(tmp_path):
     result = inspect_self_development_source(tmp_path, {}, CONTROLLER)
     assert result["selected_sha"] is None
     assert "EXACT_ACTIVATION_HEAD_MISSING" in result["reasons"]
+
+
+def test_divergent_activation_is_explicitly_rejected(tmp_path):
+    accepted = prepared_repo(tmp_path)
+    git(tmp_path, "update-ref", "refs/iron-god/accepted", accepted)
+    git(tmp_path, "checkout", "--orphan", "unrelated")
+    git(tmp_path, "rm", "-rf", "--", ".")
+    (tmp_path / "new.txt").write_text("unrelated", encoding="utf-8")
+    git(tmp_path, "add", "new.txt")
+    git(tmp_path, "commit", "-qm", "unrelated root")
+    divergent = git(tmp_path, "rev-parse", "HEAD")
+    result = inspect_self_development_source(tmp_path, activation(divergent), CONTROLLER)
+    assert "ACTIVATION_NOT_DESCENDANT_OF_ACCEPTED" in result["reasons"]
+    assert result["dispatch_authorized"] is False
+    assert git(tmp_path, "show-ref", "--verify", "--hash", "refs/iron-god/accepted") == accepted

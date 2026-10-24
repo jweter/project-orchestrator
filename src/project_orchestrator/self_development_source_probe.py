@@ -60,6 +60,10 @@ def inspect_self_development_source(
             reasons.append("ACTIVATION_COMMIT_NOT_LOCAL")
         if accepted is not None and selected != accepted:
             reasons.append("ACTIVATION_NOT_ACCEPTED_LOCAL_HEAD")
+            if _git(repo, "cat-file", "-t", selected) == "commit":
+                ancestor = _git(repo, "merge-base", "--is-ancestor", accepted, selected)
+                if ancestor is None:
+                    reasons.append("ACTIVATION_NOT_DESCENDANT_OF_ACCEPTED")
     if (
         controller.get("mode") != "candidate_mode"
         or controller.get("candidate_execution_authorized") is not True
