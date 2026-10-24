@@ -63,8 +63,10 @@ checks = [
     ("tooling_capabilities", [sys.executable, "engineering/validate_tooling_capabilities.py"]),
     ("n8n_policy", [sys.executable, "engineering/validate_n8n.py"]),
     ("compile", [sys.executable, "-m", "compileall", "-q", "src", "tests", "engineering"]),
-    # Exercise the real local worker's resource gate before the large suite
-    # pressures physical memory; keep all proof files in fresh processes.
+    # Real-worker controller and dispatch proofs run against disposable
+    # repositories with fixture-scoped resources (including explicit veto
+    # regressions). Never weaken the live worker's RAM/disk gate or read
+    # production authorization as test success; use fresh test processes.
     ("controller_proofs", [sys.executable, "-m", "pytest", "-q",
                             "tests/test_iron_god_complete_loop_proof.py",
                             "tests/test_iron_god_orchestration_caller.py",

@@ -146,6 +146,9 @@ def proof_env(tmp_path, worker_module, monkeypatch):
         worker_module, "CONTROLLER_STATE", tmp_path / "controller-handoff-state.json"
     )
     monkeypatch.setattr(worker_module, "STATUS", tmp_path / "local-worker-status.json")
+    # Resource capacity is deterministic only inside this disposable Git proof.
+    # The real worker's RAM/disk veto is unchanged and is tested separately.
+    monkeypatch.setattr(worker_module, "resources", lambda: True)
     (tmp_path / "handoffs").mkdir()
 
     assert worker_module.gate() is True, (
