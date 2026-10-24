@@ -66,3 +66,47 @@ source inspection.
 Do not update the protected launchers or authorization gate via an alternate
 path to evade a prior denial. Use the platform-supported authorization process
 for any later production cutover.
+
+
+## 2026-10-24: durable desktop request transport staged (not deployed)
+
+`project_orchestrator.iron_god_desktop_requests` now implements an
+**actual SQLite-backed request transport** for the two planned actions:
+`GIVE_ME_CONTROL` and `TAKE_THE_WHEEL`. It accepts an already-existing
+SQLite connection, adds one opt-in table to that same store, generates a
+distinct command ID, durably records intent, and supports a fenced observation
+that binds the request to one supervisor generation and exact release SHA.
+
+This is more than a text validator: a second Windows Python process can
+read the real persisted record. A newer owner click supersedes an older
+unexecuted request; a delayed observer cannot revive a previous
+`TAKE_THE_WHEEL` request after a later `GIVE_ME_CONTROL` request.
+Replay, expired requests, conflicting generation, invalid SHA, and malformed
+timestamps are rejected transactionally. The module's status fields are
+`REQUESTED_NOT_AUTHORIZED` and `OBSERVED_NOT_AUTHORIZED`; **neither
+means that the supervisor acted, workers stopped, or any start was authorized**.
+
+The staged CLI is executable as:
+
+```powershell
+python -m project_orchestrator.iron_god_desktop_requests --database <existing-claims.sqlite> --prepare
+python -m project_orchestrator.iron_god_desktop_requests --database <existing-claims.sqlite> --action GIVE_ME_CONTROL
+python -m project_orchestrator.iron_god_desktop_requests --database <existing-claims.sqlite> --inspect <command-id>
+```
+
+**These are interface examples, not instructions to run them on the live
+protected database.** `--prepare` requires an existing database containing
+`acceptance_dispatch_claims`; it refuses to create a database.
+`--action` and `--inspect` return exit code **5** to ensure a desktop
+success notification cannot interpret a queued request as completed control.
+The prototype never reads the retired control state, changes the controller
+mode or candidate-execution flag, starts a worker, changes a scheduled task,
+or stops Remote Desktop Commander.
+
+What is **not** done: no owner-click authentication, no live shortcut wired to
+the transport, no active supervisor reading requests, no actual pause/resume
+acknowledgment, no release staging and exact-head full preflight, and no
+human-controlled end-to-end cutover. Independent owner authority and live
+process/lease verification still need to be integrated with the existing
+`iron_god_desktop_control_proof` contracts before the status can be elevated
+from request/observation to genuine completion.
