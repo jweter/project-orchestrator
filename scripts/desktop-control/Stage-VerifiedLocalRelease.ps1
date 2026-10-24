@@ -72,6 +72,16 @@ if ((Test-Path -LiteralPath $release) -or (Test-Path -LiteralPath $actor) -or
     (Test-Path -LiteralPath $receiptPath)) {
   throw 'STAGING_TARGET_ALREADY_EXISTS_RECONCILIATION_REQUIRED'
 }
+# Bind the receipt to both the JSON preflight evidence AND the collected
+# stdout/stderr from its actual exact-head checks. They are different hashes.
+$capturedOutput=(@($evidence.results|ForEach-Object {
+  [string]$_.stdout + [string]$_.stderr
+}) -join "`n")
+$outputBytes=[Text.UTF8Encoding]::new($false).GetBytes($capturedOutput)
+$hasher=[Security.Cryptography.SHA256]::Create()
+try {
+  $outputDigest=([BitConverter]::ToString($hasher.ComputeHash($outputBytes))).Replace('-','').ToLowerInvariant()
+} finally { $hasher.Dispose() }
 $plan=[ordered]@{
   status='VERIFIED_LOCAL_RELEASE_STAGE_PLAN'
   sha=$sha
@@ -80,6 +90,7 @@ $plan=[ordered]@{
   actor_repo=$actor
   receipt_path=$receiptPath
   evidence_sha256=(Get-FileHash -LiteralPath $evidencePath -Algorithm SHA256).Hash.ToLowerInvariant()
+  output_sha256=$outputDigest
   previous_pin=[string]$priorPin.accepted_sha
   task_principal=[string]$tasks[0].Principal.UserId
   modifies_live_task_or_pin=$false
@@ -118,7 +129,7 @@ $receipt=[ordered]@{
   verification=[ordered]@{
     command='python engineering/preflight.py'
     exact_head=$sha;exit_code='0'
-    output_sha256=$plan.evidence_sha256
+    output_sha256=$plan.output_sha256
     evidence_file_sha256=$plan.evidence_sha256
     verified_at_utc=[string]$evidence.generated_at
   }
