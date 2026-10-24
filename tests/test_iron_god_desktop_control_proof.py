@@ -195,3 +195,177 @@ def test_no_clock_skew_or_negative_freshness_horizon():
     payload["max_age_seconds"] = 0
     with pytest.raises(ValueError, match="freshness horizon"):
         diagnose_desktop_resume(**payload)
+
+
+def pause_evidence() -> dict:
+    return {
+        "request": {
+            "command": "GIVE_ME_CONTROL",
+            "command_id": COMMAND_ID,
+            "requested_at_utc": _at(25),
+        },
+        "acknowledgement": {
+            "command_id": COMMAND_ID,
+            "status": "PAUSED",
+            "acknowledged_by_engine": True,
+            "process_instance_id": GENERATION,
+            "acknowledged_at_utc": _at(15),
+        },
+        "stop_receipt": {
+            "command_id": COMMAND_ID,
+            "process_instance_id": GENERATION,
+            "status": "OWNER_CONTROL_GRANTED",
+            "worker_count": 0,
+            "remote_disconnect_requested": False,
+            "checked_at_utc": _at(5),
+        },
+        "controller": {
+            "mode": "shadow_state_only",
+            "candidate_execution_authorized": False,
+        },
+        "owner_authority": "VERIFIED_HELD",
+        "supervisor_processes": [],
+        "actor_processes": [],
+        "worker_processes": [],
+        "running_development_tasks": [],
+        "remote_connected": True,
+        "now": NOW,
+    }
+
+
+def test_pause_evidence_is_not_control_or_authorization():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    result = diagnose_desktop_pause(**pause_evidence())
+    assert result.status == "PAUSE_EVIDENCE_ALIGNED_NOT_AUTHORIZATION"
+    assert result.problems == ()
+    assert result.execution_authorized is False
+
+
+def test_pause_requires_current_command_correlated_supervisor_and_guardian_ack():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["acknowledgement"]["command_id"] = "prior-click-id"
+    payload["stop_receipt"]["command_id"] = "prior-click-id"
+    result = diagnose_desktop_pause(**payload)
+    assert "SUPERVISOR_PAUSE_ACK_MISSING" in result.problems
+    assert "GUARDIAN_PAUSE_RECEIPT_UNVERIFIED" in result.problems
+
+
+def test_pause_rejects_historical_unbound_owner_control_receipt():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["stop_receipt"] = {
+        "checked_at": _at(2),
+        "status": "OWNER_CONTROL_GRANTED",
+        "human_mode": True,
+        "worker_count": 0,
+        "remote_disconnect_requested": True,
+    }
+    result = diagnose_desktop_pause(**payload)
+    assert "GUARDIAN_PAUSE_RECEIPT_UNVERIFIED" in result.problems
+    assert "GUARDIAN_PAUSE_RECEIPT_NOT_FRESH" in result.problems
+    assert "PAUSE_HANDOFF_ORDER_UNVERIFIED" in result.problems
+    assert result.execution_authorized is False
+
+
+def test_pause_preserves_remote_commander_and_drains_all_work():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["remote_connected"] = False
+    payload["supervisor_processes"] = [{"pid": 100}]
+    payload["worker_processes"] = [{"pid": 200}]
+    payload["running_development_tasks"] = ["ExponentialEngine-LaptopActor"]
+    result = diagnose_desktop_pause(**payload)
+    assert "REMOTE_CONTROL_NOT_PRESERVED" in result.problems
+    assert "AUTONOMOUS_PROCESSES_STILL_PRESENT" in result.problems
+    assert "AUTONOMOUS_TASKS_STILL_RUNNING" in result.problems
+
+
+def test_pause_rejects_false_controller_confirmation_and_unknown_owner():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["owner_authority"] = "UNVERIFIED"
+    payload["controller"]["candidate_execution_authorized"] = True
+    result = diagnose_desktop_pause(**payload)
+    assert "OWNER_CONTROL_UNVERIFIED" in result.problems
+    assert "CONTROLLER_EXECUTION_NOT_PROVEN_DISABLED" in result.problems
+
+
+def test_pause_rejects_stale_and_wrong_order_receipts():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["request"]["requested_at_utc"] = _at(300)
+    payload["acknowledgement"]["acknowledged_at_utc"] = _at(3)
+    payload["stop_receipt"]["checked_at_utc"] = _at(15)
+    result = diagnose_desktop_pause(**payload)
+    assert "PAUSE_REQUEST_NOT_FRESH" in result.problems
+    assert "PAUSE_HANDOFF_ORDER_UNVERIFIED" in result.problems
+
+
+def test_pause_rejects_mismatched_supervisor_generation_and_false_ack():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["acknowledgement"]["acknowledged_by_engine"] = False
+    payload["stop_receipt"]["process_instance_id"] = "other-generation"
+    result = diagnose_desktop_pause(**payload)
+    assert "SUPERVISOR_PAUSE_ACK_MISSING" in result.problems
+    assert "GUARDIAN_PAUSE_RECEIPT_UNVERIFIED" in result.problems
+
+
+def test_pause_does_not_fail_open_on_bad_clock():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["now"] = NOW.replace(tzinfo=None)
+    with pytest.raises(ValueError, match="aware clock"):
+        diagnose_desktop_pause(**payload)
+    payload["now"] = NOW
+    payload["max_age_seconds"] = -5
+    with pytest.raises(ValueError, match="freshness horizon"):
+        diagnose_desktop_pause(**payload)
+
+
+def test_pause_requires_explicit_process_and_task_observations():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    del payload["supervisor_processes"]
+    with pytest.raises(TypeError, match="supervisor_processes"):
+        diagnose_desktop_pause(**payload)
+
+
+def test_pause_false_boolean_worker_count_is_not_zero_worker_proof():
+    from project_orchestrator.iron_god_desktop_control_proof import (
+        diagnose_desktop_pause,
+    )
+
+    payload = pause_evidence()
+    payload["stop_receipt"]["worker_count"] = False
+    result = diagnose_desktop_pause(**payload)
+    assert "GUARDIAN_PAUSE_RECEIPT_UNVERIFIED" in result.problems
+    assert result.execution_authorized is False
