@@ -62,6 +62,8 @@ def triage_quarantines(
         "preserved_work_count": preserved_work,
         "by_reason": dict(sorted(by_reason.items())),
         "by_recovery_result": dict(sorted(by_recovery.items())),
-        "disposition": "REVIEW_INDIVIDUALLY_DO_NOT_BULK_RELEASE" if count else "NO_QUARANTINES",
+        "disposition": "REVIEW_INDIVIDUALLY_DO_NOT_BULK_RELEASE"
+        if count
+        else "NO_QUARANTINES",
         "authority_mutated": False,
     }

@@ -12,9 +12,7 @@ from scripts.agent_voice import manager_status, worker_status
 from scripts.blocker_buddy import diagnose as diagnose_blocker
 from scripts.autonomous_slice_builder import ensure_workspace
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
-from project_orchestrator.worker_memory_admission import memory_admission
-from project_orchestrator.delivery_throughput import assess_delivery_throughput
-from project_orchestrator.quarantine_triage import triage_quarantines
+from project_orchestrator import supervisor_throughput_runtime as _throughput
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
@@ -729,18 +727,12 @@ def main()->int:
             RUNTIME_LEASES,worker_pool
         )
         dispatch_invocation_id=uuid.uuid4().hex if products else None
-        # Use a fresh OS memory sample every pass, never stale cooldown data.
-        # Running workers retain their leases; only NEW submissions are capped.
-        memory_gate=memory_admission(worker_pool.snapshot()["running_total"])
-        atomic(state/"worker-memory-admission.json",{
-            "schema_version":1,
-            **memory_gate,
-            "observed_at_utc":datetime.now(UTC).isoformat(),
-        })
+        memory_budget=_throughput.publish_worker_memory_admission(
+            state,worker_pool.snapshot()["running_total"])
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
             dispatch_invocation_id=dispatch_invocation_id,
-            new_worker_budget=memory_gate["new_worker_budget"],
+            new_worker_budget=memory_budget,
         ) if products and not revision_rollover["requested"] else []
         # Historical abandoned-work recovery is idle-capacity work. Never make
         # an active or newly dispatched product lane wait behind backlog cleanup.
@@ -758,22 +750,17 @@ def main()->int:
         # This turns ownership/no-work/exception outcomes into routing feedback.
         if products and not revision_rollover["requested"] and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
             dispatch_invocation_id=uuid.uuid4().hex
-            retry_memory_gate=memory_admission(worker_pool.snapshot()["running_total"])
-            if retry_memory_gate["new_worker_budget"]:
-                dispatched_workers.extend(
-                    dispatch_parallel_builders(worker_pool,repo,workspace,state,products,
-                                               dispatch_invocation_id=dispatch_invocation_id,
-                                               new_worker_budget=retry_memory_gate["new_worker_budget"])
-                )
+            refill_budget=_throughput.next_worker_budget(
+                worker_pool.snapshot()["running_total"])
+            if refill_budget:
+                dispatched_workers.extend(dispatch_parallel_builders(
+                    worker_pool,repo,workspace,state,products,
+                    dispatch_invocation_id=dispatch_invocation_id,
+                    new_worker_budget=refill_budget))
         pool_snapshot=worker_pool.snapshot()
-        # Persist authoritative post-harvest/post-dispatch pool so completed futures cannot remain as phantom RUNNING workers.
-        atomic(state/"parallel-worker-pool.json",{
-            "schema_version":2,"pool":pool_snapshot,"runtime_leases":RUNTIME_LEASES.snapshot(),
-            "runtime_lease_reconciliation":runtime_lease_reconciliation,
-            "dispatched":dispatched_workers,"dispatch_invocation_id":dispatch_invocation_id,
-            "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
-            "recorded_at_utc":datetime.now(UTC).isoformat(),
-        })
+        _throughput.publish_worker_pool_snapshot(
+            state,pool_snapshot,RUNTIME_LEASES.snapshot(),runtime_lease_reconciliation,
+            dispatched_workers,dispatch_invocation_id,RUNTIME_LEASE_RECOVERY)
         # The supervisor no longer blocks on implementation. A worker holding a
         # repository grant is active work; other product slots remain schedulable.
         rc=0 if (dispatched_workers or pool_snapshot["running_total"] or parallel_results) else 3
@@ -804,39 +791,25 @@ def main()->int:
         if lifecycle_advanced:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
-        delivery=assess_delivery_throughput(state,products,pool_snapshot)
-        quarantine_triage=triage_quarantines(quarantines)
-        atomic(state/"verified-delivery-throughput.json",delivery)
-        atomic(state/"quarantine-triage.json",quarantine_triage)
+        delivery,quarantine_triage=_throughput.publish_delivery_diagnostics(
+            state,products,pool_snapshot,quarantines)
         liveness_published=optional_atomic(state/"productive-liveness.json",liveness,replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
         convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
         idle_streaks=_planning.record_eligible_idle_streaks(
             state,products,current_invocation_id=dispatch_invocation_id,
         )
-        degraded_reasons=[]
-        if lifecycle_recovery["publication_blocked"]: degraded_reasons.append({"reason":"LIFECYCLE_STATE_PUBLICATION_BLOCKED"})
-        if not liveness_published: degraded_reasons.append({"reason":"PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"})
-        if workspace_provisioning.get("status") != "OK":
-            degraded_reasons.append({"reason":"WORKSPACE_PROVISIONING_DEGRADED","details":workspace_provisioning})
-        if convergence.get("status") != "CONVERGED":
-            degraded_reasons.append({"reason":convergence.get("status"),"products":convergence.get("unexplained_eligible_products",[])})
-        if idle_streaks.get("status") == "P1_LIVENESS_DEFECT":
-            degraded_reasons.append({"reason":"P1_LIVENESS_DEFECT"})
-        if liveness.get("status") in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}:
-            degraded_reasons.append({"reason":liveness.get("status")})
-        if delivery["status"] == "VERIFIED_DELIVERY_STALLED":
-            degraded_reasons.append({"reason":"VERIFIED_DELIVERY_STALLED",
-                "seconds_since_start":delivery["seconds_since_start"],
-                "verified_deliveries":0})
+        degraded_reasons=_throughput.degraded_reasons(
+            lifecycle_recovery=lifecycle_recovery,liveness_published=liveness_published,
+            workspace_provisioning=workspace_provisioning,convergence=convergence,
+            idle_streaks=idle_streaks,liveness=liveness,delivery=delivery,
+            builder_ok=builder_ok,builder_status=builder_status,rc=rc,
+            linear_rc=linear_rc,quarantines=quarantines)
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
             liveness_reacquire={"requested":True,"reason":"PRODUCT_CONVERGENCE_DEFECT",
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
-        if not builder_ok and builder_status!="NO_READY_EXECUTION_SLICE": degraded_reasons.append({"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc})
-        if linear_rc not in (None,0): degraded_reasons.append({"reason":"LINEAR_RECONCILIATION_FAILED","returncode":linear_rc})
-        if quarantines: degraded_reasons.append({"reason":"QUARANTINED_GRANTS","count":len(quarantines)})
         healthy=not degraded_reasons
         publish_supervisor_snapshot(state,{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,

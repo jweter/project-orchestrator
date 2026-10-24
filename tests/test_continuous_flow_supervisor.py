@@ -1640,11 +1640,17 @@ def test_worker_liveness_treats_missing_process_as_dead_before_fingerprint(monke
 
 
 def test_supervisor_status_requires_explicit_degradation_reason():
+    import inspect
     from pathlib import Path
+    import project_orchestrator.supervisor_throughput_runtime as diagnostics
+
     source = Path("scripts/continuous_flow_supervisor.py").read_text(encoding="utf-8")
-    assert 'healthy=not degraded_reasons' in source
-    assert 'builder_status!="NO_READY_EXECUTION_SLICE"' in source
-    assert '{"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc}' in source
+    assert "healthy=not degraded_reasons" in source
+    assert "_throughput.degraded_reasons(" in source
+    implementation = inspect.getsource(diagnostics.degraded_reasons)
+    assert 'builder_status != "NO_READY_EXECUTION_SLICE"' in implementation
+    assert '"reason": "BUILDER_FAILED"' in implementation
+    assert '"reason": "VERIFIED_DELIVERY_STALLED"' in implementation
 
 def test_resume_pushed_orphan_reconciles_pr_created_despite_failed_ack(tmp_path, monkeypatch):
     import scripts.continuous_flow_supervisor as supervisor
