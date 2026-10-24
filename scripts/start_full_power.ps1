@@ -5,7 +5,8 @@ $ErrorActionPreference = "Stop"
 $humanMode = Join-Path $StateRoot "human-mode.json"
 $ownerReleased = $false
 if(-not (Test-Path -LiteralPath $humanMode)){
-  $ownerReleased = $true
+  # A missing authority record is NOT consent to start autonomous workers.
+  $ownerReleased = $false
 } else {
   try {
     $ownerControl = Get-Content -LiteralPath $humanMode -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop

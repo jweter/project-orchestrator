@@ -98,3 +98,23 @@ def test_actor_sync_rechecks_human_lock_before_git_checkout():
     sync = text[text.index("function Invoke-SafeActorSync"):text.index("function Invoke-SafeSupervisorKick")]
     assert sync.index("if(Test-HumanMode)") < sync.index("git -C $ActorRepo fetch")
     assert sync.index("if(Test-HumanMode)", sync.index("git -C $ActorRepo fetch")) < sync.index("git -C $ActorRepo checkout")
+
+
+
+def test_full_power_missing_owner_marker_fails_before_any_scheduled_task(tmp_path):
+    import subprocess
+
+    # The command MUST fail before enabling any Windows scheduled task.
+    state = tmp_path / "isolated-missing-owner"
+    state.mkdir()
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive",
+         "-ExecutionPolicy", "Bypass", "-File", str(FULL_POWER.resolve()),
+         "-StateRoot", str(state)],
+        capture_output=True, text=True, check=False, timeout=15,
+    )
+    assert result.returncode != 0
+    assert "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL" in (
+        result.stdout + result.stderr
+    )
+    assert list(state.iterdir()) == []
