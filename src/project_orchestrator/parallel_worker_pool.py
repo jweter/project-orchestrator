@@ -108,24 +108,36 @@ class ParallelWorkerPool(Generic[T]):
         return bool(completed)
 
     def snapshot(self) -> dict:
-        by_product = {
-            product: self._running_for(product)
+        """Report occupied slots separately from workers still executing.
+
+        A completed Future retains its slot until harvest; counting it as an
+        executing worker makes supervisor liveness telemetry misleading.
+        Keep running_total's existing capacity semantics for callers.
+        """
+        workers = [
+            {
+                "worker_id": worker_id,
+                "product": work.slot.product,
+                "slot": work.slot.index,
+                "done": work.future.done(),
+            }
+            for worker_id, work in sorted(self._running.items())
+        ]
+        executing = [worker for worker in workers if not worker["done"]]
+        by_product = {product: self._running_for(product) for product in PRODUCTS}
+        executing_by_product = {
+            product: sum(1 for worker in executing if worker["product"] == product)
             for product in PRODUCTS
         }
         return {
             "running_total": len(self._running),
             "running_by_product": by_product,
+            "executing_total": len(executing),
+            "executing_by_product": executing_by_product,
+            "completed_unharvested_total": len(workers) - len(executing),
             "max_total_workers": self.max_total_workers,
             "max_workers_per_product": self.max_workers_per_product,
-            "workers": [
-                {
-                    "worker_id": worker_id,
-                    "product": work.slot.product,
-                    "slot": work.slot.index,
-                    "done": work.future.done(),
-                }
-                for worker_id, work in sorted(self._running.items())
-            ],
+            "workers": workers,
         }
 
     def shutdown(self, *, wait: bool = True) -> None:

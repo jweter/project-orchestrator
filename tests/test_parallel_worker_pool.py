@@ -107,3 +107,25 @@ def test_idle_pool_retains_normal_delay_without_busy_spin(monkeypatch):
     pool = ParallelWorkerPool(executor_factory=ManualExecutor)
     assert not pool.wait_for_completion(12.0)
     assert slept == [12.0]
+
+
+def test_snapshot_distinguishes_executing_from_completed_unharvested_workers():
+    executor = ManualExecutor(max_workers=2, thread_name_prefix="x")
+    pool = ParallelWorkerPool(max_total_workers=2, executor_factory=lambda **_: executor)
+    pool.submit(WorkerSlot("everward", 1), lambda: "completed")
+    pool.submit(WorkerSlot("iron-god", 1), lambda: "still running")
+    executor.submissions[0][0].set_exception(RuntimeError("identity mismatch"))
+
+    snapshot = pool.snapshot()
+    assert snapshot["running_total"] == 2  # Occupied slots until harvest.
+    assert snapshot["executing_total"] == 1
+    assert snapshot["completed_unharvested_total"] == 1
+    assert snapshot["executing_by_product"]["everward"] == 0
+    assert snapshot["executing_by_product"]["iron-god"] == 1
+    assert snapshot["workers"][0]["done"] is True
+
+    pool.harvest()
+    snapshot = pool.snapshot()
+    assert snapshot["running_total"] == 1
+    assert snapshot["executing_total"] == 1
+    assert snapshot["completed_unharvested_total"] == 0
