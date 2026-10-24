@@ -14,9 +14,25 @@ EXPECTED_REPOSITORIES = {
     "jweter/VoiceStudio",
 }
 
+CONTROL_PLANE_ROLE = "control-plane"
+
+
+def _canonical_products(projects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Exclude control-plane self-registrations (e.g. Iron God) from the
+    canonical product inventory; they are not product/repository entries."""
+    return [
+        project
+        for project in projects
+        if not any(
+            entry.get("role") == CONTROL_PLANE_ROLE
+            for entry in project.get("repositories", [])
+        )
+    ]
+
 
 def load_inventory(path: str | Path) -> dict[str, Any]:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    payload = {**payload, "projects": _canonical_products(payload.get("projects", []))}
     validate_inventory(payload)
     return payload
 

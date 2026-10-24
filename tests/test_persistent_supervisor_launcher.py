@@ -8,6 +8,9 @@ from scripts.launch_persistent_supervisor import (activate_repo_imports, atomic,
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
 
+def authorize(root:Path):
+    write(root/"human-mode.json",{"enabled":False})
+
 def test_atomic_uses_unique_temp_file_when_legacy_temp_is_contended(tmp_path):
     target=tmp_path/"persistent-supervisor-launch.json"
     legacy=target.with_suffix(target.suffix+".tmp")
@@ -133,6 +136,7 @@ def test_stale_generation_handoff_request_is_fenced_to_predecessor(tmp_path):
 
 
 def test_reclaim_stalled_generation_fences_exact_verified_owner(tmp_path):
+    authorize(tmp_path)
     now=datetime(2026,10,3,1,0,tzinfo=UTC)
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
@@ -153,6 +157,7 @@ def test_reclaim_stalled_generation_fences_exact_verified_owner(tmp_path):
     assert fence["burst_id"]=="burst"
 
 def test_reclaim_stalled_generation_refuses_pid_reuse(tmp_path):
+    authorize(tmp_path)
     now=datetime(2026,10,3,1,0,tzinfo=UTC)
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})
@@ -165,6 +170,7 @@ def test_reclaim_stalled_generation_refuses_pid_reuse(tmp_path):
     assert not (tmp_path/"supervisor-generation-fence.json").exists()
 
 def test_reclaim_stalled_generation_refuses_recent_progress(tmp_path):
+    authorize(tmp_path)
     now=datetime(2026,10,3,1,0,tzinfo=UTC)
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"old","burst_id":"burst","worker":{"pid":42,"process_start_fingerprint":"windows:123"}})
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"old","burst_id":"burst","status":"RUNNING_CURRENT","heartbeat_at_utc":(now-timedelta(seconds=121)).isoformat()})

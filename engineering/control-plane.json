@@ -5,6 +5,7 @@
   "repository_role": "portfolio-control-plane",
   "source_of_truth": "live GitHub evidence plus per-repository governing documents",
   "control_surface_registry": "engineering/control-surface.toml",
+  "capability_graph": "engineering/iron-god-capabilities.json",
   "authority_loading": {
     "always_read": [
       "DoWork.txt",
@@ -51,7 +52,8 @@
     "engineering/state/closed-loop-product-run.json",
     "engineering/state/pre-change-risk.json",
     "engineering/state/process-experiments.json",
-    "docs/IRON_MEMORY.md"
+    "docs/IRON_MEMORY.md",
+    "engineering/iron-god-capabilities.json"
   ],
   "invariants": [
     "product_repositories_retain_product_authority",

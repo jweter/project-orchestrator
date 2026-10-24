@@ -7,7 +7,7 @@ from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
-PRODUCTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio")
+PRODUCTS = ("knowledge-engine", "rocksmith", "everward", "voicestudio", "iron-god")
 
 
 @dataclass(frozen=True)

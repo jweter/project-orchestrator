@@ -1579,7 +1579,7 @@ def test_parallel_dispatch_assigns_independent_product_slots(tmp_path, monkeypat
         "voicestudio-worker-1"]
     snapshot=pool.snapshot()
     assert snapshot["running_by_product"]=={
-        "knowledge-engine":1,"rocksmith":1,"everward":1,"voicestudio":1}
+        "knowledge-engine":1,"rocksmith":1,"everward":1,"voicestudio":1,"iron-god":0}
 
 
 def test_parallel_dispatch_records_runner_block_for_convergence(tmp_path, monkeypatch):

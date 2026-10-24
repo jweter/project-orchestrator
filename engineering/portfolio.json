@@ -2,6 +2,14 @@
   "schema_version": 1,
   "projects": [
     {
+      "id": "iron-god",
+      "name": "Iron God Engine",
+      "coordination": "standalone",
+      "repositories": [
+        {"name": "jweter/project-orchestrator", "role": "control-plane"}
+      ]
+    },
+    {
       "id": "knowledge-engine",
       "name": "Knowledge Engine",
       "coordination": "cross-repo-family",

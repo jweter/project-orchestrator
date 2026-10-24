@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +14,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "preflight-evidence.json"
 SRC = ROOT / "src"
-PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / ROOT.name
+# Windows Git can fail to create .git/objects in tests when the pytest
+# basetemp is nested under a long isolated worktree path. Use a short,
+# stable, worktree-specific temp root; never share or delete another repo's
+# scratch space. Do not change or skip any tests or verification gates.
+_ROOT_KEY = hashlib.sha256(
+    os.path.normcase(str(ROOT.resolve())).encode("utf-8")
+).hexdigest()[:16]
+PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / "ig-preflight" / _ROOT_KEY
 PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
 PREFLIGHT_ENV = os.environ.copy()
 PREFLIGHT_ENV["PYTHONPATH"] = str(SRC)

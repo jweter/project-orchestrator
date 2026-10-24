@@ -19,6 +19,7 @@ authority = [
   "hands-off-evolution.json",
   "harness-audit.json",
   "harness-security.json",
+  "iron-god-capabilities.json",
   "knowledge-engine-compatibility.json",
   "learning-engine.json",
   "portfolio.json",

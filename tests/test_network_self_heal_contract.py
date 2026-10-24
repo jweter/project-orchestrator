@@ -4,6 +4,16 @@ from types import SimpleNamespace
 from scripts import network_self_heal as network
 
 
+def authorize_test_roots(tmp_path, monkeypatch):
+    isolated = tmp_path / "isolated-localappdata"
+    canonical = isolated / "ExponentialEngine" / "flow-state"
+    canonical.mkdir(parents=True)
+    (canonical / "human-mode.json").write_text('{"enabled": false}')
+    (tmp_path / "human-mode.json").write_text('{"enabled": false}')
+    monkeypatch.setenv("LOCALAPPDATA", str(isolated))
+    return canonical
+
+
 def test_reboot_latch_blocks_repeat_reboots(tmp_path, monkeypatch):
     commands = []
 
@@ -35,6 +45,7 @@ def test_reboot_latch_clears_only_on_explicit_clear(tmp_path):
 
 
 def test_human_mode_suppresses_recovery(tmp_path, monkeypatch):
+    authorize_test_roots(tmp_path, monkeypatch)
     monkeypatch.setattr(network, "snapshot", lambda _root: None)
     (tmp_path / "human-mode.json").write_text("{}")
     assert network.recover(tmp_path, allow_reboot=True) is False
@@ -42,27 +53,20 @@ def test_human_mode_suppresses_recovery(tmp_path, monkeypatch):
 
 
 def test_disabled_owner_marker_allows_network_recovery(tmp_path, monkeypatch):
-    isolated = tmp_path / "isolated-localappdata"
-    monkeypatch.setenv("LOCALAPPDATA", str(isolated))
-    (tmp_path / "human-mode.json").write_text('{"enabled": false}')
+    authorize_test_roots(tmp_path, monkeypatch)
     assert network.human_mode(tmp_path) is False
 
 
 def test_enabled_owner_marker_blocks_network_recovery(tmp_path, monkeypatch):
-    isolated = tmp_path / "isolated-localappdata"
-    monkeypatch.setenv("LOCALAPPDATA", str(isolated))
+    authorize_test_roots(tmp_path, monkeypatch)
     (tmp_path / "human-mode.json").write_text('{"enabled": true}')
     assert network.human_mode(tmp_path) is True
 
 
 def test_canonical_human_control_marker_suppresses_recovery(tmp_path, monkeypatch):
-    state_root = tmp_path / "repo-state"
-    local_app_data = tmp_path / "LocalAppData"
-    human_root = local_app_data / "ExponentialEngine" / "flow-state"
-    human_root.mkdir(parents=True)
+    human_root = authorize_test_roots(tmp_path, monkeypatch)
     (human_root / "human-mode.json").write_text("{}")
-    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
-    assert network.human_mode(state_root)
+    assert network.human_mode(tmp_path)
 
 
 def test_guardian_singleton_is_atomic_and_os_released(tmp_path):
@@ -81,8 +85,7 @@ def test_guardian_singleton_is_atomic_and_os_released(tmp_path):
 
 def test_mid_recovery_human_handoff_interrupts_network_operations(tmp_path, monkeypatch):
     commands = []
-    # Keep the actual laptop owner marker out of this isolated fixture.
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "isolated-localappdata"))
+    authorize_test_roots(tmp_path, monkeypatch)
     monkeypatch.setattr(network, "snapshot", lambda _root: None)
     monkeypatch.setattr(network, "internet_ok", lambda: False)
     monkeypatch.setattr(network.time, "sleep", lambda _seconds: None)
@@ -101,6 +104,7 @@ def test_mid_recovery_human_handoff_interrupts_network_operations(tmp_path, monk
 
 
 def test_preexisting_human_marker_prevents_even_a_recovery_snapshot(tmp_path, monkeypatch):
+    authorize_test_roots(tmp_path, monkeypatch)
     (tmp_path / "human-mode.json").write_text("{}")
     monkeypatch.setattr(network, "snapshot", lambda _root: (_ for _ in ()).throw(AssertionError("snapshot ran")))
     assert network.recover(tmp_path, allow_reboot=True) is False
