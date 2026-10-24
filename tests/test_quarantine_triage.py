@@ -15,7 +15,7 @@ def test_historical_and_recent_grants_are_not_conflated():
         "old": {
             "result_status": "BUILDER_EXITED_WITHOUT_CLAIM:1",
             "recovery_result": "RECOVERY_RETRY_EXHAUSTED",
-            "finished_at": (NOW-timedelta(days=28)).isoformat(),
+            "finished_at": (NOW - timedelta(days=28)).isoformat(),
         },
         "recent": {
             "result_status": "CLAIM_LEASE_EXPIRED_WORKER_DEAD",

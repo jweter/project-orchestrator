@@ -51,7 +51,8 @@ def assess_delivery_throughput(
     started = _stamp(identity.get("started_at_utc"))
     elapsed = (
         max(0.0, (current - started).total_seconds())
-        if started is not None and started <= current else None
+        if started is not None and started <= current
+        else None
     )
     raw = _read(state_root / "hands-off-grant-lifecycle.json")
     grants = raw.get("grants", {})
@@ -74,8 +75,10 @@ def assess_delivery_throughput(
         base = record.get("exact_head")
         head = record.get("head_sha")
         if (
-            isinstance(base, str) and isinstance(head, str)
-            and len(base) == len(head) == 40 and head != base
+            isinstance(base, str)
+            and isinstance(head, str)
+            and len(base) == len(head) == 40
+            and head != base
         ):
             candidate_count += 1
         quality = record.get("outcome_quality")
