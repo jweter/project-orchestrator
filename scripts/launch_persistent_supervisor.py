@@ -182,6 +182,11 @@ def reclaim_stalled_generation(state:Path,active_id:str,*,now:datetime|None=None
                 "reclaimed":False,"retirement":retired}
     return {**fence,"reclaimed":True,"retirement":retired}
 
+def launcher_owner_gate(state:Path)->bool:
+    """Do not spawn a guardian or supervisor before independent owner authority."""
+    from project_orchestrator.human_ownership import human_mode_active
+    return not human_mode_active(state)
+
 def main()->int:
     p=argparse.ArgumentParser()
     p.add_argument("--repo-root",required=True);p.add_argument("--workspace-root",required=True)
@@ -192,8 +197,13 @@ def main()->int:
                    help="keep retrying until this launcher becomes authoritative")
     p.add_argument("--stale-seconds",type=int,default=900,
                    help="request graceful generation handoff after canonical supervisor state is this old")
-    a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root);state.mkdir(parents=True,exist_ok=True)
+    a=p.parse_args();repo=Path(a.repo_root);state=Path(a.state_root)
     activate_repo_imports(repo)
+    if not launcher_owner_gate(state):
+        # Fail before creating state or spawning the network/reboot guardian.
+        print("OWNER_CONTROL_ACTIVE_OR_UNVERIFIED",file=sys.stderr)
+        return 3
+    state.mkdir(parents=True,exist_ok=True)
     start_network_guardian(repo,state)
     before=load(state/"supervisor-process-instance.json").get("process_instance_id")
     log=state/"persistent-supervisor.log"
