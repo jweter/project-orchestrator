@@ -59,9 +59,12 @@ def audit_local_activation(
         tracked_dirty = None
         if not _REPOSITORY.fullmatch(repository) or ".." in repository.split("/"):
             rows[repository] = {
-                "status": "BLOCKED", "reasons": ["INVALID_REPOSITORY_ID"],
-                "selected_sha": None, "local_head": None,
-                "accepted_sha": None, "tracked_dirty": None,
+                "status": "BLOCKED",
+                "reasons": ["INVALID_REPOSITORY_ID"],
+                "selected_sha": None,
+                "local_head": None,
+                "accepted_sha": None,
+                "tracked_dirty": None,
                 "dispatch_authorized": False,
             }
             continue
@@ -97,7 +100,10 @@ def audit_local_activation(
             local_head = _git(root, "rev-parse", "HEAD")
             tracked = _git(root, "status", "--porcelain", "--untracked-files=no")
             tracked_dirty = None if tracked is None else bool(tracked)
-            if selected is not None and _git(root, "cat-file", "-t", selected) != "commit":
+            if (
+                selected is not None
+                and _git(root, "cat-file", "-t", selected) != "commit"
+            ):
                 reasons.append("ACTIVATION_COMMIT_NOT_LOCAL")
             accepted_head = _git(
                 root, "show-ref", "--verify", "--hash", "refs/iron-god/accepted"
@@ -109,6 +115,14 @@ def audit_local_activation(
                 accepted_head = None
             elif selected is not None and selected != accepted_head:
                 reasons.append("ACTIVATION_NOT_ACCEPTED_LOCAL_HEAD")
+                if (
+                    _git(root, "cat-file", "-t", selected) == "commit"
+                    and _git(
+                        root, "merge-base", "--is-ancestor", accepted_head, selected
+                    )
+                    is None
+                ):
+                    reasons.append("ACTIVATION_NOT_DESCENDANT_OF_ACCEPTED")
 
         rows[repository] = {
             "status": "BLOCKED" if reasons else "LOCAL_IDENTITY_VERIFIED_ONLY",
