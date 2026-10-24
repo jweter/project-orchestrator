@@ -71,10 +71,33 @@ def replenish_frontiers(
                 "exact_head": exact_head,
             }
             continue
-        if execution.get("status") == "NO_WORK":
+        # load_execution_slice normally returns the raw bounded slice, not a
+        # READY envelope. Only a fully identified slice at the exact compiled
+        # HEAD may clear a governance request; malformed, NO_WORK, or
+        # DIRECTION_REQUIRED results must remain blocked.
+        if not isinstance(execution, dict):
+            reason = "EXECUTION_SLICE_RESULT_UNVERIFIED"
+        elif execution.get("status") in {"NO_WORK", "DIRECTION_REQUIRED"}:
+            reason = execution.get("reason") or execution["status"]
+        elif (
+            execution.get("repository") != repo
+            or execution.get("exact_head") != exact_head
+            or not isinstance(execution.get("slice_id"), str)
+            or not execution["slice_id"].strip()
+            or not isinstance(execution.get("capability_id"), str)
+            or not execution["capability_id"].strip()
+            or not isinstance(execution.get("objective"), str)
+            or not execution["objective"].strip()
+            or not isinstance(execution.get("acceptance"), list)
+            or not execution["acceptance"]
+        ):
+            reason = "EXECUTION_SLICE_IDENTITY_OR_AUTHORITY_INVALID"
+        else:
+            reason = None
+        if reason:
             results[repo] = {
                 "status": "DIRECTION_REQUIRED",
-                "reason": execution.get("reason") or "NO_WORK",
+                "reason": str(reason),
                 "source": request.get("source"),
                 "exact_head": exact_head,
             }

@@ -13,7 +13,9 @@ def test_continuation_request_replenishes_from_compiled_authority(tmp_path):
 
     def load_fn(_state, repo, head):
         assert (repo, head) == ("o/r", "new")
-        return {"slice_id": "next", "capability_id": "cap-next"}
+        return {"slice_id": "next", "capability_id": "cap-next",
+                "repository": repo, "exact_head": head,
+                "objective": "Verified next slice", "acceptance": ["Tests pass"]}
 
     result = replenish_frontiers(tmp_path / "ws", tmp_path, compile_fn=compile_fn, load_slice_fn=load_fn)
     assert result["repositories"]["o/r"]["status"] == "REPLENISHED"
@@ -31,7 +33,11 @@ def test_direction_request_can_self_heal_when_current_authority_now_has_slice(tm
 
     result = replenish_frontiers(
         tmp_path / "ws", tmp_path, compile_fn=compile_fn,
-        load_slice_fn=lambda *_: {"slice_id": "s2", "capability_id": "c2"},
+        load_slice_fn=lambda _, repo, head: {
+            "slice_id": "s2", "capability_id": "c2",
+            "repository": repo, "exact_head": head,
+            "objective": "Second verified slice", "acceptance": ["Tests pass"],
+        },
     )
     assert result["repositories"]["o/r"]["status"] == "REPLENISHED"
     assert not path.exists()
@@ -122,3 +128,54 @@ def test_reconcile_issue_cycle_reports_refresh_failure_without_hiding_staleness(
     assert result["status"]=="ISSUE_EVIDENCE_UNAVAILABLE"
     assert "stale" in result["reason"].lower()
     assert "auth unavailable" in result["reason"]
+
+
+
+def test_direction_remains_blocked_if_load_slice_is_not_executable(tmp_path):
+    root = tmp_path / "direction-requests"
+    root.mkdir()
+    path = root / "o__r.json"
+    path.write_text(json.dumps({
+        "status": "DIRECTION_REQUIRED", "repository": "o/r",
+        "exact_head": "abc",
+    }))
+    for execution in (
+        {"status": "DIRECTION_REQUIRED", "reason": "NO_EXECUTABLE_SLICE"},
+        {"status": "NO_WORK", "reason": "ROADMAP_EXHAUSTED"},
+        {"slice_id": "s1", "capability_id": "c", "repository": "o/r",
+         "exact_head": "stale", "objective": "work",
+         "acceptance": ["passes"]},
+        {"slice_id": "s1", "capability_id": "c", "repository": "o/r",
+         "exact_head": "abc", "objective": "work", "acceptance": []},
+        {},
+    ):
+        result = replenish_frontiers(
+            tmp_path / "ws", tmp_path,
+            compile_fn=lambda *_: {"repositories": {
+                "o/r": {"status": "COMPILED", "exact_head": "abc"},
+            }},
+            load_slice_fn=lambda *_: execution,
+        )
+        assert result["repositories"]["o/r"]["status"] == "DIRECTION_REQUIRED"
+        assert path.exists(), "incomplete authority must retain direction request"
+
+
+def test_compiled_identity_mismatch_never_launders_an_old_slice(tmp_path):
+    (tmp_path / "continuation-request.json").write_text(json.dumps({
+        "repository": "o/r", "exact_head": "abc",
+    }))
+    result = replenish_frontiers(
+        tmp_path / "ws", tmp_path,
+        compile_fn=lambda *_: {"repositories": {
+            "o/r": {"status": "COMPILED", "exact_head": "new"},
+        }},
+        load_slice_fn=lambda *_: {
+            "slice_id": "s1", "capability_id": "c", "repository": "o/r",
+            "exact_head": "abc", "objective": "work",
+            "acceptance": ["passes"],
+        },
+    )
+    assert result["repositories"]["o/r"]["reason"] == (
+        "EXECUTION_SLICE_IDENTITY_OR_AUTHORITY_INVALID"
+    )
+    assert (tmp_path / "continuation-request.json").exists()
