@@ -68,11 +68,13 @@ def test_conflicting_milestone_ref_stops(recovery):
     )
 
 
-def test_missing_owner_marker_vetoes_recovery(recovery):
+def test_missing_legacy_marker_allows_read_only_recovery_classification(recovery):
     refs, state, owner, base, target = recovery
     (owner / "human-mode.json").unlink()
-    with pytest.raises(ValueError, match="OWNER_CONTROL_VETO"):
-        classify_pending_acceptances(state=state, refs=refs)
+    result = classify_pending_acceptances(state=state, refs=refs)
+    assert result[0].disposition == "MILESTONE_REF_MISSING_STOP"
+    assert refs.accepted() == base
+    assert len(state.pending_acceptances()) == 1
 
 
 def test_symlink_owner_marker_vetoes_recovery(recovery, tmp_path: Path):

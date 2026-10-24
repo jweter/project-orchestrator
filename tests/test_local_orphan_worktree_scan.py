@@ -133,11 +133,17 @@ def test_refuses_when_owner_control_active(tmp_path):
         scan_worktrees(repo, state_root)
 
 
-def test_refuses_fail_closed_when_owner_marker_missing(tmp_path):
+def test_scans_read_only_when_legacy_marker_missing(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     state_root = tmp_path / "flow-state-absent"
-    with pytest.raises(OwnerControlActive):
-        scan_worktrees(repo, state_root)
+    original_head = _git(repo, "rev-parse", "HEAD")
+    original_status = _git(repo, "status", "--porcelain")
+    results = scan_worktrees(repo, state_root)
+    entry = _by_path(results, repo)
+    assert entry.missing is False
+    assert entry.dirty is bool(original_status.strip())
+    assert _git(repo, "rev-parse", "HEAD") == original_head
+    assert _git(repo, "status", "--porcelain") == original_status
 
 
 def test_main_worktree_is_present_and_not_missing(tmp_path):
