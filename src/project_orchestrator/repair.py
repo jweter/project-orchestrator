@@ -46,7 +46,11 @@ class FailureFingerprint:
 
 def fingerprint_failure(log_text: str | None) -> FailureFingerprint:
     """Classify available log text; missing evidence must fail closed."""
-    lines = [line.strip() for line in log_text.splitlines() if line.strip()] if isinstance(log_text, str) else []
+    lines = (
+        [line.strip() for line in log_text.splitlines() if line.strip()]
+        if isinstance(log_text, str)
+        else []
+    )
     for failure_class, pattern in _PATTERNS:
         matches = tuple(line[:500] for line in lines if pattern.search(line))
         if matches:
