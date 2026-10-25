@@ -3,10 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from .evolution_bridge import normalize_worker_result
+from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
+from .state_io import atomic_json
 
 PACKET_STATES = {
     "CANDIDATE",
@@ -36,9 +39,21 @@ class WorkerTransportError(ValueError):
     pass
 
 
+def _digest(value: dict[str, Any]) -> str:
+    """Deterministic corruption checksum, NOT an authentication signature."""
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+
+
 def _event_id(event: dict[str, Any]) -> str:
-    stable = {key: event[key] for key in sorted(event) if key not in {"event_id"}}
-    return hashlib.sha256(json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:24]
+    stable = {key: event[key] for key in sorted(event) if key != "event_id"}
+    return _digest(stable)
+
+
+def _sealed(ledger: dict[str, Any]) -> dict[str, Any]:
+    ledger["seal_sha256"] = _digest({key: value for key, value in ledger.items() if key != "seal_sha256"})
+    return ledger
 
 
 def validate_packet(packet: dict[str, Any]) -> dict[str, Any]:
@@ -134,43 +149,81 @@ def dispatch_canonical_slice(
 
 
 def empty_ledger() -> dict[str, Any]:
-    return {"schema_version": 1, "packets": {}, "events": []}
+    """A sealed transport ledger, incompatible with unaudited v1 projections."""
+    return _sealed({"schema_version": 2, "revision": 0, "packets": {}, "events": []})
 
 
 def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        raise WorkerTransportError("ledger schema_version must equal 1")
-    packets = payload.get("packets")
-    events = payload.get("events")
-    if not isinstance(packets, dict) or not isinstance(events, list):
+    if not isinstance(payload, dict) or payload.get("schema_version") != 2:
+        raise WorkerTransportError("ledger requires verified schema_version 2")
+    if set(payload) != {"schema_version", "revision", "packets", "events", "seal_sha256"}:
+        raise WorkerTransportError("ledger envelope missing integrity fields")
+    if not isinstance(payload.get("packets"), dict) or not isinstance(payload.get("events"), list):
         raise WorkerTransportError("ledger packets/events have invalid shape")
-    normalized_packets: dict[str, Any] = {}
-    for packet_id, record in packets.items():
+    packets, events = payload["packets"], payload["events"]
+    revision = payload.get("revision")
+    if type(revision) is not int or revision != len(events):
+        raise WorkerTransportError("ledger revision does not match append-only history")
+    if payload.get("seal_sha256") != _digest({key: value for key, value in payload.items() if key != "seal_sha256"}):
+        raise WorkerTransportError("ledger corruption checksum mismatch")
+
+    # Deep copies prevent a caller from mutating a previously validated snapshot.
+    normalized = deepcopy(payload)
+    previous = "GENESIS"
+    latest: dict[str, str] = {}
+    for sequence, event in enumerate(normalized["events"], 1):
+        if not isinstance(event, dict) or event.get("seq") != sequence:
+            raise WorkerTransportError("ledger event sequence changed")
+        if event.get("previous_event_id") != previous or event.get("event_id") != _event_id(event):
+            raise WorkerTransportError("ledger event chain is broken")
+        packet_id = event.get("packet_id")
+        record = packets.get(packet_id)
+        if not isinstance(record, dict):
+            raise WorkerTransportError("ledger event refers to unknown packet")
+        if event.get("repository") not in {None, record.get("repository")}:
+            raise WorkerTransportError("ledger event repository mismatch")
+        if event.get("base_sha") not in {None, record.get("base_sha")}:
+            raise WorkerTransportError("ledger event base mismatch")
+        state_after = event.get("state_after")
+        if state_after not in PACKET_STATES:
+            raise WorkerTransportError("ledger event has no valid state projection")
+        latest[packet_id] = state_after
+        previous = event["event_id"]
+
+    if set(packets) != set(latest) and packets:
+        raise WorkerTransportError("ledger packet lacks dispatch history")
+    for packet_id, record in normalized["packets"].items():
         if not isinstance(record, dict) or record.get("packet_id") != packet_id:
             raise WorkerTransportError("ledger packet identity mismatch")
-        if record.get("state") not in PACKET_STATES:
-            raise WorkerTransportError("ledger packet has unsupported state")
-        normalized_packets[packet_id] = dict(record)
-    normalized_events: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for raw in events:
-        if not isinstance(raw, dict) or raw.get("event_id") != _event_id(raw):
-            raise WorkerTransportError("ledger event_id does not match event content")
-        if raw["event_id"] in seen:
-            raise WorkerTransportError("duplicate ledger event")
-        seen.add(raw["event_id"])
-        normalized_events.append(dict(raw))
-    return {"schema_version": 1, "packets": normalized_packets, "events": normalized_events}
+        if record.get("state") not in PACKET_STATES or latest.get(packet_id) != record["state"]:
+            raise WorkerTransportError("ledger packet state disagrees with history")
+        if record.get("merge_authority") is not False or record.get("product_reality_authority") is not False:
+            raise WorkerTransportError("ledger packet cannot grant promotion authority")
+        required = REQUIRED_PACKET_FIELDS - set(record)
+        if required:
+            raise WorkerTransportError("ledger packet missing immutable identity")
+        if not isinstance(record.get("paths"), list):
+            raise WorkerTransportError("ledger packet paths are not a list")
+        plan = record.get("planning")
+        if plan is not None and (
+            not isinstance(plan, dict)
+            or record.get("base_sha") != plan.get("source_head_sha")
+        ):
+            raise WorkerTransportError("ledger packet base mismatch with plan")
+    return normalized
 
 
 def _append_event(ledger: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
-    normalized = validate_ledger(ledger)
+    """Finalize a validated-and-mutated ledger snapshot with one new event."""
     material = dict(event)
+    packet_id = material["packet_id"]
+    material["seq"] = len(ledger["events"]) + 1
+    material["previous_event_id"] = ledger["events"][-1]["event_id"] if ledger["events"] else "GENESIS"
+    material["state_after"] = ledger["packets"][packet_id]["state"]
     material["event_id"] = _event_id(material)
-    if any(existing["event_id"] == material["event_id"] for existing in normalized["events"]):
-        return normalized
-    normalized["events"].append(material)
-    return normalized
+    ledger["events"].append(material)
+    ledger["revision"] = len(ledger["events"])
+    return _sealed(ledger)
 
 
 def dispatch_packet(ledger: dict[str, Any], packet: dict[str, Any], *, transport: str) -> dict[str, Any]:
@@ -191,6 +244,10 @@ def dispatch_packet(ledger: dict[str, Any], packet: dict[str, Any], *, transport
         or existing.get("paths") != work.get("paths")
     ):
         raise WorkerTransportError("issued packet changed; require a new approved packet")
+    if existing:
+        if existing["state"] == "DISPATCHED" and existing.get("transport") == transport:
+            return normalized  # idempotent request, never rewrites state or provenance
+        raise WorkerTransportError("redispatch requires new ownership and a new packet")
     normalized["packets"][work["packet_id"]] = {
         **work,
         "state": "DISPATCHED",
@@ -384,6 +441,15 @@ def transition_packet(ledger: dict[str, Any], packet_id: str, *, state: str, exa
         if len(exact_head_sha) != 40 or any(c not in "0123456789abcdef" for c in exact_head_sha):
             raise WorkerTransportError("exact_head_sha must be a lowercase 40-character SHA")
         record["exact_head_sha"] = exact_head_sha
+    current_event = normalized["events"][-1] if normalized["events"] else {}
+    if (
+        record["state"] == state and current_event.get("type") == "STATE_TRANSITION"
+        and current_event.get("packet_id") == packet_id
+        and current_event.get("state") == state
+        and current_event.get("exact_head_sha") == exact_head_sha
+        and current_event.get("evidence_ref") == evidence_ref
+    ):
+        return normalized
     record["state"] = state
     normalized["packets"][packet_id] = record
     event = {"type": "STATE_TRANSITION", "packet_id": packet_id, "state": state}
@@ -408,5 +474,33 @@ def load_ledger(path: str | Path) -> dict[str, Any]:
     return validate_ledger(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
-def write_ledger(path: str | Path, ledger: dict[str, Any]) -> None:
-    Path(path).write_text(json.dumps(validate_ledger(ledger), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+def write_ledger(
+    path: str | Path, ledger: dict[str, Any], *, expected_revision: int | None = None,
+) -> None:
+    """Atomic compare-and-swap on the EXISTING worker ledger, not a second queue.
+
+    The kernel lock serializes cooperating processes, and atomic_json keeps the
+    previous complete file intact when publication fails. A caller updating an
+    existing ledger must supply the revision it read; stale writers are rejected.
+    """
+    destination = Path(path)
+    normalized = validate_ledger(ledger)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    handle = acquire_lifecycle_lock(destination)
+    try:
+        if destination.exists():
+            current = load_ledger(destination)
+            if expected_revision is None or expected_revision != current["revision"]:
+                raise WorkerTransportError("LEDGER_REVISION_CONFLICT")
+            if current == normalized:
+                return
+            if (
+                normalized["revision"] <= current["revision"]
+                or normalized["events"][:len(current["events"])] != current["events"]
+            ):
+                raise WorkerTransportError("LEDGER_HISTORY_CONFLICT")
+        elif expected_revision not in {None, 0}:
+            raise WorkerTransportError("LEDGER_REVISION_CONFLICT")
+        atomic_json(destination, normalized)
+    finally:
+        release_lifecycle_lock(handle)

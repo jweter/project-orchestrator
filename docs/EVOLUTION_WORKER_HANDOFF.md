@@ -273,3 +273,35 @@ native exact-head full preflight, separate owner/authority/lease integration,
 and real runtime proof of a question -> answer -> resumed, verified candidate.
 Until that gate passes, this is a tested source contract, NOT proof the live
 supervisor or any Claude worker consumes it.
+
+
+## Canon S1 — ledger integrity hardening (source candidate, October 25, 2026)
+
+Independent review confirmed the original transport's v1 JSON event ledger could
+silently deduplicate repeated events, lose packet state on re-dispatch, accept
+tampered projections and overwrite concurrent writers. The S1 repair introduces
+a **schema v2** envelope for this *existing* worker-transport ledger:
+
+- monotonically sequenced event history, with prior-event hash references;
+- a deterministic corruption checksum covering the entire snapshot (not a
+  cryptographic signature or proof of who wrote it);
+- last-event state consistency and strict disallowance of merge/Product Reality
+  authority inside worker packets;
+- deep-copying validated snapshots, preserving prior in-memory records;
+- a kernel-locked, atomic/fsync'd compare-and-swap write using the existing
+  grant-lifecycle locking and state-I/O primitives;
+- safe duplicate issue/retry behavior that never resets a completed packet;
+- explicit revision/append-only conflict failures on concurrent stale writers.
+
+Legacy unaudited v1 ledgers must not be silently accepted as trustworthy v2
+records. They require a separately reviewed, verified migration strategy if a
+real existing v1 file is discovered. These v2 checks detect ordinary corruption
+and concurrent modification; an attacker who can rewrite the entire file and
+its checksums can still forge a ledger. **Independent authorization, worker
+identity, source provenance and verifier clearance are separate gates.**
+
+This S1 source fix does NOT repair the remaining review findings about legal
+state transitions, independently verified handbacks, path scope,
+cryptographic identity, lease/attempt limits or supervisor integration. It
+does not grant autonomy, create a new dispatch queue, start workers,
+modify Windows schedules, or authorize local runtime activation.
