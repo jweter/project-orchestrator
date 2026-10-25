@@ -92,3 +92,19 @@ def test_execute_non_executable_plan_is_side_effect_free(tmp_path: Path) -> None
     result = execute_repair_plan(plan, repo_root=tmp_path)
     assert result["execution_status"] == "NOT_EXECUTED"
     assert result["executions"] == []
+
+
+def test_missing_ci_log_classifies_unknown_and_disallows_auto_repair() -> None:
+    fingerprint = fingerprint_failure(None)
+    assert fingerprint.failure_class == "UNKNOWN"
+    assert fingerprint.confidence == "LOW"
+    assert fingerprint.evidence == ()
+
+    plan = build_repair_plan(
+        repository="jweter/knowledge-engine-ai",
+        log_text=None,
+        control_plane={"deterministic_repair": {"approved_classes": ["FORMAT"]}},
+    )
+    assert plan["failure_class"] == "UNKNOWN"
+    assert plan["eligible_for_auto_repair"] is False
+    assert plan["commands"] == []

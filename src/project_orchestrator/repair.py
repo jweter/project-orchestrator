@@ -44,9 +44,13 @@ class FailureFingerprint:
     evidence: tuple[str, ...]
 
 
-def fingerprint_failure(log_text: str) -> FailureFingerprint:
-    """Classify the first deterministic failure class without inventing root cause."""
-    lines = [line.strip() for line in log_text.splitlines() if line.strip()]
+def fingerprint_failure(log_text: str | None) -> FailureFingerprint:
+    """Classify available log text; missing evidence must fail closed."""
+    lines = (
+        [line.strip() for line in log_text.splitlines() if line.strip()]
+        if isinstance(log_text, str)
+        else []
+    )
     for failure_class, pattern in _PATTERNS:
         matches = tuple(line[:500] for line in lines if pattern.search(line))
         if matches:
@@ -101,7 +105,7 @@ def approved_repair_commands(control_plane: dict[str, Any], failure_class: str) 
 def build_repair_plan(
     *,
     repository: str,
-    log_text: str,
+    log_text: str | None,
     control_plane: dict[str, Any],
     iteration: int = 1,
 ) -> dict[str, Any]:
