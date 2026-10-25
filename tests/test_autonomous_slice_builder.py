@@ -389,6 +389,9 @@ def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
 
 def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -405,6 +408,9 @@ def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeyp
 def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -428,6 +434,9 @@ def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, mo
 def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -457,6 +466,9 @@ def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, mon
 def test_build_once_retains_runner_output_when_success_makes_no_changes(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -872,3 +884,39 @@ def test_finish_grant_lifecycle_preserves_transport_pending_for_recovery(tmp_pat
         assert record["recovery_state"]=="PENDING"
         assert record["failure_class"]=="PROMOTION_TRANSPORT_PENDING"
         assert record["result_status"]==status
+
+
+@pytest.mark.parametrize("owner_status", ["OWNER_CONTROL_ACTIVE", "OWNER_CONTROL_UNVERIFIED"])
+def test_injected_owner_veto_precedes_grant_checkout_and_worker_dispatch(tmp_path, monkeypatch, owner_status):
+    """Test-only owner-state injection cannot disable the production early veto.
+
+    Downstream-grant tests inject deterministic owner-state responses at
+    the IO seam. This test covers both veto statuses: active and
+    unverified, preventing idle probing, checkout, selection or execution.
+    """
+    import scripts.autonomous_slice_builder as builder
+
+    probes = []
+
+    def forbidden(name):
+        def call(*_args, **_kwargs):
+            probes.append(name)
+            raise AssertionError("owner veto must prevent " + name)
+        return call
+
+    monkeypatch.setattr(builder, "owner_control_status", lambda _root: owner_status)
+    monkeypatch.setattr(builder, "windows_idle_seconds", forbidden("idle probe"))
+    monkeypatch.setattr(builder, "select_repo", forbidden("repository selection"))
+    monkeypatch.setattr(builder, "ensure_workspace", forbidden("worktree mutation"))
+    monkeypatch.setattr(builder, "run", forbidden("git execution"))
+    monkeypatch.setattr(builder, "run_builder", forbidden("worker execution"))
+    result = builder.build_once(
+        tmp_path / "workspaces",
+        tmp_path / "builder-state.json",
+        eligible_repos={"jweter/rocksmith-cdlc-generator": "a" * 40},
+        execution_grant=tmp_path / "grant.json",
+    )
+    assert result == {"status": "USER_ACTIVE", "manual_human_mode": True}
+    assert probes == []
+    assert not (tmp_path / "builder-state.json").exists()
+    assert not (tmp_path / "grant.json").exists()
