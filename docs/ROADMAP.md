@@ -1,5 +1,10 @@
 # Roadmap
 
+## Owner-approved portfolio direction (2026-10-25)
+
+Iron God is a first-class hourly development workstream alongside product repositories. Isolated manual development while the supervisor is paused is permitted only through independently authorized interfaces and nonconflicting workspaces; it does not grant autonomous execution. Investigate all recorded Canon S2 failures without weakening safety tests. Product objectives and bounded slices are recorded in `docs/OWNER_APPROVED_ROADMAP_2026-10-25.md`. Reconcile newer authoritative local work before accepting or merging.
+
+
 ## v1 — Portfolio brain
 
 - [x] Canonical three-project / five-repository inventory
