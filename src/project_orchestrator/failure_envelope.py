@@ -30,7 +30,11 @@ def first_meaningful_diagnostic(log_text: str | None) -> str:
     fingerprint = fingerprint_failure(log_text)
     if fingerprint.evidence:
         return sanitize_diagnostic(fingerprint.evidence[0])
-    lines = [line for line in log_text.splitlines() if line.strip()] if isinstance(log_text, str) else []
+    lines = (
+        [line for line in log_text.splitlines() if line.strip()]
+        if isinstance(log_text, str)
+        else []
+    )
     return sanitize_diagnostic(lines[-1] if lines else "")
 
 
