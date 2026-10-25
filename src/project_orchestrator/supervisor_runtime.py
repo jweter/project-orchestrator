@@ -14,6 +14,7 @@ from typing import Callable
 
 from .decision_learning import compile_decision_learning
 from .decision_outcome import attribute as attribute_decision_outcome
+from .execution_authority import evaluate_execution_authority
 from .grant_issuance import finalize_unclaimed_grant
 from .grant_lifecycle import recovery_lifecycle_write_budget
 from .jev_evidence import load_jsonl
@@ -885,3 +886,34 @@ def prepare_actor_revision_rollover(
     })
     return {"requested": True, "status": "WAITING_FOR_WORKERS" if active_workers else "DRAINING_FOR_TAKEOVER",
             "active_workers": active_workers}
+
+
+def authorized_dispatch_products(
+    state_root: Path,
+    products: list[str],
+    decide: Callable[[], object] = evaluate_execution_authority,
+) -> list[str]:
+    """Return dispatchable products only when the single execution decision permits.
+
+    Activation readiness says which products *could* advance; it is not
+    authority. The controller + owner decision is re-evaluated every pass, so a
+    revocation stops new dispatch at the next iteration. Harvest and recovery
+    of already-running work are unaffected. The decision is recorded for the
+    owner and the desktop proof; a failing or malformed decision denies.
+    """
+    try:
+        decision = decide()
+        permitted = getattr(decision, "permitted", False) is True
+        reasons = [str(r) for r in (getattr(decision, "reasons", ()) or ())]
+    except Exception:
+        permitted, reasons = False, ["EXECUTION_AUTHORITY_UNVERIFIED"]
+    if not permitted and not reasons:
+        reasons = ["EXECUTION_AUTHORITY_DENIED"]
+    atomic_json(state_root / "supervisor-execution-authority.json", {
+        "schema_version": 1,
+        "permitted": permitted,
+        "reasons": reasons,
+        "candidate_products": list(products),
+        "observed_at_utc": datetime.now(UTC).isoformat(),
+    })
+    return list(products) if permitted else []
