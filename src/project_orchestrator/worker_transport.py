@@ -17,6 +17,7 @@ PACKET_STATES = {
     "RESERVED",
     "DISPATCHED",
     "IMPLEMENTING",
+    "HANDED_BACK",
     "WAITING_FOR_SUPERVISOR",
     "PREFLIGHT_UNVERIFIED",
     "PREFLIGHT_GREEN",
@@ -32,6 +33,30 @@ PACKET_STATES = {
     "CANCELLED",
 }
 TERMINAL_STATES = {"MERGED", "LEARNING_EXTRACTED", "CANCELLED"}
+
+# Only metadata lifecycle edges are permitted here. Promotion requires a
+# separately authorized independent verifier, implemented after this slice.
+ALLOWED_STATE_EDGES = {
+    "DISPATCHED": frozenset({"IMPLEMENTING", "CANCELLED"}),
+    "IMPLEMENTING": frozenset({"CANCELLED"}),
+    "HANDED_BACK": frozenset({"PREFLIGHT_UNVERIFIED", "RECONCILE_REQUIRED", "CANCELLED"}),
+    "PREFLIGHT_UNVERIFIED": frozenset({"BLOCKED", "RECONCILE_REQUIRED", "CANCELLED"}),
+    "BLOCKED": frozenset({"RECONCILE_REQUIRED", "CANCELLED"}),
+    "PARKED": frozenset({"RECONCILE_REQUIRED", "CANCELLED"}),
+    "RECONCILE_REQUIRED": frozenset({"CANCELLED"}),
+}
+WORKER_RESULT_STATES = {
+    "PASS": "HANDED_BACK",  # worker PASS is NOT independently verified
+    "FAIL": "BLOCKED",
+    "REVIEW_REQUIRED": "BLOCKED",
+    "PRODUCT_REALITY_REQUIRED": "PARKED",
+    "ENVIRONMENT_FAILURE": "PARKED",
+}
+PRIVILEGED_STATES = frozenset({
+    "PREFLIGHT_GREEN", "PR_OPEN", "CI_PENDING", "GREEN",
+    "PROMOTION_READY", "MERGED", "LEARNING_EXTRACTED",
+})
+
 REQUIRED_PACKET_FIELDS = {"packet_id", "project", "repository", "source_ref", "base_sha", "branch", "task"}
 
 
@@ -153,6 +178,77 @@ def empty_ledger() -> dict[str, Any]:
     return _sealed({"schema_version": 2, "revision": 0, "packets": {}, "events": []})
 
 
+def _check_event_transition(
+    event: dict[str, Any], prior: str | None, *,
+    pending_questions: dict[str, tuple[str, str]],
+    prior_worker_status: dict[str, str],
+    retries: dict[str, int],
+    base_sha: str,
+) -> None:
+    """Replay the event's claimed state through the same fail-closed rules."""
+    kind = event.get("type")
+    packet_id = event["packet_id"]
+    after = event["state_after"]
+    if kind == "DISPATCHED":
+        if prior is not None or after != "DISPATCHED":
+            raise WorkerTransportError("invalid initial dispatch history")
+        retries[packet_id] = 1
+    elif kind == "RETRY":
+        if prior not in {"BLOCKED", "PARKED"} or after != "DISPATCHED":
+            raise WorkerTransportError("invalid retry transition history")
+        if prior_worker_status.get(packet_id) not in {"FAIL", "ENVIRONMENT_FAILURE"}:
+            raise WorkerTransportError("non-retryable worker outcome in event history")
+        count = retries.get(packet_id, 0) + 1
+        if not 2 <= count <= 3 or event.get("attempt_count") != count:
+            raise WorkerTransportError("retry history exceeds bounded attempts")
+        if not isinstance(event.get("evidence_ref"), str) or not event["evidence_ref"]:
+            raise WorkerTransportError("retry evidence required")
+        retries[packet_id] = count
+    elif kind == "WORKER_QUESTION":
+        if prior not in {"DISPATCHED", "IMPLEMENTING"} or after != "WAITING_FOR_SUPERVISOR":
+            raise WorkerTransportError("question from non-active worker")
+        if packet_id in pending_questions or not event.get("question_id"):
+            raise WorkerTransportError("unpaired or unidentified worker question")
+        pending_questions[packet_id] = (str(event["question_id"]), prior)
+    elif kind == "SUPERVISOR_RESPONSE":
+        question = pending_questions.pop(packet_id, None)
+        if prior != "WAITING_FOR_SUPERVISOR" or question is None:
+            raise WorkerTransportError("supervisor response without pending question")
+        if event.get("question_id") != question[0]:
+            raise WorkerTransportError("supervisor answered a different question")
+        target = {
+            "CONTINUE_WITHIN_SCOPE": question[1],
+            "REPLAN_REQUIRED": "RECONCILE_REQUIRED",
+            "PARK_SLICE": "PARKED",
+        }.get(event.get("decision"))
+        if target != after:
+            raise WorkerTransportError("supervisor decision/state mismatch")
+    elif kind == "WORKER_RESULT":
+        if prior not in {"DISPATCHED", "IMPLEMENTING"}:
+            raise WorkerTransportError("worker result recorded without active job")
+        status = event.get("status")
+        if status not in WORKER_RESULT_STATES or WORKER_RESULT_STATES[status] != after:
+            raise WorkerTransportError("worker-result status illegally promoted")
+        head = event.get("exact_head_sha")
+        if not isinstance(head, str) or len(head) != 40 or any(c not in "0123456789abcdef" for c in head):
+            raise WorkerTransportError("worker-result head invalid")
+        if status == "PASS" and head == base_sha:
+            raise WorkerTransportError("unchanged-head PASS is not completed code")
+        if not event.get("evidence_ref") or not event.get("observed_at"):
+            raise WorkerTransportError("worker-result evidence required")
+        prior_worker_status[packet_id] = status
+    elif kind == "STATE_TRANSITION":
+        if after != event.get("state") or after not in ALLOWED_STATE_EDGES.get(prior, frozenset()):
+            raise WorkerTransportError("illegal state transition in replay")
+        if after in {"CANCELLED", "RECONCILE_REQUIRED", "BLOCKED", "PREFLIGHT_UNVERIFIED"}:
+            if not event.get("evidence_ref"):
+                raise WorkerTransportError("state transition missing evidence")
+        if after == "PREFLIGHT_UNVERIFIED" and prior_worker_status.get(packet_id) != "PASS":
+            raise WorkerTransportError("preflight started without handback PASS")
+    else:
+        raise WorkerTransportError("unsupported event type in worker transport ledger")
+
+
 def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(payload, dict) or payload.get("schema_version") != 2:
         raise WorkerTransportError("ledger requires verified schema_version 2")
@@ -171,6 +267,10 @@ def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
     normalized = deepcopy(payload)
     previous = "GENESIS"
     latest: dict[str, str] = {}
+    pending_questions: dict[str, tuple[str, str]] = {}
+    prior_worker_status: dict[str, str] = {}
+    last_worker_head: dict[str, str] = {}
+    retries: dict[str, int] = {}
     for sequence, event in enumerate(normalized["events"], 1):
         if not isinstance(event, dict) or event.get("seq") != sequence:
             raise WorkerTransportError("ledger event sequence changed")
@@ -187,6 +287,18 @@ def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
         state_after = event.get("state_after")
         if state_after not in PACKET_STATES:
             raise WorkerTransportError("ledger event has no valid state projection")
+        _check_event_transition(
+            event, latest.get(packet_id),
+            pending_questions=pending_questions,
+            prior_worker_status=prior_worker_status,
+            retries=retries,
+            base_sha=record["base_sha"],
+        )
+        if event["type"] == "WORKER_RESULT":
+            last_worker_head[packet_id] = event["exact_head_sha"]
+        if event["type"] == "STATE_TRANSITION" and event.get("exact_head_sha") is not None:
+            if last_worker_head.get(packet_id) != event["exact_head_sha"]:
+                raise WorkerTransportError("state event attempted to forge a new candidate head")
         latest[packet_id] = state_after
         previous = event["event_id"]
 
@@ -199,6 +311,16 @@ def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
             raise WorkerTransportError("ledger packet state disagrees with history")
         if record.get("merge_authority") is not False or record.get("product_reality_authority") is not False:
             raise WorkerTransportError("ledger packet cannot grant promotion authority")
+        if record.get("attempt_count") != retries.get(packet_id):
+            raise WorkerTransportError("ledger retry count disagrees with event history")
+        if record.get("worker_status") != prior_worker_status.get(packet_id):
+            raise WorkerTransportError("ledger worker-status projection differs from handback")
+        if record.get("exact_head_sha") != last_worker_head.get(packet_id):
+            raise WorkerTransportError("ledger head projection differs from worker handback")
+        if record.get("independent_verification") not in {None, "NOT_VERIFIED"}:
+            raise WorkerTransportError("independent verification not issued in Canon S2")
+        if (packet_id in pending_questions) != (record["state"] == "WAITING_FOR_SUPERVISOR"):
+            raise WorkerTransportError("pending worker question disagrees with packet state")
         required = REQUIRED_PACKET_FIELDS - set(record)
         if required:
             raise WorkerTransportError("ledger packet missing immutable identity")
@@ -253,6 +375,7 @@ def dispatch_packet(ledger: dict[str, Any], packet: dict[str, Any], *, transport
         "state": "DISPATCHED",
         "transport": transport,
         "exact_head_sha": existing.get("exact_head_sha") if existing else None,
+        "attempt_count": 1,
     }
     return _append_event(normalized, {
         "type": "DISPATCHED",
@@ -402,19 +525,19 @@ def record_worker_result(ledger: dict[str, Any], packet_id: str, worker_result: 
         raise WorkerTransportError("worker result project/repository mismatch")
     if result.get("branch") not in {None, record["branch"]}:
         raise WorkerTransportError("worker result branch mismatch")
-    if record["state"] in TERMINAL_STATES:
-        raise WorkerTransportError("terminal packet cannot accept worker result")
-    if record["state"] == "WAITING_FOR_SUPERVISOR" or record.get("supervisor_question", {}).get("decision") in {"PARK_SLICE", "REPLAN_REQUIRED"}:
+    if record["state"] not in {"DISPATCHED", "IMPLEMENTING"}:
+        raise WorkerTransportError("worker result requires active dispatched/implementing packet")
+    if record.get("supervisor_question", {}).get("decision") in {"PARK_SLICE", "REPLAN_REQUIRED"}:
         raise WorkerTransportError("supervisor question must be resolved before worker result")
+    if result["status"] == "PASS" and result["head_sha"] == record["base_sha"]:
+        raise WorkerTransportError("worker PASS cannot claim unchanged base as completed code")
 
-    state = {
-        "PASS": "PREFLIGHT_GREEN",
-        "FAIL": "BLOCKED",
-        "REVIEW_REQUIRED": "BLOCKED",
-        "PRODUCT_REALITY_REQUIRED": "PARKED",
-        "ENVIRONMENT_FAILURE": "PARKED",
-    }[result["status"]]
-    record = {**record, "state": state, "exact_head_sha": result["head_sha"], "worker_status": result["status"], "evidence_ref": result["evidence_ref"]}
+    state = WORKER_RESULT_STATES[result["status"]]
+    record = {
+        **record, "state": state, "exact_head_sha": result["head_sha"],
+        "worker_status": result["status"], "evidence_ref": result["evidence_ref"],
+        "worker_observed_at": result["observed_at"], "independent_verification": "NOT_VERIFIED",
+    }
     normalized["packets"][packet_id] = record
     return _append_event(normalized, {
         "type": "WORKER_RESULT",
@@ -423,6 +546,7 @@ def record_worker_result(ledger: dict[str, Any], packet_id: str, worker_result: 
         "exact_head_sha": result["head_sha"],
         "status": result["status"],
         "evidence_ref": result["evidence_ref"],
+        "observed_at": result["observed_at"],
     })
 
 
@@ -433,23 +557,40 @@ def transition_packet(ledger: dict[str, Any], packet_id: str, *, state: str, exa
     record = normalized["packets"].get(packet_id)
     if not record:
         raise WorkerTransportError("unknown packet")
-    if record["state"] in TERMINAL_STATES and state != record["state"]:
+    if record["state"] in TERMINAL_STATES:
         raise WorkerTransportError("terminal packet cannot transition")
     if record["state"] == "WAITING_FOR_SUPERVISOR" or record.get("supervisor_question", {}).get("decision") in {"PARK_SLICE", "REPLAN_REQUIRED"}:
         raise WorkerTransportError("supervisor question prevents arbitrary state transitions")
-    if exact_head_sha is not None:
-        if len(exact_head_sha) != 40 or any(c not in "0123456789abcdef" for c in exact_head_sha):
-            raise WorkerTransportError("exact_head_sha must be a lowercase 40-character SHA")
-        record["exact_head_sha"] = exact_head_sha
-    current_event = normalized["events"][-1] if normalized["events"] else {}
-    if (
-        record["state"] == state and current_event.get("type") == "STATE_TRANSITION"
-        and current_event.get("packet_id") == packet_id
-        and current_event.get("state") == state
-        and current_event.get("exact_head_sha") == exact_head_sha
-        and current_event.get("evidence_ref") == evidence_ref
+    last_event = normalized["events"][-1] if normalized["events"] else {}
+    if state == record["state"]:
+        if (
+            last_event.get("type") == "STATE_TRANSITION"
+            and last_event.get("packet_id") == packet_id
+            and last_event.get("state") == state
+            and last_event.get("exact_head_sha") == exact_head_sha
+            and last_event.get("evidence_ref") == evidence_ref
+        ):
+            return normalized  # exact duplicate of the immediately prior transition
+        raise WorkerTransportError("state replay requires exact recorded transition identity")
+    if state not in ALLOWED_STATE_EDGES.get(record["state"], frozenset()):
+        raise WorkerTransportError("ILLEGAL_STATE_TRANSITION: independent gate required")
+    if state in {"CANCELLED", "RECONCILE_REQUIRED", "BLOCKED", "PREFLIGHT_UNVERIFIED"}:
+        if not isinstance(evidence_ref, str) or not evidence_ref.strip():
+            raise WorkerTransportError("state transition requires evidence reference")
+    if state == "PREFLIGHT_UNVERIFIED" and (
+        record.get("worker_status") != "PASS"
+        or record.get("independent_verification") != "NOT_VERIFIED"
+        or not record.get("exact_head_sha")
     ):
-        return normalized
+        raise WorkerTransportError("preflight requires unverified worker handback first")
+    if exact_head_sha is not None and exact_head_sha != record.get("exact_head_sha"):
+        raise WorkerTransportError("state transition cannot rewrite exact worker head")
+    if exact_head_sha is not None and (
+        not isinstance(exact_head_sha, str)
+        or len(exact_head_sha) != 40
+        or any(c not in "0123456789abcdef" for c in exact_head_sha)
+    ):
+        raise WorkerTransportError("exact_head_sha must be a lowercase 40-character SHA")
     record["state"] = state
     normalized["packets"][packet_id] = record
     event = {"type": "STATE_TRANSITION", "packet_id": packet_id, "state": state}
@@ -460,13 +601,54 @@ def transition_packet(ledger: dict[str, Any], packet_id: str, *, state: str, exa
     return _append_event(normalized, event)
 
 
+def retry_packet(
+    ledger: dict[str, Any], packet_id: str, *,
+    expected_base_sha: str, remediation_evidence_ref: str,
+) -> dict[str, Any]:
+    """Explicit bounded data-only retry; never grants or launches a worker.
+
+    A real dispatcher must separately verify owner authority, current Git
+    identity, leases and paths before ever executing a retry.
+    """
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if not record or record["state"] not in {"BLOCKED", "PARKED"}:
+        raise WorkerTransportError("retry requires a failed or environment-parked packet")
+    if record.get("worker_status") not in {"FAIL", "ENVIRONMENT_FAILURE"}:
+        raise WorkerTransportError("human/review decisions cannot be retried automatically")
+    if record.get("supervisor_question"):
+        raise WorkerTransportError("supervisor-parked questions require approved successor")
+    if record["base_sha"] != expected_base_sha:
+        raise WorkerTransportError("retry exact base mismatch")
+    evidence = _safe_handoff_text(remediation_evidence_ref, "remediation_evidence_ref")
+    attempts = record.get("attempt_count", 1)
+    if type(attempts) is not int or attempts >= 3:
+        raise WorkerTransportError("retry budget exhausted; replan required")
+    previous = {
+        "attempt": attempts, "status": record.get("worker_status"),
+        "head": record.get("exact_head_sha"),
+        "evidence_ref": record.get("evidence_ref"),
+    }
+    record["previous_results"] = [*record.get("previous_results", []), previous]
+    record["attempt_count"] = attempts + 1
+    record["state"] = "DISPATCHED"
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "RETRY", "packet_id": packet_id,
+        "repository": record["repository"], "base_sha": record["base_sha"],
+        "attempt_count": record["attempt_count"], "evidence_ref": evidence,
+    })
+
+
 def requeueable_packets(ledger: dict[str, Any]) -> list[dict[str, Any]]:
     normalized = validate_ledger(ledger)
-    allowed = {"BLOCKED", "PARKED", "RECONCILE_REQUIRED", "PREFLIGHT_UNVERIFIED"}
     return [
-        dict(record) for _, record in sorted(normalized["packets"].items())
-        if record["state"] in allowed
-        and record.get("supervisor_question", {}).get("decision") not in {"PARK_SLICE", "REPLAN_REQUIRED"}
+        deepcopy(record) for _, record in sorted(normalized["packets"].items())
+        if record["state"] in {"BLOCKED", "PARKED"}
+        and record.get("worker_status") in {"FAIL", "ENVIRONMENT_FAILURE"}
+        and not record.get("supervisor_question")
+        and type(record.get("attempt_count")) is int
+        and record["attempt_count"] < 3
     ]
 
 

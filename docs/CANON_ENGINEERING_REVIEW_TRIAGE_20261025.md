@@ -11,7 +11,7 @@ it is not equivalent to independent exact-head native verification on Azathoth.
 | Gate | Review IDs | Independent next action | State |
 |---|---|---|---|
 | S1 Ledger integrity | C6 C7 C8 | Ordered event history, sealed packet projection, atomic file replace, lock and compare-and-swap | SOURCE FIX + focused native tests passing; NOT accepted/deployed |
-| S2 State transition rules | C3 C4 C5 | Explicit legal edges, no silent re-dispatch from completed states, worker evidence stays unverified until independent review | OPEN |
+| S2 State transition rules | C3 C4 C5 | Explicit legal edges, no silent re-dispatch from completed states, worker PASS hands back unverified until independent review | SOURCE FIX + native focused PASS; NOT accepted/deployed |
 | S3 Plan/secret/path hardening | C9 C10 C19 | Windows/UNC/glob path authority, secret corpus, verification-command provenance | OPEN |
 | S4 Worker identity / stall / questions | C11 C12 C13 | Bound worker claim, heartbeat/expiry, retries/cap, answered-question replay | OPEN |
 | S5 Admission conflicts | C14, H4 | Live exact-head and leased path/branch overlap proof | OPEN |
