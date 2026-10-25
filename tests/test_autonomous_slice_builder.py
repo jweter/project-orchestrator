@@ -349,7 +349,7 @@ def test_finish_grant_lifecycle_records_failure(tmp_path):
     assert record["state"]=="FAILED"
     assert record["result_status"]=="PREFLIGHT_FAILED"
 
-def test_heartbeat_grant_renews_claim(tmp_path):
+def test_heartbeat_grant_renews_claim(tmp_path, monkeypatch):
     import json, threading
     import scripts.autonomous_slice_builder as builder
     grant=tmp_path/"hands-off-execution-grant.json"
@@ -362,17 +362,37 @@ def test_heartbeat_grant_renews_claim(tmp_path):
     thread=threading.Thread(target=builder.heartbeat_grant,args=(grant,stop,0.01))
     thread.start()
     import time
+    # Deterministically exercise a transient Windows sharing denial on the
+    # polling reader only; the actual heartbeat writer retains full authority.
+    original_read=type(lifecycle).read_text
+    injected={"remaining":1}
+    def read_with_transient_sharing_denial(path,*args,**kwargs):
+        if path == lifecycle and threading.current_thread() is threading.main_thread() and injected["remaining"]:
+            injected["remaining"]-=1
+            raise PermissionError(13,"synthetic transient Windows sharing denial",str(path))
+        return original_read(path,*args,**kwargs)
+    monkeypatch.setattr(type(lifecycle),"read_text",read_with_transient_sharing_denial)
     deadline=time.monotonic()+1.0
     renewed=False
-    while time.monotonic()<deadline:
-        record=json.loads(lifecycle.read_text())["grants"]["g1"]
-        if record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00":
-            renewed=True
-            break
-        time.sleep(0.01)
-    stop.set()
-    thread.join(timeout=1)
+    try:
+        while time.monotonic()<deadline:
+            try:
+                record=json.loads(lifecycle.read_text())["grants"]["g1"]
+            except PermissionError:
+                # Windows can briefly deny a test reader during an atomic
+                # heartbeat replace. Keep the same strict one-second bound:
+                # persistent unreadability still fails this regression.
+                time.sleep(0.01)
+                continue
+            if record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00":
+                renewed=True
+                break
+            time.sleep(0.01)
+    finally:
+        stop.set()
+        thread.join(timeout=1)
     assert renewed
+    assert injected["remaining"] == 0
     assert not thread.is_alive()
 
 def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
