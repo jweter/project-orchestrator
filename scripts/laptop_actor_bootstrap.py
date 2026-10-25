@@ -497,11 +497,15 @@ def run_idle_session(
     max_memory_percent: float = 85.0,
     min_disk_free_gb: float = 10.0,
 ) -> int:
-    """Run bounded actor cycles while the Windows session remains idle.
+    """Stay resident and run bounded actor cycles only while the session is idle.
 
-    The first cycle is allowed only after the configured idle threshold. After that,
-    the actor checks for newly queued work at a short cadence and yields as soon as
-    keyboard/mouse activity drops the idle time below the threshold.
+    A launch normally coincides with owner activity (the owner just clicked
+    Take the Wheel), so the actor must not exit when the idle threshold is
+    unmet: the launcher verifies a resident actor process. While the owner is
+    active the actor holds its singleton lock and only polls; it performs no
+    checkout update, hygiene, or bridge dispatch. The first idle window
+    prepares the pinned checkout once; later owner activity pauses new cycles
+    without ending the process. Residency is not execution authority.
     """
     threshold = max(0, min_idle_seconds)
     cadence = max(30, poll_seconds)
@@ -509,26 +513,11 @@ def run_idle_session(
     lock_fd = acquire_single_instance(state_dir)
     if lock_fd is None:
         return 0
-    idle = windows_idle_seconds()
-    if idle is not None and idle < threshold:
-        emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
-        release_single_instance(state_dir, lock_fd)
-        return 0
 
     failures = 0
+    prepared = False
+    waiting = False
     try:
-        maintenance, maintenance_status = steward_maintenance_active()
-        if maintenance:
-            emit_state(
-                state_dir,
-                "COOLDOWN",
-                reason="steward_maintenance",
-                maintenance_status=maintenance_status,
-            )
-            return 0
-        emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
-        update_actor_checkout(actor_repo)
-        run_daily_hygiene(state_dir)
         while True:
             maintenance, maintenance_status = steward_maintenance_active()
             if maintenance:
@@ -541,8 +530,18 @@ def run_idle_session(
                 return 0
             idle = windows_idle_seconds()
             if idle is not None and idle < threshold:
-                emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
-                return 0
+                # Record each waiting episode once; polling must not flood telemetry.
+                if not waiting:
+                    emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle, resident=True)
+                    waiting = True
+                time.sleep(cadence)
+                continue
+            waiting = False
+            if not prepared:
+                emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
+                update_actor_checkout(actor_repo)
+                run_daily_hygiene(state_dir)
+                prepared = True
             resources = system_resource_snapshot()
             assessment = assess_machine_health(resources)
             if not assessment["allow_new_engineering"]:

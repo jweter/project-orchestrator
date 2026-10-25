@@ -50,18 +50,88 @@ def test_bridge_requires_actor_owned_scripts(tmp_path):
         bootstrap.execute_bridge_once(actor, tmp_path / "queue", tmp_path / "work")
 
 
+class _StopResidentActor(Exception):
+    """Test-only exit from the resident actor loop (production is killed externally)."""
+
+
+def stop_after_sleeps(count, sleeps, on_sleep=None):
+    def fake_sleep(value):
+        sleeps.append(value)
+        if on_sleep is not None:
+            on_sleep(value)
+        if len(sleeps) >= count:
+            raise _StopResidentActor()
+    return fake_sleep
+
+
+def healthy_resources(monkeypatch):
+    monkeypatch.setattr(
+        bootstrap,
+        "system_resource_snapshot",
+        lambda: {"memory_percent": 10.0, "disk_free_gb": 100.0},
+    )
+
+
+def telemetry_states(state_dir):
+    import json
+    path = state_dir / "actor-telemetry.jsonl"
+    return [json.loads(line)["state"] for line in path.read_text(encoding="utf-8").splitlines()]
+
+
 def test_idle_session_does_not_start_before_threshold(monkeypatch, tmp_path):
+    sleeps = []
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 120.0)
     monkeypatch.setattr(
         bootstrap,
         "update_actor_checkout",
         lambda *_: pytest.fail("checkout must not update while user is active"),
     )
-    assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60) == 0
+    monkeypatch.setattr(
+        bootstrap,
+        "execute_bridge_once",
+        lambda *_: pytest.fail("no dispatch while user is active"),
+    )
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state")
+    assert sleeps == [60, 60, 60]
+    # One waiting episode is recorded once, not once per poll.
+    assert telemetry_states(tmp_path / "state") == ["USER_ACTIVE"]
+
+
+def test_take_the_wheel_launch_stays_resident_until_idle_then_works(monkeypatch, tmp_path):
+    """Regression: the owner's click leaves idle ~2s; the actor exited at once and
+    Take the Wheel rolled back with TAKE_THE_WHEEL_RUNTIME_NOT_VERIFIED."""
+    state = tmp_path / "state"
+    idle_values = iter([1.9, 2.2, 45.0, 400.0])
+    events = []
+    sleeps = []
+
+    def lock_held_while_waiting(_value):
+        if not events:
+            assert bootstrap.acquire_single_instance(state) is None
+
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: events.append("update") or SHA)
+    monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: events.append("hygiene"))
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: events.append("bridge") or 0)
+    healthy_resources(monkeypatch)
+    monkeypatch.setattr(
+        bootstrap.time, "sleep", stop_after_sleeps(4, sleeps, lock_held_while_waiting)
+    )
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, state)
+    assert sleeps == [60, 60, 60, 60]
+    assert events == ["update", "hygiene", "bridge"]
+    assert telemetry_states(state)[:2] == ["USER_ACTIVE", "IDLE_AVAILABLE"]
+    # The kernel singleton is released once the resident actor ends.
+    reacquired = bootstrap.acquire_single_instance(state)
+    assert reacquired is not None
+    bootstrap.release_single_instance(state, reacquired)
 
 
 def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, tmp_path):
-    idle_values = iter([600.0, 600.0, 600.0, 5.0])
+    idle_values = iter([600.0, 600.0, 5.0, 5.0, 600.0])
     cycles = []
     updates = []
     sleeps = []
@@ -72,17 +142,17 @@ def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, 
         "execute_bridge_once",
         lambda *_: cycles.append(True) or 0,
     )
-    monkeypatch.setattr(bootstrap.time, "sleep", lambda value: sleeps.append(value))
-    monkeypatch.setattr(
-        bootstrap,
-        "system_resource_snapshot",
-        lambda: {"memory_percent": 10.0, "disk_free_gb": 100.0},
-    )
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(5, sleeps))
+    healthy_resources(monkeypatch)
 
-    assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60) == 0
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state")
+    # Owner activity paused new cycles without exiting; idle resumed work
+    # without re-preparing the pinned checkout.
     assert len(updates) == 1
-    assert len(cycles) == 2
-    assert sleeps == [60, 60]
+    assert len(cycles) == 3
+    assert sleeps == [60, 60, 60, 60, 60]
+    assert telemetry_states(tmp_path / "state").count("USER_ACTIVE") == 1
 
 
 def test_idle_session_stops_on_bridge_failure(monkeypatch, tmp_path):
@@ -145,15 +215,18 @@ def test_emit_state_writes_structured_jsonl(tmp_path):
 
 
 def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
-    idle_values = iter([600.0, 600.0, 600.0, 5.0])
+    idle_values = iter([600.0, 600.0, 5.0])
     results = iter([2, 0])
     sleeps = []
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: next(results))
-    monkeypatch.setattr(bootstrap.time, "sleep", lambda value: sleeps.append(value))
-    assert bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120) == 0
-    assert sleeps == [60, 60]
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
+    healthy_resources(monkeypatch)
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120)
+    # Failure backoff (60, capped at 120), recovery cadence, then a resident wait.
+    assert sleeps == [60, 60, 60]
 
 
 def test_resource_budget_blocks_high_memory():
