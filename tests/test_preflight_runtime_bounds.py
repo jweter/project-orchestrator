@@ -6,8 +6,10 @@ import engineering.preflight as preflight
 
 def test_tests_get_longer_but_bounded_timeout():
     assert preflight.timeout_for_check("tests") == preflight.TEST_CHECK_TIMEOUT_SECONDS
+    assert preflight.timeout_for_check("controller_proofs") == preflight.CONTROLLER_PROOFS_TIMEOUT_SECONDS
     assert preflight.timeout_for_check("control_plane") == preflight.DEFAULT_CHECK_TIMEOUT_SECONDS
-    assert preflight.TEST_CHECK_TIMEOUT_SECONDS > preflight.DEFAULT_CHECK_TIMEOUT_SECONDS
+    assert preflight.timeout_for_check("resident_dispatch_proof") == preflight.DEFAULT_CHECK_TIMEOUT_SECONDS
+    assert preflight.DEFAULT_CHECK_TIMEOUT_SECONDS < preflight.CONTROLLER_PROOFS_TIMEOUT_SECONDS < preflight.TEST_CHECK_TIMEOUT_SECONDS
 
 
 def test_run_check_classifies_timeout_fail_closed(monkeypatch):
