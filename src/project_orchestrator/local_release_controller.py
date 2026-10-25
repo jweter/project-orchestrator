@@ -96,7 +96,10 @@ def _verify_native_preflight(repo: Path, sha: str) -> dict[str, str]:
     try:
         proc = subprocess.run(
             command, cwd=repo, capture_output=True, text=True,
-            encoding="utf-8", errors="replace", check=False, timeout=1200,
+            # The complete bounded suite includes 300s controller proofs and
+            # 900s regression tests, plus validation/clone overhead. Keep an
+            # independent finite outer deadline; never silently skip gates.
+            encoding="utf-8", errors="replace", check=False, timeout=1500,
         )
     except subprocess.TimeoutExpired as exc:
         raise ReleaseError("native preflight timed out") from exc

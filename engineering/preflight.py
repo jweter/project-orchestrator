@@ -32,6 +32,9 @@ MAX_FAILURE_STREAM_CHARS = 2 * 1024 * 1024
 PREFLIGHT_ENV = os.environ.copy()
 PREFLIGHT_ENV["PYTHONPATH"] = str(SRC)
 DEFAULT_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_CHECK_TIMEOUT_SECONDS", "180"))
+# On Azathoth the unabridged 18-case controller proof took 211.30 seconds.
+# Give this safety-critical lane a distinct bounded deadline; no tests are skipped.
+CONTROLLER_PROOFS_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_CONTROLLER_PROOFS_TIMEOUT_SECONDS", "300"))
 TEST_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_TEST_TIMEOUT_SECONDS", "900"))
 
 
@@ -122,7 +125,11 @@ def write_evidence(
 
 
 def timeout_for_check(name: str) -> int:
-    return TEST_CHECK_TIMEOUT_SECONDS if name == "tests" else DEFAULT_CHECK_TIMEOUT_SECONDS
+    if name == "tests":
+        return TEST_CHECK_TIMEOUT_SECONDS
+    if name == "controller_proofs":
+        return CONTROLLER_PROOFS_TIMEOUT_SECONDS
+    return DEFAULT_CHECK_TIMEOUT_SECONDS
 
 
 def exact_head_fence_result(expected_head: str, observed_head: str) -> dict:
