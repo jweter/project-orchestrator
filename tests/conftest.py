@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_PACKAGE_ROOT = (REPO_ROOT / "src" / "project_orchestrator").resolve()
 SRC_ROOT = str((REPO_ROOT / "src").resolve())
@@ -28,3 +30,16 @@ def pytest_sessionstart(session) -> None:
             f"from {actual}, expected {EXPECTED_PACKAGE_ROOT}. "
             "Refusing to test a different checkout."
         )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_live_owner_state(tmp_path_factory, monkeypatch):
+    """Never let a test resolve the machine's live owner-control state.
+
+    owner_state_root falls back to %LOCALAPPDATA%\\ExponentialEngine\\flow-state,
+    so an unisolated test reads the real owner marker and its result depends
+    on whether the owner currently holds the laptop. An empty per-test root
+    yields OWNER_CONTROL_UNVERIFIED (fail closed); tests that exercise
+    downstream behavior must inject AUTHORIZED explicitly.
+    """
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path_factory.mktemp("localappdata")))
