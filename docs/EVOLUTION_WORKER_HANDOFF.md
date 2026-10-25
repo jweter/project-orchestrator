@@ -207,3 +207,69 @@ During the hourly closed loop:
 No stage is skipped merely to create throughput.
 
 Related: #51, #54, `docs/EVOLUTION_ENGINE.md`.
+
+
+## Canon candidate: supervisor-planned single-run slices and worker escalation (October 25, 2026)
+
+The owner-directed normal engineering interaction is **OBSERVE -> PLAN -> ISSUE -> WORK ->
+ASK/ANSWER (only when needed) -> HAND BACK -> INDEPENDENT VERIFY -> ACCEPT/REPLAN**.
+This section describes a source-implemented candidate protocol. It is NOT an installed
+runtime authorization change and does not itself activate the supervisor.
+
+Before issuing each single-run worker slice, the supervisor must:
+
+1. Read the repository's **current** exact-head status, existing claims/leases,
+   authoritative product vision, roadmap, architecture, AGENTS.md, and control plane.
+   Record references to what was checked; a file path alone cannot prove freshness.
+2. Reconcile completed/accepted slices and prerequisites. Select only the smallest
+   dependency-ready unit expected to fit one run, without inventing product direction.
+3. Supply a complete task brief and acceptance criteria, a verified source head,
+   permitted and forbidden file scopes, expected artifacts, native verification
+   instructions, a bounded run budget (1–120 minutes), and escalation instructions.
+4. Confirm exclusive ownership, exact-head state, current owner/controller authority,
+   resources, and repository policy through the existing admission mechanism. Only
+   then may the real supervisor issue or execute a grant. The plan is NOT a grant.
+
+The candidate pure-data interface in `project_orchestrator.worker_transport`
+is `validate_canonical_slice_plan` and `dispatch_canonical_slice`. The existing
+transport ledger retains the packet and original immutable planning data.
+Legacy packet compatibility remains during migration; real issuance must be
+wired to the canonical path and verified before declaring adoption complete.
+
+**When a worker encounters an obstacle**, it must not silently improvise, broaden
+scope or represent an uncertain result as passed. It reports its worker identity,
+question ID, sanitized issue summary, evidence reference and exact dispatched base
+using `request_supervisor_guidance`. That packet becomes
+`WAITING_FOR_SUPERVISOR` and cannot submit a PASS or arbitrarily change state.
+Independent product lanes remain free to make progress.
+
+The supervisor analyzes the evidence against the original plan and responds
+through `respond_to_supervisor_question` with exactly one of:
+
+- `CONTINUE_WITHIN_SCOPE`: a bounded clarification; **does not extend** authority
+- `REPLAN_REQUIRED`: stop the old slice; build a new independently admitted plan
+- `PARK_SLICE`: preserve evidence/work and wait for an external prerequisite
+
+Workers poll `read_supervisor_response` and continue only under original
+execution authorization and current owner/controller checks. This messaging does
+not start a process, override a lease, extend allowed paths, confer Product Reality
+authority, approve a merge, or modify owner-control state. A supervisor answer
+is an advisory instruction, never an execution grant.
+
+The source candidate keeps question/answer events and historical exchanges in
+the **existing worker transport ledger**, not a competing queue or database.
+Repeated identical pending questions are idempotent; stale bases, duplicate
+question IDs, unsafe/secret-like payloads, unauthorized state transitions,
+and attempted premature completion are rejected.
+
+The worker's final handback must identify changed source/test files, its exact
+candidate head, native test evidence, unresolved constraints and meaningful
+learning candidates. Independent verification and central acceptance remain
+separate; no self-approved merge, speculative successful result or inferred
+Product Reality is permitted.
+
+**Adoption gate:** precise source tests, relevant existing supervisor tests,
+native exact-head full preflight, separate owner/authority/lease integration,
+and real runtime proof of a question -> answer -> resumed, verified candidate.
+Until that gate passes, this is a tested source contract, NOT proof the live
+supervisor or any Claude worker consumes it.
