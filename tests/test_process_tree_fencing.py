@@ -27,3 +27,32 @@ def test_supervised_runtime_routes_revocation_through_tree_terminator(monkeypatc
         runtime.execute_supervised(RuntimeRequest((sys.executable,"-c","import time; time.sleep(5)"),tmp_path),
                                    lambda:(_ for _ in ()).throw(RuntimeError("revoked")),interval=.01)
     assert len(seen)==1
+
+
+@pytest.mark.skipif(os.name!="nt", reason="Windows job-object containment contract")
+def test_completed_parent_does_not_leave_detached_descendants(tmp_path):
+    marker=tmp_path/"orphan-survived.txt"
+    child=("import time,pathlib; time.sleep(.8); "
+           f"pathlib.Path(r'{marker}').write_text('orphan')")
+    parent=("import subprocess,sys,time; "
+            f"subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(.3)")
+    result=NativeWindowsRuntime().execute_supervised(
+        RuntimeRequest((sys.executable,"-c",parent),tmp_path),
+        lambda: None,interval=.02,
+    )
+    assert result.returncode==0
+    time.sleep(1)
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name!="nt", reason="Windows job-object containment contract")
+def test_supervised_worker_refuses_unavailable_job_authority(monkeypatch,tmp_path):
+    import project_orchestrator.windows_job_scope as jobs
+    def refuse(_process):
+        raise OSError("synthetic job-assignment failure")
+    monkeypatch.setattr(jobs,"WindowsJobScope",refuse)
+    with pytest.raises(RuntimeError,match="PROCESS_TREE_CONTAINMENT_UNAVAILABLE"):
+        NativeWindowsRuntime().execute_supervised(
+            RuntimeRequest((sys.executable,"-c","import time;time.sleep(10)"),tmp_path),
+            lambda: None,interval=.01,
+        )

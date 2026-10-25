@@ -34,6 +34,13 @@ class NativeWindowsRuntime:
         """Revoke the whole Windows process tree, not merely its root process."""
         if process.poll() is not None: return
         if os.name=="nt":
+            scope = getattr(process, "_iron_god_job_scope", None)
+            if scope is not None:
+                scope.terminate()
+                try: process.wait(timeout=grace_seconds)
+                except subprocess.TimeoutExpired:
+                    process.kill(); process.wait()
+                return
             killer=subprocess.run(["taskkill","/PID",str(process.pid),"/T","/F"],
                                   text=True,capture_output=True,check=False)
             try: process.wait(timeout=grace_seconds)
@@ -67,6 +74,15 @@ class NativeWindowsRuntime:
              tempfile.TemporaryFile(mode="w+",encoding="utf-8",errors="replace") as stderr_file:
             process=subprocess.Popen(list(request.argv),cwd=request.cwd,env=env,text=True,
                                      stdout=stdout_file,stderr=stderr_file)
+            job_scope = None
+            if os.name == "nt":
+                try:
+                    from .windows_job_scope import WindowsJobScope
+                    job_scope = WindowsJobScope(process)
+                    process._iron_god_job_scope = job_scope
+                except Exception as exc:
+                    self._terminate_tree(process)
+                    raise RuntimeError("PROCESS_TREE_CONTAINMENT_UNAVAILABLE") from exc
             deadline=None if request.timeout_seconds is None else time.monotonic()+request.timeout_seconds
             try:
                 while process.poll() is None:
@@ -85,8 +101,12 @@ class NativeWindowsRuntime:
                     self.runtime_id,process.returncode,stdout_file.read(),stderr_file.read()
                 )
             finally:
-                if process.poll() is None:
-                    self._terminate_tree(process)
+                try:
+                    if process.poll() is None:
+                        self._terminate_tree(process)
+                finally:
+                    if job_scope is not None:
+                        job_scope.close()
 
 class LaptopActorRuntime(NativeWindowsRuntime):
     """Machine-local actor runtime with explicit, probeable capabilities."""

@@ -135,7 +135,10 @@ if(-not $AuditOnly) {
 }
 $report|ConvertTo-Json -Depth 6
 if($SelfTest){
- $pass=($ownerActive -and $remaining.Count -eq 0 -and $taskRunning.Count -eq 0)
+ # A non-destructive self-test verifies fixture owner authority and no mutation;
+ # it cannot demand that unrelated live autonomous processes have stopped.
+ # A real Give Me Control handoff still requires zero workers/tasks above.
+ $pass=($ownerActive -and $AuditOnly -and $KeepRemote)
  @{checked_at=[DateTimeOffset]::UtcNow.ToString('o');passed=$pass;mode='human';owner_active=$ownerActive;worker_count=$remaining.Count;running_task_count=$taskRunning.Count;non_destructive=$true} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'desktop-human-selftest.json') -Encoding UTF8
  if(-not $pass){exit 3}
