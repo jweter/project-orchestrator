@@ -12,6 +12,7 @@ import shutil
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 _DATADOG_SPEC = importlib.util.spec_from_file_location(
     "datadog_actor_metrics", Path(__file__).with_name("datadog_actor_metrics.py")
@@ -31,6 +32,18 @@ if _STEWARD_SPEC is None or _STEWARD_SPEC.loader is None:
 _STEWARD_MODULE = importlib.util.module_from_spec(_STEWARD_SPEC)
 _STEWARD_SPEC.loader.exec_module(_STEWARD_MODULE)
 assess_machine_health = _STEWARD_MODULE.assess_machine_health
+
+_AUTHORITY_SPEC = importlib.util.spec_from_file_location(
+    "project_orchestrator_execution_authority",
+    Path(__file__).resolve().parents[1] / "src" / "project_orchestrator" / "execution_authority.py",
+)
+if _AUTHORITY_SPEC is None or _AUTHORITY_SPEC.loader is None:
+    raise RuntimeError("unable to load execution authority decision")
+_AUTHORITY_MODULE = importlib.util.module_from_spec(_AUTHORITY_SPEC)
+# Dataclass annotation resolution looks the module up in sys.modules.
+sys.modules[_AUTHORITY_SPEC.name] = _AUTHORITY_MODULE
+_AUTHORITY_SPEC.loader.exec_module(_AUTHORITY_MODULE)
+evaluate_execution_authority = _AUTHORITY_MODULE.evaluate_execution_authority
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -496,6 +509,7 @@ def run_idle_session(
     max_backoff_seconds: int = 900,
     max_memory_percent: float = 85.0,
     min_disk_free_gb: float = 10.0,
+    execution_authority: Callable[[], object] | None = None,
 ) -> int:
     """Stay resident and run bounded actor cycles only while the session is idle.
 
@@ -505,18 +519,24 @@ def run_idle_session(
     active the actor holds its singleton lock and only polls; it performs no
     checkout update, hygiene, or bridge dispatch. The first idle window
     prepares the pinned checkout once; later owner activity pauses new cycles
-    without ending the process. Residency is not execution authority.
+    without ending the process.
+
+    Residency is not execution authority. Before preparing the checkout and
+    before every bridge cycle the actor re-evaluates the single controller +
+    owner execution decision; a denial or revocation keeps it resident and
+    non-executing.
     """
     threshold = max(0, min_idle_seconds)
     cadence = max(30, poll_seconds)
     state_dir = state_dir or (queue / "state")
+    authority = execution_authority or evaluate_execution_authority
     lock_fd = acquire_single_instance(state_dir)
     if lock_fd is None:
         return 0
 
     failures = 0
     prepared = False
-    waiting = False
+    waiting: object = None
     try:
         while True:
             maintenance, maintenance_status = steward_maintenance_active()
@@ -531,12 +551,25 @@ def run_idle_session(
             idle = windows_idle_seconds()
             if idle is not None and idle < threshold:
                 # Record each waiting episode once; polling must not flood telemetry.
-                if not waiting:
+                if waiting != "USER_ACTIVE":
                     emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle, resident=True)
-                    waiting = True
+                    waiting = "USER_ACTIVE"
                 time.sleep(cadence)
                 continue
-            waiting = False
+            try:
+                decision = authority()
+                permitted = getattr(decision, "permitted", False) is True
+                reasons = tuple(getattr(decision, "reasons", ()) or ())
+            except Exception:
+                permitted, reasons = False, ("EXECUTION_AUTHORITY_UNVERIFIED",)
+            if not permitted:
+                reasons = reasons or ("EXECUTION_AUTHORITY_DENIED",)
+                if waiting != reasons:
+                    emit_state(state_dir, "AUTHORITY_WAIT", reasons=list(reasons), resident=True)
+                    waiting = reasons
+                time.sleep(cadence)
+                continue
+            waiting = None
             if not prepared:
                 emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
                 update_actor_checkout(actor_repo)
@@ -604,10 +637,15 @@ def main() -> int:
     parser.add_argument("--max-backoff-seconds", type=int, default=900)
     parser.add_argument("--max-memory-percent", type=float, default=85.0)
     parser.add_argument("--min-disk-free-gb", type=float, default=10.0)
+    parser.add_argument(
+        "--controller-state",
+        help="IronGodLocal controller-handoff-state.json (default: under LOCALAPPDATA)",
+    )
     args = parser.parse_args()
     actor_repo = Path(args.actor_repo)
     queue = Path(args.queue)
     workspace_root = Path(args.workspace_root)
+    controller_state = Path(args.controller_state) if args.controller_state else None
     try:
         return run_idle_session(
             actor_repo,
@@ -619,6 +657,7 @@ def main() -> int:
             args.max_backoff_seconds,
             args.max_memory_percent,
             args.min_disk_free_gb,
+            lambda: evaluate_execution_authority(controller_state),
         )
     except (OSError, RuntimeError):
         # Fail closed. A bootstrap/update failure must never manufacture worker

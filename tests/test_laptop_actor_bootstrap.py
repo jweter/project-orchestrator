@@ -72,6 +72,11 @@ def healthy_resources(monkeypatch):
     )
 
 
+def permitted():
+    """Test-only stand-in for a granted controller + owner decision."""
+    return SimpleNamespace(permitted=True, reasons=())
+
+
 def telemetry_states(state_dir):
     import json
     path = state_dir / "actor-telemetry.jsonl"
@@ -120,7 +125,9 @@ def test_take_the_wheel_launch_stays_resident_until_idle_then_works(monkeypatch,
         bootstrap.time, "sleep", stop_after_sleeps(4, sleeps, lock_held_while_waiting)
     )
     with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, state)
+        bootstrap.run_idle_session(
+            tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=permitted
+        )
     assert sleeps == [60, 60, 60, 60]
     assert events == ["update", "hygiene", "bridge"]
     assert telemetry_states(state)[:2] == ["USER_ACTIVE", "IDLE_AVAILABLE"]
@@ -146,7 +153,9 @@ def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, 
     healthy_resources(monkeypatch)
 
     with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state")
+        bootstrap.run_idle_session(
+            tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", execution_authority=permitted
+        )
     # Owner activity paused new cycles without exiting; idle resumed work
     # without re-preparing the pinned checkout.
     assert len(updates) == 1
@@ -161,7 +170,9 @@ def test_idle_session_stops_on_bridge_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: 2)
     monkeypatch.setattr(bootstrap.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt()))
     with pytest.raises(KeyboardInterrupt):
-        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60)
+        bootstrap.run_idle_session(
+            tmp_path, tmp_path, tmp_path, 300, 60, execution_authority=permitted
+        )
 
 
 def test_retired_github_actor_installer_cannot_reactivate_stale_main():
@@ -224,7 +235,10 @@ def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
     healthy_resources(monkeypatch)
     with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120)
+        bootstrap.run_idle_session(
+            tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120,
+            execution_authority=permitted,
+        )
     # Failure backoff (60, capped at 120), recovery cadence, then a resident wait.
     assert sleeps == [60, 60, 60]
 
@@ -625,3 +639,91 @@ def test_local_promotion_real_git_moves_actor_to_current_sha_without_origin_main
     # The remote-tracking branch is still stale: correct behavior must not
     # be achieved by falling back to origin/main.
     assert git(actor, "rev-parse", "refs/remotes/origin/main") == old_sha
+
+
+def test_denied_authority_keeps_actor_resident_without_checkout_or_dispatch(monkeypatch, tmp_path):
+    state = tmp_path / "state"
+    sleeps = []
+    denied = SimpleNamespace(
+        permitted=False, reasons=("CONTROLLER_SHADOW_MODE", "OWNER_AUTHORITY_CONTRACT_UNDEFINED")
+    )
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("no checkout without authority"))
+    monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: pytest.fail("no hygiene without authority"))
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("no dispatch without authority"))
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(
+            tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=lambda: denied
+        )
+    assert sleeps == [60, 60, 60]
+    import json
+    lines = [json.loads(line) for line in (state / "actor-telemetry.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [line["state"] for line in lines] == ["AUTHORITY_WAIT"]
+    assert lines[0]["reasons"] == ["CONTROLLER_SHADOW_MODE", "OWNER_AUTHORITY_CONTRACT_UNDEFINED"]
+
+
+def test_revocation_mid_session_stops_new_cycles_but_stays_resident(monkeypatch, tmp_path):
+    state = tmp_path / "state"
+    decisions = iter([True, True, False, False])
+    cycles = []
+    sleeps = []
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
+    monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: None)
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: cycles.append(True) or 0)
+    healthy_resources(monkeypatch)
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(4, sleeps))
+    authority = lambda: SimpleNamespace(permitted=next(decisions), reasons=("CONTROLLER_CANDIDATE_EXECUTION_DISABLED",))
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=authority)
+    assert len(cycles) == 2
+    assert telemetry_states(state).count("AUTHORITY_WAIT") == 1
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        lambda: (_ for _ in ()).throw(OSError("controller unreadable")),
+        lambda: None,
+        lambda: SimpleNamespace(permitted="yes", reasons=()),
+        lambda: SimpleNamespace(permitted=1, reasons=()),
+    ],
+)
+def test_malformed_or_failing_authority_fails_closed(monkeypatch, tmp_path, decision):
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("fail closed before checkout"))
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("fail closed before dispatch"))
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(1, []))
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(
+            tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", execution_authority=decision
+        )
+    assert telemetry_states(tmp_path / "state") == ["AUTHORITY_WAIT"]
+
+
+def test_default_actor_authority_denies_the_live_shadow_controller_shape(monkeypatch, tmp_path):
+    """Without injection the actor consults the real decision; today's live
+    controller shape (shadow, not authorized) must never reach checkout."""
+    import json
+    root = tmp_path / "ExponentialEngine" / "IronGodLocal"
+    root.mkdir(parents=True)
+    (root / "controller-handoff-state.json").write_text(json.dumps({
+        "controller": "iron-god-handoff-v1",
+        "mode": "shadow_state_only",
+        "candidate_execution_authorized": False,
+    }), encoding="utf-8")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("shadow controller must block checkout"))
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("shadow controller must block dispatch"))
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(1, []))
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state")
+    line = json.loads((tmp_path / "state" / "actor-telemetry.jsonl").read_text(encoding="utf-8").strip())
+    assert line["state"] == "AUTHORITY_WAIT"
+    assert line["reasons"] == [
+        "CONTROLLER_SHADOW_MODE",
+        "CONTROLLER_CANDIDATE_EXECUTION_DISABLED",
+        "OWNER_AUTHORITY_CONTRACT_UNDEFINED",
+    ]

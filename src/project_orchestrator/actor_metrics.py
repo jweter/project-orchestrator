@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-VALID_STATES = {"USER_ACTIVE", "IDLE_AVAILABLE", "EXECUTING", "COOLDOWN", "OFFLINE"}
+VALID_STATES = {"USER_ACTIVE", "AUTHORITY_WAIT", "IDLE_AVAILABLE", "EXECUTING", "COOLDOWN", "OFFLINE"}
 
 
 def read_events(path: Path) -> list[dict[str, Any]]:
