@@ -64,3 +64,17 @@ def test_missing_ci_log_produces_fail_closed_diagnostic_envelope():
         "UNKNOWN: no meaningful failure line found"
     )
     assert len(envelope["failure_fingerprint"]) == 20
+
+
+def test_blank_ci_log_remains_unknown_without_autofix():
+    envelope = build_failure_envelope(
+        repository="jweter/knowledge-engine-ai",
+        exact_head_sha="b" * 40,
+        stage="ci:quality",
+        log_text="",
+    )
+    assert envelope["failure_class"] == "UNKNOWN"
+    assert envelope["retryability"] == "UNKNOWN"
+    assert envelope["first_meaningful_diagnostic"] == (
+        "UNKNOWN: no meaningful failure line found"
+    )
