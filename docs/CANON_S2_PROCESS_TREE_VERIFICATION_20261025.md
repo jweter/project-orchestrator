@@ -62,3 +62,32 @@ S2 remains unaccepted until all full native preflight gates pass on a
 verified exact candidate head, owner and repository authority are resolved,
 and relevant independent reviews are satisfied. Do not proceed to S3
 on the basis of runtime-focused tests alone.
+
+
+## Additional exact-head and baseline results
+
+- At source head `31380064df9a095bf657e5ebeacd91562d52ee26`,
+  the combined Canon S2 / memory / worker transport / Windows runtime
+  regression suite returned **177 PASS, exit 0**; the Git head did not
+  change during execution, and the tracked worktree was clean.
+- The isolated `test_failed_git_removal_preserves_worktree_and_branch`
+  that had failed in the earlier 2,840-test run passed when independently
+  rerun. It remains an **unclassified full-suite interaction/flakiness**
+  until reproduced and diagnosed; do not simply delete its failure.
+- On the untouched S1 baseline `45414a2`, three individual builder
+  tests reproduced their RED results. The head-mismatch test returned
+  `USER_ACTIVE` rather than `EXECUTION_GRANT_HEAD_MISMATCH`; the
+  bounded-prompt test returned `USER_ACTIVE` rather than `NO_OP`;
+  the bounded-slice test never reached its expected Git checkout.
+  All are gated by current owner control. This establishes they are
+  pre-existing owner-state-dependent failures, **not** permission to
+  turn owner mode off or relax any production check.
+- A separate orchestrator test,
+  `test_stops_cleanly_with_no_dependency_ready_slice_and_no_planner`,
+  passed in that same untouched S1 baseline sample.
+
+**Critical acceptance distinction:** the S2 state-machine change plus this
+Windows process-tree safety repair is a source-verified development candidate.
+The official full native preflight is still RED on the earlier S2 head,
+and no full-green native preflight has been established for the current
+candidate. Do not merge, deploy or start workers on this evidence alone.
