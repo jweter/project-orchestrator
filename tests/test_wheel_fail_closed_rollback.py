@@ -77,3 +77,35 @@ def test_isolated_resume_failure_handoff_returns_nonzero_and_retains_remote(
     assert "INJECTED_START_FAILED" in (state / "control-switch.log").read_text()
     # This fake helper intentionally neither touches scheduled tasks nor closes
     # the real Remote Desktop Commander session.
+
+
+def test_wheel_success_requires_a_permitting_execution_decision_after_resume():
+    """Resident supervisor + actor are not authority; success also needs the
+    supervisor's own permitting decision recorded after this resume began."""
+    source = WHEEL.read_text(encoding="utf-8")
+    started = source.index("$resumeStartedUtc=[DateTimeOffset]::UtcNow")
+    task_start = source.index("foreach($name in @('ExponentialEngine-ContinuousFlow-Watchdog'")
+    loop = source.index("while((Get-Date) -lt $deadline)")
+    confirmed = source.index("TAKE_THE_WHEEL_CONFIRMED")
+    not_authorized = source.index("Restore-OwnerAfterResumeFailure 'TAKE_THE_WHEEL_EXECUTION_NOT_AUTHORIZED' 6")
+    assert started < task_start < loop < not_authorized < confirmed
+    window = source[loop:not_authorized]
+    assert "supervisor-execution-authority.json" in window
+    assert "$execution.permitted -is [bool] -and $execution.permitted -eq $true" in window
+    assert "$decidedAt -ge $resumeStartedUtc" in window
+    assert "if($runtimeVerified -and $executionAuthorized){break}" in window
+    assert "execution_authorized=$executionAuthorized" in source
+
+
+def test_wheel_script_parses_without_powershell_errors():
+    script = (
+        "$errors=$null;"
+        "[System.Management.Automation.Language.Parser]::ParseFile("
+        f"'{WHEEL}',[ref]$null,[ref]$errors) | Out-Null;"
+        "if($errors){$errors | ForEach-Object { $_.Message }; exit 1}"
+    )
+    process = subprocess.run(
+        [PS, "-NoProfile", "-NonInteractive", "-Command", script],
+        text=True, capture_output=True, timeout=30,
+    )
+    assert process.returncode == 0, process.stdout + process.stderr

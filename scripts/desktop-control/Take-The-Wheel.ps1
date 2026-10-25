@@ -163,6 +163,8 @@ catch {
     )
     exit 3
 }
+# Only an execution decision recorded after this point can confirm the resume.
+$resumeStartedUtc=[DateTimeOffset]::UtcNow
 # Start only the two validated engine entrypoints. Legacy standalone workers
 # must not silently regain scheduling authority during a local-release cutover.
 foreach($name in @('ExponentialEngine-ContinuousFlow-Watchdog','ExponentialEngine-LaptopActor')) {
@@ -204,6 +206,7 @@ if ($pin.accepted_sha -cne $actorPin.accepted_sha -or
 }
 $deadline=(Get-Date).AddSeconds(120)
 $runtimeVerified=$false
+$executionAuthorized=$false
 while((Get-Date) -lt $deadline) {
  try {
   $ownerNow=Get-Content $marker -Raw | ConvertFrom-Json
@@ -215,13 +218,25 @@ while((Get-Date) -lt $deadline) {
   $fresh=($age -ge 0 -and $age -lt 180 -and $heartbeat.status -ceq 'RUNNING_CURRENT')
   $procs=@(Get-CimInstance Win32_Process | Where-Object {$_.Name -match '^python' -and $_.CommandLine -like '*continuous_flow_supervisor.py*'})
   $actors=@(Get-CimInstance Win32_Process | Where-Object {$_.Name -match '^python' -and $_.CommandLine -like '*laptop_actor_bootstrap.py*' -and $_.CommandLine.Contains([string]$actorPin.actor_repo)})
-  if($fresh -and $heartbeat.actor_revision -ceq $pin.accepted_sha -and $procs.Count -eq 1 -and $procs[0].CommandLine.Contains([string]$pin.accepted_repo) -and $actors.Count -eq 1){$runtimeVerified=$true;break}
+  $runtimeVerified=($fresh -and $heartbeat.actor_revision -ceq $pin.accepted_sha -and $procs.Count -eq 1 -and $procs[0].CommandLine.Contains([string]$pin.accepted_repo) -and $actors.Count -eq 1)
+  # Resident processes are not authority: the running supervisor must also
+  # record a permitting controller + owner execution decision for this resume.
+  $executionAuthorized=$false
+  try {
+   $execution=Get-Content (Join-Path $state 'supervisor-execution-authority.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+   $decidedAt=[DateTimeOffset]::Parse([string]$execution.observed_at_utc)
+   $executionAuthorized=($execution.permitted -is [bool] -and $execution.permitted -eq $true -and $decidedAt -ge $resumeStartedUtc)
+  } catch { $executionAuthorized=$false }
+  if($runtimeVerified -and $executionAuthorized){break}
  } catch {}
  Start-Sleep -Seconds 2
 }
-@{checked_at=[DateTimeOffset]::UtcNow.ToString('o');verified=$runtimeVerified;accepted_sha=$pin.accepted_sha} | ConvertTo-Json | Set-Content (Join-Path $state 'desktop-resume-runtime.json') -Encoding UTF8
+@{checked_at=[DateTimeOffset]::UtcNow.ToString('o');verified=$runtimeVerified;execution_authorized=$executionAuthorized;accepted_sha=$pin.accepted_sha} | ConvertTo-Json | Set-Content (Join-Path $state 'desktop-resume-runtime.json') -Encoding UTF8
 if(-not $runtimeVerified){
   Restore-OwnerAfterResumeFailure 'TAKE_THE_WHEEL_RUNTIME_NOT_VERIFIED' 6
+}
+if(-not $executionAuthorized){
+  Restore-OwnerAfterResumeFailure 'TAKE_THE_WHEEL_EXECUTION_NOT_AUTHORIZED' 6
 }
 Add-Content -Path $log -Value ("{0:o} TAKE_THE_WHEEL_CONFIRMED revision={1}" -f (Get-Date),$pin.accepted_sha)
 exit 0
