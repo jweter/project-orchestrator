@@ -47,6 +47,9 @@ def test_run_builder_passes_and_returns_same_invocation_id(tmp_path,monkeypatch)
 
 
 def test_runtime_fence_uses_granted_worker_identity(tmp_path,monkeypatch):
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda: builder.MIN_IDLE_SECONDS+1)
     monkeypatch.setattr(builder,"ACTIVE_RUNTIME_FENCE",None)
     monkeypatch.setattr(builder,"ACTIVE_RESOURCE_FENCES",[])

@@ -818,6 +818,8 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
 
 def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
+    # Test only: owner released, so the normal idle gate is what is under test.
+    monkeypatch.setattr(b,"owner_control_status",lambda _root:b.AUTHORIZED)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]=="USER_ACTIVE"
