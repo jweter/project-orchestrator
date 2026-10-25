@@ -5,6 +5,10 @@ from pathlib import Path
 import os, subprocess, tempfile, time
 from typing import Mapping, Sequence
 
+from .windows_process_job import (
+    CREATE_SUSPENDED, KillOnCloseJob, ProcessJobError, resume_suspended_process,
+)
+
 @dataclass(frozen=True)
 class RuntimeRequest:
     argv: tuple[str,...]
@@ -65,16 +69,42 @@ class NativeWindowsRuntime:
         # the parent remains free to heartbeat/revoke the execution authority.
         with tempfile.TemporaryFile(mode="w+",encoding="utf-8",errors="replace") as stdout_file, \
              tempfile.TemporaryFile(mode="w+",encoding="utf-8",errors="replace") as stderr_file:
-            process=subprocess.Popen(list(request.argv),cwd=request.cwd,env=env,text=True,
-                                     stdout=stdout_file,stderr=stderr_file)
-            deadline=None if request.timeout_seconds is None else time.monotonic()+request.timeout_seconds
+            # Attach only THIS newly spawned process to an owned Job Object.
+            # Closing it kills descendants even if the immediate parent exits.
+            # Never enumerate/terminate other sessions or worker processes.
+            job = KillOnCloseJob() if os.name == "nt" else None
+            process = None
             try:
+                process=subprocess.Popen(
+                    list(request.argv),cwd=request.cwd,env=env,text=True,
+                    stdout=stdout_file,stderr=stderr_file,
+                    creationflags=CREATE_SUSPENDED if os.name == "nt" else 0,
+                )
+                try:
+                    if job is not None:
+                        job.attach(process)
+                        resume_suspended_process(process)
+                except ProcessJobError as exc:
+                    # A never-resumed process cannot have created descendants.
+                    # Kill only our newly created process by its owned handle.
+                    if job is not None:
+                        job.close()
+                    if process.poll() is None:
+                        process.kill()
+                    process.wait()
+                    raise RuntimeError("EXECUTION_PROCESS_TREE_FENCE_UNAVAILABLE") from exc
+                deadline=None if request.timeout_seconds is None else time.monotonic()+request.timeout_seconds
                 while process.poll() is None:
-                    try: authority_check()
+                    try:
+                        authority_check()
                     except Exception:
+                        if job is not None:
+                            job.close()
                         self._terminate_tree(process)
                         raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
                     if deadline is not None and time.monotonic()>=deadline:
+                        if job is not None:
+                            job.close()
                         self._terminate_tree(process)
                         assert request.timeout_seconds is not None
                         raise subprocess.TimeoutExpired(request.argv,float(request.timeout_seconds))
@@ -85,7 +115,9 @@ class NativeWindowsRuntime:
                     self.runtime_id,process.returncode,stdout_file.read(),stderr_file.read()
                 )
             finally:
-                if process.poll() is None:
+                if job is not None:
+                    job.close()
+                if process is not None and process.poll() is None:
                     self._terminate_tree(process)
 
 class LaptopActorRuntime(NativeWindowsRuntime):
