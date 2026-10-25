@@ -49,7 +49,9 @@ def test_retryability_is_explicit():
 
 
 def test_missing_ci_log_produces_fail_closed_diagnostic_envelope():
-    assert first_meaningful_diagnostic(None) == "UNKNOWN: no meaningful failure line found"
+    assert (
+        first_meaningful_diagnostic(None) == "UNKNOWN: no meaningful failure line found"
+    )
     envelope = build_failure_envelope(
         repository="jweter/knowledge-engine-ai",
         exact_head_sha="b" * 40,
