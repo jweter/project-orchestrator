@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,10 @@ def test_kernel_lock_recovers_after_owner_process_exits(tmp_path):
         "from scripts.continuous_flow_supervisor import acquire_grant_issue_lock;"
         f"acquire_grant_issue_lock(Path({str(tmp_path)!r}))"
     )
-    result=subprocess.run([sys.executable,"-c",code],cwd=repo_root,capture_output=True,text=True,check=False)
+    # Explicit environment: never resolve project_orchestrator from an unrelated
+    # editable install on the host interpreter.
+    env={**os.environ,"PYTHONPATH":str(repo_root/"src")}
+    result=subprocess.run([sys.executable,"-c",code],cwd=repo_root,env=env,capture_output=True,text=True,check=False)
     assert result.returncode==0, result.stderr
     lock=supervisor.acquire_grant_issue_lock(tmp_path)
     supervisor.release_grant_issue_lock(lock)
