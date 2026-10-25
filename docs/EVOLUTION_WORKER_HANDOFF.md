@@ -305,3 +305,56 @@ state transitions, independently verified handbacks, path scope,
 cryptographic identity, lease/attempt limits or supervisor integration. It
 does not grant autonomy, create a new dispatch queue, start workers,
 modify Windows schedules, or authorize local runtime activation.
+
+
+## Canon S2 — Verified-state boundaries (source candidate, October 25, 2026)
+
+The **source-only** worker transport now distinguishes a worker-reported PASS
+from an independently verified, promotion-eligible result:
+
+`DISPATCHED -> [IMPLEMENTING] -> HANDED_BACK -> PREFLIGHT_UNVERIFIED`
+
+A worker's PASS advances only to `HANDED_BACK` with
+`independent_verification=NOT_VERIFIED`, a bound candidate SHA, and the
+worker's evidence reference. A PASS against the unchanged dispatch base is
+rejected as zero-code progress. A worker FAIL becomes `BLOCKED`; genuine
+environmental inability becomes `PARKED`. A delayed failure after a
+handback cannot arbitrarily demote or replace an already reported result.
+
+The **generic** `transition_packet` API is deliberately unable to issue
+`PREFLIGHT_GREEN`, `PR_OPEN`, `CI_PENDING`, `GREEN`,
+`PROMOTION_READY`, `MERGED` or `LEARNING_EXTRACTED`. These states
+require independent verifier, CI, review and promotion contracts in later
+slices. Marking `PREFLIGHT_UNVERIFIED` starts verification; it does NOT
+mark a native test green.
+
+Legal metadata edges are explicit and narrow:
+- `DISPATCHED -> IMPLEMENTING | CANCELLED`
+- `IMPLEMENTING -> CANCELLED` (worker result is a separate operation)
+- `HANDED_BACK -> PREFLIGHT_UNVERIFIED | RECONCILE_REQUIRED | CANCELLED`
+- `PREFLIGHT_UNVERIFIED -> BLOCKED | RECONCILE_REQUIRED | CANCELLED`
+- `BLOCKED | PARKED -> RECONCILE_REQUIRED | CANCELLED`
+- `RECONCILE_REQUIRED -> CANCELLED`
+- `WAITING_FOR_SUPERVISOR` only via a question, with an answer returning
+  to the previously active state or moving to a non-running blocked state.
+
+A **data-only**, explicitly evidenced `retry_packet` permits only a
+bounded failure/environment retry, matching the same base, no supervisor
+question and a preliminary maximum of three attempts. It retains past
+worker results, revision history and event provenance. No worker is launched;
+a real retry still requires independently authenticated owner approval,
+an active supervisor, live ownership/lease and exact-head validation.
+Review-required and Product-Reality parked packets cannot auto-retry.
+
+The existing v2 ledger validator now replays every event through the legal
+state graph and rejects resealed illegal event types or self-promoted worker
+results. This is **structural integrity, not authenticated authorship**.
+No cryptographic signature, verified worker identity, trusted lease, or
+independent full preflight is asserted by this source candidate.
+
+**Remaining mandatory gates:** S3 plan/path/secret security; S4 worker
+identity/lease and answer replay; S5 admission; S6 typed handback and
+independent verification authority; S7/S8 verified memory lifecycle;
+S9 portfolio scope; S10 live supervisor adoption and real runtime proof.
+Do not merge into the running engine or infer accepted product code on the
+strength of these source-level tests alone.

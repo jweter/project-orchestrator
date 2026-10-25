@@ -53,10 +53,11 @@ def test_dispatch_is_idempotent_for_same_packet_and_transport():
     assert len(second["events"]) == 1
 
 
-def test_worker_pass_binds_exact_head_and_advances_to_preflight_green():
+def test_worker_pass_binds_exact_head_but_stays_unverified():
     ledger = dispatch_packet(empty_ledger(), packet(), transport="local_idle_worker")
     ledger = record_worker_result(ledger, "pkt-1", worker())
-    assert ledger["packets"]["pkt-1"]["state"] == "PREFLIGHT_GREEN"
+    assert ledger["packets"]["pkt-1"]["state"] == "HANDED_BACK"
+    assert ledger["packets"]["pkt-1"]["independent_verification"] == "NOT_VERIFIED"
     assert ledger["packets"]["pkt-1"]["exact_head_sha"] == SHA_B
 
 
@@ -75,7 +76,7 @@ def test_mismatched_repository_fails_closed():
 
 def test_terminal_packet_cannot_be_redispatched_or_reopened():
     ledger = dispatch_packet(empty_ledger(), packet(), transport="github_event")
-    ledger = transition_packet(ledger, "pkt-1", state="MERGED", exact_head_sha=SHA_B, evidence_ref="pr:1")
+    ledger = transition_packet(ledger, "pkt-1", state="CANCELLED", evidence_ref="owner:cancel-approved")
     with pytest.raises(WorkerTransportError):
         dispatch_packet(ledger, packet(), transport="github_event")
     with pytest.raises(WorkerTransportError):
@@ -99,8 +100,8 @@ def test_worker_packet_never_grants_merge_authority():
 
 def test_event_replay_deduplicates_identical_state_transition():
     ledger = dispatch_packet(empty_ledger(), packet(), transport="github_event")
-    first = transition_packet(ledger, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
-    second = transition_packet(first, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
+    first = transition_packet(ledger, "pkt-1", state="IMPLEMENTING")
+    second = transition_packet(first, "pkt-1", state="IMPLEMENTING")
     assert second == first
 
 
@@ -148,7 +149,7 @@ def test_worker_can_pause_and_retrieve_supervisor_answer_without_grant_mutation(
     assert pending["packets"]["pkt-1"]["base_sha"] == SHA_A
     assert _ask(pending) == pending  # idempotent retry, one question event
     assert [event["type"] for event in pending["events"]] == ["DISPATCHED", "WORKER_QUESTION"]
-    with pytest.raises(WorkerTransportError, match="supervisor question"):
+    with pytest.raises(WorkerTransportError, match="active dispatched"):
         record_worker_result(pending, "pkt-1", worker())
     with pytest.raises(WorkerTransportError, match="supervisor question"):
         transition_packet(pending, "pkt-1", state="PREFLIGHT_GREEN")
@@ -162,7 +163,7 @@ def test_worker_can_pause_and_retrieve_supervisor_answer_without_grant_mutation(
     assert reply["decision"] == "CONTINUE_WITHIN_SCOPE"
     assert answered["packets"]["pkt-1"]["paths"] == ["tools/worker.py"]
     green = record_worker_result(answered, "pkt-1", worker())
-    assert green["packets"]["pkt-1"]["state"] == "PREFLIGHT_GREEN"
+    assert green["packets"]["pkt-1"]["state"] == "HANDED_BACK"
 
 
 def test_supervisor_replan_prevents_automatic_resume_or_redispatch():
@@ -323,20 +324,26 @@ def _issued():
 
 
 def test_ledger_history_is_ordered_and_has_no_silent_repeated_event_deduplication():
+    from project_orchestrator.worker_transport import retry_packet
     ledger = _issued()
-    ledger = transition_packet(ledger, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
-    ledger = transition_packet(ledger, "pkt-1", state="PR_OPEN", exact_head_sha=SHA_B)
-    ledger = transition_packet(ledger, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
-    assert ledger["revision"] == 4
-    assert len({event["event_id"] for event in ledger["events"]}) == 4
-    assert [event["seq"] for event in ledger["events"]] == [1, 2, 3, 4]
+    ledger = transition_packet(ledger, "pkt-1", state="IMPLEMENTING")
+    ledger = record_worker_result(ledger, "pkt-1", worker("FAIL"))
+    ledger = retry_packet(
+        ledger, "pkt-1", expected_base_sha=SHA_A,
+        remediation_evidence_ref="repair:root-cause-confirmed",
+    )
+    ledger = transition_packet(ledger, "pkt-1", state="IMPLEMENTING")
+    ledger = record_worker_result(ledger, "pkt-1", worker("FAIL"))
+    assert ledger["revision"] == 6
+    assert len({event["event_id"] for event in ledger["events"]}) == 6
+    assert [event["seq"] for event in ledger["events"]] == list(range(1, 7))
     assert ledger["events"][0]["previous_event_id"] == "GENESIS"
-    assert ledger["events"][3]["previous_event_id"] == ledger["events"][2]["event_id"]
+    assert ledger["events"][-1]["previous_event_id"] == ledger["events"][-2]["event_id"]
 
 
 @pytest.mark.parametrize("corruption", ["packet_state", "packet_authority", "event_deleted", "event_swapped", "seal_deleted", "old_schema"])
 def test_ledger_rejects_corruption_even_when_previously_valid(corruption):
-    ledger = transition_packet(_issued(), "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
+    ledger = transition_packet(_issued(), "pkt-1", state="IMPLEMENTING")
     bad = deepcopy(ledger)
     if corruption == "packet_state":
         bad["packets"]["pkt-1"]["state"] = "MERGED"
@@ -356,7 +363,7 @@ def test_ledger_rejects_corruption_even_when_previously_valid(corruption):
 
 def test_validator_rejects_resequenced_and_resealed_event_history():
     from project_orchestrator.worker_transport import _digest
-    ledger = transition_packet(_issued(), "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
+    ledger = transition_packet(_issued(), "pkt-1", state="IMPLEMENTING")
     bad = deepcopy(ledger)
     bad["events"][0]["seq"] = 9
     bad["seal_sha256"] = _digest({k: v for k, v in bad.items() if k != "seal_sha256"})
@@ -366,7 +373,7 @@ def test_validator_rejects_resequenced_and_resealed_event_history():
 
 def test_returned_ledger_does_not_alias_parent_snapshot():
     baseline = _issued()
-    next_state = transition_packet(baseline, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
+    next_state = transition_packet(baseline, "pkt-1", state="IMPLEMENTING")
     next_state["packets"]["pkt-1"]["paths"].append("other.py")
     assert baseline["packets"]["pkt-1"]["paths"] == ["tools/worker.py"]
     assert validate_ledger(baseline) == baseline
@@ -377,7 +384,7 @@ def test_atomic_ledger_write_requires_expected_revision(tmp_path):
     initial = _issued()
     write_ledger(path, initial, expected_revision=0)
     assert load_ledger(path) == initial
-    next_state = transition_packet(initial, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
+    next_state = transition_packet(initial, "pkt-1", state="IMPLEMENTING")
     with pytest.raises(WorkerTransportError, match="LEDGER_REVISION_CONFLICT"):
         write_ledger(path, next_state)
     with pytest.raises(WorkerTransportError, match="LEDGER_REVISION_CONFLICT"):
@@ -391,8 +398,8 @@ def test_atomic_ledger_write_rejects_forked_history(tmp_path):
     path = tmp_path / "worker-ledger.json"
     ledger = _issued()
     write_ledger(path, ledger)
-    first = transition_packet(ledger, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
-    alternate = transition_packet(ledger, "pkt-1", state="PR_OPEN", exact_head_sha=SHA_B)
+    first = transition_packet(ledger, "pkt-1", state="IMPLEMENTING")
+    alternate = transition_packet(ledger, "pkt-1", state="CANCELLED", evidence_ref="review:cancel-without-promotion")
     write_ledger(path, first, expected_revision=ledger["revision"])
     with pytest.raises(WorkerTransportError, match="REVISION_CONFLICT"):
         write_ledger(path, alternate, expected_revision=ledger["revision"])
@@ -407,7 +414,7 @@ def test_ledger_write_failure_preserves_previous_image(monkeypatch, tmp_path):
     original = _issued()
     write_ledger(path, original)
     original_bytes = path.read_bytes()
-    successor = transition_packet(original, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
+    successor = transition_packet(original, "pkt-1", state="IMPLEMENTING")
 
     def interrupted_write(*_args, **_kwargs):
         raise OSError("simulated atomic-publish failure")
@@ -422,8 +429,8 @@ def test_stale_parallel_ledger_writers_cannot_both_commit(tmp_path):
     path = tmp_path / "worker-ledger.json"
     initial = _issued()
     write_ledger(path, initial)
-    branch_a = transition_packet(initial, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
-    branch_b = transition_packet(initial, "pkt-1", state="PR_OPEN", exact_head_sha=SHA_B)
+    branch_a = transition_packet(initial, "pkt-1", state="IMPLEMENTING")
+    branch_b = transition_packet(initial, "pkt-1", state="CANCELLED", evidence_ref="review:cancel-without-promotion")
 
     def attempt(candidate):
         try:
@@ -443,7 +450,7 @@ def test_duplicate_request_preserves_existing_data_and_revision():
     identical = dispatch_packet(initial, packet(), transport="local_idle_worker")
     assert identical == initial
     assert initial["revision"] == 1
-    changed = transition_packet(initial, "pkt-1", state="CI_PENDING", exact_head_sha=SHA_B)
+    changed = transition_packet(initial, "pkt-1", state="IMPLEMENTING")
     with pytest.raises(WorkerTransportError, match="redispatch"):
         dispatch_packet(changed, packet(), transport="local_idle_worker")
     assert changed["revision"] == 2
