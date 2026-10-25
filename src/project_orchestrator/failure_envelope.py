@@ -26,11 +26,11 @@ def sanitize_diagnostic(value: str, limit: int = 1200) -> str:
     return text[:limit] or "UNKNOWN: no meaningful failure line found"
 
 
-def first_meaningful_diagnostic(log_text: str) -> str:
+def first_meaningful_diagnostic(log_text: str | None) -> str:
     fingerprint = fingerprint_failure(log_text)
     if fingerprint.evidence:
         return sanitize_diagnostic(fingerprint.evidence[0])
-    lines = [line for line in str(log_text).splitlines() if line.strip()]
+    lines = [line for line in log_text.splitlines() if line.strip()] if isinstance(log_text, str) else []
     return sanitize_diagnostic(lines[-1] if lines else "")
 
 
@@ -58,7 +58,7 @@ def build_failure_envelope(
     repository: str,
     exact_head_sha: str,
     stage: str,
-    log_text: str,
+    log_text: str | None,
     failure_class: str | None = None,
     environment_identity: str | None = None,
 ) -> dict[str, Any]:
