@@ -654,7 +654,7 @@ def main()->int:
     try: product_proof=json.loads((state/"portfolio-product-advancement-proof.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError): product_proof={}
     previous_repository=previous_builder_status=rotation_evidence=None
-    worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6); atexit.register(worker_pool.shutdown,wait=False)
+    worker_pool=ParallelWorkerPool(**_supervisor_runtime.COMMISSIONING_WORKER_LIMITS); atexit.register(worker_pool.shutdown,wait=False)
     dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state); workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
     progress_sequence=0
     while True:

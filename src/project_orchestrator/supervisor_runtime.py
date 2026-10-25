@@ -888,6 +888,12 @@ def prepare_actor_revision_rollover(
             "active_workers": active_workers}
 
 
+# Owner directive (2026-10-25): commission one supervisor with ONE worker and
+# prove a complete authorized single-worker cycle before any parallelism.
+# Raising these limits requires that verified cycle; the previous runtime
+# capacity was max_workers_per_product=2, max_total_workers=6.
+COMMISSIONING_WORKER_LIMITS = {"max_workers_per_product": 1, "max_total_workers": 1}
+
 def authorized_dispatch_products(
     state_root: Path,
     products: list[str],

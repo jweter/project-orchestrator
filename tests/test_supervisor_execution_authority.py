@@ -82,3 +82,34 @@ def test_supervisor_main_routes_every_dispatch_through_the_gate():
             isinstance(t, ast.Name) and t.id == "products" for t in node.targets
         ):
             assert node.lineno >= gate_line or "evolution_authorized" in ast.unparse(node.value)
+
+
+def test_supervisor_commissions_exactly_one_worker():
+    """Owner directive: one supervisor + one worker until a full authorized
+    single-worker cycle is verified; parallelism is not yet permitted."""
+    assert supervisor_runtime.COMMISSIONING_WORKER_LIMITS == {
+        "max_workers_per_product": 1,
+        "max_total_workers": 1,
+    }
+    tree = ast.parse(SUPERVISOR.read_text(encoding="utf-8"))
+    pools = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "ParallelWorkerPool"
+    ]
+    assert len(pools) == 1
+    assert not pools[0].args
+    assert [ast.unparse(k.value) for k in pools[0].keywords] == [
+        "_supervisor_runtime.COMMISSIONING_WORKER_LIMITS"
+    ]
+    assert pools[0].keywords[0].arg is None  # passed as **limits, nothing else
+
+
+def test_commissioning_pool_admits_a_single_worker():
+    from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+
+    pool = ParallelWorkerPool(**supervisor_runtime.COMMISSIONING_WORKER_LIMITS)
+    try:
+        assert pool.max_workers_per_product == 1
+        assert pool.max_total_workers == 1
+    finally:
+        pool.shutdown(wait=False)
