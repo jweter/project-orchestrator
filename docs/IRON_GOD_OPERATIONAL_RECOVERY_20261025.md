@@ -120,8 +120,25 @@ Measured (isolated state, 3 runs/level): levels 1-3 pass 9/9, median
 as an explicit acceptance criterion (a requirement stated once in prose
 passed 0/3; as a criterion 3/3).
 
+## Planned slices 003-005 (`cca2138`, `3f88626`)
+
+New-module slices at the calibrated level, each validated through the exact
+production worker path from its real base before installation: 003 (ledger
+report on the accepted 002 helper, dispatched from 002's accepted head) 3/3,
+004 (ledger attention) 3/3, 005 (capability profile report) 2/2.
+
+Slice-writing rules for the local 7B worker, each from failed-run evidence:
+
+1. Every required behaviour is also an explicit acceptance criterion.
+2. Derived values and conditionals are given as exact expressions with an
+   example (prose versions failed 0/2 and 0/3).
+3. The worker's own tests are listed as exact cases (inputs and expected
+   values); otherwise it can write a wrong expectation for correct code.
+4. Name only the target files; never name other files.
+5. Keep each objective and criterion within Canon's 1200-character bound
+   (enforced by a test over the whole policy).
+
 ## Next action
 
-Owner-held live calibration on the installed `f713a7a` (the first attempt
-was stopped by host memory pressure before writing a profile), then plan the
-next dependency-ready commissioning slices within the calibrated level.
+Owner Take the Wheel on `3f88626`: the lane runs 003, 004 and 005 one at a
+time under the live calibration profile (level 3, recorded 2026-10-26).
