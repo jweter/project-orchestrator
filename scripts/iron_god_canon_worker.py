@@ -30,6 +30,7 @@ for _path in (str(ROOT / "src"), str(ROOT)):
 
 from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
 from project_orchestrator.execution_runtime import NativeWindowsRuntime, RuntimeRequest  # noqa: E402
+from project_orchestrator.iron_god_calibration import remove_tree  # noqa: E402
 
 MAX_TAIL = 4000
 LEAN_AIDER_FLAGS = ("--map-tokens", "0", "--no-detect-urls", "--edit-format", "whole")
@@ -104,8 +105,16 @@ def worker_message(packet: dict[str, Any]) -> str:
 
 def run_verification(worktree: Path, commands: list[str], *, timeout: int = 900) -> list[dict[str, Any]]:
     results = []
-    env = private_temp_env({**os.environ, "PYTHONPATH": str(worktree / "src")},
-                           worktree.parent / f"{worktree.name}.tmp")
+    temp = worktree.parent / f"{worktree.name}.tmp"
+    env = private_temp_env({**os.environ, "PYTHONPATH": str(worktree / "src")}, temp)
+    try:
+        return _run_commands(worktree, commands, env, timeout, results)
+    finally:
+        remove_tree(temp)  # the private pytest temp never outlives the verification
+
+
+def _run_commands(worktree: Path, commands: list[str], env: dict[str, str], timeout: int,
+                  results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for command in commands:
         argv = shlex.split(command, posix=False)
         if argv and argv[0] in {"python", "python.exe", "py"}:

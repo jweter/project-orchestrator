@@ -139,8 +139,8 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _remove_tree(path: Path) -> None:
-    """Delete a scratch clone; Git object files are read-only on Windows."""
+def remove_tree(path: Path) -> None:
+    """Delete a scratch tree; Git object files are read-only on Windows."""
     def clear_readonly(func, target, _exc):
         os.chmod(target, stat.S_IWRITE)
         func(target)
@@ -236,8 +236,8 @@ def run_calibration(
     clone = work / "clone"
     levels: dict[str, dict[str, Any]] = {}
     try:
-        _remove_tree(clone)
-        _remove_tree(work / "evidence")  # evidence describes only the latest calibration
+        remove_tree(clone)
+        remove_tree(work / "evidence")  # evidence describes only the latest calibration
         work.mkdir(parents=True, exist_ok=True)
         cloned = subprocess.run(["git", "clone", "--quiet", "--no-local", str(release_repo), str(clone)],
                                 capture_output=True, text=True, check=False, timeout=900)
@@ -262,7 +262,7 @@ def run_calibration(
             failed_below = len(passed) < len(results)
     finally:
         lease_pool.release(CALIBRATION_LEASE_ID, lease.lease_id)
-        _remove_tree(clone)
+        remove_tree(clone)
     max_level, timeout = summarize(levels)
     profile = {
         "schema_version": 1, "ladder_version": LADDER_VERSION, "model": model,
@@ -280,7 +280,7 @@ def _run_rung(rung, index, clone, policy, head, check, build_message, run_agent,
     worktree = clone.parent / "runs" / f"L{rung['level']}-{index}"
     subprocess.run(["git", "-C", str(clone), "worktree", "remove", "--force", str(worktree)],
                    capture_output=True, text=True, check=False, timeout=120)
-    _remove_tree(worktree)
+    remove_tree(worktree)
     added = subprocess.run(["git", "-C", str(clone), "worktree", "add", "--detach", str(worktree), head],
                            capture_output=True, text=True, check=False, timeout=300)
     if added.returncode != 0:
@@ -324,7 +324,7 @@ def _run_rung(rung, index, clone, policy, head, check, build_message, run_agent,
     finally:
         subprocess.run(["git", "-C", str(clone), "worktree", "remove", "--force", str(worktree)],
                        capture_output=True, text=True, check=False, timeout=120)
-        _remove_tree(worktree)
+        remove_tree(worktree)
 
 
 def load_profile(state_root: Path) -> dict[str, Any] | None:

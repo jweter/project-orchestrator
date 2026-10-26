@@ -38,7 +38,7 @@ from typing import Any, Callable
 
 from . import iron_god_owner_control as owner_controller
 from .canon_worker_memory import prepare_worker_memory_handoff, render_worker_memory_handoff
-from .iron_god_calibration import capability_gate, load_profile
+from .iron_god_calibration import capability_gate, load_profile, remove_tree
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .learning import add_lesson, validate_memory
 from .runtime_leases import DEFAULT_RUNTIME_CAPACITIES, RuntimeLeasePool
@@ -292,6 +292,7 @@ def independent_verification(lane: Lane, packet: dict[str, Any], spec: dict[str,
     finally:
         _git(lane.dev_repo, "worktree", "remove", "--force", str(verify_dir))
         shutil.rmtree(verify_dir, ignore_errors=True)
+        remove_tree(verify_dir.parent / f"{packet['packet_id']}.tmp")
     return all(c["ok"] for c in checks), checks
 
 

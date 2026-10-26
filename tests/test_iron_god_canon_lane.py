@@ -127,14 +127,26 @@ class Runner:
         return {"pid": 1, "process_start_fingerprint": "windows:1", "host": "fake"}
 
 
-@pytest.fixture
-def engine(tmp_path):
-    repo, sha = release_repo(tmp_path)
+def make_engine(tmp_path, policy):
+    repo, sha = release_repo(tmp_path, policy)
     state = tmp_path / "ExponentialEngine" / "flow-state"
     supervisor = grant_owner_authority(state, release_sha=sha)
     pool = RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, tmp_path / "runtime-leases.json")
     return SimpleNamespace(repo=repo, sha=sha, state=state, supervisor=supervisor.as_dict(),
                            memory=tmp_path / "shared-memory", tmp=tmp_path, pool=pool)
+
+
+@pytest.fixture
+def engine(tmp_path):
+    """A one-slice lane: the cycle, retry and revocation mechanics in isolation."""
+    return make_engine(tmp_path, dict(POLICY, slices=[ACTIVE]))
+
+
+@pytest.fixture
+def full_engine(tmp_path):
+    """The real multi-slice commissioning policy."""
+    return make_engine(tmp_path, POLICY)
+
 
 
 def admitted():
@@ -188,6 +200,8 @@ def test_full_simulated_cycle_accepts_locally_with_independent_verification_and_
     lessons = load_shared_memory(engine.memory)["entries"]
     assert len(lessons) == 1 and lessons[0]["source_ref"].endswith("@" + head)
     assert lessons[0]["evidence_state"] == "VERIFIED"
+    leftovers = [p.name for p in lane.workspaces.rglob("*.tmp") if p.is_dir()]
+    assert leftovers == []  # worker and supervisor pytest temp folders are cleaned up
     # The release repository itself is untouched.
     assert _git(engine.repo, "rev-parse", "HEAD") == engine.sha
     assert _git(engine.repo, "status", "--porcelain") == ""
@@ -508,4 +522,38 @@ def test_verification_runs_pytest_with_a_private_temp_dir(tmp_path):
         "import os\n\n\ndef test_tmp(tmp_path):\n    assert os.environ['TEMP'].endswith('wt.tmp')\n", encoding="utf-8")
     results = WORKER.run_verification(worktree, ["python -m pytest -q -p no:cacheprovider tests/test_tmp.py"])
     assert results[0]["ok"], results[0]["output_tail"]
-    assert (tmp_path / "wt.tmp").is_dir() and not (worktree / ".tmp").exists()
+    assert not (tmp_path / "wt.tmp").exists()  # the private temp is removed after verification
+
+
+def test_dependent_slice_is_dispatched_from_its_dependencys_accepted_head(full_engine):
+    runner = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
+                     "tests/test_canon_ledger_summary.py": GOOD_TEST})
+    step(full_engine, runner)
+    accepted = step(full_engine, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL" and accepted["packet_id"] == SID
+    following = step(full_engine, Runner({}))
+    dependents = [s["slice_id"] for s in POLICY["slices"] if s.get("depends_on") == [SID]]
+    assert following["status"] == "DISPATCHED" and following["packet_id"] == dependents[0]
+    assert following["base_sha"] == accepted["head_sha"]  # builds on the accepted code, not the release
+
+
+def test_independent_slice_proceeds_while_a_parked_slice_awaits_remediation(full_engine):
+    step(full_engine, CrashingRunner({}))
+    assert step(full_engine, CrashingRunner({}))["status"] == "PARKED"
+    nxt = step(full_engine, Runner({}))  # same release: no retry, but independent work continues
+    independent = [s["slice_id"] for s in POLICY["slices"]
+                   if not s.get("depends_on") and not s.get("superseded_by") and s["slice_id"] != SID]
+    assert nxt["status"] == "DISPATCHED" and nxt["packet_id"] == independent[0]
+    assert ledger(full_engine)["packets"][SID]["attempt_count"] == 1
+
+
+def test_every_planned_slice_is_new_module_sized_with_explicit_criteria():
+    for spec in POLICY["slices"]:
+        if spec.get("superseded_by"):
+            continue
+        assert spec["capability_level"] <= 3 and len(spec["allowed_paths"]) == 2
+        assert any(p.startswith("tests/") for p in spec["allowed_paths"])
+        assert len(spec["acceptance_criteria"]) >= 4 and spec["supervisor_acceptance_test"].strip()
+        assert set(spec["expected_artifacts"]) == set(spec["allowed_paths"])
+        for dep in spec["depends_on"]:
+            assert dep in {s["slice_id"] for s in POLICY["slices"]}

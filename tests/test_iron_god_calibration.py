@@ -85,6 +85,8 @@ def test_calibration_measures_every_level_and_writes_a_bound_profile(held):
     lease = held.pool.acquire(lane_mod.WORKER_LEASE_RUNTIME, "next-worker")  # model lease released
     held.pool.release("next-worker", lease.lease_id)
     assert not (lane_mod.Lane(held.state).workspaces / "calibration" / "clone").exists()
+    runs = lane_mod.Lane(held.state).workspaces / "calibration" / "runs"
+    assert not runs.exists() or list(runs.iterdir()) == []  # no worktree or pytest temp left behind
 
 
 def test_a_failing_level_caps_the_profile_and_skips_higher_levels(held):

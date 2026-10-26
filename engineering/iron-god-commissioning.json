@@ -100,6 +100,145 @@
       },
       "supervisor_acceptance_test": "from copy import deepcopy\n\nfrom project_orchestrator.canon_ledger_summary import summarize_ledger\n\n\ndef test_supervisor_acceptance_empty():\n    assert summarize_ledger({}) == {\n        'packet_count': 0, 'state_counts': {}, 'accepted_refs': [], 'last_event_type': None,\n    }\n\n\ndef test_supervisor_acceptance_counts_refs_and_last_event():\n    ledger = {\n        'packets': {\n            'p3': {'state': 'BLOCKED'},\n            'p1': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/p1'},\n            'p2': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/b'},\n            'p4': {'state': 'DISPATCHED', 'accepted_ref': ''},\n        },\n        'events': [{'type': 'DISPATCHED'}, {'type': 'LOCAL_ACCEPTANCE'}],\n    }\n    before = deepcopy(ledger)\n    summary = summarize_ledger(ledger)\n    assert ledger == before\n    assert summary['packet_count'] == 4\n    assert summary['state_counts'] == {'ACCEPTED_LOCAL': 2, 'BLOCKED': 1, 'DISPATCHED': 1}\n    assert list(summary['state_counts']) == sorted(summary['state_counts'])\n    assert summary['accepted_refs'] == ['refs/iron-god/accepted/b', 'refs/iron-god/accepted/p1']\n    assert summary['last_event_type'] == 'LOCAL_ACCEPTANCE'\n",
       "capability_level": 3
+    },
+    {
+      "slice_id": "CANON-COMMISSION-003",
+      "depends_on": [
+        "CANON-COMMISSION-002"
+      ],
+      "capability_level": 3,
+      "objective": "Add src/project_orchestrator/canon_ledger_report.py defining format_ledger_report(ledger) -> list[str]. It must call summarize_ledger(ledger) imported with 'from project_orchestrator.canon_ledger_summary import summarize_ledger' (that module already exists; do not change it) and return a list of strings in this order: first 'packets: N' where N is packet_count; then one line 'state S: C' for each state S and count C in state_counts, in the order state_counts gives; then f\"accepted: {len(summary['accepted_refs'])}\" (the count as an integer, for example 'accepted: 2', never the list itself); last the line built from t = summary['last_event_type'] as f\"last event: {t}\" if t is not None else 'last event: none' (the summary always has the key, so test t is None explicitly; never print 'None'). Also add tests/test_canon_ledger_report.py that imports 'from project_orchestrator.canon_ledger_report import format_ledger_report' and contains exactly these two tests: test_empty_ledger asserting format_ledger_report({}) == ['packets: 0', 'accepted: 0', 'last event: none']; and test_two_packets asserting format_ledger_report({'packets': {'a': {'state': 'DONE', 'accepted_ref': 'r1'}, 'b': {'state': 'NEW'}}, 'events': [{'type': 'X'}]}) == ['packets: 2', 'state DONE: 1', 'state NEW: 1', 'accepted: 1', 'last event: X'].",
+      "acceptance_criteria": [
+        "format_ledger_report({}) returns ['packets: 0', 'accepted: 0', 'last event: none']",
+        "the first line is 'packets: N' using packet_count",
+        "there is one 'state S: C' line per state in state_counts order, after the packets line",
+        "the accepted line is f\"accepted: {len(summary['accepted_refs'])}\", an integer count such as 'accepted: 2', placed after the state lines",
+        "the last line is f\"last event: {t}\" for t = summary['last_event_type'], and exactly 'last event: none' (lowercase) when t is None",
+        "it uses summarize_ledger from project_orchestrator.canon_ledger_summary and does not modify that module",
+        "the new tests pass and ruff reports no issues"
+      ],
+      "allowed_paths": [
+        "src/project_orchestrator/canon_ledger_report.py",
+        "tests/test_canon_ledger_report.py"
+      ],
+      "forbidden_paths": [
+        "AGENTS.md",
+        "DoWork.txt",
+        "docs/",
+        "engineering/",
+        "scripts/",
+        "src/project_orchestrator/iron_god_owner_control.py",
+        "src/project_orchestrator/execution_authority.py",
+        "src/project_orchestrator/human_ownership.py"
+      ],
+      "verification_commands": [
+        "python -m pytest -q -p no:cacheprovider tests/test_canon_ledger_report.py",
+        "python -m ruff check src/project_orchestrator/canon_ledger_report.py tests/test_canon_ledger_report.py"
+      ],
+      "expected_artifacts": [
+        "src/project_orchestrator/canon_ledger_report.py",
+        "tests/test_canon_ledger_report.py"
+      ],
+      "run_budget_minutes": 45,
+      "planning_refs": {
+        "vision_ref": "DoWork.txt (Iron God exclusive priority override)",
+        "roadmap_ref": "docs/IRON_GOD_OPERATIONAL_RECOVERY_20261025.md (next dependency-ready commissioning slices within the calibrated level)",
+        "architecture_ref": "src/project_orchestrator/canon_ledger_summary.py (accepted CANON-COMMISSION-002)",
+        "current_state_ref": "summarize_ledger exists at the accepted CANON-COMMISSION-002 head; no report formatter exists",
+        "dependency_evidence_ref": "CANON-COMMISSION-002 ACCEPTED_LOCAL (refs/iron-god/accepted/canon-commission-002)"
+      },
+      "supervisor_acceptance_test": "from project_orchestrator.canon_ledger_report import format_ledger_report\n\n\ndef test_supervisor_acceptance_empty():\n    assert format_ledger_report({}) == ['packets: 0', 'accepted: 0', 'last event: none']\n\n\ndef test_supervisor_acceptance_full_report():\n    ledger = {\n        'packets': {\n            'p2': {'state': 'BLOCKED'},\n            'p1': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/p1'},\n            'p3': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/p3'},\n        },\n        'events': [{'type': 'DISPATCHED'}, {'type': 'LOCAL_ACCEPTANCE'}],\n    }\n    assert format_ledger_report(ledger) == [\n        'packets: 3', 'state ACCEPTED_LOCAL: 2', 'state BLOCKED: 1', 'accepted: 2', 'last event: LOCAL_ACCEPTANCE',\n    ]\n"
+    },
+    {
+      "slice_id": "CANON-COMMISSION-004",
+      "depends_on": [],
+      "capability_level": 3,
+      "objective": "Add src/project_orchestrator/canon_ledger_attention.py defining packets_needing_attention(ledger, max_attempts=3) -> dict. ledger is a dict; ledger['packets'] is a dict mapping packet id -> packet dict (missing means no packets). Return a new dict with exactly these keys, each a sorted list of packet ids: 'active' (packets whose 'state' is 'DISPATCHED' or 'IMPLEMENTING'), 'waiting_for_supervisor' (packets whose 'state' is 'WAITING_FOR_SUPERVISOR'), 'retry_exhausted' (packets whose 'state' is 'BLOCKED' or 'PARKED' and whose 'attempt_count' is at least max_attempts; a missing attempt_count counts as 1). Do not modify the input. Use only the standard library. Also add tests/test_canon_ledger_attention.py that imports 'from project_orchestrator.canon_ledger_attention import packets_needing_attention' and contains exactly these two tests: test_empty_ledger asserting packets_needing_attention({}) == {'active': [], 'waiting_for_supervisor': [], 'retry_exhausted': []}; and test_active_and_exhausted asserting packets_needing_attention({'packets': {'a': {'state': 'IMPLEMENTING'}, 'b': {'state': 'PARKED', 'attempt_count': 3}, 'c': {'state': 'BLOCKED', 'attempt_count': 2}}}) == {'active': ['a'], 'waiting_for_supervisor': [], 'retry_exhausted': ['b']}.",
+      "acceptance_criteria": [
+        "packets_needing_attention({}) returns {'active': [], 'waiting_for_supervisor': [], 'retry_exhausted': []}",
+        "'active' is the sorted ids of DISPATCHED or IMPLEMENTING packets",
+        "'waiting_for_supervisor' is the sorted ids of WAITING_FOR_SUPERVISOR packets",
+        "'retry_exhausted' is the sorted ids of BLOCKED or PARKED packets with attempt_count >= max_attempts",
+        "a missing attempt_count counts as 1, and max_attempts defaults to 3",
+        "the input ledger is not modified",
+        "the new tests pass and ruff reports no issues"
+      ],
+      "allowed_paths": [
+        "src/project_orchestrator/canon_ledger_attention.py",
+        "tests/test_canon_ledger_attention.py"
+      ],
+      "forbidden_paths": [
+        "AGENTS.md",
+        "DoWork.txt",
+        "docs/",
+        "engineering/",
+        "scripts/",
+        "src/project_orchestrator/iron_god_owner_control.py",
+        "src/project_orchestrator/execution_authority.py",
+        "src/project_orchestrator/human_ownership.py"
+      ],
+      "verification_commands": [
+        "python -m pytest -q -p no:cacheprovider tests/test_canon_ledger_attention.py",
+        "python -m ruff check src/project_orchestrator/canon_ledger_attention.py tests/test_canon_ledger_attention.py"
+      ],
+      "expected_artifacts": [
+        "src/project_orchestrator/canon_ledger_attention.py",
+        "tests/test_canon_ledger_attention.py"
+      ],
+      "run_budget_minutes": 45,
+      "planning_refs": {
+        "vision_ref": "DoWork.txt (Iron God exclusive priority override)",
+        "roadmap_ref": "docs/IRON_GOD_OPERATIONAL_RECOVERY_20261025.md (next dependency-ready commissioning slices within the calibrated level)",
+        "architecture_ref": "src/project_orchestrator/worker_transport.py (Canon ledger states and bounded retries)",
+        "current_state_ref": "no ledger attention helper exists at the accepted release",
+        "dependency_evidence_ref": "no dependencies"
+      },
+      "supervisor_acceptance_test": "from copy import deepcopy\n\nfrom project_orchestrator.canon_ledger_attention import packets_needing_attention\n\n\ndef test_supervisor_acceptance_empty():\n    assert packets_needing_attention({}) == {'active': [], 'waiting_for_supervisor': [], 'retry_exhausted': []}\n\n\ndef test_supervisor_acceptance_classifies_packets():\n    ledger = {'packets': {\n        'b': {'state': 'IMPLEMENTING'}, 'a': {'state': 'DISPATCHED'},\n        'w': {'state': 'WAITING_FOR_SUPERVISOR'},\n        'x': {'state': 'PARKED', 'attempt_count': 3}, 'y': {'state': 'BLOCKED', 'attempt_count': 2},\n        'z': {'state': 'BLOCKED'}, 'v': {'state': 'BLOCKED', 'attempt_count': 4}, 'ok': {'state': 'ACCEPTED_LOCAL'},\n    }}\n    before = deepcopy(ledger)\n    assert packets_needing_attention(ledger) == {\n        'active': ['a', 'b'], 'waiting_for_supervisor': ['w'], 'retry_exhausted': ['v', 'x'],\n    }\n    assert ledger == before\n    assert packets_needing_attention(ledger, max_attempts=2)['retry_exhausted'] == ['v', 'x', 'y']\n"
+    },
+    {
+      "slice_id": "CANON-COMMISSION-005",
+      "depends_on": [],
+      "capability_level": 3,
+      "objective": "Add src/project_orchestrator/capability_profile_report.py defining summarize_capability_profile(profile) -> dict. profile is a dict that may have 'model' (a string), 'max_passing_level' (an int) and 'levels' (a dict whose keys are level numbers as strings, like '1', and whose values are dicts with 'pass_rate', 'median_wall_s' and 'status'). Return a new dict with exactly these keys: 'model' (profile['model'], or None when missing), 'max_passing_level' (profile['max_passing_level'], or 0 when missing), and 'levels' (a list with one dict per level, sorted by the level number as an integer, each with exactly the keys 'level' (the int), 'pass_rate', 'median_wall_s' and 'status', using None for any of those three that is missing). A missing 'levels' gives an empty list. Do not modify the input. Use only the standard library. Also add tests/test_capability_profile_report.py with pytest tests for an empty profile and for a profile with two levels.",
+      "acceptance_criteria": [
+        "summarize_capability_profile({}) returns {'model': None, 'max_passing_level': 0, 'levels': []}",
+        "'levels' is sorted by the integer level, so '10' comes after '2'",
+        "each level dict has exactly the keys level, pass_rate, median_wall_s and status",
+        "a missing pass_rate, median_wall_s or status becomes None",
+        "the input profile is not modified",
+        "the new tests pass and ruff reports no issues"
+      ],
+      "allowed_paths": [
+        "src/project_orchestrator/capability_profile_report.py",
+        "tests/test_capability_profile_report.py"
+      ],
+      "forbidden_paths": [
+        "AGENTS.md",
+        "DoWork.txt",
+        "docs/",
+        "engineering/",
+        "scripts/",
+        "src/project_orchestrator/iron_god_owner_control.py",
+        "src/project_orchestrator/execution_authority.py",
+        "src/project_orchestrator/human_ownership.py"
+      ],
+      "verification_commands": [
+        "python -m pytest -q -p no:cacheprovider tests/test_capability_profile_report.py",
+        "python -m ruff check src/project_orchestrator/capability_profile_report.py tests/test_capability_profile_report.py"
+      ],
+      "expected_artifacts": [
+        "src/project_orchestrator/capability_profile_report.py",
+        "tests/test_capability_profile_report.py"
+      ],
+      "run_budget_minutes": 45,
+      "planning_refs": {
+        "vision_ref": "DoWork.txt (Iron God exclusive priority override)",
+        "roadmap_ref": "docs/IRON_GOD_OPERATIONAL_RECOVERY_20261025.md (next dependency-ready commissioning slices within the calibrated level)",
+        "architecture_ref": "src/project_orchestrator/iron_god_calibration.py (capability profile schema)",
+        "current_state_ref": "no capability profile report helper exists at the accepted release",
+        "dependency_evidence_ref": "no dependencies"
+      },
+      "supervisor_acceptance_test": "from copy import deepcopy\n\nfrom project_orchestrator.capability_profile_report import summarize_capability_profile\n\n\ndef test_supervisor_acceptance_empty():\n    assert summarize_capability_profile({}) == {'model': None, 'max_passing_level': 0, 'levels': []}\n\n\ndef test_supervisor_acceptance_sorts_levels_numerically():\n    profile = {'model': 'ollama/qwen2.5-coder:7b', 'max_passing_level': 2, 'extra': True, 'levels': {\n        '10': {'pass_rate': 0.0, 'status': 'SKIPPED_LOWER_LEVEL_FAILED'},\n        '2': {'pass_rate': 1.0, 'median_wall_s': 48.2, 'status': 'MEASURED', 'runs': []},\n        '1': {'pass_rate': 1.0, 'median_wall_s': 32.1, 'status': 'MEASURED'},\n    }}\n    before = deepcopy(profile)\n    assert summarize_capability_profile(profile) == {\n        'model': 'ollama/qwen2.5-coder:7b', 'max_passing_level': 2, 'levels': [\n            {'level': 1, 'pass_rate': 1.0, 'median_wall_s': 32.1, 'status': 'MEASURED'},\n            {'level': 2, 'pass_rate': 1.0, 'median_wall_s': 48.2, 'status': 'MEASURED'},\n            {'level': 10, 'pass_rate': 0.0, 'median_wall_s': None, 'status': 'SKIPPED_LOWER_LEVEL_FAILED'},\n        ]}\n    assert profile == before\n"
     }
   ]
 }
