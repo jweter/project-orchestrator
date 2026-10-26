@@ -103,8 +103,25 @@ including 2/2 through the exact production worker path). Root causes fixed
 in `815cc6b`: prompt named forbidden files (aider pulled them in), shared
 pytest temp link access-denied, and an ambiguous ledger shape in slice 001.
 
+## Calibration mode (`f713a7a`)
+
+`python scripts/iron_god_calibration.py [--runs 3]`, run from the installed
+release while the owner holds control, measures the exact production worker
+path over a versioned three-level ladder (hidden acceptance tests, scope
+check, failed-run evidence kept under `canon-workspaces/calibration/evidence`)
+and writes `flow-state/iron-god-capability-profile.json`, bound to model and
+hardware. It refuses while a grant is live, a Canon worker is active or the
+model lease is held, and aborts if Take the Wheel is clicked mid-run. Every
+commissioning slice declares `capability_level`; without a matching profile
+the lane reports `WAITING_FOR_CALIBRATION` and dispatches nothing.
+
+Measured (isolated state, 3 runs/level): levels 1-3 pass 9/9, median
+32/48/86 s. Planning rule from the evidence: state every required behaviour
+as an explicit acceptance criterion (a requirement stated once in prose
+passed 0/3; as a criterion 3/3).
+
 ## Next action
 
-Turn the capability ladder into an owner-held calibration mode (refuses to
-run while a grant is live) that records a capability profile used to size
-slices; then plan the next dependency-ready commissioning slices.
+Owner-held live calibration on the installed `f713a7a` (the first attempt
+was stopped by host memory pressure before writing a profile), then plan the
+next dependency-ready commissioning slices within the calibrated level.
