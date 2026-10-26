@@ -2,10 +2,11 @@
 
 Last updated: 2026-10-26.
 
-**Runtime status: installed, disabled, awaiting the owner's Take the Wheel.**
-The owner's architecture decisions of 2026-10-25 are implemented in source.
-Nothing here has issued an owner grant; activation requires the owner's
-Take the Wheel.
+**Runtime status: OPERATIONAL_VERIFIED (2026-10-26).** Release `815cc6b`
+completed one real owner-activated development cycle on Azathoth: grant,
+acknowledgment, one worker, handback, independent verification,
+`ACCEPTED_LOCAL`, VERIFIED memory, then an acknowledged Give Me Control.
+Nothing here issues an owner grant; every activation was the owner's click.
 
 ## Lineage
 
@@ -83,6 +84,27 @@ worker whose weak tests pass with wrong code is BLOCKED by the hidden test.
   activity still reachable during commissioning; fixed in `443f9e5`, which
   supersedes `f9e6302` through the same preflight/stage/promote path.
 
+## Live commissioning (2026-10-26)
+
+| Owner action | Release | Outcome |
+| --- | --- | --- |
+| Take the Wheel (gen 1) | `b1f3d02` | one worker; `PARKED` ENVIRONMENT_FAILURE: aider console UnicodeEncodeError on cp1252 captured stdout |
+| Give Me Control (gen 2) | `b1f3d02` | revocation acknowledged; fixed in `6c76538`/`6526a11` (UTF-8, remediation-gated bounded retry) |
+| Take the Wheel (gen 3) | `6526a11` | retry attempt 2; `PARKED` TimeoutExpired: 16-22k token prompts on a CPU-only 7B |
+| Give Me Control (gen 4) | `6526a11` | revocation acknowledged; capability ladder run with the engine off |
+| Take the Wheel (gen 5) | `815cc6b` | 001 cancelled as superseded; `CANON-COMMISSION-002` **ACCEPTED_LOCAL** at `dde4a48` in 5.5 min |
+| Give Me Control (gen 6) | `815cc6b` | revocation acknowledged in 0.24 s; receipt `OWNER_CONTROL_GRANTED` |
+
+Capability ladder (engine off, scratch clone, hidden acceptance tests),
+i7-13700H CPU-only: qwen2.5-coder:7b reads ~60 tok/s and writes 6-9 tok/s;
+1.5b is fast but misplaced files; qwen3.5:9b is too slow. With a ~900-token
+prompt the 7b builds the full commissioning slice in 62-96 s (4/4 runs,
+including 2/2 through the exact production worker path). Root causes fixed
+in `815cc6b`: prompt named forbidden files (aider pulled them in), shared
+pytest temp link access-denied, and an ambiguous ledger shape in slice 001.
+
 ## Next action
 
-Owner activation through Take the Wheel on the latest promoted release.
+Turn the capability ladder into an owner-held calibration mode (refuses to
+run while a grant is live) that records a capability profile used to size
+slices; then plan the next dependency-ready commissioning slices.
