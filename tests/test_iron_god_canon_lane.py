@@ -323,8 +323,10 @@ def test_low_resources_wait_before_any_worktree_or_lease(engine):
     result = step(engine, runner, resources=lambda: {"admitted": False, "reason": "CRITICAL_MEMORY_NO_NEW_WORK"})
     assert result["status"] == "WAITING_FOR_RESOURCES" and runner.spawned == 0
     assert not (lane_mod.Lane(engine.state).worktrees / "CANON-COMMISSION-001").exists()
-    assert engine.pool.snapshot()  # no lease held for the refused dispatch
-    assert all(not row.get("held") for row in [])
+    # No lease is held for the refused dispatch: another builder can take it.
+    other = RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, engine.tmp / "runtime-leases.json")
+    lease = other.acquire(lane_mod.WORKER_LEASE_RUNTIME, "some-other-builder")
+    other.release("some-other-builder", lease.lease_id)
 
 
 def test_worker_holds_the_exclusive_model_lease_until_harvest(engine):
