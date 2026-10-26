@@ -557,3 +557,13 @@ def test_every_planned_slice_is_new_module_sized_with_explicit_criteria():
         assert set(spec["expected_artifacts"]) == set(spec["allowed_paths"])
         for dep in spec["depends_on"]:
             assert dep in {s["slice_id"] for s in POLICY["slices"]}
+
+
+def test_every_planned_slice_passes_canon_dispatch_validation(tmp_path):
+    # Canon bounds handoff text (1200 chars); an over-long objective would fail live at dispatch.
+    from project_orchestrator.worker_transport import dispatch_canonical_slice, empty_ledger
+    for spec in POLICY["slices"]:
+        packet = lane_mod.build_packet(spec, POLICY, base_sha="a" * 40, worktree=tmp_path / spec["slice_id"])
+        packet["memory_context_text"] = "Iron Memory unavailable; use live source and repository authority only."
+        dispatched = dispatch_canonical_slice(empty_ledger(), packet, transport="local_idle_worker")
+        assert dispatched["packets"][spec["slice_id"]]["state"] == "DISPATCHED"

@@ -107,7 +107,7 @@
         "CANON-COMMISSION-002"
       ],
       "capability_level": 3,
-      "objective": "Add src/project_orchestrator/canon_ledger_report.py defining format_ledger_report(ledger) -> list[str]. It must call summarize_ledger(ledger) imported with 'from project_orchestrator.canon_ledger_summary import summarize_ledger' (that module already exists; do not change it) and return a list of strings in this order: first 'packets: N' where N is packet_count; then one line 'state S: C' for each state S and count C in state_counts, in the order state_counts gives; then f\"accepted: {len(summary['accepted_refs'])}\" (the count as an integer, for example 'accepted: 2', never the list itself); last the line built from t = summary['last_event_type'] as f\"last event: {t}\" if t is not None else 'last event: none' (the summary always has the key, so test t is None explicitly; never print 'None'). Also add tests/test_canon_ledger_report.py that imports 'from project_orchestrator.canon_ledger_report import format_ledger_report' and contains exactly these two tests: test_empty_ledger asserting format_ledger_report({}) == ['packets: 0', 'accepted: 0', 'last event: none']; and test_two_packets asserting format_ledger_report({'packets': {'a': {'state': 'DONE', 'accepted_ref': 'r1'}, 'b': {'state': 'NEW'}}, 'events': [{'type': 'X'}]}) == ['packets: 2', 'state DONE: 1', 'state NEW: 1', 'accepted: 1', 'last event: X'].",
+      "objective": "Add src/project_orchestrator/canon_ledger_report.py defining format_ledger_report(ledger) -> list[str]. It must call summarize_ledger(ledger) imported with 'from project_orchestrator.canon_ledger_summary import summarize_ledger' (that module already exists; do not change it) and return a list of strings in this order: first 'packets: N' where N is packet_count; then one line 'state S: C' for each state S and count C in state_counts, in the order state_counts gives; then f\"accepted: {len(summary['accepted_refs'])}\" (the count as an integer, for example 'accepted: 2', never the list itself); last the line built from t = summary['last_event_type'] as f\"last event: {t}\" if t is not None else 'last event: none' (the summary always has the key, so test t is None explicitly; never print 'None'). Also add tests/test_canon_ledger_report.py containing exactly the two tests given in the acceptance criteria.",
       "acceptance_criteria": [
         "format_ledger_report({}) returns ['packets: 0', 'accepted: 0', 'last event: none']",
         "the first line is 'packets: N' using packet_count",
@@ -115,6 +115,9 @@
         "the accepted line is f\"accepted: {len(summary['accepted_refs'])}\", an integer count such as 'accepted: 2', placed after the state lines",
         "the last line is f\"last event: {t}\" for t = summary['last_event_type'], and exactly 'last event: none' (lowercase) when t is None",
         "it uses summarize_ledger from project_orchestrator.canon_ledger_summary and does not modify that module",
+        "tests/test_canon_ledger_report.py imports 'from project_orchestrator.canon_ledger_report import format_ledger_report'",
+        "tests/test_canon_ledger_report.py has test_empty_ledger asserting format_ledger_report({}) == ['packets: 0', 'accepted: 0', 'last event: none']",
+        "tests/test_canon_ledger_report.py has test_two_packets asserting format_ledger_report({'packets': {'a': {'state': 'DONE', 'accepted_ref': 'r1'}, 'b': {'state': 'NEW'}}, 'events': [{'type': 'X'}]}) == ['packets: 2', 'state DONE: 1', 'state NEW: 1', 'accepted: 1', 'last event: X']",
         "the new tests pass and ruff reports no issues"
       ],
       "allowed_paths": [
@@ -153,7 +156,7 @@
       "slice_id": "CANON-COMMISSION-004",
       "depends_on": [],
       "capability_level": 3,
-      "objective": "Add src/project_orchestrator/canon_ledger_attention.py defining packets_needing_attention(ledger, max_attempts=3) -> dict. ledger is a dict; ledger['packets'] is a dict mapping packet id -> packet dict (missing means no packets). Return a new dict with exactly these keys, each a sorted list of packet ids: 'active' (packets whose 'state' is 'DISPATCHED' or 'IMPLEMENTING'), 'waiting_for_supervisor' (packets whose 'state' is 'WAITING_FOR_SUPERVISOR'), 'retry_exhausted' (packets whose 'state' is 'BLOCKED' or 'PARKED' and whose 'attempt_count' is at least max_attempts; a missing attempt_count counts as 1). Do not modify the input. Use only the standard library. Also add tests/test_canon_ledger_attention.py that imports 'from project_orchestrator.canon_ledger_attention import packets_needing_attention' and contains exactly these two tests: test_empty_ledger asserting packets_needing_attention({}) == {'active': [], 'waiting_for_supervisor': [], 'retry_exhausted': []}; and test_active_and_exhausted asserting packets_needing_attention({'packets': {'a': {'state': 'IMPLEMENTING'}, 'b': {'state': 'PARKED', 'attempt_count': 3}, 'c': {'state': 'BLOCKED', 'attempt_count': 2}}}) == {'active': ['a'], 'waiting_for_supervisor': [], 'retry_exhausted': ['b']}.",
+      "objective": "Add src/project_orchestrator/canon_ledger_attention.py defining packets_needing_attention(ledger, max_attempts=3) -> dict. ledger is a dict; ledger['packets'] is a dict mapping packet id -> packet dict (missing means no packets). Return a new dict with exactly these keys, each a sorted list of packet ids: 'active' (packets whose 'state' is 'DISPATCHED' or 'IMPLEMENTING'), 'waiting_for_supervisor' (packets whose 'state' is 'WAITING_FOR_SUPERVISOR'), 'retry_exhausted' (packets whose 'state' is 'BLOCKED' or 'PARKED' and whose 'attempt_count' is at least max_attempts; a missing attempt_count counts as 1). Do not modify the input. Use only the standard library. Also add tests/test_canon_ledger_attention.py containing exactly the two tests given in the acceptance criteria.",
       "acceptance_criteria": [
         "packets_needing_attention({}) returns {'active': [], 'waiting_for_supervisor': [], 'retry_exhausted': []}",
         "'active' is the sorted ids of DISPATCHED or IMPLEMENTING packets",
@@ -161,6 +164,9 @@
         "'retry_exhausted' is the sorted ids of BLOCKED or PARKED packets with attempt_count >= max_attempts",
         "a missing attempt_count counts as 1, and max_attempts defaults to 3",
         "the input ledger is not modified",
+        "tests/test_canon_ledger_attention.py imports 'from project_orchestrator.canon_ledger_attention import packets_needing_attention'",
+        "tests/test_canon_ledger_attention.py has test_empty_ledger asserting packets_needing_attention({}) == {'active': [], 'waiting_for_supervisor': [], 'retry_exhausted': []}",
+        "tests/test_canon_ledger_attention.py has test_active_and_exhausted asserting packets_needing_attention({'packets': {'a': {'state': 'IMPLEMENTING'}, 'b': {'state': 'PARKED', 'attempt_count': 3}, 'c': {'state': 'BLOCKED', 'attempt_count': 2}}}) == {'active': ['a'], 'waiting_for_supervisor': [], 'retry_exhausted': ['b']}",
         "the new tests pass and ruff reports no issues"
       ],
       "allowed_paths": [
