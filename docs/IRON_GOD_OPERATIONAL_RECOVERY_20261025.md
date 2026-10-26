@@ -2,9 +2,10 @@
 
 Last updated: 2026-10-26.
 
-**Runtime status: DEVELOPMENT-ONLY until staged and installed.** The owner's
-architecture decisions of 2026-10-25 are implemented in source. Nothing here
-has issued an owner grant; activation requires the owner's Take the Wheel.
+**Runtime status: installed, disabled, awaiting the owner's Take the Wheel.**
+The owner's architecture decisions of 2026-10-25 are implemented in source.
+Nothing here has issued an owner grant; activation requires the owner's
+Take the Wheel.
 
 ## Lineage
 
@@ -22,6 +23,7 @@ blindly merged. GitHub `main` is not the baseline.
 | 3 Worker migration | `87faae2`, `c07c2bf` | legacy IronGodLocal worker under version control; gate = execution decision |
 | 4 Canon lane | `44dd00a`, `87c216b`, `3d05656` | single-worker local cycle with independent verification, memory, resources, lease |
 | 6 Unreleased lineage | `5bb091f`…`f754cf4` | throughput, memory admission, preflight timing, staging/promotion (owner-controller), one-click desktop |
+| Commissioning exclusivity | `06521e1`, `443f9e5` | actor bridge stays resident; legacy merge watcher, Linear reconciliation and evolution readiness suspended while commissioning is declared |
 
 ## Owner-control contract (implemented)
 
@@ -72,9 +74,15 @@ worker whose weak tests pass with wrong code is BLOCKED by the hidden test.
    `orchestrator-github-evidence-resilience`; pinned components are immune;
    twelve installed maintenance scripts depend on it, so it is left in place.
 
+## Installation history
+
+* `f9e6302`: exact-head native preflight GREEN (28/28 checks, 3109 tests),
+  staged and promoted with pinned tasks disabled; desktop controls installed
+  from the release (shortcut self-test 15/15).
+* After installation, review found legacy merge-watcher/Linear/readiness
+  activity still reachable during commissioning; fixed in `443f9e5`, which
+  supersedes `f9e6302` through the same preflight/stage/promote path.
+
 ## Next action
 
-Full exact-head native preflight on the top commit, then stage it with
-`Stage-VerifiedLocalRelease.ps1` and promote with
-`Promote-DisabledLocalRelease.ps1` (owner-directed, engine stopped, rollback
-backups), then owner activation through Take the Wheel.
+Owner activation through Take the Wheel on the latest promoted release.
