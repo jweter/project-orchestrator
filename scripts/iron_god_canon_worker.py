@@ -209,7 +209,7 @@ def production_agent(worktree: Path, message: str, files: list[str], check: Call
     finally:
         shutil.rmtree(lock, ignore_errors=True)
     if result.returncode != 0:
-        raise RuntimeError(f"AIDER_EXIT_{result.returncode}: {_tail(result.stderr)[:200]}")
+        raise RuntimeError(f"AIDER_EXIT_{result.returncode}: {_tail(result.stderr)[-300:]}")  # keep the exception line
 
 
 def main(argv: list[str] | None = None) -> int:

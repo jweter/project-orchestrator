@@ -950,3 +950,13 @@ def test_injected_owner_veto_precedes_grant_checkout_and_worker_dispatch(tmp_pat
     assert probes == []
     assert not (tmp_path / "builder-state.json").exists()
     assert not (tmp_path / "grant.json").exists()
+
+
+def test_aider_output_is_utf8_when_captured_on_windows(monkeypatch):
+    # Regression: captured stdout defaulted to cp1252 on Windows and aider's
+    # rich console crashed (UnicodeEncodeError on U+2588) printing lint output.
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    monkeypatch.delenv("PYTHONUTF8", raising=False)
+    _argv, env = b.aider_invocation("objective", ["a.py"])
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    assert env["PYTHONUTF8"] == "1"

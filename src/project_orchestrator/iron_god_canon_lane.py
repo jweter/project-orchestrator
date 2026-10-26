@@ -50,6 +50,8 @@ from .worker_transport import (
     load_ledger,
     record_independent_verification,
     record_worker_result,
+    requeueable_packets,
+    retry_packet,
     transition_packet,
     write_ledger,
 )
@@ -367,27 +369,93 @@ def advance_commissioning_lane(
         result = harvest(lane, policy, ledger, active, memory_root=memory_root)
         _release_lease(pool, active)
         return result
-    spec = next_ready_slice(policy, ledger)
-    if spec is None:
-        return _report(lane, {"status": "IDLE_NO_READY_SLICE"})
+    retry, awaiting = retryable_packet(lane, ledger, release_sha)
+    spec = None if retry else next_ready_slice(policy, ledger)
+    if retry is None and spec is None:
+        return _report(lane, {"status": "IDLE_NO_READY_SLICE", "awaiting_remediation": awaiting})
+    packet_id = retry["packet_id"] if retry else spec["slice_id"]
     admission = resources()
     if not admission.get("admitted"):
-        return _report(lane, {"status": "WAITING_FOR_RESOURCES", "packet_id": spec["slice_id"],
+        return _report(lane, {"status": "WAITING_FOR_RESOURCES", "packet_id": packet_id,
                               "admission": admission})
     try:
         lease = pool.acquire(WORKER_LEASE_RUNTIME, WORKER_LEASE_ID, owner_pid=os.getpid())
     except Exception as exc:  # Capacity held elsewhere: never share the local model.
-        return _report(lane, {"status": "WAITING_FOR_RUNTIME_LEASE", "packet_id": spec["slice_id"],
+        return _report(lane, {"status": "WAITING_FOR_RUNTIME_LEASE", "packet_id": packet_id,
                               "detail": f"{type(exc).__name__}: {str(exc)[:200]}"})
     try:
-        result = dispatch(lane, policy, ledger, spec, release_repo=release_repo, release_sha=release_sha,
-                          spawn=spawn, memory_root=memory_root, lease_id=lease.lease_id)
+        if retry:
+            result = redispatch(lane, ledger, retry, release_repo=release_repo, release_sha=release_sha,
+                                spawn=spawn, lease_id=lease.lease_id)
+        else:
+            result = dispatch(lane, policy, ledger, spec, release_repo=release_repo, release_sha=release_sha,
+                              spawn=spawn, memory_root=memory_root, lease_id=lease.lease_id)
     except BaseException:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
         raise
-    if result["status"] != "DISPATCHED":
+    if result["status"] not in {"DISPATCHED", "RETRY_DISPATCHED"}:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
     return result
+
+
+def retryable_packet(lane: Lane, ledger: dict[str, Any], release_sha: str) -> tuple[dict[str, Any] | None, list[str]]:
+    """A failed or environment-parked packet within Canon's bounded retry budget.
+
+    A retry is admitted only once a different verified release is running than
+    the one whose attempt failed: the release change is the remediation
+    evidence, so an unchanged environment never burns the retry budget.
+    """
+    awaiting = []
+    for record in requeueable_packets(ledger):
+        try:
+            packet = json.loads((lane.packets / f"{record['packet_id']}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if packet.get("dispatch_release_sha", packet["base_sha"]) != release_sha:
+            return record, awaiting
+        awaiting.append(record["packet_id"])
+    return None, awaiting
+
+
+def redispatch(lane: Lane, ledger: dict[str, Any], record: dict[str, Any], *, release_repo: Path,
+               release_sha: str, spawn: Callable[..., dict[str, Any]], lease_id: str) -> dict[str, Any]:
+    """Retry on the same branch and exact base; the failed worktree is preserved aside."""
+    packet_id = record["packet_id"]
+    packet_path = lane.packets / f"{packet_id}.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    base = record["base_sha"]
+    worktree = Path(packet["worktree"])
+    ensure_dev_repo(lane, release_repo, base)
+    head = _git(lane.dev_repo, "rev-parse", "--verify", "refs/heads/" + record["branch"])
+    if head.returncode != 0 or head.stdout.strip() != base:
+        return _report(lane, {"status": "RETRY_REFUSED_BRANCH_NOT_AT_BASE", "packet_id": packet_id})
+    preserved = worktree.with_name(f"{worktree.name}.attempt{record['attempt_count']}")
+    if worktree.exists():
+        if preserved.exists():
+            return _report(lane, {"status": "RETRY_REFUSED_PRESERVED_ATTEMPT_EXISTS", "packet_id": packet_id,
+                                  "worktree": str(preserved)})
+        detached = _git(worktree, "checkout", "--quiet", "--detach")
+        moved = _git(lane.dev_repo, "worktree", "move", str(worktree), str(preserved)) if detached.returncode == 0 else detached
+        if moved.returncode != 0:
+            return _report(lane, {"status": "RETRY_WORKTREE_PRESERVE_FAILED", "packet_id": packet_id,
+                                  "detail": moved.stderr[-300:]})
+    added = _git(lane.dev_repo, "worktree", "add", str(worktree), record["branch"])
+    if added.returncode != 0:
+        return _report(lane, {"status": "WORKTREE_PROVISION_FAILED", "detail": added.stderr[-300:]})
+    updated = retry_packet(ledger, packet_id, expected_base_sha=base,
+                           remediation_evidence_ref=f"runner-release:{release_sha}")
+    lane.save(updated, ledger)
+    packet["dispatch_release_sha"] = release_sha
+    atomic_json(packet_path, packet)
+    handback_path = lane.handbacks / f"{packet_id}.json"
+    handback_path.unlink(missing_ok=True)
+    worker = spawn(release_repo, packet_path, handback_path, release_sha=release_sha,
+                   log_path=lane.reports / f"{packet_id}-worker.log")
+    atomic_json(lane.active_path, {"packet_id": packet_id, "worker": worker, "worktree": str(worktree),
+                                   "dispatched_at_utc": _now(), "base_sha": base, "lease_id": lease_id})
+    return _report(lane, {"status": "RETRY_DISPATCHED", "packet_id": packet_id, "base_sha": base,
+                          "attempt": updated["packets"][packet_id]["attempt_count"],
+                          "preserved_worktree": str(preserved), "worker_pid": worker["pid"]})
 
 
 def _release_lease(pool: RuntimeLeasePool, active: dict[str, Any]) -> None:
@@ -423,6 +491,7 @@ def dispatch(lane: Lane, policy: dict[str, Any], ledger: dict[str, Any], spec: d
     lane.save(updated, ledger)
     packet_path = lane.packets / f"{spec['slice_id']}.json"
     handback_path = lane.handbacks / f"{spec['slice_id']}.json"
+    packet["dispatch_release_sha"] = release_sha
     atomic_json(packet_path, packet)
     handback_path.unlink(missing_ok=True)
     worker = spawn(release_repo, packet_path, handback_path, release_sha=release_sha,

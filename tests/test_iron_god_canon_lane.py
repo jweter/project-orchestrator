@@ -377,3 +377,64 @@ def test_without_commissioning_policy_legacy_activity_is_unchanged(tmp_path, mon
     monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *a, **k: started.append(a) or "proc")
     assert supervisor.start_merge_watcher(repo, tmp_path, 60) == "proc" and started
     assert supervisor_runtime.commissioning_active(repo) is False
+
+
+class CrashingRunner(Runner):
+    """Stand-in for the live failure: the agent crashes after editing files."""
+
+    def spawn(self, release_repo, packet_path, handback_path, *, release_sha, log_path):
+        self.spawned += 1
+        packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
+
+        def crash(worktree, message, allowed, check):
+            (worktree / "src" / "project_orchestrator" / "canon_ledger_summary.py").write_text("", encoding="utf-8")
+            raise RuntimeError("AIDER_EXIT_1: UnicodeEncodeError")
+
+        WORKER._write(Path(handback_path), WORKER.execute_packet(packet, authority=lambda: True, run_agent=crash))
+        return {"pid": 1, "process_start_fingerprint": "windows:1", "host": "fake"}
+
+
+def new_release(engine):
+    (engine.repo / "RUNNER_FIX.txt").write_text(f"remediated runner after {engine.sha}", encoding="utf-8")
+    _git(engine.repo, "add", ".")
+    _git(engine.repo, "commit", "-q", "-m", "remediate runner")
+    engine.sha = _git(engine.repo, "rev-parse", "HEAD")
+    engine.supervisor = grant_owner_authority(engine.state, release_sha=engine.sha).as_dict()
+
+
+def test_environment_failure_retries_only_under_a_remediated_release(engine):
+    step(engine, CrashingRunner({}))
+    parked = step(engine, CrashingRunner({}))
+    assert parked["status"] == "PARKED" and parked["worker_status"] == "ENVIRONMENT_FAILURE"
+    original = engine.sha
+    same = CrashingRunner({})
+    idle = step(engine, same)  # unchanged release: never burn the retry budget
+    assert idle["status"] == "IDLE_NO_READY_SLICE" and same.spawned == 0
+    assert idle["awaiting_remediation"] == ["CANON-COMMISSION-001"]
+
+    new_release(engine)
+    good = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
+                   "tests/test_canon_ledger_summary.py": GOOD_TEST})
+    retried = step(engine, good)
+    assert retried["status"] == "RETRY_DISPATCHED" and retried["attempt"] == 2
+    assert retried["base_sha"] == original  # same exact base and branch as the failed attempt
+    preserved = Path(retried["preserved_worktree"])
+    assert (preserved / "src" / "project_orchestrator" / "canon_ledger_summary.py").exists()  # evidence kept
+    accepted = step(engine, good)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    record = ledger(engine)["packets"]["CANON-COMMISSION-001"]
+    assert record["attempt_count"] == 2 and record["previous_results"][0]["status"] == "ENVIRONMENT_FAILURE"
+    retry = [e for e in ledger(engine)["events"] if e["type"] == "RETRY"]
+    assert [e["evidence_ref"] for e in retry] == [f"runner-release:{engine.sha}"]
+
+
+def test_retry_budget_is_bounded_by_canon(engine):
+    step(engine, CrashingRunner({}))
+    step(engine, CrashingRunner({}))
+    for attempt in (2, 3):
+        new_release(engine)
+        assert step(engine, CrashingRunner({}))["attempt"] == attempt
+        assert step(engine, CrashingRunner({}))["status"] == "PARKED"
+    new_release(engine)
+    exhausted = CrashingRunner({})
+    assert step(engine, exhausted)["status"] == "IDLE_NO_READY_SLICE" and exhausted.spawned == 0
