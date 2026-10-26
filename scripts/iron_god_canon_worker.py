@@ -32,6 +32,21 @@ from project_orchestrator.execution_authority import evaluate_execution_authorit
 from project_orchestrator.execution_runtime import NativeWindowsRuntime, RuntimeRequest  # noqa: E402
 
 MAX_TAIL = 4000
+LEAN_AIDER_FLAGS = ("--map-tokens", "0", "--no-detect-urls", "--edit-format", "whole")
+
+
+def lean_aider_invocation(base: Callable[..., tuple[list[str], dict[str, str]]], message: str,
+                          files: list[str]) -> tuple[list[str], dict[str, str]]:
+    """Measured on Azathoth (capability ladder): lean context and whole-file edits build the
+    commissioning slice in ~60-80 s; a repository map or extra chat files never finish."""
+    argv, env = base(message)
+    return [*argv, *LEAN_AIDER_FLAGS, *files], env
+
+
+def private_temp_env(env: dict[str, str], root: Path) -> dict[str, str]:
+    """pytest's shared %TEMP%/pytest-of-<user> link can be access-denied; isolate it per run."""
+    root.mkdir(parents=True, exist_ok=True)
+    return {**env, "TEMP": str(root), "TMP": str(root)}
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -77,19 +92,20 @@ def worker_message(packet: dict[str, Any]) -> str:
         "Acceptance criteria:",
         *[f"- {item}" for item in plan["acceptance_criteria"]],
         "Create or edit ONLY these files: " + ", ".join(packet["paths"]),
-        "Never edit: " + ", ".join(plan["forbidden_paths"]),
-        "Do not run git, push, publish, change owner control, schedules, or any other file.",
+        "Do not create or edit any other file. Do not run git, push or publish.",
         "Keep the change minimal, readable and covered by the requested tests.",
     ]
-    memory = packet.get("memory_context_text")
-    if isinstance(memory, str) and memory.strip():
-        lines += ["", memory]
+    # Name no other file and send no memory text: aider adds every file the
+    # message names to the chat, and on this CPU-only laptop a 16-22k token
+    # prompt never completes. Forbidden paths are enforced after the run by
+    # the scope check; memory context stays on the packet for the supervisor.
     return "\n".join(lines)
 
 
 def run_verification(worktree: Path, commands: list[str], *, timeout: int = 900) -> list[dict[str, Any]]:
     results = []
-    env = {**os.environ, "PYTHONPATH": str(worktree / "src")}
+    env = private_temp_env({**os.environ, "PYTHONPATH": str(worktree / "src")},
+                           worktree.parent / f"{worktree.name}.tmp")
     for command in commands:
         argv = shlex.split(command, posix=False)
         if argv and argv[0] in {"python", "python.exe", "py"}:
@@ -200,7 +216,7 @@ def production_agent(worktree: Path, message: str, files: list[str], check: Call
     )
     import shutil
 
-    argv, env = aider_invocation(message, files)
+    argv, env = lean_aider_invocation(aider_invocation, message, files)
     lock = _acquire_ollama_lock()
     try:
         result = NativeWindowsRuntime().execute_supervised(

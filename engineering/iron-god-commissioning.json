@@ -52,6 +52,51 @@
         "current_state_ref": "no canon_ledger_summary module exists at the accepted release",
         "dependency_evidence_ref": "no dependencies; first commissioning slice"
       },
+      "supervisor_acceptance_test": "from copy import deepcopy\n\nfrom project_orchestrator.canon_ledger_summary import summarize_ledger\n\n\ndef test_supervisor_acceptance_empty():\n    assert summarize_ledger({}) == {\n        'packet_count': 0, 'state_counts': {}, 'accepted_refs': [], 'last_event_type': None,\n    }\n\n\ndef test_supervisor_acceptance_counts_refs_and_last_event():\n    ledger = {\n        'packets': {\n            'p3': {'state': 'BLOCKED'},\n            'p1': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/p1'},\n            'p2': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/b'},\n            'p4': {'state': 'DISPATCHED', 'accepted_ref': ''},\n        },\n        'events': [{'type': 'DISPATCHED'}, {'type': 'LOCAL_ACCEPTANCE'}],\n    }\n    before = deepcopy(ledger)\n    summary = summarize_ledger(ledger)\n    assert ledger == before\n    assert summary['packet_count'] == 4\n    assert summary['state_counts'] == {'ACCEPTED_LOCAL': 2, 'BLOCKED': 1, 'DISPATCHED': 1}\n    assert list(summary['state_counts']) == sorted(summary['state_counts'])\n    assert summary['accepted_refs'] == ['refs/iron-god/accepted/b', 'refs/iron-god/accepted/p1']\n    assert summary['last_event_type'] == 'LOCAL_ACCEPTANCE'\n",
+      "superseded_by": "CANON-COMMISSION-002"
+    },
+    {
+      "slice_id": "CANON-COMMISSION-002",
+      "depends_on": [],
+      "objective": "Add src/project_orchestrator/canon_ledger_summary.py defining summarize_ledger(ledger) for Canon worker-transport ledgers. ledger is a dict; ledger['packets'] is a dict mapping packet id -> packet dict, and ledger['events'] is a list of event dicts. Return a new dict with exactly these keys: packet_count (number of packets), state_counts (dict mapping each packet's 'state' to how many packets have it, inserted in sorted key order), accepted_refs (sorted list of every packet's 'accepted_ref' value that is present and non-empty), last_event_type (the 'type' of the last event, or None when there are no events). Missing 'packets' or 'events' keys count as empty. Do not modify the input. Also add tests/test_canon_ledger_summary.py with pytest tests for an empty ledger and for a ledger with two packets in different states.",
+      "acceptance_criteria": [
+        "summarize_ledger({}) returns packet_count 0, state_counts {}, accepted_refs [], last_event_type None",
+        "state_counts counts packets per state with sorted keys",
+        "accepted_refs is the sorted list of non-empty accepted_ref values",
+        "last_event_type is the type of the final event",
+        "the input ledger is not modified",
+        "the new tests pass and ruff reports no issues"
+      ],
+      "allowed_paths": [
+        "src/project_orchestrator/canon_ledger_summary.py",
+        "tests/test_canon_ledger_summary.py"
+      ],
+      "forbidden_paths": [
+        "AGENTS.md",
+        "DoWork.txt",
+        "docs/",
+        "engineering/",
+        "scripts/",
+        "src/project_orchestrator/iron_god_owner_control.py",
+        "src/project_orchestrator/execution_authority.py",
+        "src/project_orchestrator/human_ownership.py"
+      ],
+      "verification_commands": [
+        "python -m pytest -q -p no:cacheprovider tests/test_canon_ledger_summary.py",
+        "python -m ruff check src/project_orchestrator/canon_ledger_summary.py tests/test_canon_ledger_summary.py"
+      ],
+      "expected_artifacts": [
+        "src/project_orchestrator/canon_ledger_summary.py",
+        "tests/test_canon_ledger_summary.py"
+      ],
+      "run_budget_minutes": 45,
+      "planning_refs": {
+        "vision_ref": "DoWork.txt (Iron God exclusive priority override)",
+        "roadmap_ref": "docs/IRON_GOD_OPERATIONAL_RECOVERY_20261025.md (observable commissioning evidence)",
+        "architecture_ref": "src/project_orchestrator/worker_transport.py (Canon ledger schema v2)",
+        "current_state_ref": "no canon_ledger_summary module exists at the accepted release; replans CANON-COMMISSION-001, whose objective did not state that packets is a dict keyed by packet id",
+        "dependency_evidence_ref": "no dependencies; first commissioning slice"
+      },
       "supervisor_acceptance_test": "from copy import deepcopy\n\nfrom project_orchestrator.canon_ledger_summary import summarize_ledger\n\n\ndef test_supervisor_acceptance_empty():\n    assert summarize_ledger({}) == {\n        'packet_count': 0, 'state_counts': {}, 'accepted_refs': [], 'last_event_type': None,\n    }\n\n\ndef test_supervisor_acceptance_counts_refs_and_last_event():\n    ledger = {\n        'packets': {\n            'p3': {'state': 'BLOCKED'},\n            'p1': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/p1'},\n            'p2': {'state': 'ACCEPTED_LOCAL', 'accepted_ref': 'refs/iron-god/accepted/b'},\n            'p4': {'state': 'DISPATCHED', 'accepted_ref': ''},\n        },\n        'events': [{'type': 'DISPATCHED'}, {'type': 'LOCAL_ACCEPTANCE'}],\n    }\n    before = deepcopy(ledger)\n    summary = summarize_ledger(ledger)\n    assert ledger == before\n    assert summary['packet_count'] == 4\n    assert summary['state_counts'] == {'ACCEPTED_LOCAL': 2, 'BLOCKED': 1, 'DISPATCHED': 1}\n    assert list(summary['state_counts']) == sorted(summary['state_counts'])\n    assert summary['accepted_refs'] == ['refs/iron-god/accepted/b', 'refs/iron-god/accepted/p1']\n    assert summary['last_event_type'] == 'LOCAL_ACCEPTANCE'\n"
     }
   ]

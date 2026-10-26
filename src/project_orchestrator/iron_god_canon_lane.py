@@ -158,9 +158,9 @@ def _accepted_head(ledger: dict[str, Any], packet_id: str) -> str | None:
 
 
 def next_ready_slice(policy: dict[str, Any], ledger: dict[str, Any]) -> dict[str, Any] | None:
-    """First slice not yet attempted whose dependencies are all ACCEPTED_LOCAL."""
+    """First slice not yet attempted or superseded whose dependencies are all ACCEPTED_LOCAL."""
     for spec in policy.get("slices", []):
-        if spec["slice_id"] in ledger["packets"]:
+        if spec["slice_id"] in ledger["packets"] or spec.get("superseded_by"):
             continue
         if all(_accepted_head(ledger, dep) for dep in spec.get("depends_on", [])):
             return spec
@@ -269,7 +269,9 @@ def independent_verification(lane: Lane, packet: dict[str, Any], spec: dict[str,
     try:
         missing = [a for a in plan["expected_artifacts"] if not (verify_dir / a).is_file()]
         add("expected_artifacts_present", not missing, ", ".join(missing))
-        env = {**os.environ, "PYTHONPATH": str(verify_dir / "src")}
+        temp = verify_dir.parent / f"{packet['packet_id']}.tmp"  # pytest's shared temp link can be access-denied
+        temp.mkdir(parents=True, exist_ok=True)
+        env = {**os.environ, "PYTHONPATH": str(verify_dir / "src"), "TEMP": str(temp), "TMP": str(temp)}
         commands = list(plan["verification_commands"])
         acceptance = spec.get("supervisor_acceptance_test")
         if acceptance:
@@ -369,6 +371,7 @@ def advance_commissioning_lane(
         result = harvest(lane, policy, ledger, active, memory_root=memory_root)
         _release_lease(pool, active)
         return result
+    ledger = retire_superseded(lane, policy, ledger)
     retry, awaiting = retryable_packet(lane, ledger, release_sha)
     spec = None if retry else next_ready_slice(policy, ledger)
     if retry is None and spec is None:
@@ -396,6 +399,20 @@ def advance_commissioning_lane(
     if result["status"] not in {"DISPATCHED", "RETRY_DISPATCHED"}:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
     return result
+
+
+def retire_superseded(lane: Lane, policy: dict[str, Any], ledger: dict[str, Any]) -> dict[str, Any]:
+    """Cancel failed packets whose slice the policy replanned; they are never retried."""
+    superseded = {s["slice_id"]: s["superseded_by"] for s in policy.get("slices", []) if s.get("superseded_by")}
+    current = ledger
+    for packet_id, successor in sorted(superseded.items()):
+        record = current["packets"].get(packet_id)
+        if record and record["state"] in {"BLOCKED", "PARKED"}:
+            current = transition_packet(current, packet_id, state="CANCELLED",
+                                        evidence_ref=f"policy:superseded-by:{successor}")
+    if current is not ledger:
+        lane.save(current, ledger)
+    return current
 
 
 def retryable_packet(lane: Lane, ledger: dict[str, Any], release_sha: str) -> tuple[dict[str, Any] | None, list[str]]:

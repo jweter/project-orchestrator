@@ -32,6 +32,9 @@ pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows owner controlle
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = json.loads((ROOT / "engineering" / "iron-god-commissioning.json").read_text(encoding="utf-8"))
+# The commissioning slice the lane dispatches first (earlier slices may be superseded).
+ACTIVE = next(s for s in POLICY["slices"] if not s.get("superseded_by"))
+SID = ACTIVE["slice_id"]
 SPEC = importlib.util.spec_from_file_location("canon_worker_under_test", ROOT / "scripts" / "iron_god_canon_worker.py")
 WORKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(WORKER)
@@ -159,22 +162,22 @@ def test_full_simulated_cycle_accepts_locally_with_independent_verification_and_
     assert dispatched["status"] == "DISPATCHED" and runner.spawned == 1
     assert dispatched["base_sha"] == engine.sha
     lane = lane_mod.Lane(engine.state)
-    packet = json.loads((lane.packets / "CANON-COMMISSION-001.json").read_text(encoding="utf-8"))
-    assert packet["paths"] == sorted(POLICY["slices"][0]["allowed_paths"])
+    packet = json.loads((lane.packets / f"{SID}.json").read_text(encoding="utf-8"))
+    assert packet["paths"] == sorted(ACTIVE["allowed_paths"])
     assert "supervisor_acceptance_test" not in json.dumps(packet)  # hidden from the worker
     accepted = step(engine, runner)
     assert accepted["status"] == "ACCEPTED_LOCAL", accepted
     assert accepted["verification_passed"] is True
     head = accepted["head_sha"]
     assert head != engine.sha
-    assert _git(lane.dev_repo, "rev-parse", "refs/iron-god/accepted/canon-commission-001") == head
-    record = ledger(engine)["packets"]["CANON-COMMISSION-001"]
+    assert _git(lane.dev_repo, "rev-parse", f"refs/iron-god/accepted/{SID.lower()}") == head
+    record = ledger(engine)["packets"][SID]
     assert record["state"] == "ACCEPTED_LOCAL" and record["independent_verification"] == "VERIFIED_GREEN"
     assert record["merge_authority"] is False
     events = [e["type"] for e in ledger(engine)["events"]]
     assert events == ["DISPATCHED", "STATE_TRANSITION", "WORKER_RESULT", "STATE_TRANSITION",
                       "INDEPENDENT_VERIFICATION", "LOCAL_ACCEPTANCE"]
-    report = json.loads((lane.reports / "CANON-COMMISSION-001-verification.json").read_text(encoding="utf-8"))
+    report = json.loads((lane.reports / f"{SID}-verification.json").read_text(encoding="utf-8"))
     names = {c["name"] for c in report["checks"]}
     assert any("supervisor_acceptance" in n for n in names)
     lessons = load_shared_memory(engine.memory)["entries"]
@@ -195,7 +198,7 @@ def test_worker_pass_is_not_acceptance_hidden_supervisor_test_blocks_wrong_code(
     assert blocked["worker_status"] == "PASS"  # the worker's own weak test passed
     assert blocked["status"] == "BLOCKED" and blocked["verification_passed"] is False
     assert any("supervisor_acceptance" in name for name in blocked["failed_checks"])
-    record = ledger(engine)["packets"]["CANON-COMMISSION-001"]
+    record = ledger(engine)["packets"][SID]
     assert record["independent_verification"] == "VERIFIED_FAIL"
     lane = lane_mod.Lane(engine.state)
     assert _git(lane.dev_repo, "for-each-ref", "refs/iron-god/accepted") == ""
@@ -242,7 +245,7 @@ def test_revocation_stops_the_active_worker_and_preserves_its_worktree(engine):
     assert result["status"] == "WORKER_STOPPED_AUTHORITY_REVOKED"
     assert stopped and stopped[0]["pid"] == 99
     assert Path(result["worktree_preserved"]).is_dir()
-    assert ledger(engine)["packets"]["CANON-COMMISSION-001"]["state"] == "CANCELLED"
+    assert ledger(engine)["packets"][SID]["state"] == "CANCELLED"
 
 
 def test_worker_refuses_to_start_or_continue_without_authority(engine, tmp_path):
@@ -255,10 +258,9 @@ def test_worker_refuses_to_start_or_continue_without_authority(engine, tmp_path)
 
 
 def test_dependent_slice_waits_for_accepted_dependency(tmp_path):
-    second = json.loads(json.dumps(POLICY["slices"][0]))
-    second["slice_id"] = "CANON-COMMISSION-002"
-    second["depends_on"] = ["CANON-COMMISSION-001"]
-    policy = {**POLICY, "slices": [POLICY["slices"][0], second]}
+    first = dict(ACTIVE, slice_id="CANON-COMMISSION-001")
+    second = dict(ACTIVE, slice_id="CANON-COMMISSION-002", depends_on=["CANON-COMMISSION-001"])
+    policy = {**POLICY, "slices": [first, second]}
     assert lane_mod.next_ready_slice(policy, {"packets": {}})["slice_id"] == "CANON-COMMISSION-001"
     blocked = {"packets": {"CANON-COMMISSION-001": {"state": "BLOCKED"}}}
     assert lane_mod.next_ready_slice(policy, blocked) is None
@@ -273,10 +275,10 @@ def test_privileged_events_bind_the_exact_handback(engine):
     step(engine, runner)
     accepted = ledger(engine)
     with pytest.raises(WorkerTransportError):
-        record_independent_verification(accepted, "CANON-COMMISSION-001", verified_head_sha="b" * 40,
+        record_independent_verification(accepted, SID, verified_head_sha="b" * 40,
                                         passed=True, checks=[{"name": "x", "ok": True}], evidence_ref="e")
     with pytest.raises(WorkerTransportError):
-        accept_locally(accepted, "CANON-COMMISSION-001", accepted_ref="refs/iron-god/x",
+        accept_locally(accepted, SID, accepted_ref="refs/iron-god/x",
                        accepted_sha="b" * 40, evidence_ref="e")
     tampered = json.loads(json.dumps(accepted))
     tampered["events"][-2]["exact_head_sha"] = "c" * 40
@@ -322,7 +324,7 @@ def test_low_resources_wait_before_any_worktree_or_lease(engine):
     runner = Runner({})
     result = step(engine, runner, resources=lambda: {"admitted": False, "reason": "CRITICAL_MEMORY_NO_NEW_WORK"})
     assert result["status"] == "WAITING_FOR_RESOURCES" and runner.spawned == 0
-    assert not (lane_mod.Lane(engine.state).worktrees / "CANON-COMMISSION-001").exists()
+    assert not (lane_mod.Lane(engine.state).worktrees / SID).exists()
     # No lease is held for the refused dispatch: another builder can take it.
     other = RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, engine.tmp / "runtime-leases.json")
     lease = other.acquire(lane_mod.WORKER_LEASE_RUNTIME, "some-other-builder")
@@ -410,7 +412,7 @@ def test_environment_failure_retries_only_under_a_remediated_release(engine):
     same = CrashingRunner({})
     idle = step(engine, same)  # unchanged release: never burn the retry budget
     assert idle["status"] == "IDLE_NO_READY_SLICE" and same.spawned == 0
-    assert idle["awaiting_remediation"] == ["CANON-COMMISSION-001"]
+    assert idle["awaiting_remediation"] == [SID]
 
     new_release(engine)
     good = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
@@ -422,7 +424,7 @@ def test_environment_failure_retries_only_under_a_remediated_release(engine):
     assert (preserved / "src" / "project_orchestrator" / "canon_ledger_summary.py").exists()  # evidence kept
     accepted = step(engine, good)
     assert accepted["status"] == "ACCEPTED_LOCAL", accepted
-    record = ledger(engine)["packets"]["CANON-COMMISSION-001"]
+    record = ledger(engine)["packets"][SID]
     assert record["attempt_count"] == 2 and record["previous_results"][0]["status"] == "ENVIRONMENT_FAILURE"
     retry = [e for e in ledger(engine)["events"] if e["type"] == "RETRY"]
     assert [e["evidence_ref"] for e in retry] == [f"runner-release:{engine.sha}"]
@@ -438,3 +440,67 @@ def test_retry_budget_is_bounded_by_canon(engine):
     new_release(engine)
     exhausted = CrashingRunner({})
     assert step(engine, exhausted)["status"] == "IDLE_NO_READY_SLICE" and exhausted.spawned == 0
+
+
+def test_superseded_parked_slice_is_cancelled_and_its_replan_dispatched(tmp_path):
+    original = dict(POLICY, slices=[dict(POLICY["slices"][0], superseded_by=None, slice_id="CANON-COMMISSION-001")])
+    repo, sha = release_repo(tmp_path, original)
+    state = tmp_path / "ExponentialEngine" / "flow-state"
+    engine = SimpleNamespace(repo=repo, sha=sha, state=state, memory=tmp_path / "shared-memory", tmp=tmp_path,
+                             supervisor=grant_owner_authority(state, release_sha=sha).as_dict(),
+                             pool=RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, tmp_path / "runtime-leases.json"))
+    step(engine, CrashingRunner({}))
+    assert step(engine, CrashingRunner({}))["status"] == "PARKED"
+    replanned = dict(POLICY, slices=[dict(POLICY["slices"][0], slice_id="CANON-COMMISSION-001",
+                                          superseded_by="CANON-COMMISSION-REPLAN"),
+                                     dict(ACTIVE, slice_id="CANON-COMMISSION-REPLAN")])
+    (repo / "engineering" / "iron-god-commissioning.json").write_text(json.dumps(replanned), encoding="utf-8")
+    new_release(engine)
+    good = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
+                   "tests/test_canon_ledger_summary.py": GOOD_TEST})
+    dispatched = step(engine, good)
+    assert dispatched["status"] == "DISPATCHED" and dispatched["packet_id"] == "CANON-COMMISSION-REPLAN"
+    old = ledger(engine)["packets"]["CANON-COMMISSION-001"]
+    assert old["state"] == "CANCELLED" and old["attempt_count"] == 1  # never retried
+    cancel = [e for e in ledger(engine)["events"]
+              if e["packet_id"] == "CANON-COMMISSION-001" and e.get("state_after") == "CANCELLED"]
+    assert [e.get("evidence_ref") for e in cancel] == ["policy:superseded-by:CANON-COMMISSION-REPLAN"]
+    assert step(engine, good)["status"] == "ACCEPTED_LOCAL"
+    assert step(engine, good)["status"] == "IDLE_NO_READY_SLICE"
+
+
+def test_real_policy_replans_the_first_slice_with_an_unambiguous_ledger_shape():
+    first, active = POLICY["slices"][0], ACTIVE
+    assert first["superseded_by"] == SID and SID != first["slice_id"]
+    assert "dict mapping packet id" in active["objective"]
+    assert active["supervisor_acceptance_test"] == first["supervisor_acceptance_test"]
+
+
+def test_worker_message_names_no_other_file_and_carries_no_memory_text(engine):
+    packet = lane_mod.build_packet(ACTIVE, POLICY, base_sha=engine.sha, worktree=engine.tmp / "wt")
+    packet["memory_context_text"] = "lesson mentioning AGENTS.md and DoWork.txt"
+    message = WORKER.worker_message(packet)
+    for forbidden in ACTIVE["forbidden_paths"]:
+        assert forbidden.rstrip("/") not in message  # aider would add any named file to its chat
+    assert "lesson" not in message and len(message) < 2500
+    for allowed in ACTIVE["allowed_paths"]:
+        assert allowed in message
+
+
+def test_lean_aider_invocation_disables_repo_map_and_lists_only_target_files():
+    argv, env = WORKER.lean_aider_invocation(lambda message: (["aider", "--message", message], {"X": "1"}),
+                                             "do it", ["a.py", "tests/test_a.py"])
+    assert argv[-2:] == ["a.py", "tests/test_a.py"]
+    flags = argv[:-2]
+    assert flags[flags.index("--map-tokens") + 1] == "0" and flags[flags.index("--edit-format") + 1] == "whole"
+    assert env == {"X": "1"}
+
+
+def test_verification_runs_pytest_with_a_private_temp_dir(tmp_path):
+    worktree = tmp_path / "wt"
+    (worktree / "tests").mkdir(parents=True)
+    (worktree / "tests" / "test_tmp.py").write_text(
+        "import os\n\n\ndef test_tmp(tmp_path):\n    assert os.environ['TEMP'].endswith('wt.tmp')\n", encoding="utf-8")
+    results = WORKER.run_verification(worktree, ["python -m pytest -q -p no:cacheprovider tests/test_tmp.py"])
+    assert results[0]["ok"], results[0]["output_tail"]
+    assert (tmp_path / "wt.tmp").is_dir() and not (worktree / ".tmp").exists()
