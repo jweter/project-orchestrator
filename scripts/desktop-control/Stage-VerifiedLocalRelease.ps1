@@ -25,8 +25,12 @@ if (-not [IO.Path]::IsPathRooted($SourceRepo) -or -not [IO.Path]::IsPathRooted($
 }
 $source=(Get-Item -LiteralPath $SourceRepo -ErrorAction Stop).FullName
 $state=Join-Path $Base 'flow-state'
-$owner=Get-Content (Join-Path $state 'human-mode.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-if ($owner.enabled -isnot [bool] -or $owner.enabled -cne $true) {
+# Owner authority comes only from the authoritative owner controller,
+# evaluated with the controller code of the release being staged (the
+# current pin may predate it). Staging requires that no grant is live.
+. (Join-Path $source 'scripts\desktop-control\IronGodOwnerControl.ps1')
+function Test-OwnerHeld { (Get-IronGodOwnerStatus $state (Join-Path $source 'src')) -cne 'AUTHORIZED' }
+if (-not (Test-OwnerHeld)) {
   throw 'OWNER_CONTROL_MUST_REMAIN_HELD_DURING_STAGING'
 }
 $tasks=@(Get-ScheduledTask -TaskName 'ExponentialEngine-ContinuousFlow-Watchdog','ExponentialEngine-LaptopActor' -ErrorAction Stop)
@@ -96,8 +100,7 @@ $plan=[ordered]@{
   modifies_live_task_or_pin=$false
 }
 if (-not $Apply) { $plan|ConvertTo-Json -Depth 5; exit 0 }
-$owner=Get-Content (Join-Path $state 'human-mode.json') -Raw | ConvertFrom-Json
-if ($owner.enabled -cne $true) { throw 'OWNER_CHANGED_BEFORE_LOCAL_RELEASE_STAGE' }
+if (-not (Test-OwnerHeld)) { throw 'OWNER_CHANGED_BEFORE_LOCAL_RELEASE_STAGE' }
 foreach($folder in @((Split-Path -Parent $release),(Split-Path -Parent $actor),$receiptDir)) {
   New-Item -ItemType Directory -Force -Path $folder | Out-Null
 }
@@ -119,8 +122,7 @@ if (-not (Test-Path -LiteralPath $access -PathType Leaf)) {
 if ($LASTEXITCODE -ne 0) { throw 'RUNTIME_ACCESS_PROVISIONING_FAILED' }
 CheckRepo $release $sha $tree
 CheckRepo $actor $sha $tree
-$owner=Get-Content (Join-Path $state 'human-mode.json') -Raw | ConvertFrom-Json
-if ($owner.enabled -cne $true) { throw 'OWNER_CHANGED_DURING_STAGING_NO_RECEIPT_WRITTEN' }
+if (-not (Test-OwnerHeld)) { throw 'OWNER_CHANGED_DURING_STAGING_NO_RECEIPT_WRITTEN' }
 $receipt=[ordered]@{
   schema_version=1;status='VERIFIED_STAGED'
   authority='STAGING_ONLY_NO_RUNTIME_DEPLOYMENT'

@@ -47,6 +47,13 @@ def test_promote_rejects_missing_or_unverified_owner_before_any_task_writes(
         assert proc.returncode != 0
         assert not list(state.glob("pinned-release-promotion-*"))
         assert not (base/"releases").exists()
+    # A live owner grant (autonomy authorized) is refused before any write.
+    from tests.owner_authority import grant_owner_authority
+
+    grant_owner_authority(state)
+    proc=invoke(base,apply=True)
+    assert proc.returncode != 0
+    assert not list(state.glob("pinned-release-promotion-*"))
 
 
 def test_promote_script_preserves_rollback_and_never_grants_execution():
@@ -78,3 +85,19 @@ def test_promote_script_has_valid_powershell_parser_tree():
         capture_output=True,text=True,timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_promotion_installs_desktop_controls_from_the_verified_release_with_rollback():
+    text=SCRIPT.read_text(encoding="utf-8")
+    files="@('DesktopControlSilent.vbs','Take-The-Wheel.ps1','Enter-HumanMode.ps1','Check-Development-ResumeReady.ps1','Test-DesktopControlShortcuts.ps1')"
+    assert "$desktopFiles="+files in text
+    backup=text.index("Copy-Item -LiteralPath $installed -Destination (Join-Path $desktopBackup $file)")
+    pins=text.index("WritePin $pinFile $newPin")
+    install=text.index("Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $Base $file)")
+    readiness=text.index("$readiness=Join-Path $Base 'Check-Development-ResumeReady.ps1'")
+    rollback=text.index("Copy-Item -LiteralPath $saved -Destination (Join-Path $Base $file)")
+    assert backup < pins < install < readiness < rollback
+    assert "DESKTOP_CONTROL_INSTALL_UNVERIFIED" in text  # hash-checked copy
+    assert "NEW_RELEASE_LACKS_OWNER_CONTROLLER" in text
+    assert "(Get-IronGodOwnerStatus $state (Join-Path $release 'src')) -ceq 'AUTHORIZED'" in text
+    assert "human-mode.json" not in text

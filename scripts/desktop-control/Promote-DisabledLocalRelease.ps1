@@ -11,9 +11,10 @@ function ParseJson([string]$path) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {throw "MISSING_REQUIRED_RECORD: $path"}
   return (Get-Content -LiteralPath $path -Raw -ErrorAction Stop|ConvertFrom-Json -ErrorAction Stop)
 }
+# Owner authority comes only from the authoritative owner controller,
+# evaluated with the controller code of the release being promoted.
 function EnsureHeld {
-  $owner=ParseJson (Join-Path $state 'human-mode.json')
-  if ($owner.enabled -isnot [bool] -or $owner.enabled -cne $true) {
+  if ((Get-IronGodOwnerStatus $state (Join-Path $release 'src')) -ceq 'AUTHORIZED') {
     throw 'OWNER_MUST_KEEP_CONTROL_DURING_PIN_PROMOTION'
   }
 }
@@ -53,6 +54,10 @@ $pinFile=Join-Path $state 'supervisor-pinned-release.json'
 $actorPinFile=Join-Path $state 'actor-local-promotion.json'
 $pin=ParseJson $pinFile
 $actorPin=ParseJson $actorPinFile
+$release=Join-Path (Join-Path $Base 'releases') $NewSha
+$bridge=Join-Path $release 'scripts\desktop-control\IronGodOwnerControl.ps1'
+if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) { throw 'NEW_RELEASE_LACKS_OWNER_CONTROLLER' }
+. $bridge
 EnsureHeld
 $names=@('ExponentialEngine-ContinuousFlow-Watchdog','ExponentialEngine-LaptopActor')
 foreach($n in $names) { $null=RequireTaskDisabled $n }
@@ -66,7 +71,6 @@ $running=@(Get-CimInstance Win32_Process -ErrorAction Stop|Where-Object {
 if ($running.Count) {throw 'ENGINE_PROCESSES_RUNNING'}
 $oldSha=[string]$pin.accepted_sha
 if ($oldSha -eq $NewSha) {throw 'TARGET_ALREADY_PINNED_RECONCILE_INSTEAD'}
-$release=Join-Path (Join-Path $Base 'releases') $NewSha
 $actor=Join-Path (Join-Path $Base 'runtime-actors') $NewSha
 $receiptFile=Join-Path (Join-Path $Base 'release-receipts') ($NewSha+'.json')
 $receipt=ParseJson $receiptFile
@@ -97,6 +101,13 @@ $pinBackup=Join-Path $backup 'supervisor-pinned-release.before.json'
 $actorBackup=Join-Path $backup 'actor-local-promotion.before.json'
 Copy-Item -LiteralPath $pinFile -Destination $pinBackup -ErrorAction Stop
 Copy-Item -LiteralPath $actorPinFile -Destination $actorBackup -ErrorAction Stop
+$desktopFiles=@('DesktopControlSilent.vbs','Take-The-Wheel.ps1','Enter-HumanMode.ps1','Check-Development-ResumeReady.ps1','Test-DesktopControlShortcuts.ps1')
+$desktopBackup=Join-Path $backup 'desktop-controls'
+New-Item -ItemType Directory -Path $desktopBackup -ErrorAction Stop|Out-Null
+foreach($file in $desktopFiles){
+  $installed=Join-Path $Base $file
+  if (Test-Path -LiteralPath $installed -PathType Leaf) {Copy-Item -LiteralPath $installed -Destination (Join-Path $desktopBackup $file) -ErrorAction Stop}
+}
 foreach($n in $names){
   [IO.File]::WriteAllText((Join-Path $backup ($n+'.xml')),
     (Export-ScheduledTask -TaskName $n -ErrorAction Stop),[Text.UTF8Encoding]::new($false))
@@ -113,8 +124,17 @@ try {
   $out=@(& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $repair -StateRoot $state -Apply 2>&1)
   if ($LASTEXITCODE -ne 0) {throw ('DISABLED_TASK_REPAIR_FAILED: '+($out|Out-String))}
   foreach($n in $names){$null=RequireTaskDisabled $n}
-  $ownerNow=ParseJson (Join-Path $state 'human-mode.json')
-  if($ownerNow.enabled -cne $true){throw 'OWNER_CONTROL_CHANGED_DURING_CUTOVER'}
+  if ((Get-IronGodOwnerStatus $state (Join-Path $release 'src')) -ceq 'AUTHORIZED') {throw 'OWNER_CONTROL_CHANGED_DURING_CUTOVER'}
+  # Install the owner's desktop controls from the verified release. The
+  # shortcuts keep pointing at $Base; prior copies are backed up for rollback.
+  foreach($file in $desktopFiles){
+    $sourceFile=Join-Path $release ('scripts\desktop-control\'+$file)
+    if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {throw ('VERIFIED_RELEASE_MISSING_DESKTOP_CONTROL: '+$file)}
+    Copy-Item -LiteralPath $sourceFile -Destination (Join-Path $Base $file) -Force -ErrorAction Stop
+    if ((Get-FileHash -LiteralPath $sourceFile).Hash -ne (Get-FileHash -LiteralPath (Join-Path $Base $file)).Hash) {
+      throw ('DESKTOP_CONTROL_INSTALL_UNVERIFIED: '+$file)
+    }
+  }
   $readiness=Join-Path $Base 'Check-Development-ResumeReady.ps1'
   $check=@(& powershell.exe -NoProfile -NonInteractive -File $readiness 2>&1)
   if ($LASTEXITCODE -ne 0) {throw ('NEW_RELEASE_DESKTOP_READINESS_FAILED: '+($check|Out-String))}
@@ -124,7 +144,7 @@ try {
   }
   $result=[ordered]@{status='NEW_LOCAL_RELEASE_PINNED_TASKS_DISABLED';
     accepted_sha=$NewSha;old_sha=$oldSha;backup=$backup;
-    owner_control_unchanged=$true;workers_started=$false;
+    owner_control_unchanged=$true;workers_started=$false;desktop_controls_installed=$desktopFiles;
     tasks_enabled=$false;desktop_readiness=$ready.status;
     completed_at_utc=[DateTimeOffset]::UtcNow.ToString('o')}
   [IO.File]::WriteAllText((Join-Path $backup 'promotion-result.json'),
@@ -144,6 +164,13 @@ try {
   catch {$failures.Add('SUPERVISOR_PIN: '+$_.Exception.Message)}
   try {Copy-Item -LiteralPath $actorBackup -Destination $actorPinFile -Force -ErrorAction Stop}
   catch {$failures.Add('ACTOR_PIN: '+$_.Exception.Message)}
+  foreach($file in $desktopFiles){
+    $saved=Join-Path $desktopBackup $file
+    if (Test-Path -LiteralPath $saved -PathType Leaf) {
+      try {Copy-Item -LiteralPath $saved -Destination (Join-Path $Base $file) -Force -ErrorAction Stop}
+      catch {$failures.Add('DESKTOP '+$file+': '+$_.Exception.Message)}
+    }
+  }
   throw ('LOCAL_PIN_PROMOTION_ROLLED_BACK: '+$errorText+
          '; ROLLBACK_ERRORS='+($failures -join '; ')+
          '; BACKUPS='+$backup)

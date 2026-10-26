@@ -28,11 +28,12 @@ def run(tmp_path, extra_args=()):
 
 
 def test_staging_requires_explicit_owner_hold(tmp_path):
+    from tests.owner_authority import grant_owner_authority
+
     root=tmp_path/"local"
-    (root/"flow-state").mkdir(parents=True)
-    (root/"flow-state"/"human-mode.json").write_text(
-        '{"enabled":false}',encoding="utf-8"
-    )
+    # A live, acknowledged owner grant means autonomy is authorized: staging
+    # must refuse while it exists (the retired marker is no longer an input).
+    grant_owner_authority(root/"flow-state")
     p,_=run(tmp_path,("-Apply",))
     assert p.returncode != 0
     assert "OWNER_CONTROL_MUST_REMAIN_HELD" in p.stdout+p.stderr
