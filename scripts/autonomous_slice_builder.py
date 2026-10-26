@@ -692,9 +692,7 @@ def _acquire_ollama_lock()->Path:
 
 def aider_invocation(message:str,files:list[str]|None=None)->tuple[list[str],dict[str,str]]:  # shared by builder + Canon worker
     env=os.environ.copy()
-    env.setdefault("OLLAMA_API_BASE","http://127.0.0.1:11434")
-    # Captured output is cp1252 on Windows; aider's console crashes on non-cp1252 glyphs.
-    env["PYTHONIOENCODING"]="utf-8"; env["PYTHONUTF8"]="1"
+    env.setdefault("OLLAMA_API_BASE","http://127.0.0.1:11434"); env.update(PYTHONIOENCODING="utf-8",PYTHONUTF8="1")  # captured cp1252 output crashes aider's console
     argv=["aider","--model",MODEL,"--message",message,
           "--no-auto-commits","--no-gitignore","--no-pretty","--no-stream",
           "--analytics-disable","--no-check-update","--no-show-model-warnings",
