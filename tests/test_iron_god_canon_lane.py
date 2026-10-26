@@ -348,3 +348,32 @@ def test_busy_model_lease_defers_dispatch(engine):
     result = step(engine, runner)
     assert result["status"] == "WAITING_FOR_RUNTIME_LEASE" and runner.spawned == 0
     blocker.release("legacy-builder", held.lease_id)
+
+
+def test_commissioning_suspends_legacy_product_activity(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+
+    repo, _sha = release_repo(tmp_path)
+    state = tmp_path / "flow-state"
+    state.mkdir()
+    (state / "linear-bindings.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *a, **k: pytest.fail("no merge watcher process"))
+    monkeypatch.setattr(supervisor.subprocess, "run", lambda *a, **k: pytest.fail("no product subprocess"))
+    watcher = supervisor.start_merge_watcher(repo, state, 60)
+    # The stand-in is safe at every use in main(): restart check, report, terminate.
+    assert watcher.poll() == 0 and watcher.pid is None and watcher.terminate() is None
+    assert supervisor.run_linear_reconciliation(repo, state) is None
+    assert supervisor.evolution_authorized(repo, tmp_path, state) == (
+        False, "IRON_GOD_COMMISSIONING_LEGACY_READINESS_SKIPPED", [], [],
+    )
+
+
+def test_without_commissioning_policy_legacy_activity_is_unchanged(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+
+    repo = tmp_path / "plain"
+    repo.mkdir()
+    started = []
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *a, **k: started.append(a) or "proc")
+    assert supervisor.start_merge_watcher(repo, tmp_path, 60) == "proc" and started
+    assert supervisor_runtime.commissioning_active(repo) is False

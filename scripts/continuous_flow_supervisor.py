@@ -63,11 +63,13 @@ def load_runtime_leases_with_recovery(state_path:Path=RUNTIME_LEASE_STATE)->tupl
 RUNTIME_LEASES,RUNTIME_LEASE_RECOVERY=load_runtime_leases_with_recovery()
 
 def start_merge_watcher(repo_root:Path,state_root:Path,poll_seconds:int)->subprocess.Popen:
+    if _supervisor_runtime.commissioning_active(repo_root): return _supervisor_runtime.SuspendedMergeWatcher()  # no product merges
     return subprocess.Popen([sys.executable,str(repo_root/"scripts"/"green_pr_watch_loop.py"),
         "--state",str(state_root/"green-pr-watcher.json"),"--poll-seconds",str(poll_seconds)],
         cwd=repo_root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
 def run_linear_reconciliation(repo_root:Path,state_root:Path)->int|None:
+    if _supervisor_runtime.commissioning_active(repo_root): return None  # no external product tracker mutations
     bindings=state_root/"linear-bindings.json"
     if not bindings.exists():
         return None
@@ -85,6 +87,7 @@ def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path)->tupl
     return _authority.observe_live_heads(repo_root,workspace_root,state_root,subprocess.run)
 
 def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str,list[str],list[str]]:
+    if _supervisor_runtime.commissioning_active(repo_root): return False,"IRON_GOD_COMMISSIONING_LEGACY_READINESS_SKIPPED",[],[]
     return _authority.evolution_authorized(
         repo_root,workspace_root,state_root,
         observe_fn=observe_live_heads,run_fn=subprocess.run,

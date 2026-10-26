@@ -1043,3 +1043,33 @@ def commissioning_products(
             "observed_at_utc": datetime.now(UTC).isoformat(),
         })
     return []
+
+
+def commissioning_active(repo_root: Path) -> bool:
+    """True while the loaded release declares Iron God commissioning."""
+    from .iron_god_canon_lane import load_policy
+
+    return load_policy(repo_root) is not None
+
+
+class SuspendedMergeWatcher:
+    """Commissioning stand-in for the product PR merge watcher process.
+
+    Owner decision 2026-10-25: no unrelated product development during
+    commissioning, so green product PRs are not merged by the engine. It
+    behaves like an already-exited process: nothing runs, nothing is merged.
+    """
+
+    pid = None
+
+    def poll(self) -> int:
+        return 0
+
+    def terminate(self) -> None:
+        return None
+
+    def kill(self) -> None:
+        return None
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
