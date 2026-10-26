@@ -10,11 +10,13 @@ import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from .decision_learning import compile_decision_learning
 from .decision_outcome import attribute as attribute_decision_outcome
-from .execution_authority import evaluate_execution_authority
+from . import iron_god_owner_control as _owner_controller
+from .execution_authority import acknowledge_and_evaluate, supervisor_identity
+from .human_ownership import AUTHORIZED, OWNER_CONTROL_ACTIVE, owner_control_status
 from .grant_issuance import finalize_unclaimed_grant
 from .grant_lifecycle import recovery_lifecycle_write_budget
 from .jev_evidence import load_jsonl
@@ -897,18 +899,30 @@ COMMISSIONING_WORKER_LIMITS = {"max_workers_per_product": 1, "max_total_workers"
 def authorized_dispatch_products(
     state_root: Path,
     products: list[str],
-    decide: Callable[[], object] = evaluate_execution_authority,
+    decide: Callable[[], object] | None = None,
+    *,
+    supervisor: dict[str, Any] | None = None,
+    release_sha: str | None = None,
 ) -> list[str]:
     """Return dispatchable products only when the single execution decision permits.
 
     Activation readiness says which products *could* advance; it is not
-    authority. The controller + owner decision is re-evaluated every pass, so a
-    revocation stops new dispatch at the next iteration. Harvest and recovery
-    of already-running work are unaffected. The decision is recorded for the
-    owner and the desktop proof; a failing or malformed decision denies.
+    authority. The owner controller decision is re-evaluated every pass for
+    this exact supervisor process and release, so a revocation stops new
+    dispatch at the next iteration. Harvest and recovery of already-running
+    work are unaffected. The decision is recorded for the owner and the
+    desktop proof; a failing or malformed decision denies.
     """
     try:
-        decision = decide()
+        if decide is None:
+            if supervisor is None:
+                raise ValueError("supervisor identity required")
+            identity = supervisor_identity(supervisor)
+            decision = acknowledge_and_evaluate(
+                _owner_controller.control_root(state_root), identity, release_sha=release_sha
+            )
+        else:
+            decision = decide()
         permitted = getattr(decision, "permitted", False) is True
         reasons = [str(r) for r in (getattr(decision, "reasons", ()) or ())]
     except Exception:
@@ -920,6 +934,50 @@ def authorized_dispatch_products(
         "permitted": permitted,
         "reasons": reasons,
         "candidate_products": list(products),
+        "supervisor_instance_id": (supervisor or {}).get("instance_id"),
+        "release_sha": release_sha,
         "observed_at_utc": datetime.now(UTC).isoformat(),
     })
     return list(products) if permitted else []
+
+
+def owner_reclaimed(
+    state_root: Path,
+    supervisor: dict[str, Any],
+    release_sha: str | None,
+    *,
+    process_instance_id: str,
+) -> bool:
+    """Loop-top owner check: acknowledge a fresh grant, or stop and ack revocation.
+
+    A pending Take the Wheel is acknowledged by this exact supervisor before
+    any slow work, so the acknowledgment window cannot lapse during a pass.
+    Returns True when owner control is not granted; the caller must stop
+    dispatch and exit. A Give Me Control is acknowledged here, after which no
+    further dispatch can occur in this process.
+    """
+    root = _owner_controller.control_root(state_root)
+    try:
+        acknowledge_and_evaluate(root, supervisor_identity(supervisor), release_sha=release_sha)
+    except Exception:
+        pass  # The owner status below fails closed on any controller problem.
+    status = owner_control_status(state_root)
+    if status == AUTHORIZED:
+        return False
+    revocation_acknowledged = False
+    if status == OWNER_CONTROL_ACTIVE:
+        try:
+            revocation_acknowledged = _owner_controller.acknowledge_revocation(
+                root, supervisor_identity(supervisor)
+            )
+        except Exception:
+            revocation_acknowledged = False
+    atomic_json(state_root / "supervisor-human-ownership.json", {
+        "schema_version": 2,
+        "status": "HUMAN_MODE_ACTIVE",
+        "owner_status": status,
+        "revocation_acknowledged": revocation_acknowledged,
+        "process_instance_id": process_instance_id,
+        "observed_at_utc": datetime.now(UTC).isoformat(),
+    })
+    return True

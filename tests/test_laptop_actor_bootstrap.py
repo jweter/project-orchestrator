@@ -702,18 +702,12 @@ def test_malformed_or_failing_authority_fails_closed(monkeypatch, tmp_path, deci
     assert telemetry_states(tmp_path / "state") == ["AUTHORITY_WAIT"]
 
 
-def test_default_actor_authority_denies_the_live_shadow_controller_shape(monkeypatch, tmp_path):
-    """Without injection the actor consults the real decision; today's live
-    controller shape (shadow, not authorized) must never reach checkout."""
+def test_default_actor_authority_denies_without_an_owner_grant(monkeypatch, tmp_path):
+    """Without injection the actor consults the real controller decision; with
+    no owner Take the Wheel recorded it must never reach checkout or dispatch."""
     import json
-    root = tmp_path / "ExponentialEngine" / "IronGodLocal"
-    root.mkdir(parents=True)
-    (root / "controller-handoff-state.json").write_text(json.dumps({
-        "controller": "iron-god-handoff-v1",
-        "mode": "shadow_state_only",
-        "candidate_execution_authorized": False,
-    }), encoding="utf-8")
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", "a" * 40)
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("shadow controller must block checkout"))
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("shadow controller must block dispatch"))
@@ -722,8 +716,17 @@ def test_default_actor_authority_denies_the_live_shadow_controller_shape(monkeyp
         bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state")
     line = json.loads((tmp_path / "state" / "actor-telemetry.jsonl").read_text(encoding="utf-8").strip())
     assert line["state"] == "AUTHORITY_WAIT"
-    assert line["reasons"] == [
-        "CONTROLLER_SHADOW_MODE",
-        "CONTROLLER_CANDIDATE_EXECUTION_DISABLED",
-        "OWNER_AUTHORITY_CONTRACT_UNDEFINED",
-    ]
+    assert line["reasons"] == ["OWNER_NOT_ENROLLED"]
+
+
+def test_default_actor_authority_follows_a_live_owner_grant_for_its_release(monkeypatch, tmp_path):
+    from tests.owner_authority import TEST_RELEASE_SHA, grant_owner_authority
+
+    grant_owner_authority(tmp_path / "ExponentialEngine" / "flow-state")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", TEST_RELEASE_SHA)
+    assert bootstrap.default_execution_authority().permitted is True
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", "b" * 40)
+    assert bootstrap.default_execution_authority().reasons == ("GRANT_RELEASE_MISMATCH",)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA")
+    assert bootstrap.default_execution_authority().reasons == ("EXECUTION_RELEASE_UNPINNED",)

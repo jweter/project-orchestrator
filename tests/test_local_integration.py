@@ -12,6 +12,7 @@ from project_orchestrator.local_integration import (
     IntegrationError,
     LocalIntegrationController,
 )
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 
 def git(repo: Path, *args: str) -> str:
@@ -41,7 +42,7 @@ def repository(tmp_path: Path):
     baseline = commit(repo, "base.txt", "baseline\n")
     owner = tmp_path / "owner"
     owner.mkdir()
-    (owner / "human-mode.json").write_text('{"enabled":false}')
+    grant_owner_authority(owner)
     refs = LocalGitRefs(repo, owner_state_root=owner)
     assert refs.bootstrap_accepted(baseline)
     controller = LocalIntegrationController(
@@ -145,7 +146,7 @@ def test_existing_target_fails_without_overwrite(repository):
 def test_owner_take_wheel_prevents_staging(repository):
     repo, owner, refs, engine, baseline = repository
     candidate(repo, refs, "one", "one.txt")
-    (owner / "human-mode.json").write_text('{"enabled":true}')
+    revoke_owner_authority(owner)
     with pytest.raises(IntegrationError, match="OWNER_CONTROL_VETO"):
         engine.stage(
             integration_id="int-one",

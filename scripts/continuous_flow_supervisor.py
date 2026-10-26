@@ -661,12 +661,7 @@ def main()->int:
         progress_sequence+=1
         revision_rollover=_supervisor_runtime.prepare_actor_revision_rollover(repo,workspace,state,loaded_actor_revision=loaded_actor_revision,current_actor_revision=actor_revision(repo),process_instance_id=process_instance_id,worker_pool=worker_pool,builder_seconds=a.builder_seconds,merge_seconds=a.merge_seconds,yield_on_interactive_session=a.yield_on_interactive_session)
         if _supervisor_runtime.guard_generation_iteration(state,process_instance_id=process_instance_id,burst_id=burst_id,actor_revision=loaded_actor_revision,sequence=progress_sequence,worker_pool=worker_pool,heartbeat_fn=publish_generation_heartbeat,handoff_fn=generation_handoff_status): return 0
-        if human_mode_active(state):
-            atomic(state/"supervisor-human-ownership.json",{
-                "schema_version":1,"status":"HUMAN_MODE_ACTIVE",
-                "process_instance_id":process_instance_id,
-                "observed_at_utc":datetime.now(UTC).isoformat(),
-            })
+        if _supervisor_runtime.owner_reclaimed(state,instance_lock["worker"],loaded_actor_revision,process_instance_id=process_instance_id):
             if merge is not None and merge.poll() is None:
                 merge.terminate()
             return 0
@@ -714,7 +709,7 @@ def main()->int:
                 authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
             else:
                 activation_reason=refresh_reason
-        products=_supervisor_runtime.authorized_dispatch_products(state,products if authorized else []); products=(['iron-god'] if 'iron-god' in products else []) if (state / 'iron-god-exclusive.json').is_file() else products; capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}
+        products=_supervisor_runtime.authorized_dispatch_products(state,products if authorized else [],supervisor=instance_lock["worker"],release_sha=loaded_actor_revision); products=(['iron-god'] if 'iron-god' in products else []) if (state / 'iron-god-exclusive.json').is_file() else products; capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}
         issue_frontier=reconcile_issue_cycle(state, portfolio_path=repo/"engineering"/"portfolio.json") if products else {"status":"NO_AUTHORIZED_PRODUCTS"}; frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
         parallel_results=harvest_parallel_builders(worker_pool,state)
         # Harvest first, then reclaim dead-owner leases plus only this supervisor

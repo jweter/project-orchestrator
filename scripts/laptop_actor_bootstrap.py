@@ -33,17 +33,29 @@ _STEWARD_MODULE = importlib.util.module_from_spec(_STEWARD_SPEC)
 _STEWARD_SPEC.loader.exec_module(_STEWARD_MODULE)
 assess_machine_health = _STEWARD_MODULE.assess_machine_health
 
-_AUTHORITY_SPEC = importlib.util.spec_from_file_location(
-    "project_orchestrator_execution_authority",
-    Path(__file__).resolve().parents[1] / "src" / "project_orchestrator" / "execution_authority.py",
-)
-if _AUTHORITY_SPEC is None or _AUTHORITY_SPEC.loader is None:
-    raise RuntimeError("unable to load execution authority decision")
-_AUTHORITY_MODULE = importlib.util.module_from_spec(_AUTHORITY_SPEC)
-# Dataclass annotation resolution looks the module up in sys.modules.
-sys.modules[_AUTHORITY_SPEC.name] = _AUTHORITY_MODULE
-_AUTHORITY_SPEC.loader.exec_module(_AUTHORITY_MODULE)
-evaluate_execution_authority = _AUTHORITY_MODULE.evaluate_execution_authority
+_ACTOR_SRC = Path(__file__).resolve().parents[1] / "src"
+# The execution decision imports the owner controller as a package. Import it
+# only from this pinned checkout, never from an unrelated editable install.
+if str(_ACTOR_SRC) in sys.path:
+    sys.path.remove(str(_ACTOR_SRC))
+sys.path.insert(0, str(_ACTOR_SRC))
+import project_orchestrator  # noqa: E402
+
+if os.path.normcase(str(Path(project_orchestrator.__file__).resolve().parent)) != os.path.normcase(
+    str(_ACTOR_SRC / "project_orchestrator")
+):
+    raise ImportError(
+        "IMPORT_PROVENANCE_MISMATCH: project_orchestrator loaded from "
+        f"{project_orchestrator.__file__}, expected {_ACTOR_SRC}"
+    )
+from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
+
+
+def default_execution_authority(control_root: Path | None = None) -> object:
+    """Worker decision for the release this actor was launched to run."""
+    return evaluate_execution_authority(
+        control_root, release_sha=os.environ.get("IRON_GOD_ACCEPTED_SHA")
+    )
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -529,7 +541,7 @@ def run_idle_session(
     threshold = max(0, min_idle_seconds)
     cadence = max(30, poll_seconds)
     state_dir = state_dir or (queue / "state")
-    authority = execution_authority or evaluate_execution_authority
+    authority = execution_authority or default_execution_authority
     lock_fd = acquire_single_instance(state_dir)
     if lock_fd is None:
         return 0
@@ -638,14 +650,14 @@ def main() -> int:
     parser.add_argument("--max-memory-percent", type=float, default=85.0)
     parser.add_argument("--min-disk-free-gb", type=float, default=10.0)
     parser.add_argument(
-        "--controller-state",
-        help="IronGodLocal controller-handoff-state.json (default: under LOCALAPPDATA)",
+        "--control-root",
+        help="authoritative owner controller directory (default: under LOCALAPPDATA)",
     )
     args = parser.parse_args()
     actor_repo = Path(args.actor_repo)
     queue = Path(args.queue)
     workspace_root = Path(args.workspace_root)
-    controller_state = Path(args.controller_state) if args.controller_state else None
+    control_root = Path(args.control_root) if args.control_root else None
     try:
         return run_idle_session(
             actor_repo,
@@ -657,7 +669,7 @@ def main() -> int:
             args.max_backoff_seconds,
             args.max_memory_percent,
             args.min_disk_free_gb,
-            lambda: evaluate_execution_authority(controller_state),
+            lambda: default_execution_authority(control_root),
         )
     except (OSError, RuntimeError):
         # Fail closed. A bootstrap/update failure must never manufacture worker

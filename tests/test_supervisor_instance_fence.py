@@ -1,6 +1,7 @@
 import json, sys
 from pathlib import Path
 import scripts.continuous_flow_supervisor as supervisor
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 def test_second_supervisor_instance_is_fenced_until_release(tmp_path):
     first=supervisor.acquire_supervisor_instance_lock(tmp_path)
@@ -30,7 +31,7 @@ def test_main_exits_cleanly_when_supervisor_already_active(tmp_path, monkeypatch
     repo=tmp_path/"repo"; repo.mkdir()
     work=tmp_path/"work"; work.mkdir()
     state=tmp_path/"state"; state.mkdir()
-    (state/"human-mode.json").write_text('{"enabled":false}',encoding="utf-8")
+    grant_owner_authority(state)
     monkeypatch.setattr(supervisor,"acquire_supervisor_instance_lock",lambda *_args, **_kwargs: None)
     monkeypatch.setattr(sys,"argv",["supervisor",
         "--repo-root",str(repo),"--workspace-root",str(work),"--state-root",str(state),"--once"])

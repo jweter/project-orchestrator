@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from project_orchestrator import local_release_controller as release
+from tests.owner_authority import UNSAFE_OWNER_SCENARIOS, apply_owner_scenario, grant_owner_authority
 
 
 def git(cwd, *args):
@@ -31,10 +32,12 @@ def source_repo(tmp_path):
     return source, git(source, "rev-parse", "HEAD")
 
 
-def mode_file(tmp_path, enabled=False):
-    path = tmp_path / "human-mode.json"
-    path.write_text(json.dumps({"enabled": enabled}), encoding="utf-8")
-    return path
+def mode_file(tmp_path):
+    """An owner state root holding a live acknowledged Take the Wheel grant."""
+    state = tmp_path / "flow-state"
+    if not (state / "IronGodControl").exists():
+        grant_owner_authority(state)
+    return state
 
 
 def staging(tmp_path, source, sha, marker):
@@ -93,19 +96,41 @@ def test_rejects_dirty_candidate_without_reset(tmp_path, kind):
     assert (source / ("src.txt" if kind == "tracked" else "notes.txt")).exists()
 
 
-@pytest.mark.parametrize("mode", ["missing", "malformed", "active", "null"])
-def test_owner_control_fails_closed(tmp_path, mode):
+@pytest.mark.parametrize("scenario,_status", UNSAFE_OWNER_SCENARIOS)
+def test_owner_control_fails_closed(tmp_path, scenario, _status):
     source, sha = source_repo(tmp_path)
-    marker = tmp_path / "human-mode.json"
-    if mode == "malformed":
-        marker.write_text("broken", encoding="utf-8")
-    elif mode == "active":
-        marker.write_text('{"enabled": true}', encoding="utf-8")
-    elif mode == "null":
-        marker.write_text('{"enabled": null}', encoding="utf-8")
+    state = tmp_path / "flow-state"
+    apply_owner_scenario(state, scenario)
     with pytest.raises(release.ReleaseError, match="owner control"):
-        staging(tmp_path, source, sha, marker)
+        staging(tmp_path, source, sha, state)
     assert not (tmp_path / "releases").exists()
+
+
+def test_owner_directed_staging_requires_active_console_session(tmp_path, monkeypatch):
+    from project_orchestrator import iron_god_owner_control as oc
+
+    def not_console():
+        raise oc.OwnerControlError("NOT_ACTIVE_CONSOLE_SESSION")
+
+    monkeypatch.setattr(oc, "verify_active_console_session", not_console)
+    source, sha = source_repo(tmp_path)
+    with pytest.raises(release.ReleaseError, match="owner control"):
+        release.stage_local_release(
+            source, sha, tmp_path / "releases", tmp_path / "receipts",
+            tmp_path / "flow-state", owner_directed=True,
+        )
+    assert not (tmp_path / "releases").exists()
+
+
+def test_owner_directed_preparation_needs_no_grant_from_the_console(tmp_path, monkeypatch):
+    from project_orchestrator import iron_god_owner_control as oc
+
+    monkeypatch.setattr(oc, "verify_active_console_session", lambda: 1)
+    # No controller state at all: an autonomous caller is refused ...
+    with pytest.raises(release.ReleaseError, match="owner control"):
+        release.owner_allows_preparation(tmp_path / "flow-state")
+    # ... while owner-directed preparation from the console proceeds.
+    release.owner_allows_preparation(tmp_path / "flow-state", owner_directed=True)
 
 
 def test_native_preflight_must_pass(tmp_path):
@@ -183,7 +208,7 @@ def test_missing_or_tampered_release_is_not_activated(tmp_path):
     (Path(receipt["release_repo"]) / "src.txt").write_text("tampered")
     with pytest.raises(release.ReleaseError, match="uncommitted"):
         release.readiness(receipt, current_sha="b" * 40,
-                          active_workers=0, owner_marker=mode_file(tmp_path))
+                          active_workers=0, owner_state_root=mode_file(tmp_path))
 
 
 def test_readiness_refuses_active_workers_and_unknown_state(tmp_path):
@@ -191,17 +216,17 @@ def test_readiness_refuses_active_workers_and_unknown_state(tmp_path):
     marker = mode_file(tmp_path)
     receipt = staging(tmp_path, source, sha, marker)
     assert release.readiness(receipt, current_sha="b"*40, active_workers=2,
-                             owner_marker=marker)["status"] == "WAIT_FOR_WORKER_DRAIN"
+                             owner_state_root=marker)["status"] == "WAIT_FOR_WORKER_DRAIN"
     assert release.readiness(receipt, current_sha="b"*40, active_workers=None,
-                             owner_marker=marker)["status"] == "BLOCKED_WORKER_STATE_UNKNOWN"
+                             owner_state_root=marker)["status"] == "BLOCKED_WORKER_STATE_UNKNOWN"
     assert release.readiness(receipt, current_sha=None, active_workers=0,
-                             owner_marker=marker)["status"] == "BLOCKED_RUNNING_REVISION_UNKNOWN"
+                             owner_state_root=marker)["status"] == "BLOCKED_RUNNING_REVISION_UNKNOWN"
     assert release.readiness(receipt, current_sha="unverified", active_workers=0,
-                             owner_marker=marker)["ready"] is False
+                             owner_state_root=marker)["ready"] is False
     assert release.readiness(receipt, current_sha=sha, active_workers=0,
-                             owner_marker=marker)["status"] == "REVISION_ALREADY_LOADED"
+                             owner_state_root=marker)["status"] == "REVISION_ALREADY_LOADED"
     assert release.readiness(receipt, current_sha="b"*40, active_workers=0,
-                             owner_marker=marker)["status"] == "ELIGIBLE_FOR_CONTROLLED_CUTOVER"
+                             owner_state_root=marker)["status"] == "ELIGIBLE_FOR_CONTROLLED_CUTOVER"
 
 
 def test_readiness_does_not_grant_actual_cutover_authority(tmp_path):
@@ -256,7 +281,7 @@ def test_inspect_cli_does_not_mutate_actor(tmp_path, capsys):
     state.mkdir()
     assert release.main(["inspect", "--receipt", str(path),
                          "--state-root", str(state),
-                         "--owner-marker", str(marker)]) == 0
+                         "--owner-state-root", str(marker)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert result["status"] == "BLOCKED_WORKER_STATE_UNKNOWN"
     assert not (tmp_path / "actor-repo").exists()

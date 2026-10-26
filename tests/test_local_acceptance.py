@@ -16,6 +16,7 @@ from project_orchestrator.local_acceptance import (
 from project_orchestrator.local_first_state import LocalFirstState
 from project_orchestrator.local_git_refs import LocalGitRefs
 from project_orchestrator.local_verification import VerificationPolicy
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 
 def git(root: Path, *args: str) -> str:
@@ -42,7 +43,7 @@ def case(tmp_path: Path):
 
     owner = tmp_path / "flow-state"
     owner.mkdir()
-    (owner / "human-mode.json").write_text('{"enabled":false}', encoding="utf8")
+    grant_owner_authority(owner)
     refs = LocalGitRefs(repo, owner_state_root=owner)
     refs.bootstrap_accepted(base)
 
@@ -175,7 +176,7 @@ def test_product_reality_required_fails_before_prepare(case):
 def test_owner_takeover_between_prepare_and_commit_stops(case):
     prepare(case)
     _, owner, refs, state, base, _, _, _, _ = case
-    (owner / "human-mode.json").write_text('{"enabled":true}', encoding="utf8")
+    revoke_owner_authority(owner)
     with pytest.raises(AcceptanceError, match="OWNER_CONTROL_VETO"):
         commit(case)
     assert refs.accepted() == base

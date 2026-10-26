@@ -14,10 +14,14 @@ def test_supervisor_checks_human_ownership_before_instance_and_merge_work():
     assert startup < lock
 
     loop = text.index("while True:")
-    loop_gate = text.index("if human_mode_active(state):", loop)
+    # Each pass acknowledges a fresh owner grant or stops (acknowledging any
+    # revocation) before session handoff, merge watching or dispatch.
+    loop_gate = text.index("if _supervisor_runtime.owner_reclaimed(state,instance_lock[\"worker\"],", loop)
     session_gate = text.index("if a.yield_on_interactive_session:", loop)
-    assert loop_gate < session_gate
-    assert 'status":"HUMAN_MODE_ACTIVE"' in text
+    merge_watch = text.index("merge=start_merge_watcher(", loop)
+    assert loop_gate < session_gate < merge_watch
+    runtime = Path("src/project_orchestrator/supervisor_runtime.py").read_text(encoding="utf-8")
+    assert '"status": "HUMAN_MODE_ACTIVE"' in runtime
 
 
 def test_startup_launcher_uses_marker_payload_not_marker_presence():

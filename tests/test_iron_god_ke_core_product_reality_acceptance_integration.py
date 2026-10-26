@@ -37,6 +37,7 @@ from project_orchestrator.iron_god_product_reality_knowledge_engine_core import 
 )
 from project_orchestrator.local_first_state import LocalFirstState
 from project_orchestrator.local_git_refs import LocalGitRefs
+from tests.owner_authority import grant_owner_authority
 
 REPOSITORY = "jweter/knowledge-engine-core"
 
@@ -153,7 +154,7 @@ def _candidate_repo_with_hybrid_search(
 def _seed_milestone0(tmp_path: Path, repo: Path, base_sha: str):
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(flow)
     refs = LocalGitRefs(repo, owner_state_root=flow)
     refs.bootstrap_accepted(base_sha)
     refs.protect("milestone", "KE-CORE-PROOF-M0", base_sha)

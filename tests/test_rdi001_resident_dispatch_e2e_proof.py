@@ -62,6 +62,7 @@ import time
 from pathlib import Path
 
 import pytest
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 CONTROLLER_PATH = Path(
     r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal\local_continuous_worker.py"
@@ -131,6 +132,10 @@ def proof_env(tmp_path, worker_module, monkeypatch):
     the real IronGodLocal files on disk."""
     flow = tmp_path / "flow-state"
     flow.mkdir()
+    # Authoritative owner controller grant for repository modules.
+    grant_owner_authority(flow)
+    # The installed legacy worker still reads its own fixture files until
+    # it is migrated into version control.
     (flow / "human-mode.json").write_text(
         json.dumps({"enabled": False}), encoding="utf-8"
     )

@@ -14,6 +14,13 @@ from project_orchestrator.local_verification import (
     VerificationPolicy,
     verify_preflight,
 )
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 
 def git(root: Path, *args: str) -> str:
@@ -39,7 +46,7 @@ def case(tmp_path: Path):
     sha = git(repo, "rev-parse", "HEAD")
     owner = tmp_path / "flow-state"
     owner.mkdir()
-    (owner / "human-mode.json").write_text('{"enabled":false}')
+    grant_owner_authority(owner)
     evidence = tmp_path / "receipt.json"
     policy = VerificationPolicy(
         repository="jweter/VoiceStudio",
@@ -143,11 +150,14 @@ def test_dirty_tracked_worktree_is_not_exact_verified_commit(case):
         verify(case)
 
 
-def test_take_wheel_and_malformed_marker_veto(case):
-    for marker in ('{"enabled":true}', "invalid-json"):
-        (case[2] / "human-mode.json").write_text(marker)
-        with pytest.raises(VerificationError, match="OWNER_CONTROL_VETO"):
-            verify(case)
+def test_give_me_control_and_tampered_controller_veto(case):
+    revoke_owner_authority(case[2])
+    with pytest.raises(VerificationError, match="OWNER_CONTROL_VETO"):
+        verify(case)
+    grant_owner_authority(case[2])
+    tamper_owner_authority(case[2])
+    with pytest.raises(VerificationError, match="OWNER_CONTROL_VETO"):
+        verify(case)
 
 
 def test_required_product_reality_never_faked_by_green_unit_tests(case):

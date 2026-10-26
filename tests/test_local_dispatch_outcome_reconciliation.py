@@ -18,6 +18,7 @@ from project_orchestrator.local_dispatch_outcome_reconciliation import (
     reconcile_dispatch_outcomes,
 )
 from test_local_dispatch_event_claim import accept_feature_a, demo, reserve, store
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 
 def worker_store(demo):
@@ -254,7 +255,7 @@ def test_wrong_source_db_is_not_reconciled(demo):
 def test_owner_takeover_refuses_even_read_only_advice(demo):
     ready(demo)
     build_store(demo)
-    (demo[1] / "human-mode.json").write_text('{"enabled":true}', encoding="utf-8")
+    revoke_owner_authority(demo[1])
     with pytest.raises(OutcomeBridgeError, match="OWNER_CONTROL_VETO"):
         inspect(demo)
 

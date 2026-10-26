@@ -34,13 +34,10 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _explicit_owner_release(state_root: Path) -> bool:
-    """Require a present, readable owner marker with literal enabled:false."""
-    marker = state_root / "human-mode.json"
-    try:
-        value = json.loads(marker.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError, TypeError):
-        return False
-    return isinstance(value, dict) and type(value.get("enabled")) is bool and value["enabled"] is False
+    """Require an authoritative owner-controller grant (never the retired marker)."""
+    from .human_ownership import AUTHORIZED, owner_control_status
+
+    return owner_control_status(state_root) == AUTHORIZED
 
 
 def validate_evidence(evidence: dict[str, Any]) -> None:

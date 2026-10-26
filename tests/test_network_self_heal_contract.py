@@ -2,14 +2,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from scripts import network_self_heal as network
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority, tamper_owner_authority
 
 
 def authorize_test_roots(tmp_path, monkeypatch):
     isolated = tmp_path / "isolated-localappdata"
     canonical = isolated / "ExponentialEngine" / "flow-state"
     canonical.mkdir(parents=True)
-    (canonical / "human-mode.json").write_text('{"enabled": false}')
-    (tmp_path / "human-mode.json").write_text('{"enabled": false}')
+    grant_owner_authority(canonical)
+    grant_owner_authority(tmp_path)
     monkeypatch.setenv("LOCALAPPDATA", str(isolated))
     return canonical
 
@@ -47,7 +48,7 @@ def test_reboot_latch_clears_only_on_explicit_clear(tmp_path):
 def test_human_mode_suppresses_recovery(tmp_path, monkeypatch):
     authorize_test_roots(tmp_path, monkeypatch)
     monkeypatch.setattr(network, "snapshot", lambda _root: None)
-    (tmp_path / "human-mode.json").write_text("{}")
+    tamper_owner_authority(tmp_path)
     assert network.recover(tmp_path, allow_reboot=True) is False
     assert not network.reboot_latched(tmp_path)
 
@@ -59,13 +60,13 @@ def test_disabled_owner_marker_allows_network_recovery(tmp_path, monkeypatch):
 
 def test_enabled_owner_marker_blocks_network_recovery(tmp_path, monkeypatch):
     authorize_test_roots(tmp_path, monkeypatch)
-    (tmp_path / "human-mode.json").write_text('{"enabled": true}')
+    revoke_owner_authority(tmp_path)
     assert network.human_mode(tmp_path) is True
 
 
 def test_canonical_human_control_marker_suppresses_recovery(tmp_path, monkeypatch):
     human_root = authorize_test_roots(tmp_path, monkeypatch)
-    (human_root / "human-mode.json").write_text("{}")
+    tamper_owner_authority(human_root)
     assert network.human_mode(tmp_path)
 
 
@@ -92,7 +93,7 @@ def test_mid_recovery_human_handoff_interrupts_network_operations(tmp_path, monk
 
     def fake_run(command):
         commands.append(command)
-        (tmp_path / "human-mode.json").write_text('{"enabled":true}')
+        revoke_owner_authority(tmp_path)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(network, "run", fake_run)
@@ -105,6 +106,6 @@ def test_mid_recovery_human_handoff_interrupts_network_operations(tmp_path, monk
 
 def test_preexisting_human_marker_prevents_even_a_recovery_snapshot(tmp_path, monkeypatch):
     authorize_test_roots(tmp_path, monkeypatch)
-    (tmp_path / "human-mode.json").write_text("{}")
+    tamper_owner_authority(tmp_path)
     monkeypatch.setattr(network, "snapshot", lambda _root: (_ for _ in ()).throw(AssertionError("snapshot ran")))
     assert network.recover(tmp_path, allow_reboot=True) is False

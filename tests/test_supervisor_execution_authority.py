@@ -3,7 +3,9 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+from project_orchestrator import iron_god_owner_control as oc
 from project_orchestrator import supervisor_runtime
+from tests.owner_authority import TEST_RELEASE_SHA, grant_owner_authority, revoke_owner_authority
 
 SUPERVISOR = Path(__file__).resolve().parents[1] / "scripts" / "continuous_flow_supervisor.py"
 
@@ -46,19 +48,53 @@ def test_failing_or_malformed_decision_denies(tmp_path):
         assert record(tmp_path)["reasons"] == ["EXECUTION_AUTHORITY_DENIED"]
 
 
-def test_default_decision_denies_live_shadow_controller_shape(tmp_path, monkeypatch):
-    root = tmp_path / "local" / "ExponentialEngine" / "IronGodLocal"
-    root.mkdir(parents=True)
-    (root / "controller-handoff-state.json").write_text(json.dumps({
-        "controller": "iron-god-handoff-v1",
-        "mode": "shadow_state_only",
-        "candidate_execution_authorized": False,
-    }), encoding="utf-8")
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    state = tmp_path / "state"
+def test_default_decision_denies_without_an_owner_grant(tmp_path):
+    """Today's live shape: no owner Take the Wheel recorded for this state root."""
+    state = tmp_path / "flow-state"
     state.mkdir()
+    me = oc.current_supervisor_identity("d" * 32).as_dict()
+    assert supervisor_runtime.authorized_dispatch_products(
+        state, ["iron-god"], supervisor=me, release_sha=TEST_RELEASE_SHA
+    ) == []
+    assert record(state)["reasons"] == ["OWNER_NOT_ENROLLED"]
+
+
+def test_default_decision_requires_supervisor_identity_and_release(tmp_path):
+    state = tmp_path / "flow-state"
+    grant_owner_authority(state)
     assert supervisor_runtime.authorized_dispatch_products(state, ["iron-god"]) == []
-    assert "OWNER_AUTHORITY_CONTRACT_UNDEFINED" in record(state)["reasons"]
+    assert record(state)["reasons"] == ["EXECUTION_AUTHORITY_UNVERIFIED"]
+
+
+def test_default_decision_acknowledges_and_permits_the_owner_grant(tmp_path):
+    state = tmp_path / "flow-state"
+    root = oc.control_root(state)
+    oc.issue_command(root, oc.TAKE_THE_WHEEL, release_sha=TEST_RELEASE_SHA,
+                     origin_check=lambda: {"session_id": 1, "origin": "desktop-control"})
+    me = oc.current_supervisor_identity("e" * 32).as_dict()
+    assert supervisor_runtime.authorized_dispatch_products(
+        state, ["iron-god"], supervisor=me, release_sha=TEST_RELEASE_SHA
+    ) == ["iron-god"]
+    payload = record(state)
+    assert payload["permitted"] is True and payload["supervisor_instance_id"] == me["instance_id"]
+    # A different release is never dispatched under this grant.
+    assert supervisor_runtime.authorized_dispatch_products(
+        state, ["iron-god"], supervisor=me, release_sha="b" * 40
+    ) == []
+
+
+def test_owner_reclaimed_acknowledges_revocation_and_stops(tmp_path):
+    state = tmp_path / "flow-state"
+    root = oc.control_root(state)
+    oc.issue_command(root, oc.TAKE_THE_WHEEL, release_sha=TEST_RELEASE_SHA,
+                     origin_check=lambda: {"session_id": 1, "origin": "desktop-control"})
+    me = oc.current_supervisor_identity("f" * 32).as_dict()
+    assert supervisor_runtime.owner_reclaimed(state, me, TEST_RELEASE_SHA, process_instance_id="p") is False
+    revoke_owner_authority(state)
+    assert supervisor_runtime.owner_reclaimed(state, me, TEST_RELEASE_SHA, process_instance_id="p") is True
+    human = json.loads((state / "supervisor-human-ownership.json").read_text(encoding="utf-8"))
+    assert human["owner_status"] == "OWNER_CONTROL_ACTIVE" and human["revocation_acknowledged"] is True
+    assert oc.evaluate(root).revocation_acknowledged is True
 
 
 def test_supervisor_main_routes_every_dispatch_through_the_gate():

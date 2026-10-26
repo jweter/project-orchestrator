@@ -1,123 +1,121 @@
-import json
+import os
 from pathlib import Path
 
 import pytest
 
 from project_orchestrator import execution_authority as authority
+from project_orchestrator import iron_god_owner_control as oc
+from tests.owner_authority import TEST_RELEASE_SHA, grant_owner_authority, revoke_owner_authority
+
+pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows DPAPI owner control")
 
 MODULE_SOURCE = Path(authority.__file__).read_text(encoding="utf-8")
 
 
-def controller(tmp_path, **overrides):
-    payload = {
-        "schema_version": 1,
-        "controller": "iron-god-handoff-v1",
-        "mode": "candidate_mode",
-        "candidate_execution_authorized": True,
-    }
-    payload.update(overrides)
-    path = tmp_path / "controller-handoff-state.json"
-    path.write_text(json.dumps(payload), encoding="utf-8")
+def flow(tmp_path):
+    path = tmp_path / "ExponentialEngine" / "flow-state"
+    path.mkdir(parents=True)
     return path
 
 
-def released():
-    return authority.OWNER_RELEASED
-
-
-def test_live_shadow_controller_is_denied_even_with_released_owner(tmp_path):
-    path = controller(tmp_path, mode="shadow_state_only", candidate_execution_authorized=False)
-    decision = authority.evaluate_execution_authority(path, released)
-    assert decision.permitted is False
-    assert decision.reasons == (
-        "CONTROLLER_SHADOW_MODE",
-        "CONTROLLER_CANDIDATE_EXECUTION_DISABLED",
+def test_no_owner_controller_state_denies(tmp_path):
+    decision = authority.evaluate_execution_authority(
+        oc.control_root(flow(tmp_path)), release_sha=TEST_RELEASE_SHA
     )
-
-
-def test_authorized_controller_without_owner_contract_is_denied(tmp_path):
-    decision = authority.evaluate_execution_authority(controller(tmp_path))
     assert decision.permitted is False
-    assert decision.reasons == (authority.OWNER_AUTHORITY_CONTRACT_UNDEFINED,)
+    assert decision.reasons == ("OWNER_NOT_ENROLLED",)
 
 
-def test_both_independent_inputs_are_required_to_permit(tmp_path):
-    decision = authority.evaluate_execution_authority(controller(tmp_path), released)
-    assert decision == authority.ExecutionDecision(permitted=True, reasons=())
+def test_live_acknowledged_grant_permits_its_release_only(tmp_path):
+    state = flow(tmp_path)
+    supervisor = grant_owner_authority(state)
+    root = oc.control_root(state)
+    worker = authority.evaluate_execution_authority(root, release_sha=TEST_RELEASE_SHA)
+    assert worker.permitted is True and worker.supervisor_instance_id == supervisor.instance_id
+    assert authority.evaluate_execution_authority(root, release_sha=TEST_RELEASE_SHA, supervisor=supervisor).permitted
+    other = authority.evaluate_execution_authority(root, release_sha="b" * 40)
+    assert other.permitted is False and other.reasons == ("GRANT_RELEASE_MISMATCH",)
 
 
-@pytest.mark.parametrize(
-    "overrides, reason",
-    [
-        ({"controller": "something-else"}, "CONTROLLER_IDENTITY_UNVERIFIED"),
-        ({"mode": "full_power"}, "CONTROLLER_MODE_UNSUPPORTED"),
-        ({"candidate_execution_authorized": "true"}, "CONTROLLER_CANDIDATE_EXECUTION_DISABLED"),
-        ({"candidate_execution_authorized": 1}, "CONTROLLER_CANDIDATE_EXECUTION_DISABLED"),
-    ],
-)
-def test_controller_drift_fails_closed(tmp_path, overrides, reason):
-    decision = authority.evaluate_execution_authority(controller(tmp_path, **overrides), released)
+def test_unpinned_caller_is_denied(tmp_path):
+    state = flow(tmp_path)
+    grant_owner_authority(state)
+    for release in (None, ""):
+        assert authority.evaluate_execution_authority(
+            oc.control_root(state), release_sha=release
+        ).reasons == (authority.OWNER_RELEASE_UNPINNED,)
+
+
+def test_pending_grant_is_not_execution_authority(tmp_path):
+    state = flow(tmp_path)
+    root = oc.control_root(state)
+    oc.issue_command(root, oc.TAKE_THE_WHEEL, release_sha=TEST_RELEASE_SHA,
+                     origin_check=lambda: {"session_id": 1, "origin": "desktop-control"})
+    decision = authority.evaluate_execution_authority(root, release_sha=TEST_RELEASE_SHA)
     assert decision.permitted is False
-    assert reason in decision.reasons
+    assert decision.reasons == ("SUPERVISOR_ACK_PENDING",)
 
 
-def test_missing_malformed_and_unavailable_controller_state_fail_closed(tmp_path, monkeypatch):
-    assert authority.evaluate_execution_authority(tmp_path / "absent.json", released).reasons == (
-        "CONTROLLER_STATE_MISSING_OR_UNTRUSTED",
+def test_supervisor_path_acknowledges_then_permits(tmp_path):
+    state = flow(tmp_path)
+    root = oc.control_root(state)
+    oc.issue_command(root, oc.TAKE_THE_WHEEL, release_sha=TEST_RELEASE_SHA,
+                     origin_check=lambda: {"session_id": 1, "origin": "desktop-control"})
+    me = oc.current_supervisor_identity("s" * 32)
+    decision = authority.acknowledge_and_evaluate(root, me, release_sha=TEST_RELEASE_SHA)
+    assert decision.permitted is True and decision.supervisor_instance_id == me.instance_id
+
+
+def test_revocation_denies_immediately(tmp_path):
+    state = flow(tmp_path)
+    grant_owner_authority(state)
+    revoke_owner_authority(state)
+    decision = authority.evaluate_execution_authority(oc.control_root(state), release_sha=TEST_RELEASE_SHA)
+    assert decision.permitted is False and decision.reasons == ("OWNER_CONTROL_ACTIVE",)
+
+
+def test_dead_acknowledging_supervisor_denies(tmp_path):
+    state = flow(tmp_path)
+    grant_owner_authority(state)
+    decision = authority.evaluate_execution_authority(
+        oc.control_root(state), release_sha=TEST_RELEASE_SHA, liveness=lambda _identity: False
     )
-    bad = tmp_path / "bad.json"
-    bad.write_text("{not json", encoding="utf-8")
-    assert authority.evaluate_execution_authority(bad, released).reasons == (
-        "CONTROLLER_STATE_UNREADABLE",
-    )
-    monkeypatch.delenv("LOCALAPPDATA", raising=False)
-    assert authority.evaluate_execution_authority(None, released).reasons == (
-        "CONTROLLER_STATE_PATH_UNAVAILABLE",
-    )
+    assert decision.reasons == ("ACKNOWLEDGING_SUPERVISOR_GONE",)
 
 
-@pytest.mark.parametrize("owner", ["", None, "AUTHORIZED", "VERIFIED_HELD"])
-def test_any_owner_attestation_but_verified_released_denies(tmp_path, owner):
-    decision = authority.evaluate_execution_authority(controller(tmp_path), lambda: owner)
-    assert decision.permitted is False
-
-
-def test_owner_provider_failure_is_unverified_authority(tmp_path):
-    def broken():
-        raise OSError("provider unavailable")
-
-    decision = authority.evaluate_execution_authority(controller(tmp_path), broken)
-    assert decision.reasons == ("OWNER_AUTHORITY_UNVERIFIED",)
-
-
-def test_default_path_resolves_controller_under_localappdata(tmp_path, monkeypatch):
-    root = tmp_path / "ExponentialEngine" / "IronGodLocal"
-    root.mkdir(parents=True)
-    controller(root)
+def test_default_root_resolves_under_localappdata(tmp_path, monkeypatch):
+    state = flow(tmp_path)
+    grant_owner_authority(state)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    assert authority.evaluate_execution_authority(owner_attestation=released).permitted is True
+    assert authority.evaluate_execution_authority(release_sha=TEST_RELEASE_SHA).permitted is True
+    monkeypatch.delenv("LOCALAPPDATA")
+    assert authority.evaluate_execution_authority(release_sha=TEST_RELEASE_SHA).reasons == (
+        "EXECUTION_AUTHORITY_UNVERIFIED",
+    )
 
 
-def test_retired_owner_marker_is_never_an_authority_input(tmp_path, monkeypatch):
-    """A released retired marker next to an authorized controller changes nothing."""
-    flow = tmp_path / "ExponentialEngine" / "flow-state"
-    flow.mkdir(parents=True)
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
-    (flow / "iron-god-exclusive.json").write_text('{"enabled": true}', encoding="utf-8")
-    root = tmp_path / "ExponentialEngine" / "IronGodLocal"
-    root.mkdir(parents=True)
-    controller(root)
+def test_legacy_controller_flag_and_retired_markers_are_not_inputs(tmp_path, monkeypatch):
+    """An authorizing legacy handoff flag plus released retired markers grant nothing."""
+    state = flow(tmp_path)
+    (state / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    (state / "iron-god-exclusive.json").write_text('{"enabled": true}', encoding="utf-8")
+    legacy = tmp_path / "ExponentialEngine" / "IronGodLocal"
+    legacy.mkdir()
+    (legacy / "controller-handoff-state.json").write_text(
+        '{"controller":"iron-god-handoff-v1","mode":"candidate_mode","candidate_execution_authorized":true}',
+        encoding="utf-8",
+    )
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    decision = authority.evaluate_execution_authority()
-    assert decision.reasons == (authority.OWNER_AUTHORITY_CONTRACT_UNDEFINED,)
-    assert "human-mode.json" not in MODULE_SOURCE
-    assert "iron-god-exclusive" not in MODULE_SOURCE
-    assert "human_ownership" not in MODULE_SOURCE
+    assert authority.evaluate_execution_authority(release_sha=TEST_RELEASE_SHA).permitted is False
+    for retired in ("human-mode.json", "iron-god-exclusive", "controller-handoff-state", "human_ownership"):
+        assert retired not in MODULE_SOURCE.split('"""', 2)[2]
 
 
 def test_decision_never_writes_controller_state(tmp_path):
-    path = controller(tmp_path, mode="shadow_state_only", candidate_execution_authorized=False)
-    before = path.read_bytes()
-    authority.evaluate_execution_authority(path, released)
-    assert path.read_bytes() == before
-    assert sorted(p.name for p in tmp_path.iterdir()) == [path.name]
+    state = flow(tmp_path)
+    grant_owner_authority(state)
+    root = oc.control_root(state)
+    before = {p.name: p.read_bytes() for p in root.iterdir() if p.is_file()}
+    authority.evaluate_execution_authority(root, release_sha=TEST_RELEASE_SHA)
+    after = {p.name: p.read_bytes() for p in root.iterdir() if p.is_file()}
+    assert before == after

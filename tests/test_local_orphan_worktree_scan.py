@@ -10,6 +10,13 @@ from project_orchestrator.local_orphan_worktree_scan import (
     OwnerControlActive,
     scan_worktrees,
 )
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -36,10 +43,7 @@ def _init_repo(path: Path) -> Path:
 def _authorized_state_root(tmp_path: Path) -> Path:
     state_root = tmp_path / "flow-state"
     state_root.mkdir(parents=True, exist_ok=True)
-    (state_root / "human-mode.json").write_text(
-        json.dumps({"enabled": False}),
-        encoding="utf-8",
-    )
+    grant_owner_authority(state_root)
     return state_root
 
 
@@ -125,10 +129,7 @@ def test_refuses_when_owner_control_active(tmp_path):
     repo = _init_repo(tmp_path / "repo")
     state_root = tmp_path / "flow-state"
     state_root.mkdir()
-    (state_root / "human-mode.json").write_text(
-        json.dumps({"enabled": True}),
-        encoding="utf-8",
-    )
+    revoke_owner_authority(state_root)
     with pytest.raises(OwnerControlActive):
         scan_worktrees(repo, state_root)
 

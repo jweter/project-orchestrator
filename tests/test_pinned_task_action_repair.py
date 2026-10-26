@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "desktop-control" / "Repair-DisabledPinnedTasks.ps1"
@@ -55,7 +56,7 @@ def test_release_or_corrupt_owner_authority_refuses_repair(tmp_path, enabled):
 def test_owner_held_but_missing_pins_refuses_before_any_task_query(tmp_path):
     state = tmp_path / "state"
     state.mkdir()
-    (state / "human-mode.json").write_text('{"enabled":true}', encoding="utf-8")
+    revoke_owner_authority(state)
     result = run_script(state, apply=True)
     assert result.returncode != 0
     assert "MISSING_REQUIRED_RECORD" in (result.stdout + result.stderr)

@@ -43,13 +43,28 @@ def _valid_sha(sha: str) -> str:
     return sha
 
 
-def owner_allows_preparation(marker: Path) -> None:
-    """The owner's current mode is checked even for preparing a new release."""
-    try:
-        mode = json.loads(marker.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ReleaseError("owner control is unreadable; refusing release") from exc
-    if not isinstance(mode, dict) or mode.get("enabled") is not False:
+def owner_allows_preparation(owner_state_root: Path, *, owner_directed: bool = False) -> None:
+    """Owner authority is checked even for preparing a new release.
+
+    Authority comes only from the authoritative owner controller. An
+    autonomous caller needs a live acknowledged Take the Wheel grant. An
+    owner-directed preparation (the owner, or an operator the owner has
+    instructed, running from the active console session) is permitted
+    without a grant: staging only writes a frozen release and its receipt,
+    never activates a runtime, and activation still requires Take the Wheel.
+    """
+    from .human_ownership import AUTHORIZED, owner_control_status
+    from .iron_god_owner_control import OwnerControlError, verify_active_console_session
+
+    if owner_directed:
+        try:
+            verify_active_console_session()
+        except OwnerControlError as exc:
+            raise ReleaseError(
+                f"owner control: owner-directed preparation requires the active console session ({exc.code})"
+            ) from exc
+        return
+    if owner_control_status(owner_state_root) != AUTHORIZED:
         raise ReleaseError("owner control does not authorize release preparation")
 
 
@@ -160,10 +175,11 @@ def validate_staged_release(receipt: dict[str, Any]) -> dict[str, Any]:
 
 
 def stage_local_release(
-    candidate: Path, sha: str, releases_root: Path, receipt_root: Path, owner_marker: Path
+    candidate: Path, sha: str, releases_root: Path, receipt_root: Path, owner_state_root: Path,
+    *, owner_directed: bool = False,
 ) -> dict[str, Any]:
     """Test + stage a frozen release; deliberately does not activate the supervisor."""
-    owner_allows_preparation(owner_marker)
+    owner_allows_preparation(owner_state_root, owner_directed=owner_directed)
     source = verify_clean_checkout(candidate, sha)
     releases_root = releases_root.resolve()
     receipts = receipt_root.resolve()
@@ -194,7 +210,7 @@ def stage_local_release(
         shutil.rmtree(verification_tempdir, ignore_errors=True)
     if verify_clean_checkout(candidate, sha)["tree"] != source["tree"]:
         raise ReleaseError("candidate tree changed during verification")
-    owner_allows_preparation(owner_marker)
+    owner_allows_preparation(owner_state_root, owner_directed=owner_directed)
     releases_root.mkdir(parents=True, exist_ok=True)
     staging_tempdir = Path(tempfile.mkdtemp(prefix=".local-release-", dir=releases_root))
     try:
@@ -204,7 +220,7 @@ def stage_local_release(
             sha,
             source["tree"],
         )
-        owner_allows_preparation(owner_marker)
+        owner_allows_preparation(owner_state_root, owner_directed=owner_directed)
         if target.exists():
             raise ReleaseError("release target appeared during staging")
         os.replace(staged, target)
@@ -228,9 +244,10 @@ def stage_local_release(
 
 
 def readiness(receipt: dict[str, Any], *, current_sha: str | None,
-              active_workers: int | None, owner_marker: Path) -> dict[str, Any]:
+              active_workers: int | None, owner_state_root: Path,
+              owner_directed: bool = False) -> dict[str, Any]:
     """Read-only cutover advice. Never replaces the runtime owner/lease gates."""
-    owner_allows_preparation(owner_marker)
+    owner_allows_preparation(owner_state_root, owner_directed=owner_directed)
     validate_staged_release(receipt)
     if active_workers is None:
         return {"status": "BLOCKED_WORKER_STATE_UNKNOWN", "ready": False}
@@ -272,18 +289,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Iron God local release staging controller")
     sub = parser.add_subparsers(dest="action", required=True)
     stage = sub.add_parser("stage", help="run native preflight and stage an exact commit")
-    for key in ("source", "sha", "releases_root", "receipts_root", "owner_marker"):
+    for key in ("source", "sha", "releases_root", "receipts_root", "owner_state_root"):
         stage.add_argument("--" + key.replace("_", "-"), required=True)
+    stage.add_argument("--owner-directed", action="store_true")
     inspect = sub.add_parser("inspect", help="validate a staged receipt and show readiness")
     inspect.add_argument("--receipt", required=True)
     inspect.add_argument("--state-root", required=True)
-    inspect.add_argument("--owner-marker", required=True)
+    inspect.add_argument("--owner-state-root", required=True)
+    inspect.add_argument("--owner-directed", action="store_true")
     try:
         args = parser.parse_args(argv)
         if args.action == "stage":
             result = stage_local_release(
                 Path(args.source), args.sha, Path(args.releases_root),
-                Path(args.receipts_root), Path(args.owner_marker),
+                Path(args.receipts_root), Path(args.owner_state_root),
+                owner_directed=args.owner_directed,
             )
         else:
             receipt = json.loads(Path(args.receipt).read_text(encoding="utf-8-sig"))
@@ -291,7 +311,8 @@ def main(argv: list[str] | None = None) -> int:
             result = {**observations, **readiness(
                 receipt, current_sha=observations["current_sha"],
                 active_workers=observations["active_workers"],
-                owner_marker=Path(args.owner_marker),
+                owner_state_root=Path(args.owner_state_root),
+                owner_directed=args.owner_directed,
             )}
         print(json.dumps(result, sort_keys=True, indent=2))
         return 0

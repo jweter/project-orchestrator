@@ -21,6 +21,7 @@ from project_orchestrator.local_acceptance_refill import (
 from project_orchestrator.local_first_state import LocalFirstState
 from project_orchestrator.local_git_refs import LocalGitRefs
 from project_orchestrator.local_verification import VerificationPolicy
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 
 def git(repo: Path, *args: str) -> str:
@@ -47,7 +48,7 @@ def demo(tmp_path):
 
     owner = tmp_path / "flow-state"
     owner.mkdir()
-    (owner / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
+    grant_owner_authority(owner)
     refs = LocalGitRefs(repo, owner_state_root=owner)
     refs.bootstrap_accepted(base)
 
@@ -175,7 +176,7 @@ def test_candidate_mode_without_explicit_authority_cannot_refill(demo):
 
 def test_owner_takeover_cannot_refill(demo):
     accept_feature_a(demo)
-    (demo[1] / "human-mode.json").write_text('{"enabled":true}')
+    revoke_owner_authority(demo[1])
     result = plan(demo)
     assert result.reason == "OWNER_CONTROL_VETO"
     assert result.next_slice_id is None

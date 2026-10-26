@@ -1,6 +1,13 @@
 ﻿from pathlib import Path
 import pytest
 from scripts import autonomous_slice_builder as b
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 def test_protected_governance_paths_blocked():
     assert b.protected_change(["DoWork.txt"])=="DoWork.txt"
@@ -777,7 +784,7 @@ def test_atomic_json_fails_closed_after_windows_rename_denied(tmp_path,monkeypat
 
 def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    (tmp_path/"human-mode.json").write_text('{"enabled":true}',encoding="utf-8")
+    revoke_owner_authority(tmp_path)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
@@ -785,7 +792,7 @@ def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch)
 
 def test_disabled_owner_marker_allows_builder_to_reach_idle_gate(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    (tmp_path/"human-mode.json").write_text('{"enabled":false}',encoding="utf-8")
+    grant_owner_authority(tmp_path)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]=="USER_ACTIVE"
@@ -793,9 +800,10 @@ def test_disabled_owner_marker_allows_builder_to_reach_idle_gate(tmp_path, monke
     assert "manual_human_mode" not in result
 
 
-def test_malformed_owner_marker_fails_closed_before_idle_probe(tmp_path, monkeypatch):
+def test_tampered_owner_controller_fails_closed_before_idle_probe(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    (tmp_path/"human-mode.json").write_text("{partial",encoding="utf-8")
+    grant_owner_authority(tmp_path)
+    tamper_owner_authority(tmp_path)
     monkeypatch.setattr(
         b,"windows_idle_seconds",
         lambda: (_ for _ in ()).throw(AssertionError("idle probe must not run")),
@@ -809,7 +817,7 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
     worker=flow/"worker-state"/"everward-worker-1"
     worker.mkdir(parents=True)
     state=worker/"builder.json"
-    (flow/"human-mode.json").write_text('{"enabled":true}',encoding="utf-8")
+    revoke_owner_authority(flow)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
     assert b.build_once(tmp_path/"workspaces",state,dry_run=True)=={
         "status":"USER_ACTIVE","manual_human_mode":True

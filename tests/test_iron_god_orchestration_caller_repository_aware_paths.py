@@ -36,6 +36,7 @@ from project_orchestrator.iron_god_orchestration_caller import (
     provision_candidate_worktree,
     run_continuous_development_cycle,
 )
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 DEFAULT_REPOSITORY = "test-proof-owner/test-proof-repo"
 KE_CORE_REPOSITORY = "jweter/knowledge-engine-core"
@@ -300,7 +301,7 @@ def test_invalid_handoff_never_creates_a_worktree(tmp_path, monkeypatch):
 
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(flow)
     refs = LocalGitRefs(repo, owner_state_root=flow)
     refs.bootstrap_accepted(base_sha)
     refs.protect("milestone", "M-0", base_sha)

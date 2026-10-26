@@ -11,6 +11,13 @@ from project_orchestrator.iron_god_recovery_reconstruction_report import (
     SliceReconstructionRequest,
     build_recovery_reconstruction_report,
 )
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -44,9 +51,7 @@ def _commit(path: Path, name: str) -> str:
 def _authorized_state_root(tmp_path: Path) -> Path:
     state_root = tmp_path / "flow-state"
     state_root.mkdir(parents=True, exist_ok=True)
-    (state_root / "human-mode.json").write_text(
-        json.dumps({"enabled": False}), encoding="utf-8"
-    )
+    grant_owner_authority(state_root)
     return state_root
 
 

@@ -199,9 +199,10 @@ def test_tampered_acknowledgment_is_rejected(root):
     assert oc.evaluate(root, now=T0 + timedelta(seconds=6), liveness=Alive(sup)).reasons == ("ACK_AUTHENTICATION_FAILED",)
 
 
-def test_retired_markers_and_arbitrary_json_are_not_authority(root, tmp_path):
+def test_retired_markers_and_arbitrary_json_are_not_authority(tmp_path):
     flow = tmp_path / "flow-state"
     flow.mkdir()
+    root = flow / oc.CONTROL_DIRNAME
     (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
     (flow / "iron-god-exclusive.json").write_text('{"enabled": true, "target_product": "iron-god"}', encoding="utf-8")
     root.mkdir()

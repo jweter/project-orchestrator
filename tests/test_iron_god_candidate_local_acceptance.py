@@ -23,6 +23,7 @@ from project_orchestrator.iron_god_product_reality_adapter import (
 )
 from project_orchestrator.local_first_state import LocalFirstState
 from project_orchestrator.local_git_refs import LocalGitRefs
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 REPO_IDENTIFIER = "test-proof-owner/test-proof-repo"
 
@@ -59,7 +60,7 @@ class _FixedAdapter:
 def env(tmp_path):
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(flow)
 
     repo = _init_repo(tmp_path / "repo")
     base_sha = _git(repo, "rev-parse", "HEAD")

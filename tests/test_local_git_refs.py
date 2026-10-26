@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 from project_orchestrator.local_git_refs import LocalGitRefError, LocalGitRefs
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 
 def git(path: Path, *args: str) -> str:
@@ -30,7 +37,7 @@ def repo(tmp_path: Path) -> tuple[Path, Path, LocalGitRefs]:
     git(working, "commit", "-qm", "initial")
     control = tmp_path / "flow-state"
     control.mkdir()
-    (control / "human-mode.json").write_text('{"enabled":false}')
+    grant_owner_authority(control)
     return working, control, LocalGitRefs(working, owner_state_root=control)
 
 
@@ -94,11 +101,14 @@ def test_non_fast_forward_cannot_replace_accepted(repo):
     assert refs.accepted() == new
 
 
-@pytest.mark.parametrize("payload", ['{"enabled":true}', 'not-json', '{"enabled":"false"}'])
-def test_owner_veto_blocks_all_writes(repo, payload):
+@pytest.mark.parametrize("scenario", ["revoked", "tampered"])
+def test_owner_veto_blocks_all_writes(repo, scenario):
     working, owner, refs = repo
     sha = git(working, "rev-parse", "HEAD")
-    (owner / "human-mode.json").write_text(payload)
+    if scenario == "revoked":
+        revoke_owner_authority(owner)
+    else:
+        tamper_owner_authority(owner)
     with pytest.raises(LocalGitRefError, match="OWNER_CONTROL_VETO"):
         refs.protect("candidate", "slice-1", sha)
     with pytest.raises(LocalGitRefError, match="OWNER_CONTROL_VETO"):
@@ -112,7 +122,7 @@ def test_take_wheel_vetoes_accepted_advancement(repo):
     old = git(working, "rev-parse", "HEAD")
     refs.bootstrap_accepted(old)
     new = next_commit(working, "change\n")
-    (owner / "human-mode.json").write_text(json.dumps({"enabled": True}))
+    revoke_owner_authority(owner)
     with pytest.raises(LocalGitRefError, match="OWNER_CONTROL_VETO"):
         refs.advance_accepted(expected_sha=old, new_sha=new)
     assert refs.accepted() == old

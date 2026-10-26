@@ -4,12 +4,13 @@ import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from scripts.launch_persistent_supervisor import (activate_repo_imports, atomic, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, stale_generation_requires_reclaim, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority, tamper_owner_authority
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
 
 def authorize(root:Path):
-    write(root/"human-mode.json",{"enabled":False})
+    grant_owner_authority(root)
 
 def test_atomic_uses_unique_temp_file_when_legacy_temp_is_contended(tmp_path):
     target=tmp_path/"persistent-supervisor-launch.json"
@@ -258,9 +259,9 @@ def test_launcher_owner_gate_is_fail_closed_for_unreadable_or_held_state(tmp_pat
     state = tmp_path / "state"
     state.mkdir()
     assert launcher_owner_gate(state) is False
-    write(state / "human-mode.json", {"enabled": True})
+    revoke_owner_authority(state)
     assert launcher_owner_gate(state) is False
-    (state / "human-mode.json").write_text("{broken", encoding="utf-8")
+    tamper_owner_authority(state)
     assert launcher_owner_gate(state) is False
-    write(state / "human-mode.json", {"enabled": False})
+    grant_owner_authority(state)
     assert launcher_owner_gate(state) is True

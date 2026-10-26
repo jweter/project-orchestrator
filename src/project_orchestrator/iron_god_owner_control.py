@@ -146,13 +146,13 @@ class OwnerDecision:
 # --- paths -----------------------------------------------------------------
 
 def control_root(state_root: Path | None = None) -> Path:
-    """Controller directory beside ``flow-state`` (or under LOCALAPPDATA)."""
+    """Controller directory inside one ``flow-state`` root (one authority per root)."""
     if state_root is not None:
-        return Path(state_root).parent / CONTROL_DIRNAME
+        return Path(state_root) / CONTROL_DIRNAME
     local = os.environ.get("LOCALAPPDATA")
     if not local:
         raise OwnerControlError("LOCALAPPDATA_UNAVAILABLE")
-    return Path(local) / "ExponentialEngine" / CONTROL_DIRNAME
+    return Path(local) / "ExponentialEngine" / "flow-state" / CONTROL_DIRNAME
 
 
 def _clock(now: datetime | None) -> datetime:
@@ -300,12 +300,8 @@ def process_ancestry(pid: int | None = None) -> list[str]:
     return names
 
 
-def verify_interactive_desktop_origin() -> dict[str, Any]:
-    """Refuse unless this process is the owner's desktop-icon launch.
-
-    Requires the active console session (not a service or remote session)
-    and a desktop-control ancestry: wscript.exe launched by explorer.exe.
-    """
+def verify_active_console_session() -> int:
+    """Refuse services, session 0 and disconnected/remote sessions."""
     _require_windows()
     import ctypes
     from ctypes import wintypes
@@ -317,6 +313,16 @@ def verify_interactive_desktop_origin() -> dict[str, Any]:
     console = kernel32.WTSGetActiveConsoleSessionId()
     if session.value == 0 or session.value != console:
         raise OwnerControlError("NOT_ACTIVE_CONSOLE_SESSION")
+    return int(session.value)
+
+
+def verify_interactive_desktop_origin() -> dict[str, Any]:
+    """Refuse unless this process is the owner's desktop-icon launch.
+
+    Requires the active console session (not a service or remote session)
+    and a desktop-control ancestry: wscript.exe launched by explorer.exe.
+    """
+    session_id = verify_active_console_session()
     ancestry = process_ancestry()
     try:
         launcher = ancestry.index("wscript.exe")
@@ -324,7 +330,7 @@ def verify_interactive_desktop_origin() -> dict[str, Any]:
         raise OwnerControlError("NOT_DESKTOP_CONTROL_ORIGIN") from exc
     if "explorer.exe" not in ancestry[launcher + 1:launcher + 2]:
         raise OwnerControlError("NOT_DESKTOP_CONTROL_ORIGIN")
-    return {"session_id": int(session.value), "origin": "desktop-control", "ancestry": ancestry[: launcher + 2]}
+    return {"session_id": session_id, "origin": "desktop-control", "ancestry": ancestry[: launcher + 2]}
 
 
 def remote_or_local_origin() -> dict[str, Any]:
@@ -383,15 +389,64 @@ def _restrict_acl(root: Path, owner_sid: str) -> None:
     )
 
 
-def _acl_is_restricted(root: Path) -> bool:
-    listing = subprocess.run(
-        ["icacls", str(root)], capture_output=True, text=True, check=False, timeout=30,
+def directory_acl(root: Path) -> list[tuple[int, int, str]]:
+    """(ace_type, ace_flags, sid) for every ACE in the directory's DACL."""
+    _require_windows()
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi32.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPCWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p),
+    ]
+    advapi32.GetAce.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)]
+    advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR)]
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    dacl = ctypes.c_void_p()
+    descriptor = ctypes.c_void_p()
+    # SE_FILE_OBJECT=1, DACL_SECURITY_INFORMATION=4
+    status = advapi32.GetNamedSecurityInfoW(
+        str(root), 1, 4, None, None, ctypes.byref(dacl), None, ctypes.byref(descriptor)
     )
-    if listing.returncode != 0:
+    if status != 0 or not dacl.value:
+        raise OwnerControlError("CONTROL_DIRECTORY_ACL_UNREADABLE")
+    try:
+        # ACL header: AclRevision(1) Sbz1(1) AclSize(2) AceCount(2) Sbz2(2)
+        count = ctypes.cast(dacl, ctypes.POINTER(ctypes.c_uint16))[2]
+        entries: list[tuple[int, int, str]] = []
+        for index in range(count):
+            ace = ctypes.c_void_p()
+            if not advapi32.GetAce(dacl, index, ctypes.byref(ace)):
+                raise OwnerControlError("CONTROL_DIRECTORY_ACL_UNREADABLE")
+            header = ctypes.cast(ace, ctypes.POINTER(ctypes.c_uint8))
+            ace_type, ace_flags = int(header[0]), int(header[1])
+            sid_text = ""
+            if ace_type in (0, 1):  # ACCESS_ALLOWED / ACCESS_DENIED: Mask then SID at +8
+                text = wintypes.LPWSTR()
+                if advapi32.ConvertSidToStringSidW(ace.value + 8, ctypes.byref(text)):
+                    try:
+                        sid_text = str(text.value)
+                    finally:
+                        kernel32.LocalFree(ctypes.cast(text, ctypes.c_void_p))
+            entries.append((ace_type, ace_flags, sid_text))
+        return entries
+    finally:
+        kernel32.LocalFree(descriptor)
+
+
+def _acl_is_restricted(root: Path, owner_sid: str) -> bool:
+    """Only explicit allow ACEs for the owner and SYSTEM; nothing inherited."""
+    try:
+        entries = directory_acl(root)
+    except OwnerControlError:
         return False
-    text = listing.stdout.casefold()
-    broad = ("everyone", "builtin\\users", "authenticated users", "nt authority\\interactive")
-    return not any(name in text for name in broad) and "(i)" not in text
+    allowed = {owner_sid, _SYSTEM_SID}
+    return bool(entries) and all(
+        ace_type == 0 and not ace_flags & 0x10 and sid in allowed
+        for ace_type, ace_flags, sid in entries
+    )
 
 
 def enroll_owner(root: Path) -> dict[str, Any]:
@@ -429,7 +484,7 @@ def _owner_key(root: Path) -> bytes:
     enrollment = load_enrollment(root)
     if enrollment["owner_sid"] != current_user_sid():
         raise OwnerControlError("NOT_ENROLLED_OWNER")
-    if not _acl_is_restricted(root):
+    if not _acl_is_restricted(root, enrollment["owner_sid"]):
         raise OwnerControlError("CONTROL_DIRECTORY_ACL_UNSAFE")
     try:
         key = _dpapi((root / KEY_FILE).read_bytes(), protect=False)
@@ -462,6 +517,11 @@ def _connect(root: Path) -> sqlite3.Connection:
     )
     db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     return db
+
+
+def _connect_read_only(root: Path) -> sqlite3.Connection:
+    """Decisions and observations never create, migrate or modify the store."""
+    return sqlite3.connect((root / DB_FILE).resolve().as_uri() + "?mode=ro", uri=True, timeout=10)
 
 
 def _canonical(payload: Mapping[str, Any]) -> str:
@@ -609,7 +669,7 @@ def evaluate(
         key = _owner_key(root)
         if not (root / DB_FILE).is_file():
             return _denied(UNVERIFIED, "NO_OWNER_COMMAND")
-        with closing(_connect(root)) as db:
+        with closing(_connect_read_only(root)) as db:
             latest = _latest(db)
             if latest is None:
                 return _denied(UNVERIFIED, "NO_OWNER_COMMAND")
@@ -766,7 +826,7 @@ def wait_for_ack(
     pause = sleep or time.sleep
     deadline = time.monotonic() + timeout_seconds
     while True:
-        with closing(_connect(root)) as db:
+        with closing(_connect_read_only(root)) as db:
             latest = _latest(db)
             if latest is None or latest[0] < generation:
                 return "TIMEOUT"
@@ -780,7 +840,7 @@ def wait_for_ack(
 
 
 def recent_events(root: Path, limit: int = 20) -> list[dict[str, Any]]:
-    with closing(_connect(root)) as db:
+    with closing(_connect_read_only(root)) as db:
         rows = db.execute(
             "SELECT at_utc, kind, generation, detail FROM control_events ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()

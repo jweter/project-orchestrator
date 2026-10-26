@@ -29,6 +29,7 @@ from project_orchestrator.iron_god_candidate_refs import set_candidate
 from test_iron_god_dispatch_claim_recovery import reserve_to_invocation_reserved
 from test_local_dispatch_event_claim import accept_feature_a, demo, git, reserve, store
 from test_local_dispatch_outcome_reconciliation import build_store, worker_store
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 REVIEWER = "jeremyweter@gmail.com"
 
@@ -238,7 +239,7 @@ def test_refuses_for_a_result_recorded_claim(demo):
 
 def test_owner_veto_blocks_the_reviewed_path(demo):
     claim = reserve_to_invocation_reserved(demo)
-    (demo[1] / "human-mode.json").write_text('{"enabled":true}', encoding="utf-8")
+    revoke_owner_authority(demo[1])
     with pytest.raises(DispatchFenceError, match="OWNER_CONTROL_VETO"):
         record(demo, claim)
     assert inspect_claims(store(demo))[0]["state"] == "INVOCATION_RESERVED"
