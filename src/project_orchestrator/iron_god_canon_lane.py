@@ -40,6 +40,7 @@ from . import iron_god_owner_control as owner_controller
 from .canon_worker_memory import prepare_worker_memory_handoff, render_worker_memory_handoff
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .learning import add_lesson, validate_memory
+from .runtime_leases import DEFAULT_RUNTIME_CAPACITIES, RuntimeLeasePool
 from .shared_memory import load_shared_memory, sync_shared_memory
 from .state_io import atomic_json
 from .worker_transport import (
@@ -56,6 +57,33 @@ from .worker_transport import (
 POLICY_RELATIVE = Path("engineering") / "iron-god-commissioning.json"
 TERMINAL = {"ACCEPTED_LOCAL", "BLOCKED", "CANCELLED", "PARKED", "RECONCILE_REQUIRED"}
 ACTIVE = {"DISPATCHED", "IMPLEMENTING"}
+# The local model is exclusive: the Canon worker holds the single Ollama
+# lease shared with every other local AI builder.
+WORKER_LEASE_RUNTIME = "resource:ollama"
+WORKER_LEASE_ID = "iron-god-canon-worker"
+MIN_FREE_DISK_GIB = 25
+
+
+def default_lease_pool() -> RuntimeLeasePool:
+    """The same durable lease file the supervisor uses for its runtimes."""
+    root = Path(os.environ.get("EXPONENTIAL_ENGINE_STATE", Path.home() / ".exponential-engine" / "state"))
+    return RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, root / "runtime-leases.json")
+
+
+def default_resources() -> dict[str, Any]:
+    """Fail-closed admission for one new local AI worker (memory + disk)."""
+    from .worker_memory_admission import memory_admission
+
+    try:
+        admission = memory_admission(0)
+    except Exception as exc:
+        return {"admitted": False, "reason": f"MEMORY_PROBE_FAILED: {type(exc).__name__}"}
+    free_gib = shutil.disk_usage(Path.home().anchor or "C:\\").free / 1024**3
+    if free_gib < MIN_FREE_DISK_GIB:
+        return {"admitted": False, "reason": "LOW_DISK", "free_disk_gib": round(free_gib, 1)}
+    return {"admitted": int(admission.get("new_worker_budget", 0)) >= 1,
+            "reason": admission.get("status"), "available_mib": admission.get("available_mib"),
+            "free_disk_gib": round(free_gib, 1)}
 
 
 def _now() -> str:
@@ -297,8 +325,11 @@ def advance_commissioning_lane(
     alive: Callable[[dict[str, Any]], bool] = worker_alive,
     stop: Callable[[dict[str, Any]], None] = stop_worker,
     memory_root: Path | None = None,
+    resources: Callable[[], dict[str, Any]] = default_resources,
+    lease_pool: RuntimeLeasePool | None = None,
 ) -> dict[str, Any]:
     """Advance the single-worker Canon cycle by one fail-closed step."""
+    pool = lease_pool if lease_pool is not None else default_lease_pool()
     lane = Lane(state_root)
     lane.root.mkdir(parents=True, exist_ok=True)
     policy = load_policy(release_repo)
@@ -316,6 +347,7 @@ def advance_commissioning_lane(
         reasons = list(getattr(decision, "reasons", ()) or ("EXECUTION_AUTHORITY_DENIED",))
         if active:
             stop(active["worker"])
+            _release_lease(pool, active)
             record = ledger["packets"].get(active["packet_id"])
             if record and record["state"] in ACTIVE:
                 updated = transition_packet(ledger, active["packet_id"], state="CANCELLED",
@@ -332,17 +364,44 @@ def advance_commissioning_lane(
                 lane.save(transition_packet(ledger, active["packet_id"], state="IMPLEMENTING"), ledger)
             return _report(lane, {"status": "IMPLEMENTING", "packet_id": active["packet_id"],
                                   "worker_pid": active["worker"]["pid"]})
-        return harvest(lane, policy, ledger, active, memory_root=memory_root)
+        result = harvest(lane, policy, ledger, active, memory_root=memory_root)
+        _release_lease(pool, active)
+        return result
     spec = next_ready_slice(policy, ledger)
     if spec is None:
         return _report(lane, {"status": "IDLE_NO_READY_SLICE"})
-    return dispatch(lane, policy, ledger, spec, release_repo=release_repo, release_sha=release_sha,
-                    spawn=spawn, memory_root=memory_root)
+    admission = resources()
+    if not admission.get("admitted"):
+        return _report(lane, {"status": "WAITING_FOR_RESOURCES", "packet_id": spec["slice_id"],
+                              "admission": admission})
+    try:
+        lease = pool.acquire(WORKER_LEASE_RUNTIME, WORKER_LEASE_ID, owner_pid=os.getpid())
+    except Exception as exc:  # Capacity held elsewhere: never share the local model.
+        return _report(lane, {"status": "WAITING_FOR_RUNTIME_LEASE", "packet_id": spec["slice_id"],
+                              "detail": f"{type(exc).__name__}: {str(exc)[:200]}"})
+    try:
+        result = dispatch(lane, policy, ledger, spec, release_repo=release_repo, release_sha=release_sha,
+                          spawn=spawn, memory_root=memory_root, lease_id=lease.lease_id)
+    except BaseException:
+        pool.release(WORKER_LEASE_ID, lease.lease_id)
+        raise
+    if result["status"] != "DISPATCHED":
+        pool.release(WORKER_LEASE_ID, lease.lease_id)
+    return result
+
+
+def _release_lease(pool: RuntimeLeasePool, active: dict[str, Any]) -> None:
+    lease_id = active.get("lease_id")
+    if lease_id:
+        try:
+            pool.release(WORKER_LEASE_ID, lease_id)
+        except Exception:
+            pass  # A stale generation is reclaimed by the pool's dead-owner recovery.
 
 
 def dispatch(lane: Lane, policy: dict[str, Any], ledger: dict[str, Any], spec: dict[str, Any], *,
              release_repo: Path, release_sha: str, spawn: Callable[..., dict[str, Any]],
-             memory_root: Path | None) -> dict[str, Any]:
+             memory_root: Path | None, lease_id: str) -> dict[str, Any]:
     heads = [_accepted_head(ledger, dep) for dep in spec.get("depends_on", [])]
     base = heads[-1] if heads else release_sha
     ensure_dev_repo(lane, release_repo, base)
@@ -369,7 +428,7 @@ def dispatch(lane: Lane, policy: dict[str, Any], ledger: dict[str, Any], spec: d
     worker = spawn(release_repo, packet_path, handback_path, release_sha=release_sha,
                    log_path=lane.reports / f"{spec['slice_id']}-worker.log")
     atomic_json(lane.active_path, {"packet_id": spec["slice_id"], "worker": worker, "worktree": str(worktree),
-                                   "dispatched_at_utc": _now(), "base_sha": base})
+                                   "dispatched_at_utc": _now(), "base_sha": base, "lease_id": lease_id})
     return _report(lane, {"status": "DISPATCHED", "packet_id": spec["slice_id"], "base_sha": base,
                           "worker_pid": worker["pid"], "worktree": str(worktree)})
 

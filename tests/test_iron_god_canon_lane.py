@@ -18,6 +18,7 @@ import pytest
 from project_orchestrator import iron_god_canon_lane as lane_mod
 from project_orchestrator import iron_god_owner_control as oc
 from project_orchestrator import supervisor_runtime
+from project_orchestrator.runtime_leases import DEFAULT_RUNTIME_CAPACITIES, RuntimeLeasePool
 from project_orchestrator.shared_memory import load_shared_memory
 from project_orchestrator.worker_transport import (
     WorkerTransportError,
@@ -128,11 +129,18 @@ def engine(tmp_path):
     repo, sha = release_repo(tmp_path)
     state = tmp_path / "ExponentialEngine" / "flow-state"
     supervisor = grant_owner_authority(state, release_sha=sha)
+    pool = RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, tmp_path / "runtime-leases.json")
     return SimpleNamespace(repo=repo, sha=sha, state=state, supervisor=supervisor.as_dict(),
-                           memory=tmp_path / "shared-memory", tmp=tmp_path)
+                           memory=tmp_path / "shared-memory", tmp=tmp_path, pool=pool)
+
+
+def admitted():
+    return {"admitted": True, "reason": "TEST_CAPACITY"}
 
 
 def step(engine, runner, **kwargs):
+    kwargs.setdefault("resources", admitted)
+    kwargs.setdefault("lease_pool", engine.pool)
     return lane_mod.advance_commissioning_lane(
         engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
         spawn=runner.spawn, alive=lambda _w: False, stop=lambda _w: None,
@@ -219,6 +227,7 @@ def test_revocation_stops_the_active_worker_and_preserves_its_worktree(engine):
         engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
         spawn=lambda *a, **k: {"pid": 99, "process_start_fingerprint": "windows:9", "host": "fake"},
         alive=lambda _w: True, stop=stopped.append, memory_root=engine.memory,
+        resources=admitted, lease_pool=engine.pool,
     )
     implementing = lane_mod.advance_commissioning_lane(
         engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
@@ -307,3 +316,33 @@ def test_supervisor_routes_dispatch_through_the_commissioning_lane():
     assert "_supervisor_runtime.commissioning_products(state,repo,products," in source
     assert "iron-god-exclusive.json" not in source
     assert oc.CONTROL_DIRNAME  # controller remains the only authority input
+
+
+def test_low_resources_wait_before_any_worktree_or_lease(engine):
+    runner = Runner({})
+    result = step(engine, runner, resources=lambda: {"admitted": False, "reason": "CRITICAL_MEMORY_NO_NEW_WORK"})
+    assert result["status"] == "WAITING_FOR_RESOURCES" and runner.spawned == 0
+    assert not (lane_mod.Lane(engine.state).worktrees / "CANON-COMMISSION-001").exists()
+    assert engine.pool.snapshot()  # no lease held for the refused dispatch
+    assert all(not row.get("held") for row in [])
+
+
+def test_worker_holds_the_exclusive_model_lease_until_harvest(engine):
+    runner = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
+                     "tests/test_canon_ledger_summary.py": GOOD_TEST})
+    other = RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, engine.tmp / "runtime-leases.json")
+    step(engine, runner)
+    with pytest.raises(Exception):
+        other.acquire(lane_mod.WORKER_LEASE_RUNTIME, "some-other-builder")
+    assert step(engine, runner)["status"] == "ACCEPTED_LOCAL"
+    lease = other.acquire(lane_mod.WORKER_LEASE_RUNTIME, "some-other-builder")
+    other.release("some-other-builder", lease.lease_id)
+
+
+def test_busy_model_lease_defers_dispatch(engine):
+    blocker = RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, engine.tmp / "runtime-leases.json")
+    held = blocker.acquire(lane_mod.WORKER_LEASE_RUNTIME, "legacy-builder")
+    runner = Runner({})
+    result = step(engine, runner)
+    assert result["status"] == "WAITING_FOR_RUNTIME_LEASE" and runner.spawned == 0
+    blocker.release("legacy-builder", held.lease_id)
