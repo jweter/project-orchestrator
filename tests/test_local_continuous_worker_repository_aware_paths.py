@@ -19,9 +19,7 @@ from pathlib import Path
 
 import pytest
 
-CONTROLLER_PATH = Path(
-    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal\local_continuous_worker.py"
-)
+CONTROLLER_PATH = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local" / "local_continuous_worker.py"
 
 if str(CONTROLLER_PATH.parent) not in sys.path:
     sys.path.insert(0, str(CONTROLLER_PATH.parent))

@@ -34,15 +34,9 @@ import sys
 from pathlib import Path
 
 import pytest
-from tests.owner_authority import grant_owner_authority, revoke_owner_authority
+from tests.owner_authority import TEST_RELEASE_SHA, grant_owner_authority, revoke_owner_authority
 
-CONTROLLER_PATH = Path(
-    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal\local_continuous_worker.py"
-)
-CONTROLLER_BACKUP_PATH = Path(
-    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal"
-    r"\local_continuous_worker.py.post-pathfix-verified-20261018.py"
-)
+CONTROLLER_PATH = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local" / "local_continuous_worker.py"
 
 if str(CONTROLLER_PATH.parent) not in sys.path:
     sys.path.insert(0, str(CONTROLLER_PATH.parent))
@@ -70,10 +64,6 @@ def _init_repo(path: Path) -> Path:
 
 @pytest.fixture()
 def worker_module():
-    assert CONTROLLER_PATH.read_bytes() == CONTROLLER_BACKUP_PATH.read_bytes(), (
-        "local_continuous_worker.py differs from its pre-RDI-001 backup -- "
-        "refusing to run this proof against an unexpectedly modified live file"
-    )
     spec = importlib.util.spec_from_file_location(
         "orchestration_caller_proof_worker_module", CONTROLLER_PATH
     )
@@ -88,14 +78,9 @@ def env(tmp_path, worker_module, monkeypatch):
     flow.mkdir()
     # Authoritative owner controller grant for repository modules.
     grant_owner_authority(flow)
-    # The installed legacy worker still reads its own fixture files until
-    # it is migrated into version control.
-    (flow / "human-mode.json").write_text(
-        json.dumps({"enabled": False}), encoding="utf-8"
-    )
-    (flow / "iron-god-exclusive.json").write_text(
-        json.dumps({"enabled": True, "target_product": "iron-god"}), encoding="utf-8"
-    )
+    # The version-controlled worker's gate() is the owner controller
+    # decision for the release in IRON_GOD_ACCEPTED_SHA.
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", TEST_RELEASE_SHA)
 
     monkeypatch.setattr(worker_module, "FLOW", flow)
     monkeypatch.setattr(worker_module, "BASE", tmp_path)
@@ -686,7 +671,7 @@ def test_mismatched_accepted_baseline_in_a_handoff_packet_is_rejected(env):
 def test_owner_takeover_still_blocks_execution_even_when_repository_is_authorized(
     env,
 ):
-    """Flipping owner control ON (human-mode.json enabled=true) must still
+    """Owner Give Me Control (a controller revocation) must still
     stop dispatch -- the new repository boundary is additive, it never
     substitutes for or weakens the existing owner-control veto."""
     import json as _json
@@ -717,11 +702,8 @@ def test_owner_takeover_still_blocks_execution_even_when_repository_is_authorize
         _json.dumps(controller), encoding="utf-8"
     )
 
-    # The real owner-takeover switch: flip it ON after the fixture set it
-    # off, exactly as a human reclaiming control would.
-    (env["flow"] / "human-mode.json").write_text(
-        _json.dumps({"enabled": True}), encoding="utf-8"
-    )
+    # The real owner-takeover switch: Give Me Control after the fixture's
+    # grant, exactly as a human reclaiming control would.
     revoke_owner_authority(env["flow"])
 
     calls = []

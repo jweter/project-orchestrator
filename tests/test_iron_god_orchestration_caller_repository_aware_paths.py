@@ -26,7 +26,7 @@ import pytest
 # _build_task_for_slice imports it by bare name, matching how it is
 # actually deployed. Make it importable the same way every other proof
 # test this session does.
-_IRON_GOD_LOCAL = Path(r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal")
+_IRON_GOD_LOCAL = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local"
 if str(_IRON_GOD_LOCAL) not in sys.path:
     sys.path.insert(0, str(_IRON_GOD_LOCAL))
 

@@ -16,9 +16,16 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-BASE = Path(__file__).resolve().parent
-if str(BASE) not in sys.path:
-    sys.path.insert(0, str(BASE))
+# Version-controlled code (this file and its sibling coordinator) is kept
+# apart from the live IronGodLocal state it operates on.
+CODE_DIR = Path(__file__).resolve().parent
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+BASE = Path(
+    os.environ.get("IRON_GOD_LOCAL_BASE")
+    or Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    / "ExponentialEngine" / "IronGodLocal"
+).resolve()
 ENGINE = BASE.parent
 FLOW = ENGINE / "flow-state"
 STATUS = BASE / "local-worker-status.json"
@@ -107,12 +114,21 @@ def stage_failure_evidence(exc: StageFailure) -> dict:
 
 
 def gate() -> bool:
+    """Owner decision 2026-10-25: only the authoritative owner controller.
+
+    Permitted only for a live, acknowledged owner Take the Wheel bound to
+    the release this worker runs (IRON_GOD_ACCEPTED_SHA). The retired
+    owner marker and exclusivity files are not inputs. Any failure denies.
+    """
     try:
-        owner = json.loads((FLOW / "human-mode.json").read_text("utf-8-sig"))
-        policy = json.loads((FLOW / "iron-god-exclusive.json").read_text("utf-8-sig"))
-        return (type(owner.get("enabled")) is bool and owner["enabled"] is False
-                and policy.get("enabled") is True and policy.get("target_product") == "iron-god")
-    except (OSError, ValueError, TypeError, AttributeError):
+        from project_orchestrator.execution_authority import evaluate_execution_authority
+        from project_orchestrator.iron_god_owner_control import control_root
+
+        decision = evaluate_execution_authority(
+            control_root(FLOW), release_sha=os.environ.get("IRON_GOD_ACCEPTED_SHA")
+        )
+        return decision.permitted is True
+    except Exception:
         return False
 
 
@@ -1573,16 +1589,10 @@ def execute_candidate_attempt(
     ):
         raise RuntimeError("DISPATCH_CLAIM_TOKEN_INVALID")
     # Production calls must re-check controller authority at the execution
-    # boundary, not rely solely on the scheduler's earlier decision.
+    # boundary, not rely solely on the scheduler's earlier decision. The
+    # authoritative owner controller replaces the legacy candidate_mode flag.
     if authorized_fn is None:
-        def authorized_fn():
-            try:
-                state = json.loads(CONTROLLER_STATE.read_text(encoding="utf-8-sig"))
-            except (OSError, ValueError):
-                return False
-            return (state.get("mode") == "candidate_mode"
-                    and state.get("candidate_execution_authorized") is True
-                    and gate())
+        authorized_fn = gate
     resource_fn = resources if resource_fn is None else resource_fn
     ident = task["id"]
     parent_id = task.get("parent_id") or ident

@@ -23,10 +23,7 @@ from pathlib import Path
 
 import pytest
 
-COORDINATOR_PATH = Path(
-    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal"
-    r"\accepted_event_dispatch_coordinator.py"
-)
+COORDINATOR_PATH = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local" / "accepted_event_dispatch_coordinator.py"
 
 
 @pytest.fixture()

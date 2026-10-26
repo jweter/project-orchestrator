@@ -44,15 +44,9 @@ import sys
 from pathlib import Path
 
 import pytest
-from tests.owner_authority import grant_owner_authority, revoke_owner_authority
+from tests.owner_authority import TEST_RELEASE_SHA, grant_owner_authority, revoke_owner_authority
 
-CONTROLLER_PATH = Path(
-    r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal\local_continuous_worker.py"
-)
-CONTROLLER_BACKUP_PATH = (
-    Path(r"C:\Users\jerem\AppData\Local\ExponentialEngine\IronGodLocal")
-    / "local_continuous_worker.py.post-pathfix-verified-20261018.py"
-)
+CONTROLLER_PATH = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local" / "local_continuous_worker.py"
 
 if str(CONTROLLER_PATH.parent) not in sys.path:
     sys.path.insert(0, str(CONTROLLER_PATH.parent))
@@ -80,10 +74,6 @@ def _init_repo(path: Path) -> Path:
 
 @pytest.fixture()
 def worker_module():
-    assert CONTROLLER_PATH.read_bytes() == CONTROLLER_BACKUP_PATH.read_bytes(), (
-        "local_continuous_worker.py differs from its known-good backup -- "
-        "refusing to run this proof against an unexpectedly modified live file"
-    )
     spec = importlib.util.spec_from_file_location(
         "worker_authz_boundary_proof_module", CONTROLLER_PATH
     )
@@ -98,14 +88,9 @@ def env(tmp_path, worker_module, monkeypatch):
     flow.mkdir()
     # Authoritative owner controller grant for repository modules.
     grant_owner_authority(flow)
-    # The installed legacy worker still reads its own fixture files until
-    # it is migrated into version control.
-    (flow / "human-mode.json").write_text(
-        json.dumps({"enabled": False}), encoding="utf-8"
-    )
-    (flow / "iron-god-exclusive.json").write_text(
-        json.dumps({"enabled": True, "target_product": "iron-god"}), encoding="utf-8"
-    )
+    # The version-controlled worker's gate() is the owner controller
+    # decision for the release in IRON_GOD_ACCEPTED_SHA.
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", TEST_RELEASE_SHA)
     monkeypatch.setattr(worker_module, "FLOW", flow)
     monkeypatch.setattr(worker_module, "BASE", tmp_path)
     monkeypatch.setattr(worker_module, "HANDOFF_DIR", tmp_path / "handoffs")
@@ -281,13 +266,12 @@ def _in_memory_authorized_controller() -> dict:
 def test_B_in_memory_controller_alone_does_not_authorize_real_execution(
     env, monkeypatch
 ):
-    """Reproduces the owner's exact failure in isolation: a real,
-    properly-scoped in-memory controller dict claiming candidate_mode/True
-    does NOT make execute_candidate_attempt's own default authorized_fn
-    pass, because that check never looks at this dict -- it re-reads the
-    real CONTROLLER_STATE file directly, which (correctly) still says
-    shadow_state_only/False here."""
+    """A real, properly-scoped in-memory controller dict claiming
+    candidate_mode/True does NOT make execute_candidate_attempt's own
+    default authorized_fn pass: authority comes only from the durable,
+    authenticated owner controller, which here records Give Me Control."""
     worker_module = env["worker_module"]
+    revoke_owner_authority(env["flow"])
     # The real, on-disk CONTROLLER_STATE file -- untouched, still at rest.
     worker_module.CONTROLLER_STATE.write_text(
         json.dumps(
@@ -300,7 +284,11 @@ def test_B_in_memory_controller_alone_does_not_authorize_real_execution(
         ),
         encoding="utf-8",
     )
-    with pytest.raises(RuntimeError, match="OWNER_OR_RESOURCE_VETO"):
+    # The worker's own default authority denies in isolation ...
+    assert worker_module.gate() is False
+    # ... and with one authority the earliest fenced layer (dispatch claim or
+    # the worker boundary) refuses; either way nothing executes.
+    with pytest.raises(RuntimeError, match="OWNER_CONTROL_VETO|OWNER_OR_RESOURCE_VETO"):
         _dispatch_once(
             env, monkeypatch, in_memory_controller=_in_memory_authorized_controller()
         )
@@ -334,7 +322,7 @@ def test_A_real_candidate_mode_file_allows_execution_through_to_builder(
 def test_C_owner_takeover_blocks_execution_even_with_real_file_authorized(
     env, monkeypatch
 ):
-    """Owner takeover (human-mode.json enabled=True) must block execution
+    """Owner takeover (a Give Me Control revocation) must block execution
     even when the real file says candidate_mode/True. In practice this is
     caught even earlier than the worker boundary: select_next_after_acceptance
     checks owner_control_status() itself and reports OWNER_CONTROL_VETO
@@ -351,9 +339,6 @@ def test_C_owner_takeover_blocks_execution_even_with_real_file_authorized(
             }
         ),
         encoding="utf-8",
-    )
-    (env["flow"] / "human-mode.json").write_text(
-        json.dumps({"enabled": True}), encoding="utf-8"
     )
     revoke_owner_authority(env["flow"])
     with pytest.raises(RuntimeError, match="OWNER_CONTROL_VETO"):
@@ -387,10 +372,9 @@ def test_D_resource_veto_blocks_execution_even_with_real_file_authorized(
 
 
 def test_G_revocation_after_authorization_blocks_the_next_attempt(env, monkeypatch):
-    """Once the real file is flipped back to shadow_state_only/False
-    (revocation), a subsequent attempt against a DIFFERENT, fresh slice
-    must be rejected again -- prior authorization does not persist past
-    revocation."""
+    """After an owner Give Me Control (revocation), a subsequent attempt
+    against a DIFFERENT, fresh slice must be rejected again -- prior
+    authorization does not persist past revocation."""
     worker_module = env["worker_module"]
     worker_module.CONTROLLER_STATE.write_text(
         json.dumps(
@@ -408,18 +392,8 @@ def test_G_revocation_after_authorization_blocks_the_next_attempt(env, monkeypat
     )
     assert result["status"] == "VERIFIED_CANDIDATE"
 
-    # Revoke.
-    worker_module.CONTROLLER_STATE.write_text(
-        json.dumps(
-            {
-                "controller": "iron-god-handoff-v1",
-                "mode": "shadow_state_only",
-                "candidate_execution_authorized": False,
-                "slices": [{"id": "PROOF-SLICE-1", "state": "ELIGIBLE"}],
-            }
-        ),
-        encoding="utf-8",
-    )
+    # Revoke through the authoritative owner controller.
+    revoke_owner_authority(env["flow"])
     # A fresh attempt must now be rejected -- direct call to
     # execute_candidate_attempt (not through the claim chain, since the
     # first slice/event is already consumed) to isolate exactly the
