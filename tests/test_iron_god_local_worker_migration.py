@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MANIFEST = json.loads((ROOT / "engineering" / "iron-god-local-worker-migration.json").read_text(encoding="utf-8"))
+MANIFEST = json.loads((ROOT / "engineering" / "state" / "iron-god-local-worker-migration.json").read_text(encoding="utf-8"))
 WORKER = ROOT / "scripts" / "iron_god_local" / "local_continuous_worker.py"
 
 

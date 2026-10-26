@@ -511,6 +511,21 @@ def resources_allow_execution(
     return isinstance(disk, (int, float)) and float(disk) >= min_disk_free_gb
 
 
+def commissioning_exclusive(actor_repo: Path) -> bool:
+    """True while the pinned release declares Iron God commissioning.
+
+    Absent policy: normal operation. Present but unreadable: exclusive
+    (fail closed), so the actor never adds a second worker.
+    """
+    path = Path(actor_repo) / "engineering" / "iron-god-commissioning.json"
+    if not path.exists():
+        return False
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("mode") == "IRON_GOD_COMMISSIONING"
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def run_idle_session(
     actor_repo: Path,
     queue: Path,
@@ -579,6 +594,15 @@ def run_idle_session(
                 if waiting != reasons:
                     emit_state(state_dir, "AUTHORITY_WAIT", reasons=list(reasons), resident=True)
                     waiting = reasons
+                time.sleep(cadence)
+                continue
+            # During Iron God commissioning the supervisor's Canon lane runs the
+            # single worker; the actor stays resident but takes no queue work.
+            if commissioning_exclusive(actor_repo):
+                if waiting != "COMMISSIONING":
+                    emit_state(state_dir, "AUTHORITY_WAIT", resident=True,
+                               reasons=["IRON_GOD_COMMISSIONING_CANON_LANE_EXCLUSIVE"])
+                    waiting = "COMMISSIONING"
                 time.sleep(cadence)
                 continue
             waiting = None

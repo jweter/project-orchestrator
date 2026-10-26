@@ -730,3 +730,29 @@ def test_default_actor_authority_follows_a_live_owner_grant_for_its_release(monk
     assert bootstrap.default_execution_authority().reasons == ("GRANT_RELEASE_MISMATCH",)
     monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA")
     assert bootstrap.default_execution_authority().reasons == ("EXECUTION_RELEASE_UNPINNED",)
+
+
+def test_commissioning_keeps_the_actor_resident_without_queue_work(monkeypatch, tmp_path):
+    import json
+    actor = tmp_path / "actor"
+    (actor / "engineering").mkdir(parents=True)
+    (actor / "engineering" / "iron-god-commissioning.json").write_text(
+        json.dumps({"mode": "IRON_GOD_COMMISSIONING"}), encoding="utf-8")
+    sleeps = []
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("no checkout"))
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("no queue work while commissioning"))
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(2, sleeps))
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(actor, tmp_path, tmp_path, 300, 60, tmp_path / "state",
+                                   execution_authority=permitted)
+    line = json.loads((tmp_path / "state" / "actor-telemetry.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert line["state"] == "AUTHORITY_WAIT"
+    assert line["reasons"] == ["IRON_GOD_COMMISSIONING_CANON_LANE_EXCLUSIVE"]
+
+
+def test_commissioning_policy_absent_or_corrupt(tmp_path):
+    assert bootstrap.commissioning_exclusive(tmp_path) is False
+    (tmp_path / "engineering").mkdir()
+    (tmp_path / "engineering" / "iron-god-commissioning.json").write_text("{corrupt", encoding="utf-8")
+    assert bootstrap.commissioning_exclusive(tmp_path) is True
