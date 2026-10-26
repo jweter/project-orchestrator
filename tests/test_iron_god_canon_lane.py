@@ -141,9 +141,14 @@ def admitted():
     return {"admitted": True, "reason": "TEST_CAPACITY"}
 
 
+def calibrated(_spec):
+    return None  # the machine is calibrated for every slice (gate covered in test_iron_god_calibration)
+
+
 def step(engine, runner, **kwargs):
     kwargs.setdefault("resources", admitted)
     kwargs.setdefault("lease_pool", engine.pool)
+    kwargs.setdefault("capability", calibrated)
     return lane_mod.advance_commissioning_lane(
         engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
         spawn=runner.spawn, alive=lambda _w: False, stop=lambda _w: None,
@@ -230,7 +235,7 @@ def test_revocation_stops_the_active_worker_and_preserves_its_worktree(engine):
         engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
         spawn=lambda *a, **k: {"pid": 99, "process_start_fingerprint": "windows:9", "host": "fake"},
         alive=lambda _w: True, stop=stopped.append, memory_root=engine.memory,
-        resources=admitted, lease_pool=engine.pool,
+        resources=admitted, lease_pool=engine.pool, capability=calibrated,
     )
     implementing = lane_mod.advance_commissioning_lane(
         engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,

@@ -38,6 +38,7 @@ from typing import Any, Callable
 
 from . import iron_god_owner_control as owner_controller
 from .canon_worker_memory import prepare_worker_memory_handoff, render_worker_memory_handoff
+from .iron_god_calibration import capability_gate, load_profile
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .learning import add_lesson, validate_memory
 from .runtime_leases import DEFAULT_RUNTIME_CAPACITIES, RuntimeLeasePool
@@ -331,6 +332,7 @@ def advance_commissioning_lane(
     memory_root: Path | None = None,
     resources: Callable[[], dict[str, Any]] = default_resources,
     lease_pool: RuntimeLeasePool | None = None,
+    capability: Callable[[dict[str, Any]], str | None] | None = None,
 ) -> dict[str, Any]:
     """Advance the single-worker Canon cycle by one fail-closed step."""
     pool = lease_pool if lease_pool is not None else default_lease_pool()
@@ -377,6 +379,12 @@ def advance_commissioning_lane(
     if retry is None and spec is None:
         return _report(lane, {"status": "IDLE_NO_READY_SLICE", "awaiting_remediation": awaiting})
     packet_id = retry["packet_id"] if retry else spec["slice_id"]
+    slice_spec = spec or next((s for s in policy["slices"] if s["slice_id"] == packet_id), {})
+    gate = capability or (lambda s: capability_gate(load_profile(state_root), s))
+    refused = gate(slice_spec)
+    if refused:  # Only an owner-held calibration on this machine and model can admit the slice.
+        return _report(lane, {"status": "WAITING_FOR_CALIBRATION", "packet_id": packet_id, "reason": refused,
+                              "capability_level": slice_spec.get("capability_level")})
     admission = resources()
     if not admission.get("admitted"):
         return _report(lane, {"status": "WAITING_FOR_RESOURCES", "packet_id": packet_id,
