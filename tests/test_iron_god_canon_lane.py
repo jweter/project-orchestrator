@@ -1,0 +1,309 @@
+"""Simulated single-worker Canon cycle on disposable repositories.
+
+Real Git, real worktrees, real pytest/ruff verification and the real worker
+code path; only the coding agent is a stand-in. This is NOT a live cycle.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from project_orchestrator import iron_god_canon_lane as lane_mod
+from project_orchestrator import iron_god_owner_control as oc
+from project_orchestrator import supervisor_runtime
+from project_orchestrator.shared_memory import load_shared_memory
+from project_orchestrator.worker_transport import (
+    WorkerTransportError,
+    accept_locally,
+    load_ledger,
+    record_independent_verification,
+)
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
+
+pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows owner controller")
+
+ROOT = Path(__file__).resolve().parents[1]
+POLICY = json.loads((ROOT / "engineering" / "iron-god-commissioning.json").read_text(encoding="utf-8"))
+SPEC = importlib.util.spec_from_file_location("canon_worker_under_test", ROOT / "scripts" / "iron_god_canon_worker.py")
+WORKER = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(WORKER)
+
+GOOD_SOURCE = '''from copy import deepcopy
+
+
+def summarize_ledger(ledger):
+    data = deepcopy(ledger) if isinstance(ledger, dict) else {}
+    packets = data.get("packets") or {}
+    events = data.get("events") or []
+    counts = {}
+    for record in packets.values():
+        state = record.get("state")
+        counts[state] = counts.get(state, 0) + 1
+    return {
+        "packet_count": len(packets),
+        "state_counts": dict(sorted(counts.items())),
+        "accepted_refs": sorted(r["accepted_ref"] for r in packets.values() if r.get("accepted_ref")),
+        "last_event_type": events[-1].get("type") if events else None,
+    }
+'''
+GOOD_TEST = '''from project_orchestrator.canon_ledger_summary import summarize_ledger
+
+
+def test_empty():
+    assert summarize_ledger({})["packet_count"] == 0
+
+
+def test_two_packets():
+    summary = summarize_ledger({"packets": {"a": {"state": "X"}, "b": {"state": "Y"}}, "events": []})
+    assert summary["state_counts"] == {"X": 1, "Y": 1}
+'''
+# Wrong: counts every packet as one state and ignores refs, yet its own weak test passes.
+WRONG_SOURCE = '''def summarize_ledger(ledger):
+    packets = ledger.get("packets", {})
+    return {"packet_count": len(packets), "state_counts": {}, "accepted_refs": [], "last_event_type": None}
+'''
+WEAK_TEST = '''from project_orchestrator.canon_ledger_summary import summarize_ledger
+
+
+def test_empty():
+    assert summarize_ledger({})["packet_count"] == 0
+'''
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def release_repo(tmp_path: Path, policy: dict | None = None) -> tuple[Path, str]:
+    repo = tmp_path / "release"
+    (repo / "src" / "project_orchestrator").mkdir(parents=True)
+    (repo / "src" / "project_orchestrator" / "__init__.py").write_text("", encoding="utf-8")
+    (repo / "tests").mkdir()
+    (repo / "engineering").mkdir()
+    (repo / "engineering" / "iron-god-commissioning.json").write_text(json.dumps(policy or POLICY), encoding="utf-8")
+    _git(tmp_path, "init", "-q", str(repo))
+    _git(repo, "config", "user.email", "release@example.com")
+    _git(repo, "config", "user.name", "Release")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "accepted release")
+    return repo, _git(repo, "rev-parse", "HEAD")
+
+
+def agent(files: dict[str, str]):
+    def run(worktree: Path, message: str, allowed: list[str], check) -> None:
+        assert "Create or edit ONLY these files" in message
+        check()
+        for relative, content in files.items():
+            target = worktree / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+    return run
+
+
+class Runner:
+    """Stand-in spawn: runs the real worker code path in-process, then exits."""
+
+    def __init__(self, files: dict[str, str], authority=lambda: True):
+        self.files = files
+        self.authority = authority
+        self.spawned = 0
+
+    def spawn(self, release_repo, packet_path, handback_path, *, release_sha, log_path):
+        self.spawned += 1
+        packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
+        handback = WORKER.execute_packet(packet, authority=self.authority, run_agent=agent(self.files))
+        WORKER._write(Path(handback_path), handback)
+        return {"pid": 1, "process_start_fingerprint": "windows:1", "host": "fake"}
+
+
+@pytest.fixture
+def engine(tmp_path):
+    repo, sha = release_repo(tmp_path)
+    state = tmp_path / "ExponentialEngine" / "flow-state"
+    supervisor = grant_owner_authority(state, release_sha=sha)
+    return SimpleNamespace(repo=repo, sha=sha, state=state, supervisor=supervisor.as_dict(),
+                           memory=tmp_path / "shared-memory", tmp=tmp_path)
+
+
+def step(engine, runner, **kwargs):
+    return lane_mod.advance_commissioning_lane(
+        engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
+        spawn=runner.spawn, alive=lambda _w: False, stop=lambda _w: None,
+        memory_root=engine.memory, **kwargs,
+    )
+
+
+def ledger(engine):
+    return load_ledger(lane_mod.Lane(engine.state).ledger_path)
+
+
+def test_full_simulated_cycle_accepts_locally_with_independent_verification_and_memory(engine):
+    runner = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
+                     "tests/test_canon_ledger_summary.py": GOOD_TEST})
+    dispatched = step(engine, runner)
+    assert dispatched["status"] == "DISPATCHED" and runner.spawned == 1
+    assert dispatched["base_sha"] == engine.sha
+    lane = lane_mod.Lane(engine.state)
+    packet = json.loads((lane.packets / "CANON-COMMISSION-001.json").read_text(encoding="utf-8"))
+    assert packet["paths"] == sorted(POLICY["slices"][0]["allowed_paths"])
+    assert "supervisor_acceptance_test" not in json.dumps(packet)  # hidden from the worker
+    accepted = step(engine, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    assert accepted["verification_passed"] is True
+    head = accepted["head_sha"]
+    assert head != engine.sha
+    assert _git(lane.dev_repo, "rev-parse", "refs/iron-god/accepted/canon-commission-001") == head
+    record = ledger(engine)["packets"]["CANON-COMMISSION-001"]
+    assert record["state"] == "ACCEPTED_LOCAL" and record["independent_verification"] == "VERIFIED_GREEN"
+    assert record["merge_authority"] is False
+    events = [e["type"] for e in ledger(engine)["events"]]
+    assert events == ["DISPATCHED", "STATE_TRANSITION", "WORKER_RESULT", "STATE_TRANSITION",
+                      "INDEPENDENT_VERIFICATION", "LOCAL_ACCEPTANCE"]
+    report = json.loads((lane.reports / "CANON-COMMISSION-001-verification.json").read_text(encoding="utf-8"))
+    names = {c["name"] for c in report["checks"]}
+    assert any("supervisor_acceptance" in n for n in names)
+    lessons = load_shared_memory(engine.memory)["entries"]
+    assert len(lessons) == 1 and lessons[0]["source_ref"].endswith("@" + head)
+    assert lessons[0]["evidence_state"] == "VERIFIED"
+    # The release repository itself is untouched.
+    assert _git(engine.repo, "rev-parse", "HEAD") == engine.sha
+    assert _git(engine.repo, "status", "--porcelain") == ""
+    assert step(engine, runner)["status"] == "IDLE_NO_READY_SLICE"
+    assert runner.spawned == 1
+
+
+def test_worker_pass_is_not_acceptance_hidden_supervisor_test_blocks_wrong_code(engine):
+    runner = Runner({"src/project_orchestrator/canon_ledger_summary.py": WRONG_SOURCE,
+                     "tests/test_canon_ledger_summary.py": WEAK_TEST})
+    step(engine, runner)
+    blocked = step(engine, runner)
+    assert blocked["worker_status"] == "PASS"  # the worker's own weak test passed
+    assert blocked["status"] == "BLOCKED" and blocked["verification_passed"] is False
+    assert any("supervisor_acceptance" in name for name in blocked["failed_checks"])
+    record = ledger(engine)["packets"]["CANON-COMMISSION-001"]
+    assert record["independent_verification"] == "VERIFIED_FAIL"
+    lane = lane_mod.Lane(engine.state)
+    assert _git(lane.dev_repo, "for-each-ref", "refs/iron-god/accepted") == ""
+    assert not (engine.memory / "memory.json").exists()  # failures are not lessons
+
+
+def test_forbidden_path_change_is_refused_by_the_worker_and_blocked(engine):
+    runner = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
+                     "tests/test_canon_ledger_summary.py": GOOD_TEST,
+                     "engineering/iron-god-commissioning.json": "{}"})
+    step(engine, runner)
+    blocked = step(engine, runner)
+    assert blocked["worker_status"] == "REVIEW_REQUIRED" and blocked["status"] == "BLOCKED"
+    assert "CHANGES_OUTSIDE_ALLOWED_PATHS" in blocked["worker_summary"]
+
+
+def test_no_owner_authority_dispatches_nothing(engine):
+    revoke_owner_authority(engine.state)
+    runner = Runner({})
+    result = step(engine, runner)
+    assert result["status"] == "WAITING_FOR_OWNER_AUTHORITY" and runner.spawned == 0
+    assert result["reasons"] == ["OWNER_CONTROL_ACTIVE"]
+
+
+def test_revocation_stops_the_active_worker_and_preserves_its_worktree(engine):
+    stopped = []
+    runner = Runner({})
+    lane_mod.advance_commissioning_lane(
+        engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
+        spawn=lambda *a, **k: {"pid": 99, "process_start_fingerprint": "windows:9", "host": "fake"},
+        alive=lambda _w: True, stop=stopped.append, memory_root=engine.memory,
+    )
+    implementing = lane_mod.advance_commissioning_lane(
+        engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
+        spawn=runner.spawn, alive=lambda _w: True, stop=stopped.append, memory_root=engine.memory,
+    )
+    assert implementing["status"] == "IMPLEMENTING"
+    revoke_owner_authority(engine.state)
+    result = lane_mod.advance_commissioning_lane(
+        engine.state, engine.repo, supervisor=engine.supervisor, release_sha=engine.sha,
+        spawn=runner.spawn, alive=lambda _w: True, stop=stopped.append, memory_root=engine.memory,
+    )
+    assert result["status"] == "WORKER_STOPPED_AUTHORITY_REVOKED"
+    assert stopped and stopped[0]["pid"] == 99
+    assert Path(result["worktree_preserved"]).is_dir()
+    assert ledger(engine)["packets"]["CANON-COMMISSION-001"]["state"] == "CANCELLED"
+
+
+def test_worker_refuses_to_start_or_continue_without_authority(engine, tmp_path):
+    runner = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE}, authority=lambda: False)
+    step(engine, runner)
+    parked = step(engine, runner)
+    assert parked["worker_status"] == "ENVIRONMENT_FAILURE"
+    assert parked["worker_summary"] == "EXECUTION_AUTHORITY_DENIED_BEFORE_START"
+    assert parked["status"] == "PARKED"
+
+
+def test_dependent_slice_waits_for_accepted_dependency(tmp_path):
+    second = json.loads(json.dumps(POLICY["slices"][0]))
+    second["slice_id"] = "CANON-COMMISSION-002"
+    second["depends_on"] = ["CANON-COMMISSION-001"]
+    policy = {**POLICY, "slices": [POLICY["slices"][0], second]}
+    assert lane_mod.next_ready_slice(policy, {"packets": {}})["slice_id"] == "CANON-COMMISSION-001"
+    blocked = {"packets": {"CANON-COMMISSION-001": {"state": "BLOCKED"}}}
+    assert lane_mod.next_ready_slice(policy, blocked) is None
+    accepted = {"packets": {"CANON-COMMISSION-001": {"state": "ACCEPTED_LOCAL", "exact_head_sha": "a" * 40}}}
+    assert lane_mod.next_ready_slice(policy, accepted)["slice_id"] == "CANON-COMMISSION-002"
+
+
+def test_privileged_events_bind_the_exact_handback(engine):
+    runner = Runner({"src/project_orchestrator/canon_ledger_summary.py": GOOD_SOURCE,
+                     "tests/test_canon_ledger_summary.py": GOOD_TEST})
+    step(engine, runner)
+    step(engine, runner)
+    accepted = ledger(engine)
+    with pytest.raises(WorkerTransportError):
+        record_independent_verification(accepted, "CANON-COMMISSION-001", verified_head_sha="b" * 40,
+                                        passed=True, checks=[{"name": "x", "ok": True}], evidence_ref="e")
+    with pytest.raises(WorkerTransportError):
+        accept_locally(accepted, "CANON-COMMISSION-001", accepted_ref="refs/iron-god/x",
+                       accepted_sha="b" * 40, evidence_ref="e")
+    tampered = json.loads(json.dumps(accepted))
+    tampered["events"][-2]["exact_head_sha"] = "c" * 40
+    with pytest.raises(WorkerTransportError):
+        load_ledger_payload(tampered)
+
+
+def load_ledger_payload(payload):
+    from project_orchestrator.worker_transport import validate_ledger
+    return validate_ledger(payload)
+
+
+def test_commissioning_hook_never_dispatches_legacy_products_and_contains_errors(tmp_path):
+    repo, sha = release_repo(tmp_path)
+    state = tmp_path / "flow-state"
+    state.mkdir()
+
+    def boom(*_a, **_k):
+        raise RuntimeError("clone exploded")
+
+    assert supervisor_runtime.commissioning_products(
+        state, repo, ["iron-god", "everward"], supervisor={}, release_sha=sha, advance=boom
+    ) == []
+    status = json.loads((state / "iron-god-canon" / "lane-status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "LANE_ERROR" and "clone exploded" in status["error"]
+    empty = tmp_path / "no-policy"
+    empty.mkdir()
+    assert supervisor_runtime.commissioning_products(
+        state, empty, ["everward"], supervisor={}, release_sha=sha
+    ) == []
+    status = json.loads((state / "iron-god-canon" / "lane-status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "COMMISSIONING_POLICY_UNAVAILABLE"
+
+
+def test_supervisor_routes_dispatch_through_the_commissioning_lane():
+    source = (ROOT / "scripts" / "continuous_flow_supervisor.py").read_text(encoding="utf-8")
+    assert "_supervisor_runtime.commissioning_products(state,repo,products," in source
+    assert "iron-god-exclusive.json" not in source
+    assert oc.CONTROL_DIRNAME  # controller remains the only authority input

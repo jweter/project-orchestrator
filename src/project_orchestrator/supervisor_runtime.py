@@ -1008,3 +1008,38 @@ def wait_for_completion_or_reclaim(
             return "COMPLETED"
         if owner_status_fn(state_root) != AUTHORIZED:
             return "OWNER_RECLAIMED"
+
+
+def commissioning_products(
+    state_root: Path,
+    repo_root: Path,
+    products: list[str],
+    *,
+    supervisor: dict[str, Any],
+    release_sha: str | None,
+    advance: Callable[..., dict[str, Any]] | None = None,
+) -> list[str]:
+    """Owner decision 2026-10-25: during commissioning the Canon lane is the
+    only development path. It advances one single-worker step and the legacy
+    builders receive no products; without the versioned commissioning policy
+    nothing is dispatched (the retired exclusivity file is never consulted).
+    A lane failure is recorded and never crashes the supervisor loop."""
+    from .iron_god_canon_lane import advance_commissioning_lane, load_policy
+
+    if load_policy(repo_root) is None:
+        atomic_json(state_root / "iron-god-canon" / "lane-status.json", {
+            "schema_version": 1, "status": "COMMISSIONING_POLICY_UNAVAILABLE",
+            "observed_at_utc": datetime.now(UTC).isoformat(),
+        })
+        return []
+    try:
+        (advance or advance_commissioning_lane)(
+            state_root, repo_root, supervisor=supervisor, release_sha=release_sha or "",
+        )
+    except Exception as exc:  # The lane must not take the supervisor down.
+        atomic_json(state_root / "iron-god-canon" / "lane-status.json", {
+            "schema_version": 1, "status": "LANE_ERROR",
+            "error": f"{type(exc).__name__}: {str(exc)[:400]}",
+            "observed_at_utc": datetime.now(UTC).isoformat(),
+        })
+    return []

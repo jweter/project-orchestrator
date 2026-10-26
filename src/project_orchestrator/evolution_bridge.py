@@ -26,6 +26,10 @@ PROJECT_REPOSITORIES = {
     "rocksmith": {"jweter/rocksmith-cdlc-generator"},
     "everward": {"jweter/Project-Everward"},
     "voicestudio": {"jweter/VoiceStudio"},
+    # Iron God commissioning (owner decision 2026-10-25): the control plane
+    # itself is the exclusive development target. Validation only; this
+    # registry never schedules work.
+    "iron-god": {"jweter/project-orchestrator"},
 }
 
 NEXT_ACTIONS = {

@@ -31,8 +31,11 @@ PACKET_STATES = {
     "BLOCKED",
     "PARKED",
     "CANCELLED",
+    "ACCEPTED_LOCAL",
 }
-TERMINAL_STATES = {"MERGED", "LEARNING_EXTRACTED", "CANCELLED"}
+# ACCEPTED_LOCAL: independently verified and recorded as accepted local
+# progress (a protected local ref). It is not a merge, push or release.
+TERMINAL_STATES = {"MERGED", "LEARNING_EXTRACTED", "CANCELLED", "ACCEPTED_LOCAL"}
 
 # Only metadata lifecycle edges are permitted here. Promotion requires a
 # separately authorized independent verifier, implemented after this slice.
@@ -54,8 +57,9 @@ WORKER_RESULT_STATES = {
 }
 PRIVILEGED_STATES = frozenset({
     "PREFLIGHT_GREEN", "PR_OPEN", "CI_PENDING", "GREEN",
-    "PROMOTION_READY", "MERGED", "LEARNING_EXTRACTED",
+    "PROMOTION_READY", "MERGED", "LEARNING_EXTRACTED", "ACCEPTED_LOCAL",
 })
+VERIFICATION_STATES = frozenset({"NOT_VERIFIED", "VERIFIED_GREEN", "VERIFIED_FAIL"})
 
 REQUIRED_PACKET_FIELDS = {"packet_id", "project", "repository", "source_ref", "base_sha", "branch", "task"}
 
@@ -237,6 +241,21 @@ def _check_event_transition(
         if not event.get("evidence_ref") or not event.get("observed_at"):
             raise WorkerTransportError("worker-result evidence required")
         prior_worker_status[packet_id] = status
+    elif kind == "INDEPENDENT_VERIFICATION":
+        if prior != "PREFLIGHT_UNVERIFIED" or prior_worker_status.get(packet_id) != "PASS":
+            raise WorkerTransportError("independent verification requires an unverified PASS handback")
+        verdict = event.get("verdict")
+        if {"GREEN": "PREFLIGHT_GREEN", "FAIL": "BLOCKED"}.get(verdict) != after:
+            raise WorkerTransportError("independent verification verdict/state mismatch")
+        checks = event.get("checks")
+        if not isinstance(checks, list) or not checks or not event.get("evidence_ref"):
+            raise WorkerTransportError("independent verification evidence required")
+    elif kind == "LOCAL_ACCEPTANCE":
+        if prior != "PREFLIGHT_GREEN" or after != "ACCEPTED_LOCAL":
+            raise WorkerTransportError("local acceptance requires independent GREEN verification")
+        ref = event.get("accepted_ref")
+        if not isinstance(ref, str) or not ref.startswith("refs/iron-god/") or not event.get("evidence_ref"):
+            raise WorkerTransportError("local acceptance requires a protected local ref and evidence")
     elif kind == "STATE_TRANSITION":
         if after != event.get("state") or after not in ALLOWED_STATE_EDGES.get(prior, frozenset()):
             raise WorkerTransportError("illegal state transition in replay")
@@ -271,6 +290,7 @@ def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
     prior_worker_status: dict[str, str] = {}
     last_worker_head: dict[str, str] = {}
     retries: dict[str, int] = {}
+    verification: dict[str, str] = {}
     for sequence, event in enumerate(normalized["events"], 1):
         if not isinstance(event, dict) or event.get("seq") != sequence:
             raise WorkerTransportError("ledger event sequence changed")
@@ -296,6 +316,13 @@ def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
         )
         if event["type"] == "WORKER_RESULT":
             last_worker_head[packet_id] = event["exact_head_sha"]
+            verification[packet_id] = "NOT_VERIFIED"
+        if event["type"] in {"INDEPENDENT_VERIFICATION", "LOCAL_ACCEPTANCE"}:
+            # Verification and acceptance bind the exact handed-back head.
+            if last_worker_head.get(packet_id) != event.get("exact_head_sha"):
+                raise WorkerTransportError("verification attempted to bind a different candidate head")
+        if event["type"] == "INDEPENDENT_VERIFICATION":
+            verification[packet_id] = "VERIFIED_GREEN" if event["verdict"] == "GREEN" else "VERIFIED_FAIL"
         if event["type"] == "STATE_TRANSITION" and event.get("exact_head_sha") is not None:
             if last_worker_head.get(packet_id) != event["exact_head_sha"]:
                 raise WorkerTransportError("state event attempted to forge a new candidate head")
@@ -317,8 +344,10 @@ def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
             raise WorkerTransportError("ledger worker-status projection differs from handback")
         if record.get("exact_head_sha") != last_worker_head.get(packet_id):
             raise WorkerTransportError("ledger head projection differs from worker handback")
-        if record.get("independent_verification") not in {None, "NOT_VERIFIED"}:
-            raise WorkerTransportError("independent verification not issued in Canon S2")
+        if record.get("independent_verification") not in {None, *VERIFICATION_STATES}:
+            raise WorkerTransportError("unknown independent verification state")
+        if record.get("independent_verification") not in {None, verification.get(packet_id)}:
+            raise WorkerTransportError("independent verification projection differs from history")
         if (packet_id in pending_questions) != (record["state"] == "WAITING_FOR_SUPERVISOR"):
             raise WorkerTransportError("pending worker question disagrees with packet state")
         required = REQUIRED_PACKET_FIELDS - set(record)
@@ -599,6 +628,73 @@ def transition_packet(ledger: dict[str, Any], packet_id: str, *, state: str, exa
     if evidence_ref:
         event["evidence_ref"] = evidence_ref
     return _append_event(normalized, event)
+
+
+def _require_sha(value: object, field: str) -> str:
+    if not isinstance(value, str) or len(value) != 40 or any(c not in "0123456789abcdef" for c in value):
+        raise WorkerTransportError(f"{field} must be a lowercase 40-character SHA")
+    return value
+
+
+def record_independent_verification(
+    ledger: dict[str, Any], packet_id: str, *,
+    verified_head_sha: str, passed: bool, checks: list[dict[str, Any]], evidence_ref: str,
+) -> dict[str, Any]:
+    """Supervisor-only verdict on the exact handed-back candidate head.
+
+    A worker PASS is never acceptance. The supervisor re-runs the packet's
+    verification itself, at the exact head, and records the outcome here: the
+    only path into the privileged PREFLIGHT_GREEN state.
+    """
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if not record or record["state"] != "PREFLIGHT_UNVERIFIED":
+        raise WorkerTransportError("independent verification requires PREFLIGHT_UNVERIFIED")
+    if record.get("worker_status") != "PASS" or record.get("independent_verification") != "NOT_VERIFIED":
+        raise WorkerTransportError("independent verification requires an unverified PASS handback")
+    head = _require_sha(verified_head_sha, "verified_head_sha")
+    if head != record.get("exact_head_sha"):
+        raise WorkerTransportError("verified head differs from the handed-back candidate")
+    if not isinstance(checks, list) or not checks or not all(isinstance(c, dict) for c in checks):
+        raise WorkerTransportError("independent verification requires recorded checks")
+    evidence = _safe_handoff_text(evidence_ref, "evidence_ref")
+    record["state"] = "PREFLIGHT_GREEN" if passed is True else "BLOCKED"
+    record["independent_verification"] = "VERIFIED_GREEN" if passed is True else "VERIFIED_FAIL"
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "INDEPENDENT_VERIFICATION", "packet_id": packet_id,
+        "repository": record["repository"], "exact_head_sha": head,
+        "verdict": "GREEN" if passed is True else "FAIL",
+        "checks": deepcopy(checks), "evidence_ref": evidence,
+    })
+
+
+def accept_locally(
+    ledger: dict[str, Any], packet_id: str, *,
+    accepted_ref: str, accepted_sha: str, evidence_ref: str,
+) -> dict[str, Any]:
+    """Record independently verified work as accepted LOCAL progress.
+
+    This never merges, pushes or releases: merge_authority stays False.
+    """
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if not record or record["state"] != "PREFLIGHT_GREEN" or record.get("independent_verification") != "VERIFIED_GREEN":
+        raise WorkerTransportError("local acceptance requires independent GREEN verification")
+    sha = _require_sha(accepted_sha, "accepted_sha")
+    if sha != record.get("exact_head_sha"):
+        raise WorkerTransportError("accepted sha differs from the verified candidate")
+    if not isinstance(accepted_ref, str) or not accepted_ref.startswith("refs/iron-god/"):
+        raise WorkerTransportError("local acceptance requires a protected refs/iron-god/ ref")
+    evidence = _safe_handoff_text(evidence_ref, "evidence_ref")
+    record["state"] = "ACCEPTED_LOCAL"
+    record["accepted_ref"] = accepted_ref
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "LOCAL_ACCEPTANCE", "packet_id": packet_id,
+        "repository": record["repository"], "exact_head_sha": sha,
+        "accepted_ref": accepted_ref, "evidence_ref": evidence,
+    })
 
 
 def retry_packet(
