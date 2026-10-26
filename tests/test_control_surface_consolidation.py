@@ -66,4 +66,6 @@ def test_engineering_root_contains_only_authority_json():
     )
     root_json = {path.name for path in (ROOT / "engineering").glob("*.json")}
     assert root_json == set(registry["json"]["authority"])
-    assert len(root_json) == 29
+    # 29 + iron-god-commissioning.json (owner decision 2026-10-25); the
+    # validator's hard cap of 30 authority files still applies.
+    assert len(root_json) == 30
