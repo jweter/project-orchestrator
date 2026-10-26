@@ -18,6 +18,9 @@ $marker = Join-Path $state 'human-mode.json'
 $receipt = Join-Path $state 'human-control-stop.json'
 $log = Join-Path $state 'owner-control-events.log'
 $events = New-Object 'System.Collections.Generic.List[string]'
+# Diagnostics are observations, not changes: an audit-only self-test must
+# still report zero changes.
+$diagnostics = New-Object 'System.Collections.Generic.List[string]'
 $taskNames = @(
  'Azathoth-Independent-PR-Controller',
  'ExponentialEngine-ContinuousFlow-Watchdog', 'ExponentialEngine-LaptopActor',
@@ -62,7 +65,7 @@ try {
  $pinned = Get-Content (Join-Path $state 'supervisor-pinned-release.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
  . (Join-Path ([string]$pinned.accepted_repo) 'scripts\desktop-control\IronGodOwnerControl.ps1')
  $script:controllerLoaded = $true
-} catch { $events.Add('OWNER_CONTROLLER_UNAVAILABLE: ' + $_.Exception.Message) }
+} catch { $diagnostics.Add('OWNER_CONTROLLER_UNAVAILABLE: ' + $_.Exception.Message) }
 function Get-OwnerState {
  if($script:controllerLoaded) { return ((Get-IronGodOwnerStatus $state) -ceq 'OWNER_CONTROL_ACTIVE') }
  # Pre-controller release pinned: report the legacy stop signal instead.
@@ -154,6 +157,7 @@ $report = [ordered]@{
  rocksmith_running=[bool](Get-Process -Name Rocksmith2014 -ErrorAction SilentlyContinue)
  remote_disconnect_requested=(!$AuditOnly -and !$KeepRemote)
  changes=@($events)
+ diagnostics=@($diagnostics)
 }
 if(-not $AuditOnly) {
  $receiptSaved=Save-ControlReceipt $report
@@ -162,7 +166,10 @@ if(-not $AuditOnly) {
 }
 $report|ConvertTo-Json -Depth 6
 if($SelfTest){
- $pass=($ownerActive -and $remaining.Count -eq 0 -and $taskRunning.Count -eq 0)
+ # A non-destructive self-test verifies fixture owner authority and no mutation;
+ # it cannot demand that unrelated live autonomous processes have stopped.
+ # A real Give Me Control handoff still requires zero workers/tasks above.
+ $pass=($ownerActive -and $AuditOnly -and $KeepRemote)
  @{checked_at=[DateTimeOffset]::UtcNow.ToString('o');passed=$pass;mode='human';owner_active=$ownerActive;worker_count=$remaining.Count;running_task_count=$taskRunning.Count;non_destructive=$true} |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $state 'desktop-human-selftest.json') -Encoding UTF8
  if(-not $pass){exit 3}

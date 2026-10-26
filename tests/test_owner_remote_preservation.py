@@ -61,6 +61,12 @@ def test_owner_selftest_keeps_owner_marker_and_never_mutates_remote_tasks(tmp_pa
     receipt = json.loads((state / "desktop-human-selftest.json").read_text(encoding="utf-8-sig"))
     assert receipt["non_destructive"] is True
     assert receipt["owner_active"] is True
+    assert receipt["passed"] is True
     output = json.loads(result.stdout)
-    assert output["status"] == "OWNER_CONTROL_GRANTED"
+    # Audit-only self-test reports live workers accurately instead of falsely
+    # claiming that a control handoff stopped unrelated production processes.
+    assert output["status"] in {"OWNER_CONTROL_GRANTED", "PARTIAL"}
+    if output["status"] == "PARTIAL":
+        assert output["worker_count"] > 0 or output["running_task_names"]
+    assert output["changes"] == []
     assert output["remote_disconnect_requested"] is False
