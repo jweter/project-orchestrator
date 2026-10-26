@@ -18,9 +18,16 @@ pytestmark = pytest.mark.skipif(PS is None, reason="PowerShell is required")
 
 def test_wheel_has_rollback_after_real_release_but_not_before_confirmation():
     source = WHEEL.read_text(encoding="utf-8")
-    release = source.index("enabled = $false")
+    # The owner grant is the authenticated controller command, recorded only
+    # after the release, Rocksmith and guard checks; nothing reads the retired marker.
+    release = source.index("'issue','--action','TAKE_THE_WHEEL'")
     rollback_function = source.index("function Restore-OwnerAfterResumeFailure")
     assert rollback_function < release
+    assert source.index("CONTROL_GUARD_MISSING") < release
+    assert source.index("Rocksmith opened during confirmation") < release
+    assert source.index("Set-IronGodLegacyGuardianSignal $state $false") > release
+    assert "Get-Content -LiteralPath $marker" not in source
+    assert "human-mode.json" not in source
     assert "Enter-HumanMode.ps1" in source
     assert "-KeepRemote" in source
     assert 'OWNER_ROLLBACK_CONFIRMED_REMOTE_PRESERVED' in source
@@ -40,9 +47,9 @@ def test_isolated_resume_failure_handoff_returns_nonzero_and_retains_remote(
 ):
     """Exercise the rollback function with an isolated non-operational helper."""
     source = WHEEL.read_text(encoding="utf-8")
-    start = source.index("function Restore-OwnerAfterResumeFailure(")
+    start = source.index("function Write-WheelLog(")
     stop = source.index("if($SelfTest){", start)
-    fn = source[start:stop]
+    fn = "$script:controllerLoaded=$false\n" + source[start:stop]
 
     base = tmp_path / "local" / "ExponentialEngine"
     state = base / "flow-state"
@@ -93,7 +100,9 @@ def test_wheel_success_requires_a_permitting_execution_decision_after_resume():
     assert "supervisor-execution-authority.json" in window
     assert "$execution.permitted -is [bool] -and $execution.permitted -eq $true" in window
     assert "$decidedAt -ge $resumeStartedUtc" in window
-    assert "if($runtimeVerified -and $executionAuthorized){break}" in window
+    assert "if($runtimeVerified -and $executionAuthorized -and $controllerPermits){break}" in window
+    assert "'status','--release-sha'" in window
+    assert "[int]$decision.Result.generation -eq $generation" in window
     assert "execution_authorized=$executionAuthorized" in source
 
 
@@ -109,3 +118,17 @@ def test_wheel_script_parses_without_powershell_errors():
         text=True, capture_output=True, timeout=30,
     )
     assert process.returncode == 0, process.stdout + process.stderr
+
+
+def test_wheel_grant_requires_supervisor_acknowledgment_before_runtime_proof():
+    source = WHEEL.read_text(encoding="utf-8")
+    grant = source.index("'issue','--action','TAKE_THE_WHEEL'")
+    tasks = source.index("foreach($name in @('ExponentialEngine-ContinuousFlow-Watchdog'")
+    ack = source.index("'wait-ack','--generation'")
+    loop = source.index("while((Get-Date) -lt $deadline)")
+    confirmed = source.index("TAKE_THE_WHEEL_CONFIRMED")
+    assert grant < tasks < ack < loop < confirmed
+    assert "TAKE_THE_WHEEL_SUPERVISOR_ACK_MISSING" in source[ack:loop]
+    assert "TAKE_THE_WHEEL_REFUSED_BY_CONTROLLER" in source[grant:tasks]
+    # The controller bridge is loaded from the pinned release, never a local copy.
+    assert "Join-Path ([string]$pinned.accepted_repo) 'scripts\\desktop-control\\IronGodOwnerControl.ps1'" in source

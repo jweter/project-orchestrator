@@ -38,7 +38,9 @@ if(Test-Path $human){
 }
 if(Test-Path $wheel){
  $text=[IO.File]::ReadAllText($wheel)
- Check 'release_guard_precedes_owner_release' ($text.IndexOf('Check-Development-ResumeReady.ps1') -ge 0 -and $text.IndexOf('Check-Development-ResumeReady.ps1') -lt $text.IndexOf('enabled = $false'))
+ $grant=$text.IndexOf("'issue','--action','TAKE_THE_WHEEL'")
+ Check 'release_guard_precedes_owner_grant' ($grant -gt 0 -and $text.IndexOf('Check-Development-ResumeReady.ps1') -ge 0 -and $text.IndexOf('Check-Development-ResumeReady.ps1') -lt $grant)
+ Check 'wheel_success_requires_supervisor_ack' ($text.Contains("'wait-ack'") -and $text.IndexOf("'wait-ack'") -lt $text.IndexOf('TAKE_THE_WHEEL_CONFIRMED'))
  Check 'wheel_keeps_rocksmith_veto' ($text.Contains("Get-Process -Name 'Rocksmith2014'"))
  Check 'wheel_requires_owner_confirmation' ($text.Contains("'YesNo'") -and $text.Contains('[System.Windows.MessageBox]::Show('))
 }

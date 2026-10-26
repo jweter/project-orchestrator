@@ -4,7 +4,11 @@ param(
  [switch]$SelfTest
 )
 # A single authoritative Give-Me-Control transaction.
-# All guard entrypoints consume the same persisted owner marker.
+# Owner decision 2026-10-25: the revocation is recorded in the authoritative
+# owner controller first (effective immediately for any new dispatch), the
+# running supervisor is given a short window to acknowledge it, and then the
+# engine is stopped. The legacy marker is still written only as a stop signal
+# for unmigrated SYSTEM guardians; it grants nothing.
 $ErrorActionPreference = 'Continue'
 if($SelfTest){$AuditOnly=$true;$KeepRemote=$true}
 $base = Join-Path $env:LOCALAPPDATA 'ExponentialEngine'
@@ -29,6 +33,9 @@ $remotePattern = 'desktop-commander|@wonderwhy-er[/\\]desktop-commander'
 function Find-OwnerWorkers {
  @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
   if(-not $_.CommandLine -or $_.ProcessId -eq $PID) { return $false }
+  # A developer test run names engine scripts in its test file paths
+  # (tests/test_laptop_actor_bootstrap.py); it is not an autonomous worker.
+  if($_.CommandLine -match '(?i)\s-m\s+pytest\b') { return $false }
   $name=$_.Name; $command=$_.CommandLine
   # The owner's remote management bridge is not an autonomous builder.
   if($KeepRemote -and $command -match 'RemoteBridgeGuardian\.ps1|RemoteBridgeSupervisor\.ps1') { return $false }
@@ -50,7 +57,15 @@ function Find-RemoteProcesses {
   $_.CommandLine -match $remotePattern
  })
 }
+$script:controllerLoaded = $false
+try {
+ $pinned = Get-Content (Join-Path $state 'supervisor-pinned-release.json') -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+ . (Join-Path ([string]$pinned.accepted_repo) 'scripts\desktop-control\IronGodOwnerControl.ps1')
+ $script:controllerLoaded = $true
+} catch { $events.Add('OWNER_CONTROLLER_UNAVAILABLE: ' + $_.Exception.Message) }
 function Get-OwnerState {
+ if($script:controllerLoaded) { return ((Get-IronGodOwnerStatus $state) -ceq 'OWNER_CONTROL_ACTIVE') }
+ # Pre-controller release pinned: report the legacy stop signal instead.
  $active = $false
  if(Test-Path $marker) {
   try{$active=[bool]((Get-Content $marker -Raw|ConvertFrom-Json).enabled)}
@@ -77,6 +92,18 @@ if(-not $AuditOnly) {
  $json = @{enabled=$true;since=[DateTimeOffset]::UtcNow.ToString('o');source='master-owner-control'} | ConvertTo-Json
  $json | Set-Content -LiteralPath $marker -Encoding UTF8 -ErrorAction Stop
  $null=Save-ControlReceipt @{schema_version=1;status='OWNER_HANDOFF_IN_PROGRESS';checked_at=[DateTimeOffset]::UtcNow.ToString('o');human_mode=$true}
+ # Authoritative revocation first, so the live supervisor can acknowledge it.
+ if($script:controllerLoaded) {
+  $revocation = Invoke-IronGodOwnerController -StateRoot $state -Arguments @('issue','--action','GIVE_ME_CONTROL','--pin',(Join-Path $state 'supervisor-pinned-release.json'))
+  if($revocation.ExitCode -eq 0 -and $revocation.Result.generation) {
+   $events.Add('CONTROLLER_REVOKED generation=' + $revocation.Result.generation)
+   $liveSupervisors = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^pythonw?\.exe$' -and $_.CommandLine -like '*continuous_flow_supervisor.py*' })
+   if($liveSupervisors.Count -gt 0) {
+    $ack = Invoke-IronGodOwnerController -StateRoot $state -Arguments @('wait-ack','--generation',[string]$revocation.Result.generation,'--timeout','20')
+    if($ack.ExitCode -eq 0) { $events.Add('SUPERVISOR_REVOCATION_ACKNOWLEDGED') } else { $events.Add('SUPERVISOR_REVOCATION_ACK_TIMEOUT_STOPPING') }
+   } else { $events.Add('NO_SUPERVISOR_RUNNING') }
+  } else { $events.Add('CONTROLLER_REVOKE_FAILED: ' + $revocation.Result.reason) }
+ }
  # Immediately stop workers and the remote transport before slower scheduled-task cleanup.
  $targets = @(Find-OwnerWorkers)
  foreach($p in $targets) {

@@ -10,6 +10,13 @@ $humanMode = Join-Path $StateRoot "human-mode.json"
   since = [DateTimeOffset]::UtcNow.ToString("o")
   source = "desktop-human-control"
 } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $humanMode
+# The file above is only a stop signal for unmigrated SYSTEM guardians; the
+# authoritative revocation is recorded in the owner controller.
+try {
+  $pinned = Get-Content (Join-Path $StateRoot "supervisor-pinned-release.json") -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+  . (Join-Path ([string]$pinned.accepted_repo) "scripts\desktop-control\IronGodOwnerControl.ps1")
+  $null = Invoke-IronGodOwnerController -StateRoot $StateRoot -Arguments @("issue","--action","GIVE_ME_CONTROL")
+} catch {}
 
 $tasks = @(
   "ExponentialEngine-ContinuousFlow-Watchdog",

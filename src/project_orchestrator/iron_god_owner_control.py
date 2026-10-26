@@ -862,6 +862,10 @@ def _pin_sha(pin_path: str | None) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Iron God authoritative owner controller")
     parser.add_argument("--root", help="control directory (default: under LOCALAPPDATA)")
+    parser.add_argument(
+        "--expect-source",
+        help="refuse unless this module was imported from this src directory (release provenance)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     issue = sub.add_parser("issue")
     issue.add_argument("--action", required=True, choices=sorted(ACTIONS))
@@ -872,9 +876,15 @@ def main(argv: list[str] | None = None) -> int:
     wait.add_argument("--generation", type=int, required=True)
     wait.add_argument("--timeout", type=float, default=120.0)
     sub.add_parser("events")
+    sub.add_parser("owner-status")
     args = parser.parse_args(argv)
-    root = Path(args.root) if args.root else control_root()
     try:
+        if args.expect_source is not None:
+            loaded = os.path.normcase(str(Path(__file__).resolve().parent))
+            expected = os.path.normcase(str((Path(args.expect_source) / "project_orchestrator").resolve()))
+            if loaded != expected:
+                raise OwnerControlError("CONTROLLER_PROVENANCE_MISMATCH")
+        root = Path(args.root) if args.root else control_root()
         if args.command == "issue":
             release = _pin_sha(args.pin)
             if args.action == TAKE_THE_WHEEL and release is None:
@@ -889,6 +899,10 @@ def main(argv: list[str] | None = None) -> int:
             result = wait_for_ack(root, args.generation, timeout_seconds=args.timeout)
             print(json.dumps({"generation": args.generation, "result": result}))
             return {"ACKNOWLEDGED": 0, "SUPERSEDED": 7}.get(result, 6)
+        if args.command == "owner-status":
+            status_text = owner_status(root)
+            print(json.dumps({"owner_status": status_text}))
+            return 0 if status_text == AUTHORIZED else 1
         print(json.dumps(recent_events(root), sort_keys=True))
         return 0
     except OwnerControlError as exc:

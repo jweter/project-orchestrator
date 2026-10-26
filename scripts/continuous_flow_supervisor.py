@@ -890,6 +890,6 @@ def main()->int:
             "previous_process_instance_id":burst.get("previous_process_instance_id"),
             "resumed":burst["resumed"],"pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
-        worker_pool.wait_for_completion(delay)
+        _supervisor_runtime.wait_for_completion_or_reclaim(worker_pool,delay,state)
 if __name__=="__main__": raise SystemExit(main())
 

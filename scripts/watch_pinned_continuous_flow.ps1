@@ -7,13 +7,13 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# Owner authority comes only from the authoritative owner controller. A
+# supervisor may start only for a fresh owner Take the Wheel (pending its
+# acknowledgment) or a grant held by a live supervisor; a restart can never
+# revive a grant bound to an exited supervisor.
+. (Join-Path $PSScriptRoot 'desktop-control\IronGodOwnerControl.ps1')
 function Test-OwnerAllowsRun {
-  $marker = Join-Path $StateRoot 'human-mode.json'
-  if (-not (Test-Path -LiteralPath $marker -PathType Leaf)) { return $false }
-  try {
-    $value = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
-    return ($value.enabled -ceq $false)
-  } catch { return $false }
+  try { return ((Get-IronGodOwnerStatus $StateRoot) -ceq 'AUTHORIZED') } catch { return $false }
 }
 
 if (-not (Test-OwnerAllowsRun)) { exit 0 }

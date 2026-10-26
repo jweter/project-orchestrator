@@ -13,8 +13,8 @@ function Read-Record([string]$name) {
   try { return (Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop) }
   catch { Issue ("INVALID_" + $name); return $null }
 }
-$owner = Read-Record 'human-mode.json'
-if ($null -ne $owner -and $owner.enabled -isnot [bool]) { Issue 'OWNER_MARKER_NOT_BOOLEAN' }
+# Owner authority is the controller's decision, not a readiness input; the
+# retired owner marker is not read here.
 
 $watchdog = $null
 $actor = $null
@@ -141,6 +141,21 @@ if ($null -ne $pin) {
       $dirty = & git -C $repo status --porcelain --untracked-files=normal
       if ($LASTEXITCODE -ne 0 -or $dirty) { Issue 'RELEASE_NOT_CLEAN' }
     } catch { Issue 'RELEASE_VERIFICATION_FAILED' }
+  }
+}
+# The pinned release must carry the authoritative owner controller and load
+# it from its own source tree (provenance enforced), or Take the Wheel would
+# have no supported way to authorize execution.
+if ($null -ne $pin -and [IO.Path]::IsPathRooted([string]$pin.accepted_repo)) {
+  $bridge = Join-Path ([string]$pin.accepted_repo) 'scripts\desktop-control\IronGodOwnerControl.ps1'
+  if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) {
+    Issue 'PINNED_RELEASE_LACKS_OWNER_CONTROLLER'
+  } else {
+    try {
+      . $bridge
+      $probe = Invoke-IronGodOwnerController -StateRoot $state -Arguments @('owner-status')
+      if ($null -eq $probe.Result.owner_status) { Issue ('OWNER_CONTROLLER_UNAVAILABLE_' + [string]$probe.Result.reason) }
+    } catch { Issue 'OWNER_CONTROLLER_UNAVAILABLE' }
   }
 }
 $result = [ordered]@{

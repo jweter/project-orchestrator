@@ -21,6 +21,10 @@ If mode = "human" Then
     suffix = " -KeepRemote"
 ElseIf mode = "wheel" Then
     script = fso.BuildPath(here,"Take-The-Wheel.ps1")
+    ' The owner clicking this desktop icon is the explicit consent; the
+    ' authoritative controller still authenticates the click and the running
+    ' supervisor must acknowledge it before development starts.
+    suffix = " -ExplicitUserAuthorization"
 ElseIf mode = "testhuman" Then
     script = fso.BuildPath(here,"Enter-HumanMode.ps1")
     suffix = " -SelfTest"
@@ -38,7 +42,11 @@ cmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Fi
 Dim result
 result = sh.Run(cmd, 0, True)
 If result = 0 Then
-    MsgBox "Control command completed successfully.", 64, "Azathoth Control"
+    ' Both desktop controls are one-click: successful stop/start is silent.
+    ' Diagnostic modes retain success feedback; failures remain visible below.
+    If mode <> "wheel" And mode <> "human" Then
+        MsgBox "Control command completed successfully.", 64, "Azathoth Control"
+    End If
 ElseIf mode = "wheel" And result = 5 Then
     MsgBox "Iron God is currently stopped for a verified local-release upgrade." & vbCrLf & _
            "Take the Wheel will not restart the old supervisor." & vbCrLf & _
@@ -48,6 +56,10 @@ ElseIf mode = "wheel" And result = 6 Then
     MsgBox "Development startup could not be verified." & vbCrLf & _
            "Check flow-state\control-switch.log and desktop-resume-runtime.json." & vbCrLf & _
            "Give Me Control remains available.", 48, "Take the Wheel - Startup Unverified"
+ElseIf mode = "wheel" And result = 9 Then
+    MsgBox "The Iron God owner controller did not accept this Take the Wheel." & vbCrLf & _
+           "Development remains stopped. Check flow-state\control-switch.log." & vbCrLf & _
+           "Give Me Control remains available.", 48, "Take the Wheel - Not Authorized"
 ElseIf mode = "wheel" And result = 7 Then
     MsgBox "Owner control was requested during startup. Development handoff cancelled.", 48, "Azathoth Control"
 Else

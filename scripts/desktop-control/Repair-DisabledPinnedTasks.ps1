@@ -11,9 +11,13 @@ function Read-JsonStrict([string]$path) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "MISSING_REQUIRED_RECORD: $path" }
   return (Get-Content -LiteralPath $path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop)
 }
+# Owner authority comes only from the authoritative owner controller,
+# evaluated with the controller code of THIS release (the one being
+# installed); the pinned release may still predate the controller.
+. (Join-Path $PSScriptRoot 'IronGodOwnerControl.ps1')
 function Ensure-OwnerHeld {
-  $owner = Read-JsonStrict (Join-Path $StateRoot 'human-mode.json')
-  if ($owner.enabled -isnot [bool] -or $owner.enabled -cne $true) {
+  $status = Get-IronGodOwnerStatus $StateRoot (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'src')
+  if ($status -ceq 'AUTHORIZED') {
     throw 'OWNER_CONTROL_NOT_HELD_REFUSING_TASK_REPAIR'
   }
 }

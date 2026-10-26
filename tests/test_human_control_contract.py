@@ -32,12 +32,12 @@ def test_startup_launcher_uses_marker_payload_not_marker_presence():
     assert "'if exist \"' + $HumanMode + '\" exit /b 0'" not in text
 
 
-def test_full_power_script_requires_prior_owner_release_and_preserves_marker():
+def test_full_power_script_requires_a_controller_grant_and_never_grants():
     text = FULL_POWER.read_text(encoding="utf-8")
-    assert "ConvertFrom-Json" in text
-    assert "$ownerControl.enabled -is [bool]" in text
+    assert '(Get-IronGodOwnerStatus $StateRoot) -ceq "AUTHORIZED"' in text
     assert "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL" in text
-    assert "Remove-Item -Force $humanMode" not in text
+    assert "TAKE_THE_WHEEL" not in text.replace("OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL", "")
+    assert "human-mode.json" not in text
 
 
 def test_fallback_recovery_cannot_restart_supervisor_during_human_mode():

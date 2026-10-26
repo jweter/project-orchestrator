@@ -981,3 +981,30 @@ def owner_reclaimed(
         "observed_at_utc": datetime.now(UTC).isoformat(),
     })
     return True
+
+
+def wait_for_completion_or_reclaim(
+    worker_pool: Any,
+    delay_seconds: float,
+    state_root: Path,
+    *,
+    poll_seconds: float = 2.0,
+    owner_status_fn: Callable[[Path], str] = owner_control_status,
+    clock: Callable[[], float] = time.monotonic,
+) -> str:
+    """Pace the next pass, waking early on worker completion or owner reclaim.
+
+    The single pre-existing wait could hold a Give Me Control for a whole
+    builder interval. Polling the owner controller in short slices lets the
+    loop-top gate acknowledge the revocation promptly. Returns COMPLETED,
+    OWNER_RECLAIMED or TIMEOUT.
+    """
+    deadline = clock() + max(0.0, float(delay_seconds))
+    while True:
+        remaining = deadline - clock()
+        if remaining <= 0:
+            return "TIMEOUT"
+        if worker_pool.wait_for_completion(min(poll_seconds, remaining)):
+            return "COMPLETED"
+        if owner_status_fn(state_root) != AUTHORIZED:
+            return "OWNER_RECLAIMED"
