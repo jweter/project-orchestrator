@@ -88,8 +88,13 @@ def python_packages(listed: list[str], roots: list[str]) -> list[str]:
 
 def planning_prompt(packet: dict[str, Any], brief: str) -> str:
     memory = (packet.get("working_memory") or "").strip()[:1500]
+    attempted = sorted({name for name in (packet.get("attempted_functions") or [])
+                        if isinstance(name, str) and name.isidentifier()})
+    excluded = ", ".join(attempted[:50]) or "(none)"
     return (
         f"You plan ONE small slice of work for the repository {packet['repository']}.\n"
+        f"Previously attempted function names (never propose these): {excluded}. "
+        f"The validator rejects all {len(attempted)} attempted names, including any not shown.\n"
         "Choose ONE new pure Python function that is useful for this repository's purpose. It takes and returns "
         "plain values (str, int, float, bool, list, dict, tuple, None): no files, audio, images, network, time or "
         "randomness, and it uses only the Python standard library. It goes in ONE new module inside one of the "
