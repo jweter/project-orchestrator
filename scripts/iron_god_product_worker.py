@@ -220,8 +220,10 @@ def render_tests(plan: dict[str, Any]) -> str:
     """The slice's regression tests, written by the worker from the plan's exact examples (never by the model)."""
     lines = [f"from {plan['import_path']} import {plan['function_name']}", ""]
     for index, example in enumerate(plan["examples"], 1):
+        # singletons compare by identity: repository linters reject `== True` (E712) and `== None` (E711)
+        op = "is" if example["expected"] in {"True", "False", "None"} else "=="
         lines += ["", f"def test_{plan['function_name']}_example_{index}() -> None:",
-                  f"    assert {example['call']} == {example['expected']}", ""]
+                  f"    assert {example['call']} {op} {example['expected']}", ""]
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -447,11 +449,15 @@ def production_format(worktree: Path, files: list[str], check: Callable[[], None
     if tool is None:
         return "none"
     environment = repository_environment(worktree, check)
+    env = {**os.environ, **environment["overrides"]}
+    if tool == "ruff":
+        # safe autofixes only (import order, unused imports); what remains is the preflight's verdict
+        NativeWindowsRuntime().execute_supervised(RuntimeRequest(
+            (environment["python"], "-m", "ruff", "check", "--fix", "--exit-zero", "-q", *files), worktree, env, 300,
+        ), check, interval=2.0)
     argv = (environment["python"], "-m", "ruff", "format", *files) if tool == "ruff" else (
         environment["python"], "-m", "black", "-q", *files)
-    result = NativeWindowsRuntime().execute_supervised(
-        RuntimeRequest(argv, worktree, {**os.environ, **environment["overrides"]}, 300), check, interval=2.0,
-    )
+    result = NativeWindowsRuntime().execute_supervised(RuntimeRequest(argv, worktree, env, 300), check, interval=2.0)
     if result.returncode != 0:
         raise RuntimeError(f"{tool} format failed: {_tail((result.stdout or '') + (result.stderr or ''))[-200:]}")
     return tool

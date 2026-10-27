@@ -400,6 +400,9 @@ def test_the_worker_writes_the_tests_from_the_plans_exact_examples(env):
     assert source.startswith("from pkg.extra import add_two\n")
     assert "    assert add_two(-2) == 0\n" in source and source.count("def test_add_two_example_") == 3
     assert WORKER.import_path("src/rocksmith_cdlc_generator/tempo.py") == "rocksmith_cdlc_generator.tempo"
+    flags = WORKER.render_tests({**plan, "examples": [{"call": "add_two(0)", "expected": "True"},
+                                                      {"call": "add_two(1)", "expected": "None"}]})
+    assert "assert add_two(0) is True\n" in flags and "assert add_two(1) is None\n" in flags  # E712/E711
 
 
 @pytest.mark.parametrize(("change", "reason"), [
