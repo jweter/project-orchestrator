@@ -199,7 +199,7 @@
       "complexity": "low",
       "verification": "Worker slice checks (pytest, mypy, ruff) and the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged; counted as product progress only once KEC-3 merges and calls it.",
-      "status": "proposed",
+      "status": "approved",
       "implementer": "iron-god-local-7b",
       "build": {
         "module_path": "knowledge_engine/cache_eviction.py",
@@ -250,7 +250,8 @@
           }
         ],
         "note": "Pure eviction policy for the bounded on-demand source cache (roadmap: bounded ephemeral cache); KEC-3 consumes it."
-      }
+      },
+      "approval": "owner approved 2026-10-27 as the first authorized roadmap development slice"
     },
     {
       "id": "KEC-3",
