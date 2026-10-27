@@ -166,8 +166,38 @@ qwen2.5-coder:14b as planner was 3-5x slower with the same failure class.
 Gates prove correctness, not value: the first passing slice was a correct
 but unused helper.
 
+## First live run and roadmap-driven backlog (2026-10-27)
+
+Take the Wheel on `02e8552`, 05:07-20:20, auto-merge: 56 turns over the three
+ready repositories. 41 (73%) were plans repeating an already-attempted idea,
+8 failed their own slice tests (the one repair round fixed none), 4 failed the
+repository lint (E712, E501, F401), 1 went to review; 2 passed every gate.
+knowledge-engine-ai PR #186 (`normalize_text`) merged on green CI; PR #187
+(`remove_html_tags`) was held BLOCKED by Iron God on a failing dependency
+audit, then merged outside Iron God at 18:38 with that check still failing
+(the repository has no branch protection) and an open Codex P2 finding.
+Neither helper has a caller.
+
+Changes (`e8ce089`..): singleton comparisons and ruff fixes in generated
+tests; lint inside the repair loop; exact-commit git pins installed in product
+environments (knowledge-engine-web's baseline mypy failure was 19 errors from
+the skipped knowledge-engine-ai pin plus 3 genuine ones); bytes detection by
+AST (the key `'b'` silently dropped examples); and planning from
+`engineering/state/iron-god-backlog.json` (`portfolio_rotation.planning:
+backlog`, `development_level: 1`). Only `approved` items within the measured
+level that name a consumer and carry a build spec are dispatched; the worker
+builds them as written and never re-plans; each item has three attempts and
+waits for its dependencies; PRs cite the roadmap item and consumer.
+`python -m project_orchestrator.iron_god_product_metrics` separates turn
+outcomes, preflight passes, merges, roadmap items completed and items used by
+the product.
+
+The backlog holds five items per repository from each owner-approved roadmap
+and a code audit, all `proposed`; nothing dispatches until the owner approves.
+
 ## Next action
 
-Owner decision on `portfolio_rotation.merge` (auto vs review), then Take the
-Wheel on `02e8552`; integrate the local Iron God lineage with GitHub as a
-reviewed milestone.
+Owner approves backlog items (KEC-2 is the one level-1 item with a verified
+build spec), then install and Take the Wheel; higher-level items go to Claude
+or the owner. Integrate the local Iron God lineage with GitHub as a reviewed
+milestone.

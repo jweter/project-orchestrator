@@ -33,6 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from . import iron_god_backlog as backlog
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_working_memory as working_memory
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -250,11 +251,14 @@ def open_pr_paths(repo: str) -> list[str]:
 
 def build_product_packet(repo: str, *, packet_id: str, base: str, worktree: Path, branch: str,
                          roots: list[str], avoid: list[str], memory_text: str, project: str,
-                         attempted: list[str] | None = None) -> dict[str, Any]:
+                         attempted: list[str] | None = None, item: dict[str, Any] | None = None) -> dict[str, Any]:
     objective = (f"Choose and implement one small, high-value roadmap slice for {repo} within the scope envelope, "
                  "with a regression test, passing the repository's canonical preflight.")
+    if item is not None:  # an approved backlog slice: built as written, never re-planned
+        objective = f"[{item['id']}] {item['objective']}"
+        attempted = []
     verification = ["python engineering/preflight.py"]
-    return {
+    packet = {
         "packet_id": packet_id, "project": project, "repository": repo,
         "source_ref": f"github:{repo}@origin/main:{base}", "base_sha": base, "branch": branch,
         "task": objective, "paths": roots, "verification": verification, "worktree": str(worktree),
@@ -280,6 +284,13 @@ def build_product_packet(repo: str, *, packet_id: str, base: str, worktree: Path
             "escalation_policy": "ASK_SUPERVISOR_AND_PAUSE",
         },
     }
+    if item is not None:
+        packet["slice"] = {key: item[key] for key in ("id", "title", "roadmap_ref", "addresses", "why", "consumer",
+                                                      "level", "build")}
+        packet["planning"]["roadmap_ref"] = item["roadmap_ref"]
+        packet["planning"]["handoff_instructions"] = ("Build the approved backlog slice exactly as specified, run "
+                                                      "the canonical preflight, and hand back exact evidence.")
+    return packet
 
 
 def spawn_product_worker(release_repo: Path, packet_path: Path, handback_path: Path, *, release_sha: str,
@@ -429,6 +440,16 @@ def ci_verdict(checks: list[dict[str, Any]], *, published_at: float, now: float)
     return "PASS" if "pass" in buckets else "BLOCKED_NO_CI_REPORTED"
 
 
+def _record_slice_outcome(lane: ProductLane, packet_id: str, outcome: str) -> None:
+    """Mirror a publication outcome onto its backlog item, if the turn built one."""
+    try:
+        packet = json.loads((lane.packets / f"{packet_id}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if packet.get("slice"):
+        backlog.record_item(lane.root, packet["slice"]["id"], packet_id=packet_id, outcome=outcome)
+
+
 def _save_publications(lane: ProductLane, items: dict[str, Any]) -> None:
     atomic_json(lane.publications_path, {"schema_version": 1, "items": items})
 
@@ -468,13 +489,16 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
                                           pr={**item["pr"], "merged_sha": merged_sha})
                     working_memory.record(lane.state_root, repo, "MERGED", packet_id=packet_id, outcome="MERGED",
                                           pr={**item["pr"], "state": "MERGED"})
+                    _record_slice_outcome(lane, packet_id, "MERGED")
                 elif verdict != "WAIT":
                     item.update(state="BLOCKED", reason=verdict)
+                    _record_slice_outcome(lane, packet_id, "PR_BLOCKED")
                     working_memory.record(lane.state_root, repo, verdict, packet_id=packet_id, outcome="BLOCKED",
                                           blocker=f"{verdict} on pull request #{item['pr']['number']}",
                                           pr={**item["pr"], "state": "OPEN_BLOCKED"})
         except Exception as exc:  # A GitHub failure blocks this publication only; it never crashes the lane.
             item.update(state="BLOCKED", reason=f"{type(exc).__name__}: {str(exc)[:300]}")
+            _record_slice_outcome(lane, packet_id, "PR_BLOCKED")
             working_memory.record(lane.state_root, repo, "PUBLICATION_FAILED", packet_id=packet_id,
                                   outcome="BLOCKED", blocker=item["reason"])
         events.append({"packet_id": packet_id, "state": item["state"], "reason": item.get("reason")})
@@ -524,12 +548,17 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
             current = accept_locally(current, packet_id, accepted_ref=ref, accepted_sha=head,
                                      evidence_ref=f"local://iron-god-products/{packet_id}/verification")
             items = lane.publications()["items"]
+            item = packet.get("slice")
+            roadmap = (f"Backlog item: {item['id']} ({item['title']})\nRoadmap: {item['roadmap_ref']}\n"
+                       f"Addresses: {item['addresses']}\nWhy: {item['why']}\nConsumer: {item['consumer']}\n\n"
+                       if item else "")
             items[packet_id] = {
                 "repository": repo, "branch": packet["branch"], "head_sha": head, "state": "PUBLISH_PENDING",
                 "note": note,
-                "title": (f"Iron God: add {slice_plan['function_name']} to {slice_plan['module_path']}"
+                "title": (f"Iron God [{item['id']}]: {item['title']}"[:120] if item else
+                          f"Iron God: add {slice_plan['function_name']} to {slice_plan['module_path']}"
                           if slice_plan.get("function_name") else f"Iron God: {(note or 'autonomous slice')[:90]}"),
-                "body": ("Autonomous Iron God product turn " + packet_id + ".\n\n"
+                "body": ("Autonomous Iron God product turn " + packet_id + ".\n\n" + roadmap +
                          f"Base: origin/main {packet['base_sha']}\nHead: {head}\n\n"
                          f"Slice: {slice_plan.get('objective', '(none)')}\n"
                          f"Files: {', '.join(handback.get('changed_paths', []))}\n"
@@ -549,6 +578,10 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
         outcome["status"] = current["packets"][packet_id]["state"]
     lane.save(current, ledger)
     lane.active_path.unlink(missing_ok=True)
+    if packet.get("slice"):
+        result = (outcome["status"] if outcome["status"] == "ACCEPTED_LOCAL" else "SUPERVISOR_RECHECK_FAILED"
+                  if handback["status"] == "PASS" else f"{handback['status']}: {handback.get('summary', '')}"[:200])
+        backlog.record_item(lane.root, packet["slice"]["id"], packet_id=packet_id, outcome=result)
     tried = (f"{slice_plan['function_name']} in {slice_plan['module_path']}" if slice_plan.get("function_name")
              else None)
     working_memory.record(lane.state_root, repo, "TURN_" + outcome["status"], packet_id=packet_id,
@@ -636,9 +669,21 @@ def advance_product_lane(
     # until an owner-held readiness check (product trial --preflight-only) passes again.
     readiness = lane._json(lane.root / "readiness.json", {"repositories": {}}).get("repositories", {})
     busy |= {repo for repo, row in readiness.items() if row.get("ready") is False}
+    items: dict[str, dict[str, Any]] = {}
+    if config.get("planning") == "backlog":  # roadmap-driven: only approved slices, never self-invented ones
+        approved, _rejected = backlog.load_backlog(release_repo)
+        state = backlog.load_state(lane.root)
+        level = int(config.get("development_level", 1))
+        for name in repos:
+            chosen = backlog.next_item(approved, state, name, max_level=level)
+            if chosen is not None:
+                items[name] = chosen
+        busy |= {name for name in repos if name not in items}
     repo = next_repository(lane, repos, busy, rng)
     if repo is None:
-        return _report(lane, {"status": "IDLE_ALL_REPOSITORIES_AWAITING_CI", "publications": published})
+        idle = "IDLE_NO_APPROVED_BACKLOG_ITEM" if config.get("planning") == "backlog" and not items else (
+            "IDLE_ALL_REPOSITORIES_AWAITING_CI")
+        return _report(lane, {"status": idle, "publications": published})
     admission = resources()
     if not admission.get("admitted"):
         return _report(lane, {"status": "WAITING_FOR_RESOURCES", "repository": repo, "admission": admission})
@@ -649,7 +694,7 @@ def advance_product_lane(
                               "detail": f"{type(exc).__name__}: {str(exc)[:200]}"})
     try:
         result = dispatch(lane, release_repo, ledger, repo, release_sha=release_sha, spawn=spawn, sync=sync,
-                          owned_paths=owned_paths, lease_id=lease.lease_id)
+                          owned_paths=owned_paths, lease_id=lease.lease_id, item=items.get(repo))
     except BaseException:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
         raise
@@ -660,7 +705,8 @@ def advance_product_lane(
 
 def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo: str, *, release_sha: str,
              spawn: Callable[..., dict[str, Any]], sync: Callable[[ProductLane, str], tuple[Path, str]],
-             owned_paths: Callable[[str], list[str]], lease_id: str) -> dict[str, Any]:
+             owned_paths: Callable[[str], list[str]], lease_id: str,
+             item: dict[str, Any] | None = None) -> dict[str, Any]:
     name = repo.split("/", 1)[-1]
     packet_id = f"PRODUCT-{name.upper()}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
     try:
@@ -689,7 +735,7 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
     packet = build_product_packet(repo, packet_id=packet_id, base=base, worktree=worktree, branch=branch,
                                   roots=roots, avoid=avoid, memory_text=working_memory.excerpt(lane.state_root, repo),
                                   attempted=working_memory.attempted_functions(lane.state_root, repo),
-                                  project=memory_project(release_repo, repo))
+                                  project=memory_project(release_repo, repo), item=item)
     updated = dispatch_canonical_slice(ledger, packet, transport="local_idle_worker")
     lane.save(updated, ledger)
     packet_path = lane.packets / f"{packet_id}.json"
@@ -702,11 +748,14 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
                                    "worktree": str(worktree), "dispatched_at_utc": _now(), "base_sha": base,
                                    "lease_id": lease_id})
     _advance_cursor(lane, repo, packet_id)
+    if item is not None:
+        backlog.record_item(lane.root, item["id"], packet_id=packet_id, outcome="DISPATCHED")
     working_memory.record(lane.state_root, repo, "DISPATCHED", packet_id=packet_id, detail=f"base {base}",
                           active={"packet_id": packet_id, "repository": repo, "worker_pid": worker["pid"],
                                   "started_at_utc": _now()})
     return _report(lane, {"status": "DISPATCHED", "packet_id": packet_id, "repository": repo, "base_sha": base,
-                          "worker_pid": worker["pid"], "scope": roots})
+                          "worker_pid": worker["pid"], "scope": roots,
+                          "backlog_item": item["id"] if item is not None else None})
 
 
 def _release(pool: RuntimeLeasePool, active: dict[str, Any]) -> None:

@@ -51,6 +51,7 @@ authoritative_state = [
   "state/compounding-timeseries.json",
   "state/context-compression-corpus.json",
   "state/headroom-benchmark-result.json",
+  "state/iron-god-backlog.json",
   "state/iron-god-local-worker-migration.json",
   "state/jev-shadow-decision.json",
   "state/learning-candidates.json",

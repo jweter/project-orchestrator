@@ -12,7 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from project_orchestrator import iron_god_backlog as backlog_mod
 from project_orchestrator import iron_god_product_lane as pl
+from project_orchestrator import iron_god_product_metrics as metrics
 from project_orchestrator import iron_god_working_memory as wm
 from project_orchestrator import supervisor_runtime
 from project_orchestrator.runtime_leases import DEFAULT_RUNTIME_CAPACITIES, RuntimeLeasePool
@@ -708,3 +710,118 @@ def test_planning_prompt_bounds_large_exclusion_list_without_weakening_validatio
     assert "(none)" in WORKER.planning_prompt({"repository": "jweter/VoiceStudio"}, "BRIEF")
     assert "rejects all 0 attempted names" in WORKER.planning_prompt(
         {"repository": "jweter/VoiceStudio", "attempted_functions": None}, "BRIEF")
+
+
+# Roadmap-driven backlog (2026-10-27): only approved, consumer-linked slices are built, exactly as written.
+
+def backlog_item(item_id, repo, *, status="approved", level=1, build=True, depends_on=()):
+    item = {"id": item_id, "repository": repo, "title": f"{item_id} title", "roadmap_ref": "docs/ROADMAP.md slice 1",
+            "addresses": "a roadmap gap", "why": "it unblocks the workflow", "consumer": "the export workflow step",
+            "objective": "Add add_two to pkg/extra.py for the export workflow.", "interfaces": ["pkg/core.py"],
+            "depends_on": list(depends_on), "acceptance_criteria": ["examples hold"], "tests": ["tests/test_extra.py"],
+            "level": level, "complexity": "low", "verification": "preflight", "definition_of_done": "merged",
+            "status": status}
+    if build:
+        item["build"] = {k: GOOD_PLAN[k] for k in ("module_path", "function_name", "signature", "objective",
+                                                   "examples", "note")}
+    return item
+
+
+def backlog_env(env, items):
+    path = env.release / backlog_mod.BACKLOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"items": items}), encoding="utf-8")
+    env.policy = {**POLICY, "portfolio_rotation": {**POLICY["portfolio_rotation"], "planning": "backlog",
+                                                   "development_level": 1}}
+    return env
+
+
+def never_plans(worktree, packet, check, feedback=""):
+    raise AssertionError("an approved backlog slice must never be re-planned by the model")
+
+
+def test_backlog_mode_builds_only_approved_items_exactly_as_written_and_links_the_pr_to_the_roadmap(env):
+    backlog_env(env, [backlog_item("P-1", REPOS[0], status="proposed"),
+                      backlog_item("L2-1", REPOS[2], level=2, build=False),  # beyond the measured level
+                      backlog_item("RS-1", REPOS[1])])  # shortest name: Windows path limits in pytest's tmp
+    runner, github = Runner(plan=never_plans), FakeGitHub(("pass",))
+    dispatched = step(env, runner, github)
+    assert dispatched["status"] == "DISPATCHED" and dispatched["repository"] == REPOS[1], dispatched.get("detail")
+    assert dispatched["backlog_item"] == "RS-1"
+    assert step(env, runner, github)["status"] == "ACCEPTED_LOCAL"
+    step(env, runner, github, allow=False)  # push + PR
+    pr = github.opened[0]
+    assert pr["title"].startswith("Iron God [RS-1]") and "Consumer: the export workflow step" in pr["body"]
+    assert "Roadmap: docs/ROADMAP.md slice 1" in pr["body"]
+    step(env, runner, github, allow=False)  # CI green -> merge
+    assert backlog_mod.load_state(pl.ProductLane(env.state).root)["items"]["RS-1"]["outcome"] == "MERGED"
+    assert step(env, runner, github)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"  # never invents work
+    assert runner.spawned == 1
+
+
+def test_a_backlog_item_waits_for_its_dependencies_and_stops_after_its_attempts(env):
+    backlog_env(env, [backlog_item("A", REPOS[2], status="proposed"),
+                      backlog_item("B", REPOS[2], depends_on=["A"]), backlog_item("C", REPOS[1])])
+    runner = Runner(plan=never_plans, preflight_ok=False)
+    for _ in range(backlog_mod.MAX_ITEM_ATTEMPTS):
+        assert step(env, runner)["backlog_item"] == "C"  # B waits for A, which is not approved
+        step(env, runner)  # harvest the failed attempt
+    assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"
+    state = backlog_mod.load_state(pl.ProductLane(env.state).root)["items"]["C"]
+    assert state["attempts"] == backlog_mod.MAX_ITEM_ATTEMPTS and state["outcome"].startswith("FAIL")
+
+
+@pytest.mark.parametrize(("change", "problem"), [
+    ({"consumer": "tbd"}, "CONSUMER_UNIDENTIFIED"),
+    ({"build": None}, "APPROVED_ITEM_WITHOUT_BUILD_SPEC"),
+    ({"objective": "x" * 1200}, "TEXT_OVER_CANON_BOUND"),
+    ({"level": 7}, "LEVEL_INVALID"),
+    ({"status": "maybe"}, "STATUS_INVALID"),
+])
+def test_malformed_backlog_items_are_never_dispatched(change, problem):
+    assert problem in backlog_mod.item_problems({**backlog_item("X", REPOS[0]), **change})
+
+
+def test_real_backlog_covers_every_product_repository_and_is_well_formed():
+    items, rejected = backlog_mod.load_backlog(ROOT)
+    assert rejected == {}
+    repos = {item["repository"] for item in items}
+    assert all(sum(1 for i in items if i["repository"] == r) >= 5 for r in repos) and len(repos) == 6
+    assert pl.rotation_config(POLICY)["planning"] == "backlog"
+    assert pl.rotation_config(POLICY)["development_level"] == 1
+    everward = [i for i in items if i["repository"] == "jweter/Project-Everward"]
+    assert all(i["level"] not in backlog_mod.BUILDABLE_LEVELS or i["status"] != "approved" for i in everward)
+
+
+def test_metrics_count_a_merged_helper_as_progress_only_when_something_uses_it(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans), FakeGitHub(("pass",))
+    for allow in (True, True, False, False):
+        step(env, runner, github, allow=allow)
+    report = metrics.compute(env.state, env.release)
+    assert report["merged_pull_requests"] == 1 and report["backlog"]["roadmap_items_completed"] == 1
+    assert report["backlog"]["used_by_product"] == 0  # a level-1 helper whose consumer has not merged yet
+    assert report["unlinked_merges_not_counted_as_progress"] == 0
+
+
+def test_lint_failures_reach_the_bounded_repair_as_exact_lines(env, monkeypatch):
+    monkeypatch.setattr(WORKER, "quick_test", lambda *_a, **_k: {"ok": True, "command": "pytest", "output_tail": ""})
+    monkeypatch.setattr(WORKER, "type_check", lambda *_a: None)
+    monkeypatch.setattr(WORKER, "lint_check", lambda *_a: {
+        "ok": False, "command": "python -m ruff check", "returncode": 1,
+        "output_tail": "pkg/extra.py:3:101: E501 Line too long (120 > 100)\nFound 1 error."})
+    result = WORKER.slice_checks(env.tmp, "pkg/extra.py", "tests/test_extra.py", lambda: None)
+    assert result["output_tail"] == "E ruff: pkg/extra.py:3:101: E501 Line too long (120 > 100)"
+
+
+def test_an_example_using_the_key_b_is_not_mistaken_for_bytes(env):
+    packet, worktree = plan_for(env)
+    plan = {**GOOD_PLAN, "function_name": "count_keys", "objective": "Return how many pairs are given.",
+            "signature": "def count_keys(pairs: list[tuple[str, int]]) -> int:",
+            "examples": [{"call": "count_keys([('a', 1), ('b', 2)])", "why": "two pairs", "expected": 2},
+                         {"call": "count_keys([('b', 1)])", "why": "one pair", "expected": 1},
+                         {"call": "count_keys([])", "why": "none", "expected": 0}]}
+    assert len(WORKER.validate_plan(plan, worktree, packet["base_sha"], packet)["examples"]) == 3
+    with pytest.raises(WORKER.PlanRejected):
+        WORKER.validate_plan({**plan, "examples": [{**e, "call": "count_keys(b'ab')"} for e in plan["examples"]]},
+                             worktree, packet["base_sha"], packet)

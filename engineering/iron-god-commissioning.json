@@ -254,6 +254,9 @@
       "jweter/project-orchestrator"
     ],
     "capability_level": 3,
-    "merge": "auto"
+    "merge": "auto",
+    "planning": "backlog",
+    "planning_decision": "2026-10-27: owner directed roadmap-driven development; only approved items from engineering/state/iron-god-backlog.json are built, never self-invented slices",
+    "development_level": 1
   }
 }

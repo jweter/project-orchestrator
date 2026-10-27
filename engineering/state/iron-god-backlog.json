@@ -1,0 +1,910 @@
+{
+  "schema_version": 1,
+  "description": "Roadmap-driven development backlog for the Iron God product rotation. Items come from each repository's docs/OWNER_APPROVED_ROADMAP_2026-10-25.md and code audit (2026-10-27). Only status=approved items whose level is within portfolio_rotation.development_level and that carry a build spec are dispatched to the local worker; everything else is a reviewed plan for a stronger implementer (Claude or the owner). Approval is the owner's decision.",
+  "levels": {
+    "1": "small new pure function in an existing package (the only level the local 7B worker has measured success at)",
+    "2": "existing-module change: modify functions, repair defects, improve validation, focused tests",
+    "3": "feature integration: connect existing components into working product functionality",
+    "4": "multi-file bounded feature",
+    "5": "complex development: architecture, integration testing, several independently verified slices"
+  },
+  "items": [
+    {
+      "id": "RS-1",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "title": "Audit the import-to-export chain on one lawful real song",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 1; PROJECT_PLAN.md Product Reality Gate v1",
+      "addresses": "First usable product milestone: import a song, generate a playable arrangement, validate, export",
+      "why": "The roadmap forbids claiming playability from synthetic checks; the first broken real-song seam decides every later fix.",
+      "consumer": "RS-2 repairs the seam this audit identifies; the Product Reality report records it.",
+      "objective": "Run one lawful development song through the packaged Windows import -> arrangement -> validation -> XML/PSARC export path, record each stage's outcome, and name the first stage whose output is wrong, missing or requires a CLI workaround.",
+      "interfaces": [
+        "src/rocksmith_cdlc_generator/desktop_app.py",
+        "src/rocksmith_cdlc_generator/authoring_export.py",
+        "src/rocksmith_cdlc_generator/mobile_product_reality.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A Product Reality evidence record names the build, the song identity hash, every stage's result and the first broken seam with a reproducible command or UI path."
+      ],
+      "tests": [
+        "None new: this is an evidence-gathering audit; RS-2 adds the regression test."
+      ],
+      "level": 3,
+      "complexity": "medium (needs the packaged app and a real song; human-assisted)",
+      "verification": "Owner or Claude reviews the evidence record; no code change.",
+      "definition_of_done": "The first broken seam is named with reproduction steps and filed as RS-2's concrete objective.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "RS-2",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "title": "Repair the first broken real-song seam",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 2",
+      "addresses": "The seam RS-1 identifies",
+      "why": "Repairing the smallest end-to-end seam unblocks the whole first usable milestone.",
+      "consumer": "The desktop import-to-export workflow used by the owner.",
+      "objective": "Fix the seam named by RS-1 with a regression test and provenance, without weakening validation or review gates.",
+      "interfaces": [
+        "Determined by RS-1"
+      ],
+      "depends_on": [
+        "RS-1"
+      ],
+      "acceptance_criteria": [
+        "The RS-1 reproduction now succeeds; a regression test fails before and passes after the fix; the repository preflight passes."
+      ],
+      "tests": [
+        "A regression test reproducing the RS-1 failure."
+      ],
+      "level": 2,
+      "complexity": "unknown until RS-1",
+      "verification": "Repository preflight plus re-running the RS-1 reproduction.",
+      "definition_of_done": "Merged with CI green and the RS-1 path re-verified.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "RS-3",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "title": "Generate and export real fret-hand-positions (anchors)",
+      "roadmap_ref": "docs/integrations/EOF_PARITY_ROADMAP.md section F, item 14",
+      "addresses": "The XML export writes <anchors count=\"0\"/> for every difficulty although EOF requires at least one per fretted track",
+      "why": "Without anchors Rocksmith cannot position the fret hand, so exported arrangements are not properly playable in game.",
+      "consumer": "rocksmith_xml export of every Bass/Lead/Rhythm arrangement.",
+      "objective": "Port EOF's default geometric fret-hand-position rule (the tolerance rule item 14 already audits) into the export so each fretted track gets real anchors, keeping the existing tolerance check as the verifier.",
+      "interfaces": [
+        "src/rocksmith_cdlc_generator/eof_fret_range_tolerance_check.py",
+        "src/rocksmith_cdlc_generator/rocksmith_xml.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Exported XML has a non-zero anchor count for every fretted difficulty; the item-14 tolerance check reports no missing positions on the parity fixture."
+      ],
+      "tests": [
+        "Export test asserting anchors on a fixture arrangement",
+        "Tolerance check passes on exported output"
+      ],
+      "level": 4,
+      "complexity": "high (EOF semantics must be traced, not invented)",
+      "verification": "Repository preflight plus an in-game Product Reality check of one exported song.",
+      "definition_of_done": "Merged; one real exported song shows correct hand positioning in game.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "RS-4",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "title": "Realized measure position parity after repeat unfolding",
+      "roadmap_ref": "docs/integrations/EOF_PARITY_ROADMAP.md section C",
+      "addresses": "Audio at bar 34 while generated material is at bar 36 (residual ~2-measure projection error, issue #431)",
+      "why": "Official-TAB synchronization and timing diagnosis depend on agreeing with EOF's realized bar/beat.",
+      "consumer": "Song Workspace bar/beat display and the score projection used by Arrangement Preview.",
+      "objective": "Expose EOF's realized measure position after repeats are unfolded and resolve sparse EOF bar/beat observations to the same realized bar and beat in Song Workspace.",
+      "interfaces": [
+        "src/rocksmith_cdlc_generator/eof_realized_measure_position.py",
+        "src/rocksmith_cdlc_generator/eof_repeat_unfolding.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Sparse EOF bar/beat observations on the parity fixture resolve to identical realized bars and beats."
+      ],
+      "tests": [
+        "Differential test against the EOF parity fixture"
+      ],
+      "level": 3,
+      "complexity": "medium-high",
+      "verification": "Repository preflight plus the parity differential.",
+      "definition_of_done": "Merged; issue #431's residual offset re-measured.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "RS-5",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "title": "Close stale Product Reality issues already fixed on main",
+      "roadmap_ref": "PROJECT_PLAN.md issue policy (issues-tab sweep after Product Reality evidence)",
+      "addresses": "Issues #508, #509 and #562 describe defects that score_measure_recognition.py on main already handles (fence parsing, schema retry, heartbeat, x-coordinate repair)",
+      "why": "Stale issues mislead every planner, human or automated, about what is broken.",
+      "consumer": "The roadmap-linked issue queue that planners read.",
+      "objective": "Verify each issue's acceptance against current main and close it with the evidence, or narrow it to what remains.",
+      "interfaces": [
+        "src/rocksmith_cdlc_generator/score_measure_recognition.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Each of #508, #509, #562 is closed with a pointer to the code and test that satisfy it, or updated to state the remaining gap."
+      ],
+      "tests": [
+        "Existing recognition tests"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Owner review of the issue updates.",
+      "definition_of_done": "Issue queue reflects reality.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEC-1",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Map corpus-dependent interfaces and the online evidence adapter contract",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 1",
+      "addresses": "Research must not require a preloaded local corpus",
+      "why": "Every later online-retrieval slice needs a stable provenance contract and a list of what currently assumes the corpus.",
+      "consumer": "KEC-3 (bounded on-demand extraction) and KEA-4 (AI online-evidence adapter).",
+      "objective": "Inventory every standard-path call that requires the local corpus or PDF warehouse and write the online evidence adapter contract: source identity, citation provenance, retrieval errors, cache and disk bounds.",
+      "interfaces": [
+        "knowledge_engine/corpus_readiness.py",
+        "knowledge_engine/federated_discovery_service.py",
+        "knowledge_engine/citation_extraction.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A reviewed design note lists each corpus-dependent interface with its replacement and defines the adapter's data contract."
+      ],
+      "tests": [
+        "None (design)"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "Owner/Claude review.",
+      "definition_of_done": "Contract merged as a doc; KEC-3 and KEA-4 reference it.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEC-2",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Bounded cache eviction policy for on-demand sources",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md: bounded ephemeral cache, retention and cleanup policies; next slice 2",
+      "addresses": "Bounded ephemeral cache and cleanup for streamed remote sources",
+      "why": "On-demand retrieval must keep disk use bounded; the eviction decision is the pure core of that policy and is testable alone.",
+      "consumer": "KEC-3's on-demand source cache calls it before every write and on cleanup.",
+      "objective": "Add knowledge_engine/cache_eviction.py with select_cache_evictions: entries are (key, size_bytes, last_used_epoch_seconds). Return the keys to evict: first every entry with now - last_used > max_age_seconds, then least-recently-used remaining entries until the remaining total size is <= max_bytes. Order evictions by last_used ascending, ties by key ascending; expired entries come first.",
+      "interfaces": [
+        "knowledge_engine/ (new module only)"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "The six build examples hold exactly",
+        "Standard library only; strict mypy and ruff pass",
+        "Repository preflight passes"
+      ],
+      "tests": [
+        "tests/test_cache_eviction.py generated from the build examples"
+      ],
+      "level": 1,
+      "complexity": "low",
+      "verification": "Worker slice checks (pytest, mypy, ruff) and the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged; counted as product progress only once KEC-3 merges and calls it.",
+      "status": "proposed",
+      "implementer": "iron-god-local-7b",
+      "build": {
+        "module_path": "knowledge_engine/cache_eviction.py",
+        "function_name": "select_cache_evictions",
+        "signature": "def select_cache_evictions(entries: list[tuple[str, int, float]], max_bytes: int, max_age_seconds: float, now: float) -> list[str]:",
+        "objective": "Return the cache keys to evict. entries are (key, size_bytes, last_used). First evict every entry with now - last_used > max_age_seconds, oldest first. Then evict the least recently used remaining entries until their total size is <= max_bytes. Order by last_used ascending, ties by key ascending.",
+        "examples": [
+          {
+            "call": "select_cache_evictions([], 100, 60.0, 1000.0)",
+            "expected": [],
+            "why": "an empty cache evicts nothing"
+          },
+          {
+            "call": "select_cache_evictions([('a', 40, 990.0), ('b', 50, 995.0)], 100, 60.0, 1000.0)",
+            "expected": [],
+            "why": "nothing is older than 60 s and 90 <= 100 bytes"
+          },
+          {
+            "call": "select_cache_evictions([('a', 40, 900.0), ('b', 50, 995.0)], 100, 60.0, 1000.0)",
+            "expected": [
+              "a"
+            ],
+            "why": "a was last used 100 s ago, which is more than 60 s"
+          },
+          {
+            "call": "select_cache_evictions([('a', 60, 980.0), ('b', 60, 990.0), ('c', 60, 999.0)], 100, 60.0, 1000.0)",
+            "expected": [
+              "a",
+              "b"
+            ],
+            "why": "180 bytes: evict least recently used a (120 left), then b (60 left <= 100)"
+          },
+          {
+            "call": "select_cache_evictions([('b', 30, 970.0), ('a', 30, 970.0), ('c', 30, 999.0)], 40, 60.0, 1000.0)",
+            "expected": [
+              "a",
+              "b"
+            ],
+            "why": "a and b tie on last_used so key order decides; 90 -> 60 -> 30 <= 40"
+          },
+          {
+            "call": "select_cache_evictions([('old', 10, 800.0), ('x', 70, 990.0), ('y', 70, 999.0)], 100, 60.0, 1000.0)",
+            "expected": [
+              "old",
+              "x"
+            ],
+            "why": "old is expired and comes first; then 140 bytes remain so x (least recently used) goes, leaving 70"
+          }
+        ],
+        "note": "Pure eviction policy for the bounded on-demand source cache (roadmap: bounded ephemeral cache); KEC-3 consumes it."
+      }
+    },
+    {
+      "id": "KEC-3",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Bounded on-demand source extraction with cache cleanup",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 2",
+      "addresses": "Stream/process remote sources with bounded cache, retention and cleanup; no silent deletion of user documents",
+      "why": "This is the core online-evidence capability that replaces the mandatory local corpus.",
+      "consumer": "Research Report v1 in knowledge-engine-ai (KEA-4) and the web flow (KEW-3).",
+      "objective": "Implement on-demand source extraction behind the KEC-1 contract with a bounded ephemeral cache that calls select_cache_evictions (KEC-2), never touching user documents outside the cache directory.",
+      "interfaces": [
+        "KEC-1 contract",
+        "knowledge_engine/cache_eviction.py",
+        "knowledge_engine/citation_extraction.py"
+      ],
+      "depends_on": [
+        "KEC-1",
+        "KEC-2"
+      ],
+      "acceptance_criteria": [
+        "Tests cover citations, retrieval errors, cache cleanup and the disk limit; user documents outside the cache are never deleted."
+      ],
+      "tests": [
+        "Extraction tests with a fake HTTP source",
+        "Cache bound and cleanup tests"
+      ],
+      "level": 4,
+      "complexity": "high",
+      "verification": "Repository preflight and CI.",
+      "definition_of_done": "Merged; KEC-2 becomes used product code.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEC-4",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Structured evidence for report-level auditability",
+      "roadmap_ref": "Issue #449 (Research Report v1 support)",
+      "addresses": "Reports need structured, auditable evidence records",
+      "why": "Source-grounded claims and verifiable citations are acceptance requirements of Research Report v1.",
+      "consumer": "knowledge-engine-ai report synthesis and the web evidence view.",
+      "objective": "Emit the structured evidence record #449 specifies from the evidence pipeline, with provenance for every claim.",
+      "interfaces": [
+        "knowledge_engine/evidence_map.py",
+        "knowledge_engine/evidence_map_report.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Every report claim links to a structured evidence record with source identity and location."
+      ],
+      "tests": [
+        "Evidence record schema and round-trip tests"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "Repository preflight and CI.",
+      "definition_of_done": "Merged and consumed by KEA-5.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEC-5",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "End-to-end online-source research without a pre-ingested corpus",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 3",
+      "addresses": "Prove integration with AI/Web using online sources only",
+      "why": "This is the milestone's proof of done.",
+      "consumer": "The owner's research workflow.",
+      "objective": "Run one real research question end to end through core, AI and web with an empty local corpus and record the evidence.",
+      "interfaces": [
+        "KEC-3",
+        "KEA-4",
+        "KEW-3"
+      ],
+      "depends_on": [
+        "KEC-3",
+        "KEC-4"
+      ],
+      "acceptance_criteria": [
+        "A real report is produced with verifiable citations, no corpus prerequisite, and the cache cleaned afterwards."
+      ],
+      "tests": [
+        "Product-native acceptance run"
+      ],
+      "level": 5,
+      "complexity": "high",
+      "verification": "Product Reality evidence.",
+      "definition_of_done": "Evidence recorded and reviewed by the owner.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEA-1",
+      "repository": "jweter/knowledge-engine-ai",
+      "title": "Identify local-corpus and Ollama hard dependencies",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 1",
+      "addresses": "Local Ollama must be optional, not a research prerequisite",
+      "why": "The online-evidence adapter cannot be placed until the hard dependencies are known.",
+      "consumer": "KEA-4's online-evidence adapter, which must be placed at the seams this audit names.",
+      "objective": "List every orchestration path that hard-requires the local corpus or a local Ollama model and propose the seam for each.",
+      "interfaces": [
+        "knowledge_engine_ai/orchestrator",
+        "knowledge_engine_ai/llm.py",
+        "knowledge_engine_ai/ke_client.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A reviewed list of hard dependencies with proposed seams."
+      ],
+      "tests": [
+        "None (audit)"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "Owner/Claude review.",
+      "definition_of_done": "Merged as a doc referenced by KEA-4.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEA-2",
+      "repository": "jweter/knowledge-engine-ai",
+      "title": "Resolve the two unused merged helpers (PRs #186, #187)",
+      "roadmap_ref": "Iron God 2026-10-27 report: merged code must be used by the product",
+      "addresses": "normalize_text (utils.py) and remove_html_tags have no callers; remove_html_tags has an open Codex P2 defect (quoted '>' and multiline tags)",
+      "why": "Unused, partly defective code was merged by the self-planning experiment; it should be wired with a correct implementation or removed.",
+      "consumer": "Source-text cleaning in the online-evidence path (KEA-4), or nothing (remove).",
+      "objective": "Either replace remove_html_tags with an html.parser-based implementation that handles the Codex cases and call both helpers from the source-text path, or remove both modules and their tests.",
+      "interfaces": [
+        "knowledge_engine_ai/remove_html_tags.py",
+        "knowledge_engine_ai/utils.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "No unused helper remains; if kept, '<a title=\"1 > 0\">Link</a>' yields 'Link' and multiline opening tags are removed."
+      ],
+      "tests": [
+        "Codex review cases as regression tests (if kept)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Repository preflight and CI.",
+      "definition_of_done": "Merged.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEA-3",
+      "repository": "jweter/knowledge-engine-ai",
+      "title": "Research must broaden after an indexed miss",
+      "roadmap_ref": "Issue #86 (BT-3); docs/roadmap/gqr2_general_query_plan.md",
+      "addresses": "Production Research mode terminates on the initial index/corpus miss",
+      "why": "A single-request report must keep searching online rather than fail on a local miss.",
+      "consumer": "Research Report v1 orchestration.",
+      "objective": "When indexed retrieval misses, broaden to online discovery through the existing contracts instead of terminating.",
+      "interfaces": [
+        "knowledge_engine_ai/orchestrator",
+        "knowledge_engine_ai/routing.py"
+      ],
+      "depends_on": [
+        "KEA-1"
+      ],
+      "acceptance_criteria": [
+        "A question with no local hits proceeds to online discovery and produces sources."
+      ],
+      "tests": [
+        "Orchestration test with an empty index and a fake online provider"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "Repository preflight and CI.",
+      "definition_of_done": "Merged; issue #86 closed.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEA-4",
+      "repository": "jweter/knowledge-engine-ai",
+      "title": "Online-evidence adapter and report orchestration",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 2",
+      "addresses": "One request orchestrates discovery, retrieval, evidence analysis, citation verification and the report",
+      "why": "This is the Research Report v1 core.",
+      "consumer": "knowledge-engine-web's one-request report UI (KEW-3).",
+      "objective": "Implement the online-evidence adapter behind existing contracts using the KEC-1 contract and KEC-3 extraction.",
+      "interfaces": [
+        "KEC-1",
+        "KEC-3",
+        "knowledge_engine_ai/synthesis.py"
+      ],
+      "depends_on": [
+        "KEA-1",
+        "KEC-1"
+      ],
+      "acceptance_criteria": [
+        "A report is produced from online sources only, with verifiable citations and explicit uncertainty."
+      ],
+      "tests": [
+        "Adapter tests with fake sources",
+        "Citation verification tests"
+      ],
+      "level": 4,
+      "complexity": "high",
+      "verification": "Repository preflight and CI.",
+      "definition_of_done": "Merged; consumed by KEW-3.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEA-5",
+      "repository": "jweter/knowledge-engine-ai",
+      "title": "End-to-end single-request report test including missing and contradictory sources",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 3; golden case issue #79",
+      "addresses": "Prove the report handles missing and contradictory sources with citation validation",
+      "why": "Evidence discipline is the product's differentiator (issue #129).",
+      "consumer": "The owner's research workflow.",
+      "objective": "Run the golden Monster Energy / blood pressure case and a contradictory-source case end to end and record the result.",
+      "interfaces": [
+        "KEA-4",
+        "KEC-4"
+      ],
+      "depends_on": [
+        "KEA-4",
+        "KEC-4"
+      ],
+      "acceptance_criteria": [
+        "Both cases produce reports whose claims cite real sources and state contradictions explicitly."
+      ],
+      "tests": [
+        "Acceptance runs with recorded evidence"
+      ],
+      "level": 5,
+      "complexity": "high",
+      "verification": "Product Reality evidence.",
+      "definition_of_done": "Evidence reviewed by the owner.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEW-1",
+      "repository": "jweter/knowledge-engine-web",
+      "title": "Fix the three baseline mypy errors in engineering/",
+      "roadmap_ref": "Iron God readiness check 2026-10-27 (pre-existing baseline failure, not a regression)",
+      "addresses": "engineering/compounding_metrics.py:278,282 assignment errors and engineering/reinvestment_controller.py:21 no-any-return fail the repository's own type check on unchanged main",
+      "why": "The repository cannot judge any change while its own preflight fails on main; the other 19 errors were an Iron God environment defect fixed in this release.",
+      "consumer": "The repository's canonical preflight and every future slice in this repository.",
+      "objective": "Correct the three type errors without changing behaviour so the repository preflight passes on main.",
+      "interfaces": [
+        "engineering/compounding_metrics.py",
+        "engineering/reinvestment_controller.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "python -m mypy knowledge_engine_web tests reports no errors with the knowledge-engine-ai pin installed."
+      ],
+      "tests": [
+        "Existing tests"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Repository preflight; then an owner-held readiness check returns the repository to the rotation.",
+      "definition_of_done": "Merged; readiness shows ready.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEW-2",
+      "repository": "jweter/knowledge-engine-web",
+      "title": "Audit /ask and Research Report for mandatory local-corpus dependencies",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 1; issue #93",
+      "addresses": "Progressive research UX must never terminate on the initial corpus miss",
+      "why": "The web flow must work without pre-ingested documents.",
+      "consumer": "KEW-3's one-request report UI, which replaces the corpus-dependent paths listed here.",
+      "objective": "List every web path that requires a local corpus or Ollama and the replacement call into the AI orchestration.",
+      "interfaces": [
+        "knowledge_engine_web/main.py",
+        "knowledge_engine_web/ai_orchestration.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A reviewed dependency list with replacements."
+      ],
+      "tests": [
+        "None (audit)"
+      ],
+      "level": 3,
+      "complexity": "low-medium",
+      "verification": "Owner/Claude review.",
+      "definition_of_done": "Merged as a doc referenced by KEW-3.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEW-3",
+      "repository": "jweter/knowledge-engine-web",
+      "title": "One-request report UI with observable progress and citations",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 2; issue #107",
+      "addresses": "Display progress, evidence, source links, provenance, uncertainty, final report and useful error states",
+      "why": "This is the user-visible Research Report experience.",
+      "consumer": "End users of the web interface.",
+      "objective": "Add the answer-first report page driven by KEA-4 with live progress and inspectable citations.",
+      "interfaces": [
+        "KEA-4",
+        "knowledge_engine_web/templates"
+      ],
+      "depends_on": [
+        "KEW-2",
+        "KEA-4"
+      ],
+      "acceptance_criteria": [
+        "A submitted question shows progress, then a report whose every citation links to its source."
+      ],
+      "tests": [
+        "Route and template tests",
+        "Browser smoke test"
+      ],
+      "level": 4,
+      "complexity": "high",
+      "verification": "Repository preflight, CI, and a browser check.",
+      "definition_of_done": "Merged and verified in a browser.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEW-4",
+      "repository": "jweter/knowledge-engine-web",
+      "title": "Verify a real online-source report and cleanup",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 3",
+      "addresses": "Product-native acceptance of the full web flow",
+      "why": "Synthetic tests do not prove the product works.",
+      "consumer": "The owner, as the Product Reality acceptance record for the web Research Report.",
+      "objective": "Run one real report through the web UI and confirm sources, citations and temporary-data cleanup.",
+      "interfaces": [
+        "KEW-3"
+      ],
+      "depends_on": [
+        "KEW-3"
+      ],
+      "acceptance_criteria": [
+        "Recorded evidence of a real report and an empty temporary cache afterwards."
+      ],
+      "tests": [
+        "Product-native acceptance"
+      ],
+      "level": 5,
+      "complexity": "medium",
+      "verification": "Product Reality evidence.",
+      "definition_of_done": "Evidence reviewed by the owner.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "KEW-5",
+      "repository": "jweter/knowledge-engine-web",
+      "title": "iPhone mobile smoke test for the real Knowledge Engine path",
+      "roadmap_ref": "Issue #140",
+      "addresses": "Mobile Product Reality for the real research path",
+      "why": "The owner uses the product from a phone.",
+      "consumer": "Mobile users.",
+      "objective": "Add the mobile smoke test described in #140 against the real path.",
+      "interfaces": [
+        "knowledge_engine_web/templates"
+      ],
+      "depends_on": [
+        "KEW-3"
+      ],
+      "acceptance_criteria": [
+        "The smoke test passes against the real report page at phone width."
+      ],
+      "tests": [
+        "Mobile smoke test"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "CI plus one manual phone check.",
+      "definition_of_done": "Merged; issue #140 closed.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "VS-1",
+      "repository": "jweter/VoiceStudio",
+      "title": "Classify the 86 baseline backend test failures",
+      "roadmap_ref": "Iron God readiness check 2026-10-27 (pre-existing baseline failure)",
+      "addresses": "86 of 8,562 backend tests fail on unchanged main (at least 13 in tests/test_worker_transport.py); the preflight takes 21 minutes",
+      "why": "Pre-existing failures must be separated from regressions before any automated change can be judged.",
+      "consumer": "VS-2 and the repository's canonical preflight.",
+      "objective": "Produce the full failing-test list and classify each as environment (sockets, ports, tokens, missing services on this laptop), flaky, or genuine defect, with evidence.",
+      "interfaces": [
+        "tests/test_worker_transport.py",
+        "engineering/preflight.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Every failing test is classified with a reproduction note."
+      ],
+      "tests": [
+        "None (classification)"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "Owner/Claude review.",
+      "definition_of_done": "Classification merged as a doc; VS-2 scoped from it.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "VS-2",
+      "repository": "jweter/VoiceStudio",
+      "title": "Remediate genuine baseline failures; quarantine environment-only ones explicitly",
+      "roadmap_ref": "Iron God readiness check 2026-10-27",
+      "addresses": "Return VoiceStudio's preflight to green on main",
+      "why": "Until main is green the rotation must skip VoiceStudio.",
+      "consumer": "The repository preflight and the rotation.",
+      "objective": "Fix genuine defects from VS-1; mark environment-only tests with an explicit, documented skip condition rather than deleting them.",
+      "interfaces": [
+        "Determined by VS-1"
+      ],
+      "depends_on": [
+        "VS-1"
+      ],
+      "acceptance_criteria": [
+        "Backend tests pass on main on Azathoth; no test is deleted or weakened."
+      ],
+      "tests": [
+        "Existing suite"
+      ],
+      "level": 3,
+      "complexity": "unknown until VS-1",
+      "verification": "Repository preflight and an owner-held readiness check.",
+      "definition_of_done": "Readiness shows ready.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "VS-3",
+      "repository": "jweter/VoiceStudio",
+      "title": "Reconcile and verify the existing Singing Mode S2 project-model branch",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 1",
+      "addresses": "Singing Mode first usable milestone",
+      "why": "The roadmap says reconcile the existing branch rather than rebuild it.",
+      "consumer": "VS-4 and VS-5.",
+      "objective": "Locate the S2 project-model branch, rebase or reconcile it onto main, and verify it with native tests.",
+      "interfaces": [
+        "Singing Mode S2 branch"
+      ],
+      "depends_on": [
+        "VS-2"
+      ],
+      "acceptance_criteria": [
+        "The S2 project model is on main with passing tests."
+      ],
+      "tests": [
+        "Existing S2 tests"
+      ],
+      "level": 4,
+      "complexity": "medium-high",
+      "verification": "Repository preflight and CI.",
+      "definition_of_done": "Merged.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "VS-4",
+      "repository": "jweter/VoiceStudio",
+      "title": "Bounded pitch and timing analysis and transformation contracts",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 2",
+      "addresses": "Pitch/timing quality validation for singing generation",
+      "why": "Singing quality must be measurable, not judged only by ear.",
+      "consumer": "VS-5's generation and preview.",
+      "objective": "Define and implement pitch and timing analysis and transformation contracts with native tests.",
+      "interfaces": [
+        "VS-3 project model"
+      ],
+      "depends_on": [
+        "VS-3"
+      ],
+      "acceptance_criteria": [
+        "Contracts reject out-of-range pitch and timing and are covered by native tests."
+      ],
+      "tests": [
+        "Native contract tests"
+      ],
+      "level": 4,
+      "complexity": "high",
+      "verification": "Repository preflight and CI.",
+      "definition_of_done": "Merged; consumed by VS-5.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "VS-5",
+      "repository": "jweter/VoiceStudio",
+      "title": "Connect style selection, generation, preview and export",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 3",
+      "addresses": "Import speech, choose a singing style, generate, preview playback, export audio",
+      "why": "This is the first usable Singing Mode workflow.",
+      "consumer": "VoiceStudio users.",
+      "objective": "Wire the workflow end to end and conduct audible Product Reality acceptance.",
+      "interfaces": [
+        "VS-3",
+        "VS-4"
+      ],
+      "depends_on": [
+        "VS-4"
+      ],
+      "acceptance_criteria": [
+        "A real recording becomes an exported singing performance judged acceptable by the owner."
+      ],
+      "tests": [
+        "Workflow integration tests",
+        "Audible acceptance"
+      ],
+      "level": 5,
+      "complexity": "high",
+      "verification": "Product Reality evidence.",
+      "definition_of_done": "Owner-accepted export.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "EW-1",
+      "repository": "jweter/Project-Everward",
+      "title": "Inventory playable mechanics and the smallest missing loop dependency",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 1",
+      "addresses": "First playable Unreal milestone: one coherent gameplay loop",
+      "why": "Umbrella issues must be decomposed into bounded dependency-ready slices.",
+      "consumer": "EW-3's gameplay integration slice, which implements the missing dependency named here.",
+      "objective": "List which of movement, scanning, resource collection, construction/progression and the repeatable objective work in-engine today and name the smallest missing dependency.",
+      "interfaces": [
+        "docs/CURRENT_EXECUTION_PLAN.md",
+        "docs/PHASE2_VERTICAL_SLICE_PLAN.md"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A reviewed inventory with in-engine evidence for each mechanic."
+      ],
+      "tests": [
+        "None (audit)"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "Owner review with in-editor evidence.",
+      "definition_of_done": "Inventory merged; EW-3 scoped.",
+      "status": "proposed",
+      "implementer": "claude-or-owner (Unreal/C++: excluded from the Python-only local worker)"
+    },
+    {
+      "id": "EW-2",
+      "repository": "jweter/Project-Everward",
+      "title": "Low-spec development and playtest mode for 16 GB / integrated graphics",
+      "roadmap_ref": "Issue #228",
+      "addresses": "The owner's laptop (16 GB, Intel iGPU) is the available test machine",
+      "why": "In-engine Product Reality verification needs a mode that runs on this hardware.",
+      "consumer": "Every later Everward verification on Azathoth.",
+      "objective": "Add the low-spec mode described in #228 (scalability settings and a reduced test map).",
+      "interfaces": [
+        "Unreal project settings"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "The editor and a playtest run at usable frame rates on Azathoth."
+      ],
+      "tests": [
+        "Native Unreal checks"
+      ],
+      "level": 3,
+      "complexity": "medium",
+      "verification": "In-engine evidence on Azathoth.",
+      "definition_of_done": "Merged; issue #228 closed.",
+      "status": "proposed",
+      "implementer": "claude-or-owner (Unreal)"
+    },
+    {
+      "id": "EW-3",
+      "repository": "jweter/Project-Everward",
+      "title": "Implement one bounded gameplay integration slice",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 2; issues #162, #163",
+      "addresses": "The missing loop dependency EW-1 names (likely scan-to-mining integration)",
+      "why": "One connected loop matters more than more disconnected subsystems.",
+      "consumer": "The first playable loop.",
+      "objective": "Implement the EW-1 dependency with native Unreal checks.",
+      "interfaces": [
+        "Determined by EW-1"
+      ],
+      "depends_on": [
+        "EW-1",
+        "EW-2"
+      ],
+      "acceptance_criteria": [
+        "The integration works in a local UE build with native checks."
+      ],
+      "tests": [
+        "Native Unreal checks"
+      ],
+      "level": 4,
+      "complexity": "high",
+      "verification": "In-engine evidence.",
+      "definition_of_done": "Merged with evidence.",
+      "status": "proposed",
+      "implementer": "claude-or-owner (Unreal)"
+    },
+    {
+      "id": "EW-4",
+      "repository": "jweter/Project-Everward",
+      "title": "CI lane that compiles and packages the Unreal project",
+      "roadmap_ref": "Issue #160",
+      "addresses": "No CI currently proves the Unreal project builds",
+      "why": "Without a build lane, automated PRs cannot be judged.",
+      "consumer": "Every Everward pull request.",
+      "objective": "Design a compile/package lane feasible for this project (self-hosted runner on Azathoth or a lighter compile-only check).",
+      "interfaces": [
+        ".github/workflows"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A pull request shows a compile result."
+      ],
+      "tests": [
+        "The lane itself"
+      ],
+      "level": 4,
+      "complexity": "high (Unreal on GitHub runners is heavy)",
+      "verification": "A test pull request.",
+      "definition_of_done": "Merged; issue #160 closed.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    },
+    {
+      "id": "EW-5",
+      "repository": "jweter/Project-Everward",
+      "title": "Verify the complete first loop in editor and runtime",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md next slice 3; issue #168",
+      "addresses": "Vertical-slice exit gate: one probe -> bootstrap -> successor -> departure",
+      "why": "This is the milestone's proof of done.",
+      "consumer": "The owner, as the milestone's in-engine acceptance evidence (issue #168 exit gate).",
+      "objective": "Play the loop end to end and record reproducible evidence.",
+      "interfaces": [
+        "EW-3"
+      ],
+      "depends_on": [
+        "EW-3"
+      ],
+      "acceptance_criteria": [
+        "Recorded reproducible playthrough of the complete loop."
+      ],
+      "tests": [
+        "Product Reality"
+      ],
+      "level": 5,
+      "complexity": "high",
+      "verification": "Owner playtest.",
+      "definition_of_done": "Evidence reviewed by the owner.",
+      "status": "proposed",
+      "implementer": "claude-or-owner"
+    }
+  ]
+}
