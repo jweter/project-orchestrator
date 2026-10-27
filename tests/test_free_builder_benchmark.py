@@ -23,6 +23,7 @@ from benchmark import (  # noqa: E402
 
 GOOD = """import math
 
+
 def snap_beats(seconds, bpm):
     if not math.isfinite(bpm) or bpm <= 0:
         raise ValueError("bpm must be positive and finite")
