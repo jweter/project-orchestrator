@@ -140,10 +140,19 @@ def _now() -> str:
 
 
 def remove_tree(path: Path) -> None:
-    """Delete a scratch tree; Git object files are read-only on Windows."""
-    def clear_readonly(func, target, _exc):
-        os.chmod(target, stat.S_IWRITE)
-        func(target)
+    """Delete a scratch tree; Git object files are read-only on Windows.
+
+    An entry that vanishes mid-delete (a child process finishing its own
+    cleanup) is already gone, which is the goal, so it is not an error.
+    """
+    def clear_readonly(func, target, exc):
+        if isinstance(exc, FileNotFoundError):
+            return
+        try:
+            os.chmod(target, stat.S_IWRITE)
+            func(target)
+        except FileNotFoundError:
+            pass
     if path.exists():
         shutil.rmtree(path, onexc=clear_readonly)
 

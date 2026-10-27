@@ -1033,9 +1033,15 @@ def commissioning_products(
         })
         return []
     try:
-        (advance or advance_commissioning_lane)(
+        canon = (advance or advance_commissioning_lane)(
             state_root, repo_root, supervisor=supervisor, release_sha=release_sha or "",
         )
+        if advance is None:
+            # Portfolio rotation: it always handles revocation, harvest and
+            # publications; it dispatches only when commissioning is idle.
+            from .iron_god_product_lane import advance_product_lane
+            advance_product_lane(state_root, repo_root, supervisor=supervisor, release_sha=release_sha or "",
+                                 allow_dispatch=(canon or {}).get("status") == "IDLE_NO_READY_SLICE")
     except Exception as exc:  # The lane must not take the supervisor down.
         atomic_json(state_root / "iron-god-canon" / "lane-status.json", {
             "schema_version": 1, "status": "LANE_ERROR",

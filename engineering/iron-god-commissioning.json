@@ -246,5 +246,13 @@
       },
       "supervisor_acceptance_test": "from copy import deepcopy\n\nfrom project_orchestrator.capability_profile_report import summarize_capability_profile\n\n\ndef test_supervisor_acceptance_empty():\n    assert summarize_capability_profile({}) == {'model': None, 'max_passing_level': 0, 'levels': []}\n\n\ndef test_supervisor_acceptance_sorts_levels_numerically():\n    profile = {'model': 'ollama/qwen2.5-coder:7b', 'max_passing_level': 2, 'extra': True, 'levels': {\n        '10': {'pass_rate': 0.0, 'status': 'SKIPPED_LOWER_LEVEL_FAILED'},\n        '2': {'pass_rate': 1.0, 'median_wall_s': 48.2, 'status': 'MEASURED', 'runs': []},\n        '1': {'pass_rate': 1.0, 'median_wall_s': 32.1, 'status': 'MEASURED'},\n    }}\n    before = deepcopy(profile)\n    assert summarize_capability_profile(profile) == {\n        'model': 'ollama/qwen2.5-coder:7b', 'max_passing_level': 2, 'levels': [\n            {'level': 1, 'pass_rate': 1.0, 'median_wall_s': 32.1, 'status': 'MEASURED'},\n            {'level': 2, 'pass_rate': 1.0, 'median_wall_s': 48.2, 'status': 'MEASURED'},\n            {'level': 10, 'pass_rate': 0.0, 'median_wall_s': None, 'status': 'SKIPPED_LOWER_LEVEL_FAILED'},\n        ]}\n    assert profile == before\n"
     }
-  ]
+  ],
+  "portfolio_rotation": {
+    "enabled": true,
+    "owner_decision": "2026-10-26: open Iron God to every portfolio product repository, random first pick then round-robin; start from GitHub main; publish by pull request, CI green, squash merge",
+    "exclude": [
+      "jweter/project-orchestrator"
+    ],
+    "capability_level": 3
+  }
 }

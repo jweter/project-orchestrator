@@ -1,0 +1,610 @@
+"""Single bounded Iron God worker for one self-planned product turn.
+
+The product lane launches this process for exactly one portfolio repository
+turn in an isolated worktree of the lane's own clone, based on the freshly
+fetched ``origin/main``. The turn has two short steps sized for the local
+model (measured on Azathoth: a whole self-directed aider session against a
+large repository rewrote existing files from imagination and applied nothing):
+
+1. Plan: one direct model call with a bounded brief (the repository's agent
+   contract and README openings, its package layout, the shared working
+   memory) returns a JSON slice: one NEW module, one NEW test file, an
+   objective and acceptance criteria. The plan is validated before any code.
+2. Build: the proven commissioning setup -- aider with exactly those two files,
+   no repository map, whole-file edits.
+
+The worker then enforces the scope envelope and the builder's change gates,
+commits, and runs the repository's canonical preflight at the exact head
+under the supervised runtime, re-checking the owner's execution authority
+throughout. It never pushes, merges or publishes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import keyword
+import os
+import sys
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any, Callable
+
+ROOT = Path(__file__).resolve().parents[1]
+for _path in (str(ROOT / "src"), str(ROOT)):
+    if _path in sys.path:
+        sys.path.remove(_path)
+    sys.path.insert(0, _path)
+
+from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
+from project_orchestrator.execution_runtime import NativeWindowsRuntime, RuntimeRequest  # noqa: E402
+from project_orchestrator.iron_god_calibration import remove_tree  # noqa: E402
+from scripts.iron_god_canon_worker import (  # noqa: E402
+    _git,
+    _now,
+    _tail,
+    _under,
+    _write,
+    changed_paths,
+    lean_aider_invocation,
+    private_temp_env,
+    worker_message,
+)
+
+PREFLIGHT_COMMAND = ("engineering/preflight.py",)
+NOTE_CHARS = 600
+BRIEF_CHARS = 2500
+MAX_TEXT = 1200  # Canon's bounded handoff text
+PLAN_ATTEMPTS = 2
+
+
+class PlanRejected(ValueError):
+    """The model's slice plan is unusable; nothing was built."""
+
+
+def repository_brief(worktree: Path, base: str, roots: list[str]) -> str:
+    """Bounded planning context: agent contract + README openings and the package layout."""
+    parts = []
+    for name in ("AGENTS.md", "README.md"):
+        path = worktree / name
+        if path.is_file():
+            parts.append(f"--- {name} (opening) ---\n" + path.read_text(encoding="utf-8", errors="ignore")[:BRIEF_CHARS])
+    listed = _git(worktree, "ls-tree", "-r", "--name-only", base).stdout.splitlines()
+    modules = sorted({p for p in listed if p.endswith(".py") and _under(p, roots) and "/test" not in "/" + p})
+    packages = sorted({p.rsplit("/", 1)[0] + "/" for p in modules})
+    parts.append("--- packages ---\n" + "\n".join(packages[:30]))
+    parts.append("--- some existing modules ---\n" + "\n".join(modules[:60]))
+    return "\n\n".join(parts)
+
+
+def planning_prompt(packet: dict[str, Any], brief: str) -> str:
+    memory = (packet.get("working_memory") or "").strip()[:1500]
+    return (
+        f"You plan ONE small slice of work for the repository {packet['repository']}.\n"
+        "Choose ONE new pure Python function that is useful for this repository's purpose. It takes and returns "
+        "plain values (str, int, float, bool, list, dict, tuple, None): no files, audio, images, network, time or "
+        "randomness, and it uses only the Python standard library. It goes in ONE new module inside one of the "
+        "existing packages listed below.\n\n"
+        f"{brief}\n\n{memory}\n\n"
+        'Reply with JSON only: {"function_name": "<snake_case name>", '
+        '"signature": "<def line, e.g. def clamp(value: int, low: int, high: int) -> int:>", '
+        '"module_path": "<new module path inside an existing package>", '
+        '"objective": "<the exact rule the function applies, precise enough that two people would write the '
+        'same code; not just the topic>", '
+        '"examples": [{"call": "<a Python call of the function with literal arguments>", '
+        '"why": "<the short arithmetic or rule that gives the result>", '
+        '"expected": <the exact JSON value it must return>}, ...3 to 6 examples covering normal and edge cases], '
+        "Every argument an example passes must be a parameter of the signature, and every expected value must "
+        "follow from its 'why'. "
+        '"note": "<one sentence: why this helps the repository and what could come next>"}'
+    )
+
+
+def ollama_json(prompt: str, *, model: str | None = None, timeout: int = 1800) -> dict[str, Any]:
+    from scripts.autonomous_slice_builder import MODEL
+
+    base = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
+    name = (model or MODEL).split("/", 1)[-1]
+    body = {"model": name, "prompt": prompt, "stream": False, "format": "json",
+            "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 1200}}
+    if name != MODEL.split("/", 1)[-1]:
+        body["keep_alive"] = 0  # a larger planner must leave RAM before the builder model loads (16 GB host)
+    request = urllib.request.Request(base + "/api/generate", data=json.dumps(body).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        reply = json.load(response)
+    return json.loads(reply.get("response") or "{}")
+
+
+def import_path(module: str) -> str:
+    """Dotted import path for a module file, honouring a src/ layout."""
+    parts = module[:-3].split("/")
+    return ".".join(parts[1:] if parts[0] == "src" else parts)
+
+
+def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) -> dict[str, Any]:
+    """Fail-closed checks before any code: one NEW module in an existing package, exact literal examples."""
+    if not isinstance(plan, dict):
+        raise PlanRejected("PLAN_NOT_AN_OBJECT")
+    name = str(plan.get("function_name") or "")
+    if not name.isidentifier() or keyword.iskeyword(name) or name.startswith("_"):
+        raise PlanRejected(f"PLAN_FUNCTION_NAME_INVALID: {name[:60]}")
+    module = str(plan.get("module_path") or "").replace("\\", "/")
+    if not module.endswith(".py") or module.startswith("/") or ".." in module.split("/") or "/" not in module:
+        raise PlanRejected(f"PLAN_PATH_INVALID: {module[:120]}")
+    if not _under(module, packet["paths"]) or module.startswith("tests/"):
+        raise PlanRejected("PLAN_PATH_OUTSIDE_ENVELOPE")
+    test = f"tests/test_{module.rsplit('/', 1)[-1]}"
+    forbidden = [*packet["planning"]["forbidden_paths"], *(packet.get("avoid_paths") or [])]
+    if _under(module, forbidden) or _under(test, forbidden):
+        raise PlanRejected("PLAN_PATH_FORBIDDEN_OR_UNDER_REVIEW")
+    for path in (module, test):
+        if _git(worktree, "cat-file", "-e", f"{base}:{path}").returncode == 0:
+            raise PlanRejected(f"PLAN_WOULD_EDIT_EXISTING_FILE: {path}")
+    package = module.rsplit("/", 1)[0]
+    if _git(worktree, "cat-file", "-e", f"{base}:{package}/__init__.py").returncode != 0:
+        raise PlanRejected(f"PLAN_PACKAGE_MISSING: {package}")
+    signature = " ".join(str(plan.get("signature") or "").split())
+    if not signature.startswith(f"def {name}(") or len(signature) > 300:
+        raise PlanRejected("PLAN_SIGNATURE_INVALID")
+    try:
+        declared = ast.parse(signature.rstrip(":") + ": ...").body[0].args
+    except (SyntaxError, IndexError, AttributeError):
+        raise PlanRejected("PLAN_SIGNATURE_INVALID") from None
+    params = [a.arg for a in [*declared.posonlyargs, *declared.args, *declared.kwonlyargs]]
+    required = len(declared.posonlyargs) + len(declared.args) - len(declared.defaults)
+    objective = " ".join(str(plan.get("objective") or "").split())
+    if not 20 <= len(objective) <= 600:
+        raise PlanRejected("PLAN_SPEC_INCOMPLETE")
+    examples = []
+    for item in plan.get("examples") or []:
+        try:
+            call = " ".join(str(item["call"]).split())
+            tree = ast.parse(call, mode="eval").body
+            if not (isinstance(tree, ast.Call) and isinstance(tree.func, ast.Name) and tree.func.id == name):
+                raise ValueError("not a call of the planned function")
+            for arg in [*tree.args, *(k.value for k in tree.keywords)]:
+                ast.literal_eval(arg)
+            expected = repr(item["expected"])
+            ast.literal_eval(expected)
+            if not str(item.get("why") or "").strip():
+                raise ValueError("an example must show why it has its expected value")
+            if "b'" in call or 'b"' in call or (isinstance(item["expected"], str) and item["expected"][:2] in {
+                    "b'", 'b"'}):
+                raise ValueError("bytes cannot be expressed as JSON plan values")
+        except (KeyError, TypeError, ValueError, SyntaxError):
+            continue
+        keywords = [k.arg for k in tree.keywords]
+        positional = len(tree.args)
+        bound = set(params[:positional]) | set(keywords)
+        if (any(k not in params for k in keywords) or positional > len(declared.posonlyargs) + len(declared.args)
+                or not set(params[:required]) <= bound):
+            raise PlanRejected(f"PLAN_EXAMPLE_DOES_NOT_MATCH_SIGNATURE: {call[:120]}")
+        examples.append({"call": call, "expected": expected})
+    if not 3 <= len(examples) <= 8:
+        raise PlanRejected(f"PLAN_EXAMPLES_INSUFFICIENT: {len(examples)} usable")
+    criteria = [f"{e['call']} returns {e['expected']}" for e in examples]
+    criteria.append("the module imports only the Python standard library")
+    task = (f"Create {module} defining exactly this function: {signature} -- {objective} "
+            "Keep it a pure function with a docstring.")
+    if any(len(text) > MAX_TEXT for text in [task, *criteria]):
+        raise PlanRejected("PLAN_TEXT_UNBOUNDED")
+    return {"function_name": name, "signature": signature, "objective": objective, "task": task,
+            "module_path": module, "test_path": test, "import_path": import_path(module),
+            "examples": examples, "acceptance_criteria": criteria,
+            "note": " ".join(str(plan.get("note") or "").split())[:NOTE_CHARS]}
+
+
+def render_tests(plan: dict[str, Any]) -> str:
+    """The slice's regression tests, written by the worker from the plan's exact examples (never by the model)."""
+    lines = [f"from {plan['import_path']} import {plan['function_name']}", ""]
+    for index, example in enumerate(plan["examples"], 1):
+        lines += ["", f"def test_{plan['function_name']}_example_{index}():",
+                  f"    assert {example['call']} == {example['expected']}", ""]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+CODING_GUIDE = (
+    "Coding guide: write the complete module; type hints and a short docstring on the function; handle empty "
+    "input explicitly; return values, never print; no files, network, time or randomness; standard library only; "
+    "keep it under 60 lines; follow the style of the example module from this package, if one is shown."
+)
+
+
+def style_example(worktree: Path, module: str, limit: int = 1500) -> str:
+    """The smallest real module in the target package, as text only (its path is never named)."""
+    package = worktree / module.rsplit("/", 1)[0]
+    candidates = []
+    for path in package.glob("*.py"):
+        if path.name == "__init__.py":
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if 8 <= text.count("\n") and len(text) <= limit and "def " in text:
+            candidates.append((len(text), text))
+    return min(candidates)[1] if candidates else ""
+
+
+def build_message(packet: dict[str, Any], plan: dict[str, Any], worktree: Path | None = None) -> str:
+    """The proven commissioning prompt naming only the planned module, plus the lean coding guide."""
+    message = worker_message({"task": plan["task"], "paths": [plan["module_path"]],
+                              "planning": {"acceptance_criteria": plan["acceptance_criteria"]}})
+    example = style_example(worktree, plan["module_path"]) if worktree is not None else ""
+    message += "\n\n" + CODING_GUIDE
+    if example:
+        message += "\n\nStyle example (an existing module in this package; do not edit it):\n```\n" + example + "\n```"
+    return message
+
+
+def repair_message(plan: dict[str, Any], failure: str) -> str:
+    """The failing assertions, bounded, for one repair of the module only (the tests are the spec)."""
+    lines = [line for line in failure.splitlines() if line.startswith(("E ", ">", "FAILED"))][:30]
+    return (f"The function in {plan['module_path']} does not yet meet its specification. Its tests in "
+            f"{plan['test_path']} are correct and must not change. Fix only {plan['module_path']} so that "
+            "every listed example holds:\n" + "\n".join(f"- {c}" for c in plan["acceptance_criteria"])
+            + "\n\nFailing assertions:\n" + "\n".join(lines))
+
+
+def stdlib_only_failure(worktree: Path, module: str) -> str | None:
+    """The new module may import only the standard library and its own top-level package."""
+    try:
+        tree = ast.parse((worktree / module).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return "MODULE_UNPARSEABLE"
+    own = import_path(module).split(".")[0]
+    for node in ast.walk(tree):
+        names = [a.name for a in node.names] if isinstance(node, ast.Import) else (
+            [node.module or ""] if isinstance(node, ast.ImportFrom) and node.level == 0 else [])
+        for name in names:
+            top = name.split(".")[0]
+            if top and top != own and top not in sys.stdlib_module_names:
+                return f"NON_STDLIB_IMPORT: {name}"
+    return None
+
+
+def production_planner(worktree: Path, packet: dict[str, Any], check: Callable[[], None],
+                       feedback: str = "") -> dict[str, Any]:
+    check()
+    prompt = planning_prompt(packet, repository_brief(worktree, packet["base_sha"], packet["paths"]))
+    raw = ollama_json(prompt + ("\n\n" + feedback if feedback else ""), model=packet.get("planner_model"))
+    check()
+    return raw
+
+
+def production_agent(worktree: Path, message: str, files: list[str], check: Callable[[], None]) -> None:
+    from scripts.autonomous_slice_builder import MAX_AIDER_SECONDS, _acquire_ollama_lock, aider_invocation
+    import shutil
+
+    argv, env = lean_aider_invocation(aider_invocation, message, files)
+    lock = _acquire_ollama_lock()
+    try:
+        result = NativeWindowsRuntime().execute_supervised(
+            RuntimeRequest(tuple(argv), worktree, env, MAX_AIDER_SECONDS), check, interval=2.0,
+        )
+    finally:
+        shutil.rmtree(lock, ignore_errors=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"AIDER_EXIT_{result.returncode}: {_tail(result.stderr)[-300:]}")
+
+
+def transcript_tail(worktree: Path, limit: int = 6000) -> str:
+    """Bounded end of aider's chat history: diagnosis evidence for a failed turn, never authority."""
+    try:
+        text = (worktree / ".aider.chat.history.md").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    return text[-limit:]
+
+
+def quick_test(worktree: Path, test: str, timeout: int = 300) -> dict[str, Any]:
+    """Fail fast: the slice's own tests (seconds) before the repository's full preflight (minutes)."""
+    import subprocess
+
+    temp = worktree.parent / f"{worktree.name}.quick.tmp"
+    env = private_temp_env({**os.environ, "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)]),
+                            "PYTHONDONTWRITEBYTECODE": "1"}, temp)  # leave nothing behind in the worktree
+    try:
+        proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", test], cwd=worktree,
+                              env=env, capture_output=True, text=True, check=False, timeout=timeout)
+        return {"command": f"python -m pytest -q {test}", "returncode": proc.returncode, "ok": proc.returncode == 0,
+                "output_tail": _tail(proc.stdout + "\n" + proc.stderr)}
+    except subprocess.TimeoutExpired:
+        return {"command": f"python -m pytest -q {test}", "returncode": None, "ok": False, "output_tail": "TIMEOUT"}
+    finally:
+        remove_tree(temp)
+
+
+def production_gates(worktree: Path, base: str, paths: list[str]) -> str | None:
+    from scripts.autonomous_slice_builder import generated_change_failure
+
+    return generated_change_failure(worktree, base, paths)
+
+
+ENV_INSTALL_SECONDS = 3600
+
+
+def poetry_lock_pins(lock: Path) -> list[str]:
+    """``name==version`` for every locked package (all groups) whose markers apply to this platform."""
+    import tomllib
+
+    try:
+        from packaging.markers import Marker
+    except ImportError:  # without packaging, keep every pin; pip rejects inapplicable wheels itself
+        Marker = None
+    pins, indexes = [], set()
+    for package in tomllib.loads(lock.read_text(encoding="utf-8")).get("package", []):
+        marker = package.get("markers")
+        if isinstance(marker, dict):  # per-group markers: apply if any group's marker applies
+            marker = " or ".join(f"({m})" for m in marker.values() if m)
+        if Marker is not None and isinstance(marker, str) and marker.strip():
+            try:
+                if not Marker(marker).evaluate():
+                    continue
+            except Exception:
+                pass
+        source = package.get("source") or {}
+        if source.get("type") in {"directory", "file", "git", "url"}:
+            continue  # local/VCS sources are not reproducible from an index
+        if source.get("type") == "legacy" and source.get("url"):
+            indexes.add(f"--extra-index-url {source['url']}")  # e.g. the PyTorch CPU wheel index
+        pins.append(f"{package['name']}=={package['version']}")
+    return [*sorted(indexes), *sorted(pins)]
+
+
+def repository_environment(worktree: Path, check: Callable[[], None]) -> dict[str, Any]:
+    """A persistent installed environment per repository, shared by every turn's worktree.
+
+    A fresh worktree has no virtualenv, so a Poetry or uv preflight would create an
+    empty one and fail (measured: ``No module named ruff``). The environment lives
+    beside the lane's clone and is reinstalled only when the lockfile changes.
+    """
+    import hashlib
+
+    common = _git(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
+    clone = Path(common).parent
+    kind = "poetry" if (worktree / "poetry.lock").is_file() else "uv" if (worktree / "uv.lock").is_file() else None
+    record: dict[str, Any] = {"kind": kind or "system", "overrides": {}, "python": sys.executable}
+    if kind is None:
+        return record
+    envdir = clone.parent / ".envs" / clone.name
+    scripts = envdir / ("Scripts" if os.name == "nt" else "bin")
+    python = scripts / ("python.exe" if os.name == "nt" else "python")
+    digest = hashlib.sha256(b"".join((worktree / name).read_bytes() for name in (f"{kind}.lock", "pyproject.toml")
+                                     if (worktree / name).is_file())).hexdigest()
+    overrides = {"VIRTUAL_ENV": str(envdir), "PATH": str(scripts) + os.pathsep + os.environ.get("PATH", ""),
+                 "POETRY_VIRTUALENVS_CREATE": "false", "UV_PROJECT_ENVIRONMENT": str(envdir)}
+    record.update(overrides=overrides, python=str(python), envdir=str(envdir), lock_sha256=digest)
+    marker = envdir / ".iron-god-env.json"
+    try:
+        if json.loads(marker.read_text(encoding="utf-8")).get("lock_sha256") == digest and python.is_file():
+            record["status"] = "REUSED"
+            return record
+    except (OSError, ValueError):
+        pass
+    if not python.is_file():
+        envdir.parent.mkdir(parents=True, exist_ok=True)
+        import subprocess
+
+        made = subprocess.run([sys.executable, "-m", "venv", str(envdir)], capture_output=True, text=True,
+                              check=False, timeout=600)
+        if made.returncode != 0:
+            raise RuntimeError("ENVIRONMENT_VENV_FAILED: " + made.stderr[-300:])
+    if kind == "poetry":
+        # Poetry's own installer cannot reach PyPI on this machine while pip can (measured), so the
+        # exact versions pinned in poetry.lock are installed with the environment's pip.
+        requirements = envdir / "iron-god-lock-requirements.txt"
+        requirements.write_text("\n".join(poetry_lock_pins(worktree / "poetry.lock")) + "\n", encoding="utf-8")
+        argv = (str(python), "-m", "pip", "install", "--disable-pip-version-check", "-q", "-r", str(requirements))
+    else:
+        argv = ("uv", "sync", "--frozen")
+    result = NativeWindowsRuntime().execute_supervised(
+        RuntimeRequest(argv, worktree, {**os.environ, **overrides}, ENV_INSTALL_SECONDS), check, interval=2.0,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ENVIRONMENT_INSTALL_FAILED: {_tail((result.stdout or '') + (result.stderr or ''))[-400:]}")
+    marker.write_text(json.dumps({"lock_sha256": digest, "kind": kind}), encoding="utf-8")
+    record["status"] = "INSTALLED"
+    return record
+
+
+def production_preflight(worktree: Path, check: Callable[[], None], timeout: int) -> dict[str, Any]:
+    temp = worktree.parent / f"{worktree.name}.tmp"
+    try:
+        environment = repository_environment(worktree, check)
+    except RuntimeError as exc:
+        if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+            raise
+        return {"command": "prepare repository environment", "returncode": None, "ok": False,
+                "output_tail": str(exc)[:1500], "environment": "FAILED"}
+    env = private_temp_env({**os.environ, **environment["overrides"],
+                            "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree),
+                                                           os.environ.get("PYTHONPATH", "")])}, temp)
+    try:
+        result = NativeWindowsRuntime().execute_supervised(
+            RuntimeRequest((environment["python"], *PREFLIGHT_COMMAND), worktree, env, timeout), check, interval=2.0,
+        )
+        return {"command": "python engineering/preflight.py", "returncode": result.returncode,
+                "ok": result.returncode == 0, "environment": f"{environment['kind']}:{environment.get('status', '-')}",
+                "output_tail": _tail((result.stdout or "") + "\n" + (result.stderr or ""))}
+    finally:
+        remove_tree(temp)
+
+
+def execute_product_packet(
+    packet: dict[str, Any],
+    *,
+    authority: Callable[[], bool],
+    plan: Callable[[Path, dict[str, Any], Callable[[], None], str], Any] = production_planner,
+    run_agent: Callable[[Path, str, list[str], Callable[[], None]], Any] = production_agent,
+    gates: Callable[[Path, str, list[str]], str | None] = production_gates,
+    preflight: Callable[[Path, Callable[[], None], int], dict[str, Any]] = production_preflight,
+) -> dict[str, Any]:
+    """Plan and implement one product turn; returns the Canon handback (never raises for work failures)."""
+    worktree = Path(packet["worktree"])
+    base = packet["base_sha"]
+    handback: dict[str, Any] = {
+        "schema_version": 1, "packet_id": packet["packet_id"], "project": packet["project"],
+        "repository": packet["repository"], "branch": packet["branch"], "head_sha": base,
+        "probe_id": packet["packet_id"], "pattern_id": "iron-god-product-turn",
+        "evidence_ref": f"local://iron-god-products/{packet['packet_id']}/handback",
+        "observed_at": _now(), "status": "ENVIRONMENT_FAILURE", "summary": "",
+        "changed_paths": [], "verification": [], "note": "", "transcript_tail": "", "plan": None,
+        "plan_rejections": [],
+    }
+
+    def finish(status: str, summary: str) -> dict[str, Any]:
+        head = _git(worktree, "rev-parse", "HEAD")
+        handback.update(status=status, summary=summary, observed_at=_now(),
+                        head_sha=head.stdout.strip() if head.returncode == 0 else base)
+        return handback
+
+    if not authority():
+        return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_DENIED_BEFORE_START")
+    head = _git(worktree, "rev-parse", "HEAD")
+    branch = _git(worktree, "rev-parse", "--abbrev-ref", "HEAD")
+    if head.returncode != 0 or head.stdout.strip() != base:
+        return finish("ENVIRONMENT_FAILURE", "WORKTREE_NOT_AT_EXACT_BASE")
+    if branch.stdout.strip() != packet["branch"] or changed_paths(worktree):
+        return finish("ENVIRONMENT_FAILURE", "WORKTREE_IDENTITY_OR_CLEANLINESS_UNVERIFIED")
+
+    def check() -> None:
+        if not authority():
+            raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
+
+    try:
+        feedback, rejections = "", []
+        for _attempt in range(PLAN_ATTEMPTS):  # one bounded repair: the planner hears exactly why it was refused
+            try:
+                slice_plan = validate_plan(plan(worktree, packet, check, feedback), worktree, base, packet)
+                break
+            except PlanRejected as exc:
+                rejections.append(str(exc))
+                feedback = f"Your previous plan was rejected: {exc}. Fix that and plan again."
+            except ValueError as exc:  # malformed or truncated JSON reply
+                rejections.append(f"PLAN_REPLY_NOT_JSON: {str(exc)[:120]}")
+                feedback = "Your previous reply was not complete JSON. Reply with complete, shorter JSON only."
+        else:
+            handback["plan_rejections"] = rejections
+            return finish("FAIL", f"PLAN_REJECTED: {' | '.join(rejections)}"[:400])
+        handback["plan_rejections"] = rejections
+    except RuntimeError as exc:
+        if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+            return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_PLANNING")
+        return finish("ENVIRONMENT_FAILURE", f"PLANNER_FAILED: {str(exc)[:300]}")
+    except Exception as exc:  # A malformed reply or an unreachable model is a failed plan, not a crash.
+        return finish("FAIL", f"PLAN_REJECTED: {type(exc).__name__}: {str(exc)[:200]}")
+    handback["plan"] = slice_plan
+    handback["note"] = slice_plan["note"]
+    module, test = slice_plan["module_path"], slice_plan["test_path"]
+    (worktree / test).parent.mkdir(parents=True, exist_ok=True)
+    (worktree / test).write_text(render_tests(slice_plan), encoding="utf-8")  # the spec, written by the worker
+    try:
+        run_agent(worktree, build_message(packet, slice_plan, worktree), [module], check)
+    except RuntimeError as exc:
+        if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+            return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_IMPLEMENTATION")
+        return finish("ENVIRONMENT_FAILURE", f"AGENT_FAILED: {str(exc)[:300]}")
+    except Exception as exc:  # The handback must always be written.
+        return finish("ENVIRONMENT_FAILURE", f"AGENT_FAILED: {type(exc).__name__}")
+
+    handback["transcript_tail"] = transcript_tail(worktree)
+    for artifact in worktree.glob(".aider*"):
+        remove_tree(artifact) if artifact.is_dir() else artifact.unlink()
+    # Only the planned module and its generated test may change: anything else the
+    # model emitted (stray files, edits elsewhere) is discarded, never committed.
+    stray = [p for p in changed_paths(worktree) if p not in (module, test)]
+    target = worktree / module
+    misplaced = [p for p in stray if p.rsplit("/", 1)[-1] == module.rsplit("/", 1)[-1]
+                 and _git(worktree, "cat-file", "-e", f"{base}:{p}").returncode != 0]
+    if len(misplaced) == 1 and (not target.is_file() or not target.read_text(encoding="utf-8").strip()):
+        # The model wrote the planned module under its bare file name; move it to the planned path.
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((worktree / misplaced[0]).read_bytes())
+        handback["recovered_from"] = misplaced[0]
+    handback["discarded_paths"] = stray
+    for _attempt in range(10):  # an exiting aider helper can briefly hold a file open on Windows
+        tracked = [p for p in stray if _git(worktree, "cat-file", "-e", f"{base}:{p}").returncode == 0]
+        if tracked:
+            _git(worktree, "checkout", base, "--", *tracked)
+        untracked = [p for p in stray if p not in tracked]
+        if untracked:
+            _git(worktree, "clean", "-fdq", "--", *untracked)
+        stray = [p for p in changed_paths(worktree) if p not in (module, test)]
+        if not stray:
+            break
+        time.sleep(1.0)
+    changed = changed_paths(worktree)
+    handback["changed_paths"] = changed
+    if module not in changed or not (worktree / module).is_file():
+        return finish("FAIL", "PLANNED_MODULE_NOT_PRODUCED")
+    if set(changed) != {module, test}:
+        return finish("REVIEW_REQUIRED", "CHANGES_OUTSIDE_PLAN: " + ", ".join(sorted(set(changed) - {module, test})))
+    foreign = stdlib_only_failure(worktree, module)
+    if foreign:
+        return finish("FAIL", f"STDLIB_GATE: {foreign}")
+    quick = quick_test(worktree, test)
+    if not quick["ok"]:
+        # One bounded repair: the model sees the exact failing assertions and may change only the module.
+        handback["first_test_failure"] = quick["output_tail"][-1500:]
+        try:
+            run_agent(worktree, repair_message(slice_plan, quick["output_tail"]), [module], check)
+        except RuntimeError as exc:
+            if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+                return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_REPAIR")
+            return finish("FAIL", f"REPAIR_FAILED: {str(exc)[:300]}")
+        for artifact in worktree.glob(".aider*"):
+            remove_tree(artifact) if artifact.is_dir() else artifact.unlink()
+        if set(changed_paths(worktree)) != {module, test} or render_tests(slice_plan) != (
+                worktree / test).read_text(encoding="utf-8"):
+            return finish("REVIEW_REQUIRED", "REPAIR_CHANGED_MORE_THAN_THE_MODULE")
+        foreign = stdlib_only_failure(worktree, module)
+        if foreign:
+            return finish("FAIL", f"STDLIB_GATE: {foreign}")
+        quick = quick_test(worktree, test)
+        handback["repaired"] = True
+    handback["verification"] = [quick]
+    if not quick["ok"]:
+        return finish("FAIL", "SLICE_TESTS_FAILED")
+    if not authority():
+        return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_BEFORE_COMMIT")
+    _git(worktree, "add", "--", *changed)
+    commit = _git(worktree, "-c", "user.name=Iron God Product Worker", "-c", "user.email=iron-god-product@localhost",
+                  "commit", "-q", "-m", f"iron-god: add {slice_plan['function_name']} ({packet['packet_id']})")
+    if commit.returncode != 0:
+        return finish("ENVIRONMENT_FAILURE", "COMMIT_FAILED: " + _tail(commit.stderr)[:300])
+    gate = gates(worktree, base, changed)
+    if gate:
+        return finish("REVIEW_REQUIRED", f"CHANGE_GATE: {gate}"[:400])
+    try:
+        result = preflight(worktree, check, int(packet.get("preflight_timeout_s", 7200)))
+    except RuntimeError as exc:
+        if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+            return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_PREFLIGHT")
+        return finish("ENVIRONMENT_FAILURE", f"PREFLIGHT_FAILED_TO_RUN: {str(exc)[:300]}")
+    handback["verification"] = [quick, result]
+    return finish("PASS" if result["ok"] else "FAIL",
+                  "canonical preflight passed at the exact head" if result["ok"] else "canonical preflight failed")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Iron God single product-turn worker")
+    parser.add_argument("--packet", required=True)
+    parser.add_argument("--handback", required=True)
+    args = parser.parse_args(argv)
+    packet = json.loads(Path(args.packet).read_text(encoding="utf-8"))
+    release = os.environ.get("IRON_GOD_ACCEPTED_SHA")
+
+    def authority() -> bool:
+        try:
+            return evaluate_execution_authority(release_sha=release).permitted is True
+        except Exception:
+            return False
+
+    handback = execute_product_packet(packet, authority=authority)
+    _write(Path(args.handback), handback)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
