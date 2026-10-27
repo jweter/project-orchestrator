@@ -685,3 +685,26 @@ def test_a_plan_repeating_an_already_attempted_function_is_sent_back_for_a_diffe
     step(env, runner)
     assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
     assert "PLAN_ALREADY_ATTEMPTED: add_two" in seen[1] and repo in REPOS
+
+
+def test_planning_prompt_explicitly_excludes_previous_attempts() -> None:
+    packet = {"repository": "jweter/knowledge-engine-core", "attempted_functions": [
+        "normalize_text", "clean_text", "normalize_text"]}
+    prompt = WORKER.planning_prompt(packet, "ROADMAP BRIEF")
+    assert "never propose these" in prompt
+    assert "clean_text, normalize_text" in prompt
+    assert "rejects all 2 attempted names" in prompt
+    assert prompt.index("clean_text") < prompt.index("ROADMAP BRIEF")
+
+
+def test_planning_prompt_bounds_large_exclusion_list_without_weakening_validation() -> None:
+    packet = {"repository": "jweter/knowledge-engine-ai", "attempted_functions": [
+        f"attempt_{i:03d}" for i in range(75)]}
+    prompt = WORKER.planning_prompt(packet, "ROADMAP BRIEF")
+    assert "attempt_000" in prompt
+    assert "attempt_049" in prompt
+    assert "attempt_050" not in prompt
+    assert "rejects all 75 attempted names" in prompt
+    assert "(none)" in WORKER.planning_prompt({"repository": "jweter/VoiceStudio"}, "BRIEF")
+    assert "rejects all 0 attempted names" in WORKER.planning_prompt(
+        {"repository": "jweter/VoiceStudio", "attempted_functions": None}, "BRIEF")
