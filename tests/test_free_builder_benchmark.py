@@ -1,6 +1,7 @@
 """Independent tests of the isolated benchmark and strict patch boundary."""
 
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -10,6 +11,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "engineering" / "free_builder_benchmark"))
 from benchmark import (  # noqa: E402
+    candidate_executable,
     apply_proposal,
     prepare,
     safe_relative,
@@ -99,6 +101,23 @@ class TestBenchmark(unittest.TestCase):
     def test_local_inference_refuses_low_memory(self, _memory, _running):
         with self.assertRaisesRegex(RuntimeError, "3-GiB"):
             local_ollama_proposal("qwen2.5-coder:7b")
+
+    @patch("benchmark.shutil.which", return_value=None)
+    def test_isolated_tool_executable_discovered_without_path_changes(self, _which):
+        local = Path(self.tmp.name) / "local"
+        cli = (
+            local
+            / "IronGodBuilderBench"
+            / "tools"
+            / "pi"
+            / "node_modules"
+            / ".bin"
+            / "pi.cmd"
+        )
+        cli.parent.mkdir(parents=True)
+        cli.write_text("@echo off\n", encoding="utf-8")
+        with patch.dict(os.environ, {"LOCALAPPDATA": str(local)}):
+            self.assertEqual(candidate_executable("pi", "pi"), str(cli))
 
     def test_unknown_keys_are_rejected(self):
         with self.assertRaises(ValueError):

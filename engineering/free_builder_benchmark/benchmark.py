@@ -287,6 +287,25 @@ def local_ollama_proposal(model: str) -> str:
     return result["message"]["content"]
 
 
+def candidate_executable(name: str, command: str) -> str | None:
+    """Resolve isolated installs without altering PATH or global user settings."""
+    if command == "builtin":
+        return "builtin"
+    direct = shutil.which(command)
+    if direct:
+        return direct
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        return None
+    root = Path(local) / "IronGodBuilderBench"
+    paths = [
+        root / "tools" / name / "node_modules" / ".bin" / (command + ".cmd"),
+        root / "bin" / (command + ".exe"),
+        root / "tools" / name / "goose-package" / (command + ".exe"),
+    ]
+    return next((str(p) for p in paths if p.is_file()), None)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -305,9 +324,8 @@ def main(argv: list[str] | None = None) -> int:
                             "name": n,
                             "command": cmd,
                             "notes": notes,
-                            "found": bool(shutil.which(cmd))
-                            if cmd != "builtin"
-                            else True,
+                            "found": candidate_executable(n, cmd) is not None,
+                            "executable": candidate_executable(n, cmd),
                         }
                         for n, cmd, notes in CANDIDATES
                     ],
