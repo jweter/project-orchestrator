@@ -249,7 +249,8 @@ def open_pr_paths(repo: str) -> list[str]:
 
 
 def build_product_packet(repo: str, *, packet_id: str, base: str, worktree: Path, branch: str,
-                         roots: list[str], avoid: list[str], memory_text: str, project: str) -> dict[str, Any]:
+                         roots: list[str], avoid: list[str], memory_text: str, project: str,
+                         attempted: list[str] | None = None) -> dict[str, Any]:
     objective = (f"Choose and implement one small, high-value roadmap slice for {repo} within the scope envelope, "
                  "with a regression test, passing the repository's canonical preflight.")
     verification = ["python engineering/preflight.py"]
@@ -258,7 +259,7 @@ def build_product_packet(repo: str, *, packet_id: str, base: str, worktree: Path
         "source_ref": f"github:{repo}@origin/main:{base}", "base_sha": base, "branch": branch,
         "task": objective, "paths": roots, "verification": verification, "worktree": str(worktree),
         "runner_id": "aider-ollama", "avoid_paths": avoid, "working_memory": memory_text,
-        "preflight_timeout_s": 7200,
+        "preflight_timeout_s": 7200, "attempted_functions": sorted(attempted or []),
         "planning": {
             "vision_ref": f"{repo} AGENTS.md and README.md (read-only worker context)",
             "roadmap_ref": f"{repo} roadmap as described in its own documentation",
@@ -548,8 +549,10 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
         outcome["status"] = current["packets"][packet_id]["state"]
     lane.save(current, ledger)
     lane.active_path.unlink(missing_ok=True)
+    tried = (f"{slice_plan['function_name']} in {slice_plan['module_path']}" if slice_plan.get("function_name")
+             else None)
     working_memory.record(lane.state_root, repo, "TURN_" + outcome["status"], packet_id=packet_id,
-                          outcome=outcome["status"], note=note,
+                          outcome=outcome["status"], note=note, attempt=tried,
                           blocker=None if outcome["status"] == "ACCEPTED_LOCAL" else
                           f"{handback['status']}: {handback.get('summary', '')}", active=None)
     return _report(lane, outcome)
@@ -685,6 +688,7 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
                               "detail": added.stderr[-300:]})
     packet = build_product_packet(repo, packet_id=packet_id, base=base, worktree=worktree, branch=branch,
                                   roots=roots, avoid=avoid, memory_text=working_memory.excerpt(lane.state_root, repo),
+                                  attempted=working_memory.attempted_functions(lane.state_root, repo),
                                   project=memory_project(release_repo, repo))
     updated = dispatch_canonical_slice(ledger, packet, transport="local_idle_worker")
     lane.save(updated, ledger)

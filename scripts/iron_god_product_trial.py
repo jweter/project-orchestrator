@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--preflight-only", action="store_true",
                         help="readiness check: the repository's own preflight on unchanged main (no model)")
     parser.add_argument("--planner-model", help="Ollama model for the planning call (default: the worker model)")
+    parser.add_argument("--remember", action="store_true",
+                        help="record what the trial attempted in the shared working memory (default: leave it untouched)")
     args = parser.parse_args(argv)
     root = owner_controller.control_root(args.state_root)
 
@@ -97,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
             return refuse("TRIAL_WORKTREE_FAILED: " + added.stderr[-200:])
         packet = pl.build_product_packet(repo, packet_id=trial_id, base=base, worktree=worktree, branch=branch,
                                          roots=roots, avoid=avoid, memory_text=working_memory.excerpt(
-                                             args.state_root, repo), project=pl.memory_project(ROOT, repo))
+                                             args.state_root, repo), project=pl.memory_project(ROOT, repo),
+                                         attempted=working_memory.attempted_functions(args.state_root, repo))
         worker = load_worker()
         started = time.monotonic()
 
@@ -138,6 +141,11 @@ def main(argv: list[str] | None = None) -> int:
             pl._git(clone, "worktree", "remove", "--force", str(worktree))
             pl._git(clone, "branch", "-D", f"iron-god/trial/{trial_id.lower()}")
         remove_tree(worktree)
+    plan = report.get("plan") or {}
+    if args.remember and plan.get("function_name"):
+        working_memory.record(args.state_root, repo, "TRIAL_" + str(report.get("status")), packet_id=trial_id,
+                              outcome=f"TRIAL_{report.get('status')}",
+                              attempt=f"{plan['function_name']} in {plan['module_path']}")
     path = lane.root / "trials" / f"{trial_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     atomic_json(path, report)

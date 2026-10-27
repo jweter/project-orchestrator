@@ -140,6 +140,9 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
     name = str(plan.get("function_name") or "")
     if not name.isidentifier() or keyword.iskeyword(name) or name.startswith("_"):
         raise PlanRejected(f"PLAN_FUNCTION_NAME_INVALID: {name[:60]}")
+    if name in (packet.get("attempted_functions") or []):  # measured: the model repeats ideas it was told to avoid
+        raise PlanRejected(f"PLAN_ALREADY_ATTEMPTED: {name} was already tried in this repository; choose a "
+                           "different function")
     module = str(plan.get("module_path") or "").replace("\\", "/")
     if not module.endswith(".py") or module.startswith("/") or ".." in module.split("/") or "/" not in module:
         raise PlanRejected(f"PLAN_PATH_INVALID: {module[:120]}")
@@ -454,6 +457,40 @@ def production_format(worktree: Path, files: list[str], check: Callable[[], None
     return tool
 
 
+def settle_changes(worktree: Path, base: str, plan: dict[str, Any], handback: dict[str, Any]) -> list[str]:
+    """Keep only the planned module and the worker's own tests; everything else the model emitted is discarded.
+
+    A module written under its bare file name is moved to the planned path, and the
+    generated tests are restored byte for byte, so the model can never weaken its spec.
+    """
+    module, test = plan["module_path"], plan["test_path"]
+    stray = [p for p in changed_paths(worktree) if p not in (module, test)]
+    target = worktree / module
+    misplaced = [p for p in stray if p.rsplit("/", 1)[-1] == module.rsplit("/", 1)[-1]
+                 and _git(worktree, "cat-file", "-e", f"{base}:{p}").returncode != 0]
+    if len(misplaced) == 1 and (not target.is_file() or not target.read_text(encoding="utf-8").strip()):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((worktree / misplaced[0]).read_bytes())
+        handback["recovered_from"] = misplaced[0]
+    handback["discarded_paths"] = sorted({*handback.get("discarded_paths", []), *stray})
+    for _attempt in range(10):  # an exiting aider helper can briefly hold a file open on Windows
+        tracked = [p for p in stray if _git(worktree, "cat-file", "-e", f"{base}:{p}").returncode == 0]
+        if tracked:
+            _git(worktree, "checkout", base, "--", *tracked)
+        untracked = [p for p in stray if p not in tracked]
+        if untracked:
+            _git(worktree, "clean", "-fdq", "--", *untracked)
+        stray = [p for p in changed_paths(worktree) if p not in (module, test)]
+        if not stray:
+            break
+        time.sleep(1.0)
+    spec = render_tests(plan)
+    if (worktree / test).read_text(encoding="utf-8") != spec:
+        (worktree / test).write_text(spec, encoding="utf-8")
+        handback["tests_restored"] = True
+    return changed_paths(worktree)
+
+
 def production_gates(worktree: Path, base: str, paths: list[str]) -> str | None:
     from scripts.autonomous_slice_builder import generated_change_failure
 
@@ -652,30 +689,7 @@ def execute_product_packet(
     handback["transcript_tail"] = transcript_tail(worktree)
     for artifact in worktree.glob(".aider*"):
         remove_tree(artifact) if artifact.is_dir() else artifact.unlink()
-    # Only the planned module and its generated test may change: anything else the
-    # model emitted (stray files, edits elsewhere) is discarded, never committed.
-    stray = [p for p in changed_paths(worktree) if p not in (module, test)]
-    target = worktree / module
-    misplaced = [p for p in stray if p.rsplit("/", 1)[-1] == module.rsplit("/", 1)[-1]
-                 and _git(worktree, "cat-file", "-e", f"{base}:{p}").returncode != 0]
-    if len(misplaced) == 1 and (not target.is_file() or not target.read_text(encoding="utf-8").strip()):
-        # The model wrote the planned module under its bare file name; move it to the planned path.
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes((worktree / misplaced[0]).read_bytes())
-        handback["recovered_from"] = misplaced[0]
-    handback["discarded_paths"] = stray
-    for _attempt in range(10):  # an exiting aider helper can briefly hold a file open on Windows
-        tracked = [p for p in stray if _git(worktree, "cat-file", "-e", f"{base}:{p}").returncode == 0]
-        if tracked:
-            _git(worktree, "checkout", base, "--", *tracked)
-        untracked = [p for p in stray if p not in tracked]
-        if untracked:
-            _git(worktree, "clean", "-fdq", "--", *untracked)
-        stray = [p for p in changed_paths(worktree) if p not in (module, test)]
-        if not stray:
-            break
-        time.sleep(1.0)
-    changed = changed_paths(worktree)
+    changed = settle_changes(worktree, base, slice_plan, handback)
     handback["changed_paths"] = changed
     if module not in changed or not (worktree / module).is_file():
         return finish("FAIL", "PLANNED_MODULE_NOT_PRODUCED")
@@ -696,8 +710,7 @@ def execute_product_packet(
             return finish("FAIL", f"REPAIR_FAILED: {str(exc)[:300]}")
         for artifact in worktree.glob(".aider*"):
             remove_tree(artifact) if artifact.is_dir() else artifact.unlink()
-        if set(changed_paths(worktree)) != {module, test} or render_tests(slice_plan) != (
-                worktree / test).read_text(encoding="utf-8"):
+        if set(settle_changes(worktree, base, slice_plan, handback)) != {module, test}:
             return finish("REVIEW_REQUIRED", "REPAIR_CHANGED_MORE_THAN_THE_MODULE")
         foreign = stdlib_only_failure(worktree, module)
         if foreign:

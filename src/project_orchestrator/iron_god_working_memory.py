@@ -24,6 +24,7 @@ BOARD_NAME = "iron-god-working-memory.json"
 MAX_NOTES_PER_REPO = 5
 MAX_RECENT = 30
 MAX_NOTE_CHARS = 600
+MAX_ATTEMPTS = 8
 
 
 def board_path(state_root: Path) -> Path:
@@ -51,11 +52,18 @@ def load(state_root: Path) -> dict[str, Any]:
 
 def record(state_root: Path, repo: str, event: str, *, packet_id: str | None = None, detail: str = "",
            note: str | None = None, outcome: str | None = None, pr: dict[str, Any] | None = None,
-           blocker: str | None = None, active: dict[str, Any] | None | bool = False) -> dict[str, Any]:
-    """Append one event; ``active`` replaces the current-work slot (False leaves it, None clears it)."""
+           blocker: str | None = None, active: dict[str, Any] | None | bool = False,
+           attempt: str | None = None) -> dict[str, Any]:
+    """Append one event; ``active`` replaces the current-work slot (False leaves it, None clears it).
+
+    ``attempt`` names what a turn tried (e.g. its function), so the next planner does not repeat it.
+    """
     board = load(state_root)
     at = _now()
     row = board["repositories"].setdefault(repo, {"notes": [], "blockers": []})
+    if attempt:
+        row["attempts"] = [*row.get("attempts", []), {"at": at, "attempt": _clean(attempt, 160),
+                                                      "outcome": outcome or event}][-MAX_ATTEMPTS:]
     row["last_event"] = event
     row["last_event_at"] = at
     if packet_id:
@@ -80,6 +88,12 @@ def record(state_root: Path, repo: str, event: str, *, packet_id: str | None = N
     return board
 
 
+def attempted_functions(state_root: Path, repo: str) -> list[str]:
+    """Function names recent turns already tried in ``repo`` (a plan may not repeat them)."""
+    row = load(state_root)["repositories"].get(repo) or {}
+    return sorted({a["attempt"].split(" in ", 1)[0] for a in row.get("attempts", []) if a.get("attempt")})
+
+
 def excerpt(state_root: Path, repo: str, *, limit: int = 1500) -> str:
     """Bounded context for a worker about to work on ``repo``: its history and what else is in flight."""
     board = load(state_root)
@@ -94,6 +108,10 @@ def excerpt(state_root: Path, repo: str, *, limit: int = 1500) -> str:
         lines.append(f"- note from {item.get('packet_id')}: {item['note']}")
     for item in row.get("blockers", [])[-2:]:
         lines.append(f"- open blocker: {item['blocker']}")
+    attempts = row.get("attempts", [])
+    if attempts:
+        lines.append("- already attempted (choose something different): "
+                     + "; ".join(f"{a['attempt']} ({a['outcome']})" for a in attempts[-MAX_ATTEMPTS:]))
     others = sorted({r["repository"] for r in board["recent"][-10:] if r["repository"] != repo})
     if others:
         lines.append("- other repositories with recent engine work: " + ", ".join(others))

@@ -310,7 +310,7 @@ def test_one_repair_round_fixes_code_that_misses_its_examples(env):
     assert calls == [["pkg/extra.py"], ["pkg/extra.py"]]  # the repair may touch only the module
 
 
-def test_a_repair_that_edits_the_generated_tests_is_refused(env):
+def test_a_repair_that_edits_the_generated_tests_gets_them_restored_and_still_has_to_pass(env):
     calls = []
 
     def cheats(worktree, message, files, check):
@@ -322,7 +322,22 @@ def test_a_repair_that_edits_the_generated_tests_is_refused(env):
     runner = Runner(agent=cheats)
     step(env, runner)
     result = step(env, runner)
-    assert result["worker_status"] == "REVIEW_REQUIRED" and "REPAIR_CHANGED_MORE" in result["worker_summary"]
+    assert result["worker_status"] == "FAIL" and result["worker_summary"] == "SLICE_TESTS_FAILED"
+
+
+def test_stray_files_from_the_repair_round_are_discarded_too(env):
+    calls = []
+
+    def strays(worktree, message, files, check):
+        calls.append(1)
+        if len(calls) == 1:
+            good_agent(worktree, message, files, check, source=WRONG_MODULE)
+        else:
+            (worktree / "pkg" / "extra.py").write_text(GOOD_MODULE, encoding="utf-8")
+            (worktree / "notes.md").write_text("junk", encoding="utf-8")
+    runner = Runner(agent=strays)
+    step(env, runner)
+    assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
 
 
 def test_non_stdlib_imports_are_refused(env):
@@ -617,3 +632,38 @@ def test_review_mode_leaves_a_green_pull_request_for_the_owner(env):
 
 def test_real_policy_records_the_owners_merge_decision():
     assert pl.rotation_config(POLICY)["merge"] in {"auto", "review"}
+
+
+def test_failed_attempts_are_remembered_so_the_next_planner_chooses_something_different(env):
+    briefs = []
+
+    def failing_plan(worktree, packet, check, feedback=""):
+        briefs.append(packet["working_memory"])
+        return dict(GOOD_PLAN)
+    runner = Runner(plan=failing_plan, preflight_ok=False)
+    repo = step(env, runner)["repository"]
+    step(env, runner)
+    board = wm.load(env.state)["repositories"][repo]
+    assert board["attempts"][-1]["attempt"] == "add_two in pkg/extra.py"
+    assert "already attempted (choose something different): add_two in pkg/extra.py" in wm.excerpt(env.state, repo)
+
+
+def test_a_plan_repeating_an_already_attempted_function_is_sent_back_for_a_different_one(env):
+    repo = REPOS[0]
+    for r in REPOS:  # whichever repository the rotation picks has already tried add_two
+        wm.record(env.state, r, "TURN_FAIL", outcome="FAIL", attempt="add_two in pkg/extra.py")
+    seen = []
+
+    def repeats_first(worktree, packet, check, feedback=""):
+        seen.append(feedback)
+        if not feedback:
+            return dict(GOOD_PLAN)  # add_two again
+        return {**GOOD_PLAN, "function_name": "add_three", "signature": "def add_three(value: int) -> int:",
+                "examples": [{"call": "add_three(1)", "why": "1+3", "expected": 4},
+                             {"call": "add_three(0)", "why": "0+3", "expected": 3},
+                             {"call": "add_three(-3)", "why": "-3+3", "expected": 0}]}
+    runner = Runner(plan=repeats_first, agent=lambda w, m, f, c: (w / f[0]).write_text(
+        'def add_three(value: int) -> int:\n    """Add three."""\n    return value + 3\n', encoding="utf-8"))
+    step(env, runner)
+    assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
+    assert "PLAN_ALREADY_ATTEMPTED: add_two" in seen[1] and repo in REPOS
