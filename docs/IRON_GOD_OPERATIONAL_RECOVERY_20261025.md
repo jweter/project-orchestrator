@@ -138,7 +138,36 @@ Slice-writing rules for the local 7B worker, each from failed-run evidence:
 5. Keep each objective and criterion within Canon's 1200-character bound
    (enforced by a test over the whole policy).
 
+## Portfolio rotation (`a3444e4`..`02e8552`, installed disabled)
+
+Owner decision 2026-10-26: every portfolio product repository, random first
+pick then round-robin, each turn from GitHub `main`, published by pull
+request that must pass the repository's CI before a squash merge
+(`portfolio_rotation.merge: auto`; `review` holds green PRs for the owner),
+with a shared working memory board. project-orchestrator is excluded.
+
+A product turn plans and builds in two short steps sized to the 7b: one
+planning call returns a structured plan (one pure function in a new module of
+an existing package, literal examples with reasoning) validated before any
+code; the worker writes the tests from the examples; aider builds only the
+module; strays are discarded, the repository's formatter and mypy run,
+then the repository's canonical preflight in a persistent per-repository
+environment. Owner-held trials (`scripts/iron_god_product_trial.py`, never
+publishing) measured each change on real repositories overnight.
+
+Readiness on unchanged main (`--preflight-only`): rocksmith,
+knowledge-engine-core and knowledge-engine-ai ready; knowledge-engine-web
+(mypy) and VoiceStudio (86 backend tests) fail before any change; Everward
+has no Python package (Unreal/C++) and is not eligible.
+
+Measured: about 1 in 5 turns passes end to end (2-5 minutes each); the
+dominant remaining failure is the planner's self-contradictory examples.
+qwen2.5-coder:14b as planner was 3-5x slower with the same failure class.
+Gates prove correctness, not value: the first passing slice was a correct
+but unused helper.
+
 ## Next action
 
-Owner Take the Wheel on `3f88626`: the lane runs 003, 004 and 005 one at a
-time under the live calibration profile (level 3, recorded 2026-10-26).
+Owner decision on `portfolio_rotation.merge` (auto vs review), then Take the
+Wheel on `02e8552`; integrate the local Iron God lineage with GitHub as a
+reviewed milestone.
