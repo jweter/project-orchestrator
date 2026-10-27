@@ -88,10 +88,25 @@ def candidate_fixes(clone: Path, limit: int = 1500) -> list[dict[str, Any]]:
     return found
 
 
-def run_tests(worker, worktree: Path, tests: list[str], check) -> dict[str, Any]:
-    environment = worker.repository_environment(worktree, check)
+def main_environment(worker, clone: Path, check) -> dict[str, Any]:
+    """The repository's shared environment, built only from current main.
+
+    Measured: letting a historical commit's lockfile drive the shared environment
+    reinstalled it from an old lock (and failed on a Linux-only pin); calibration
+    must never disturb the environment production turns use.
+    """
+    worktree = fresh_worktree(clone, "origin/main", "env-main")
+    try:
+        return worker.repository_environment(worktree, check)
+    finally:
+        drop_worktree(clone, worktree)
+
+
+def run_tests(environment: dict[str, Any], worktree: Path, tests: list[str]) -> dict[str, Any]:
     temp = worktree.parent / f"{worktree.name}.l2.tmp"
-    env = worker.private_temp_env({**os.environ, **environment["overrides"], "PYTHONDONTWRITEBYTECODE": "1",
+    from scripts.iron_god_canon_worker import private_temp_env
+
+    env = private_temp_env({**os.environ, **environment["overrides"], "PYTHONDONTWRITEBYTECODE": "1",
                                    "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)])}, temp)
     try:
         proc = subprocess.run([environment["python"], "-m", "pytest", "-q", "-p", "no:cacheprovider", "-x", *tests],
@@ -130,14 +145,15 @@ def mine(state_root: Path, check) -> dict[str, Any]:
     for repo in REPOSITORIES:
         clone = products / repo
         git(clone, "fetch", "-q", "origin", "main")
+        environment = main_environment(worker, clone, check)
         for fix in candidate_fixes(clone):
             check()
             case = {"id": f"{repo}:{fix['commit'][:10]}", "repository": repo, "kind": "fix", **fix}
             worktree = fresh_worktree(clone, fix["commit"], "mine")
             try:
-                fixed = run_tests(worker, worktree, fix["tests"], check)
+                fixed = run_tests(environment, worktree, fix["tests"])
                 put_back_pre_fix(worktree, case)
-                broken = run_tests(worker, worktree, fix["tests"], check)
+                broken = run_tests(environment, worktree, fix["tests"])
             finally:
                 drop_worktree(clone, worktree)
             if fixed["ok"] and not broken["ok"]:
@@ -162,7 +178,8 @@ def repair_message(case: dict[str, Any], failure: str) -> str:
             f"little existing behaviour as possible.\n\nFailing test output:\n{failure_lines(failure)}")
 
 
-def attempt(worker, clone: Path, case: dict[str, Any], edit_format: str, check) -> dict[str, Any]:
+def attempt(worker, environment: dict[str, Any], clone: Path, case: dict[str, Any], edit_format: str,
+            check) -> dict[str, Any]:
     from scripts.autonomous_slice_builder import MAX_AIDER_SECONDS, _acquire_ollama_lock, aider_invocation
     from project_orchestrator.execution_runtime import NativeWindowsRuntime, RuntimeRequest
 
@@ -190,7 +207,7 @@ def attempt(worker, clone: Path, case: dict[str, Any], edit_format: str, check) 
                 (worktree / t).write_bytes(data)  # the spec is restored whatever the model did
             changed = [p for p in git(worktree, "diff", "--name-only", "HEAD").stdout.split() if p != case["source"]]
             untracked = git(worktree, "ls-files", "--others", "--exclude-standard").stdout.split()
-            tests = run_tests(worker, worktree, case["tests"], check)
+            tests = run_tests(environment, worktree, case["tests"])
             result[round_name] = {"aider_exit": run.returncode, "tests_ok": tests["ok"], "tampered_tests": tampered,
                                   "changed_outside_module": changed + untracked,
                                   "module_changed": bool(git(worktree, "diff", "--name-only", f"{case['commit']}^",
@@ -223,9 +240,12 @@ def run(state_root: Path, check, *, limit: int | None, edit_format: str) -> dict
     products = state_root.parent / "canon-workspaces" / "products"
     out_path = state_root / "iron-god-level2" / f"results-{edit_format}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
     results = []
+    environments = {repo: main_environment(worker, products / repo, check)
+                    for repo in sorted({c["repository"] for c in selected})}
     for case in selected:
         check()
-        results.append(attempt(worker, products / case["repository"], case, edit_format, check))
+        results.append(attempt(worker, environments[case["repository"]], products / case["repository"], case,
+                               edit_format, check))
         atomic_json(out_path, {"edit_format": edit_format, "results": results})  # progress survives interruption
     summary = {"edit_format": edit_format, "cases": len(results),
                "passed": sum(r["passed"] for r in results),
