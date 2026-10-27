@@ -26,6 +26,7 @@ import ast
 import json
 import keyword
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -190,8 +191,10 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
             ast.literal_eval(expected)
             if not str(item.get("why") or "").strip():
                 raise ValueError("an example must show why it has its expected value")
-            if "b'" in call or 'b"' in call or (isinstance(item["expected"], str) and item["expected"][:2] in {
-                    "b'", 'b"'}):
+            # bytes are detected in the parsed call, not by text (measured: the key 'b' in "('b', 1)" was
+            # mistaken for a bytes literal and the example silently dropped)
+            if any(isinstance(node, ast.Constant) and isinstance(node.value, bytes) for node in ast.walk(tree)) or (
+                    isinstance(item["expected"], str) and item["expected"][:2] in {"b'", 'b"'}):
                 raise ValueError("bytes cannot be expressed as JSON plan values")
         except (KeyError, TypeError, ValueError, SyntaxError):
             continue
@@ -264,7 +267,7 @@ def repair_message(plan: dict[str, Any], failure: str) -> str:
     lines = [line for line in failure.splitlines() if line.startswith(("E ", ">", "FAILED"))][:30]
     return (f"The function in {plan['module_path']} does not yet meet its specification. Its tests in "
             f"{plan['test_path']} are correct and must not change. Fix only {plan['module_path']} so that "
-            "every listed example holds:\n" + "\n".join(f"- {c}" for c in plan["acceptance_criteria"])
+            "the repository's type checker and linter pass and every listed example holds:\n" + "\n".join(f"- {c}" for c in plan["acceptance_criteria"])
             + "\n\nFailing assertions:\n" + "\n".join(lines))
 
 
@@ -374,8 +377,6 @@ def adjudicate(worktree: Path, packet: dict[str, Any], plan: dict[str, Any], fai
     Every failing example must be resolved this way and at most half of the
     examples may change; otherwise nothing is corrected and the slice fails.
     """
-    import re
-
     failing = sorted({int(n) for n in re.findall(rf"test_{plan['function_name']}_example_(\d+)", failure)
                       if "FAILED" in failure})
     examples = plan["examples"]
@@ -427,16 +428,37 @@ def type_check(worktree: Path, files: list[str], check: Callable[[], None]) -> d
         remove_tree(temp)
 
 
+def lint_check(worktree: Path, files: list[str], check: Callable[[], None]) -> dict[str, Any] | None:
+    """The repository's ruff lint on the new files, after its formatter and safe fixes (measured: E712, E501
+    and F401 failed whole preflights that the bounded repair round could have fixed)."""
+    try:
+        if "[tool.ruff" not in (worktree / "pyproject.toml").read_text(encoding="utf-8"):
+            return None
+    except OSError:
+        return None
+    production_format(worktree, files, check)
+    environment = repository_environment(worktree, check)
+    result = NativeWindowsRuntime().execute_supervised(RuntimeRequest(
+        (environment["python"], "-m", "ruff", "check", "--output-format", "concise", *files), worktree,
+        {**os.environ, **environment["overrides"]}, 300), check, interval=2.0)
+    return {"command": "python -m ruff check " + " ".join(files), "returncode": result.returncode,
+            "ok": result.returncode == 0, "output_tail": _tail((result.stdout or "") + (result.stderr or ""))}
+
+
 def slice_checks(worktree: Path, module: str, test: str, check: Callable[[], None]) -> dict[str, Any]:
-    """Fail fast on the slice itself: its generated tests, then the repository's type checker if configured."""
+    """Fail fast on the slice itself: its generated tests, then the repository's type checker and linter."""
     tests = quick_test(worktree, test)
     if not tests["ok"]:
         return tests
     types = type_check(worktree, [module, test], check)
-    if types is None or types["ok"]:
-        return tests
-    lines = [line for line in types["output_tail"].splitlines() if ": error:" in line][:20]
-    return {**types, "output_tail": "E mypy: " + "\nE mypy: ".join(lines) if lines else types["output_tail"]}
+    if types is not None and not types["ok"]:
+        lines = [line for line in types["output_tail"].splitlines() if ": error:" in line][:20]
+        return {**types, "output_tail": "E mypy: " + "\nE mypy: ".join(lines) if lines else types["output_tail"]}
+    lint = lint_check(worktree, [module, test], check)
+    if lint is not None and not lint["ok"]:
+        lines = [line for line in lint["output_tail"].splitlines() if ".py:" in line][:20]
+        return {**lint, "output_tail": "E ruff: " + "\nE ruff: ".join(lines) if lines else lint["output_tail"]}
+    return tests
 
 
 def production_format(worktree: Path, files: list[str], check: Callable[[], None]) -> str:
@@ -504,6 +526,7 @@ def production_gates(worktree: Path, base: str, paths: list[str]) -> str | None:
 
 
 ENV_INSTALL_SECONDS = 3600
+ENV_RECIPE = "2"  # bump when the install recipe changes, so existing environments are rebuilt (2: git pins)
 
 
 def poetry_lock_pins(lock: Path) -> list[str]:
@@ -526,6 +549,13 @@ def poetry_lock_pins(lock: Path) -> list[str]:
             except Exception:
                 pass
         source = package.get("source") or {}
+        commit = str(source.get("resolved_reference") or "")
+        if source.get("type") == "git" and str(source.get("url", "")).startswith("https://") and re.fullmatch(
+                r"[0-9a-f]{40}", commit):
+            # an exact-commit VCS pin is reproducible (measured: knowledge-engine-web's mypy failed only
+            # because its pinned knowledge-engine-ai dependency was skipped)
+            pins.append(f"{package['name']} @ git+{source['url']}@{commit}")
+            continue
         if source.get("type") in {"directory", "file", "git", "url"}:
             continue  # local/VCS sources are not reproducible from an index
         if source.get("type") == "legacy" and source.get("url"):
@@ -552,8 +582,9 @@ def repository_environment(worktree: Path, check: Callable[[], None]) -> dict[st
     envdir = clone.parent / ".envs" / clone.name
     scripts = envdir / ("Scripts" if os.name == "nt" else "bin")
     python = scripts / ("python.exe" if os.name == "nt" else "python")
-    digest = hashlib.sha256(b"".join((worktree / name).read_bytes() for name in (f"{kind}.lock", "pyproject.toml")
-                                     if (worktree / name).is_file())).hexdigest()
+    digest = hashlib.sha256(ENV_RECIPE.encode() + b"".join(
+        (worktree / name).read_bytes() for name in (f"{kind}.lock", "pyproject.toml") if (worktree / name).is_file()
+    )).hexdigest()
     overrides = {"VIRTUAL_ENV": str(envdir), "PATH": str(scripts) + os.pathsep + os.environ.get("PATH", ""),
                  "POETRY_VIRTUALENVS_CREATE": "false", "UV_PROJECT_ENVIRONMENT": str(envdir)}
     record.update(overrides=overrides, python=str(python), envdir=str(envdir), lock_sha256=digest)
@@ -656,11 +687,14 @@ def execute_product_packet(
         if not authority():
             raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
 
+    # An approved backlog slice is built exactly as written: the local model never re-plans it.
+    approved = (packet.get("slice") or {}).get("build")
     try:
         feedback, rejections = "", []
-        for _attempt in range(PLAN_ATTEMPTS):  # one bounded repair: the planner hears exactly why it was refused
+        for _attempt in range(1 if approved else PLAN_ATTEMPTS):  # one bounded repair for a self-planned slice
             try:
-                slice_plan = validate_plan(plan(worktree, packet, check, feedback), worktree, base, packet)
+                slice_plan = validate_plan(approved or plan(worktree, packet, check, feedback), worktree, base,
+                                           packet)
                 break
             except PlanRejected as exc:
                 rejections.append(str(exc))
@@ -670,7 +704,8 @@ def execute_product_packet(
                 feedback = "Your previous reply was not complete JSON. Reply with complete, shorter JSON only."
         else:
             handback["plan_rejections"] = rejections
-            return finish("FAIL", f"PLAN_REJECTED: {' | '.join(rejections)}"[:400])
+            prefix = "BACKLOG_SLICE_INVALID" if approved else "PLAN_REJECTED"
+            return finish("FAIL", f"{prefix}: {' | '.join(rejections)}"[:400])
         handback["plan_rejections"] = rejections
     except RuntimeError as exc:
         if "EXECUTION_AUTHORITY_REVOKED" in str(exc):

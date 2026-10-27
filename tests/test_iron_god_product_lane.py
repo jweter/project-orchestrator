@@ -100,8 +100,10 @@ def env(tmp_path):
         git(clone, "fetch", "-q", "--prune", "origin", "main")
         return clone, git(clone, "rev-parse", "origin/main")
 
+    # The self-planning path stays covered; backlog tests opt into the real policy's roadmap planning.
+    policy = {**POLICY, "portfolio_rotation": {**POLICY["portfolio_rotation"], "planning": "self"}}
     return SimpleNamespace(release=release, state=state, pool=pool, sync=sync, remotes=remotes, tmp=tmp_path,
-                           memory=tmp_path / "shared-memory", policy=POLICY)
+                           memory=tmp_path / "shared-memory", policy=policy)
 
 
 GOOD_PLAN = {
@@ -538,6 +540,17 @@ groups = ["main"]
 [package.source]
 type = "directory"
 url = "../localpkg"
+
+[[package]]
+name = "knowledge-engine-ai"
+version = "0.1.0"
+groups = ["main"]
+
+[package.source]
+type = "git"
+url = "https://github.com/jweter/knowledge-engine-ai.git"
+reference = "2eee4cc"
+resolved_reference = "2eee4cc9ba76f99e669d2e52669e84d8b5199a41"
 """
 
 
@@ -545,7 +558,9 @@ def test_poetry_lock_pins_keep_exact_versions_and_their_indexes_for_this_platfor
     lock = tmp_path / "poetry.lock"
     lock.write_text(LOCK, encoding="utf-8")
     pins = WORKER.poetry_lock_pins(lock)
-    assert pins == ["--extra-index-url https://download.pytorch.org/whl/cpu", "ruff==0.17.1", "torch==2.14.1+cpu"]
+    assert pins == ["--extra-index-url https://download.pytorch.org/whl/cpu",
+                    "knowledge-engine-ai @ git+https://github.com/jweter/knowledge-engine-ai.git"
+                    "@2eee4cc9ba76f99e669d2e52669e84d8b5199a41", "ruff==0.17.1", "torch==2.14.1+cpu"]
 
 
 def test_repository_environment_is_reused_until_the_lockfile_changes(env):
@@ -559,7 +574,7 @@ def test_repository_environment_is_reused_until_the_lockfile_changes(env):
     (envdir / "Scripts").mkdir(parents=True)
     (envdir / "Scripts" / "python.exe").write_text("", encoding="utf-8")
     import hashlib
-    digest = hashlib.sha256((worktree / "poetry.lock").read_bytes()).hexdigest()
+    digest = hashlib.sha256(WORKER.ENV_RECIPE.encode() + (worktree / "poetry.lock").read_bytes()).hexdigest()
     (envdir / ".iron-god-env.json").write_text(json.dumps({"lock_sha256": digest}), encoding="utf-8")
     reused = WORKER.repository_environment(worktree, lambda: None)
     assert reused["status"] == "REUSED" and reused["overrides"]["POETRY_VIRTUALENVS_CREATE"] == "false"
