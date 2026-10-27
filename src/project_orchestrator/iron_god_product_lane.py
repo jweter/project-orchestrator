@@ -70,6 +70,9 @@ ALWAYS_FORBIDDEN = ["AGENTS.md", "DoWork.txt", "CLAUDE.md", "LICENSE", "SECURITY
 CI_APPEAR_SECONDS = 20 * 60
 CI_TOTAL_SECONDS = 3 * 60 * 60
 TURN_BUDGET_MINUTES = 120
+CANON_HANDBACK_FIELDS = {"schema_version", "packet_id", "project", "repository", "branch", "head_sha", "probe_id",
+                         "pattern_id", "evidence_ref", "observed_at", "status", "summary", "changed_paths",
+                         "verification"}
 
 
 def _now() -> str:
@@ -430,8 +433,11 @@ def _save_publications(lane: ProductLane, items: dict[str, Any]) -> None:
 
 
 def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHub, memory_root: Path | None,
-                         now: Callable[[], float] = time.time) -> list[dict[str, Any]]:
-    """Move every open publication one step: push+PR, then CI, then squash merge (authority already checked)."""
+                         now: Callable[[], float] = time.time, merge: str = "auto") -> list[dict[str, Any]]:
+    """Move every open publication one step: push+PR, then CI, then squash merge (authority already checked).
+
+    With ``merge="review"`` a green pull request waits for the owner on GitHub instead of being merged.
+    """
     items = lane.publications()["items"]
     events = []
     for packet_id, item in sorted(items.items()):
@@ -448,7 +454,12 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
             else:
                 verdict = ci_verdict(github.checks(repo, item["pr"]["number"]),
                                      published_at=item["published_at"], now=now())
-                if verdict == "PASS":
+                if verdict == "PASS" and merge == "review":
+                    item.update(state="AWAITING_OWNER_REVIEW", ci_passed_at_utc=_now())
+                    working_memory.record(lane.state_root, repo, "AWAITING_OWNER_REVIEW", packet_id=packet_id,
+                                          outcome="CI_GREEN_AWAITING_OWNER",
+                                          pr={**item["pr"], "state": "CI_GREEN_AWAITING_OWNER"})
+                elif verdict == "PASS":
                     merged_sha = github.merge(repo, item["pr"]["number"], item["head_sha"])
                     item.update(state="MERGED", merged_sha=merged_sha, merged_at_utc=_now())
                     packet = json.loads((lane.packets / f"{packet_id}.json").read_text(encoding="utf-8"))
@@ -486,7 +497,9 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
     current = ledger
     if current["packets"][packet_id]["state"] == "DISPATCHED":
         current = transition_packet(current, packet_id, state="IMPLEMENTING")
-    worker_result = {k: v for k, v in handback.items() if k not in {"note", "transcript_tail", "plan"}}
+    worker_result = {k: v for k, v in handback.items() if k in CANON_HANDBACK_FIELDS}  # diagnostics stay in reports
+    atomic_json(lane.reports / f"{packet_id}-handback-diagnostics.json",
+                {k: v for k, v in handback.items() if k not in CANON_HANDBACK_FIELDS})
     slice_plan = handback.get("plan") or {}
     atomic_json(lane.reports / f"{packet_id}-transcript.json", {"tail": str(handback.get("transcript_tail", ""))})
     current = record_worker_result(current, packet_id, worker_result)
@@ -519,6 +532,9 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
                          f"Base: origin/main {packet['base_sha']}\nHead: {head}\n\n"
                          f"Slice: {slice_plan.get('objective', '(none)')}\n"
                          f"Files: {', '.join(handback.get('changed_paths', []))}\n"
+                         + "".join(f"Example corrected by independent re-derivation: {c['call']} returns {c['now']} "
+                                   f"(plan said {c['was']})\n" for c in handback.get("adjudicated_examples", []))
+                         +
                          f"Worker note: {note or '(none)'}\n\n"
                          "Local Ollama/Aider produced the change inside the turn's scope envelope; the worker ran "
                          "the canonical preflight at the exact head and the supervisor re-checked scope and change "
@@ -592,7 +608,9 @@ def advance_product_lane(
             return _report(lane, {"status": "WORKER_STOPPED_AUTHORITY_REVOKED", "packet_id": active["packet_id"],
                                   "worktree_preserved": active.get("worktree")})
         return _report(lane, {"status": "WAITING_FOR_OWNER_AUTHORITY", "reasons": reasons})
-    published = advance_publications(lane, release_repo, github=github or GitHub(), memory_root=memory_root)
+    merge = "review" if config.get("merge") == "review" else "auto"
+    published = advance_publications(lane, release_repo, github=github or GitHub(), memory_root=memory_root,
+                                     merge=merge)
     if active:
         if alive(active["worker"]):
             record = ledger["packets"].get(active["packet_id"])

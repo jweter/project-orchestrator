@@ -122,14 +122,17 @@ def good_plan(worktree, packet, check, feedback=""):
 
 def good_agent(worktree, message, files, check, source=GOOD_MODULE):
     check()
-    assert files == ["pkg/extra.py"] and "Create or edit ONLY these files: pkg/extra.py" in message
+    assert files == ["pkg/extra.py"]  # the build prompt or the one repair prompt: only the module, never the tests
+    assert "Create or edit ONLY these files: pkg/extra.py" in message or "Fix only pkg/extra.py" in message
     assert (worktree / "tests" / "test_extra.py").is_file()  # the worker wrote the tests before the build
     (worktree / "pkg" / "extra.py").write_text(source, encoding="utf-8")
 
 
 class Runner:
-    def __init__(self, agent=good_agent, preflight_ok=True, gate=None, plan=good_plan):
+    def __init__(self, agent=good_agent, preflight_ok=True, gate=None, plan=good_plan,
+                 rederive=lambda packet, plan, call: WORKER.NO_OPINION):
         self.agent, self.preflight_ok, self.gate, self.plan = agent, preflight_ok, gate, plan
+        self.rederive = rederive
         self.spawned = 0
 
     def spawn(self, release_repo, packet_path, handback_path, *, release_sha, log_path):
@@ -137,6 +140,7 @@ class Runner:
         packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
         handback = WORKER.execute_product_packet(
             packet, authority=lambda: True, plan=self.plan, run_agent=self.agent, gates=lambda *_a: self.gate,
+            rederive=self.rederive, format_files=lambda *_a: "none",
             preflight=lambda *_a: {"command": "python engineering/preflight.py", "returncode": 0 if self.preflight_ok
                                    else 1, "ok": self.preflight_ok, "output_tail": ""})
         WORKER._write(Path(handback_path), handback)
@@ -563,3 +567,53 @@ def test_a_repository_without_a_python_package_is_recorded_not_eligible(env, mon
     readiness = json.loads((pl.ProductLane(env.state).root / "readiness.json").read_text(encoding="utf-8"))
     row = readiness["repositories"][result["repository"]]
     assert row["ready"] is False and row["reason"] == "NO_PYTHON_PACKAGE"
+
+
+SLIPPED_PLAN = {**GOOD_PLAN, "examples": [*GOOD_PLAN["examples"][:2],
+                                          {"call": "add_two(-2)", "why": "slip", "expected": 1}]}
+
+
+def test_a_planner_slip_is_corrected_only_when_an_independent_derivation_agrees_with_the_code(env):
+    runner = Runner(plan=lambda *_a: dict(SLIPPED_PLAN), rederive=lambda packet, plan, call: 0)
+    dispatched = step(env, runner)
+    accepted = step(env, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    clone = pl.ProductLane(env.state).clone(dispatched["repository"])
+    assert "assert add_two(-2) == 0" in git(clone, "show", f"{accepted['head_sha']}:tests/test_extra.py")
+    github = FakeGitHub()
+    step(env, runner, github, allow=False)
+    assert "add_two(-2) returns 0 (plan said 1)" in github.opened[0]["body"]
+
+
+@pytest.mark.parametrize("fresh", [1, WORKER.NO_OPINION, 5])
+def test_no_correction_without_agreement_between_code_and_a_fresh_derivation(env, fresh):
+    runner = Runner(plan=lambda *_a: dict(SLIPPED_PLAN), rederive=lambda packet, plan, call: fresh)
+    step(env, runner)
+    result = step(env, runner)
+    assert result["worker_status"] == "FAIL" and result["worker_summary"] == "SLICE_TESTS_FAILED"
+
+
+def test_no_correction_when_the_code_disagrees_with_most_examples(env):
+    runner = Runner(agent=lambda w, m, f, c: good_agent(w, m, f, c, source=WRONG_MODULE),
+                    rederive=lambda packet, plan, call: eval(call.replace("add_two", "int")))
+    step(env, runner)
+    assert step(env, runner)["worker_summary"] == "SLICE_TESTS_FAILED"
+
+
+def test_review_mode_leaves_a_green_pull_request_for_the_owner(env):
+    github = FakeGitHub()
+    review = {**env.policy, "portfolio_rotation": {**env.policy["portfolio_rotation"], "merge": "review"}}
+    env.policy = review
+    runner = Runner()
+    first = step(env, runner, github)["repository"]
+    step(env, runner, github)
+    step(env, runner, github, allow=False)  # push + PR
+    step(env, runner, github, allow=False)  # CI green -> waits for the owner
+    item = next(iter(pl.ProductLane(env.state).publications()["items"].values()))
+    assert item["state"] == "AWAITING_OWNER_REVIEW" and github.merged == []
+    assert wm.load(env.state)["repositories"][first]["last_outcome"] == "CI_GREEN_AWAITING_OWNER"
+    assert step(env, runner, github)["status"] == "DISPATCHED"  # the rotation keeps going meanwhile
+
+
+def test_real_policy_records_the_owners_merge_decision():
+    assert pl.rotation_config(POLICY)["merge"] in {"auto", "review"}

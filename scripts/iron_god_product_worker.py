@@ -217,13 +217,14 @@ def render_tests(plan: dict[str, Any]) -> str:
     """The slice's regression tests, written by the worker from the plan's exact examples (never by the model)."""
     lines = [f"from {plan['import_path']} import {plan['function_name']}", ""]
     for index, example in enumerate(plan["examples"], 1):
-        lines += ["", f"def test_{plan['function_name']}_example_{index}():",
+        lines += ["", f"def test_{plan['function_name']}_example_{index}() -> None:",
                   f"    assert {example['call']} == {example['expected']}", ""]
     return "\n".join(lines).rstrip() + "\n"
 
 
 CODING_GUIDE = (
-    "Coding guide: write the complete module; type hints and a short docstring on the function; handle empty "
+    "Coding guide: write the complete module; precise type hints (list[str], dict[str, int], never bare list or "
+    "dict) and a short docstring on the function; handle empty "
     "input explicitly; return values, never print; no files, network, time or randomness; standard library only; "
     "keep it under 60 lines; follow the style of the example module from this package, if one is shown."
 )
@@ -329,6 +330,108 @@ def quick_test(worktree: Path, test: str, timeout: int = 300) -> dict[str, Any]:
         return {"command": f"python -m pytest -q {test}", "returncode": None, "ok": False, "output_tail": "TIMEOUT"}
     finally:
         remove_tree(temp)
+
+
+NO_OPINION = object()
+
+
+def production_rederive(packet: dict[str, Any], plan: dict[str, Any], call: str) -> Any:
+    """A fresh, independent derivation of one example: objective, signature and call only (no code, no answer)."""
+    prompt = (f"A Python function is specified as:\n{plan['signature']}\n{plan['objective']}\n\n"
+              f"What exactly does {call} return? Apply the specification literally, step by step in your head. "
+              'Reply with JSON only: {"result": <the exact JSON value it returns>}')
+    reply = ollama_json(prompt, model=packet.get("planner_model"))
+    return reply["result"] if isinstance(reply, dict) and "result" in reply else NO_OPINION
+
+
+def actual_result(worktree: Path, plan: dict[str, Any], call: str) -> str | None:
+    """repr() of what the built module returns for one example call, or None if it raises."""
+    import subprocess
+
+    code = (f"from {plan['import_path']} import {plan['function_name']}\n"
+            f"print(repr({call}))")
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)]),
+           "PYTHONDONTWRITEBYTECODE": "1"}
+    try:
+        proc = subprocess.run([sys.executable, "-c", code], cwd=worktree, env=env, capture_output=True, text=True,
+                              check=False, timeout=30)
+    except subprocess.TimeoutExpired:
+        return None
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def adjudicate(worktree: Path, packet: dict[str, Any], plan: dict[str, Any], failure: str,
+               check: Callable[[], None], rederive: Callable[..., Any] | None) -> list[dict[str, Any]]:
+    """Correct failing examples only where two independent derivations agree against the plan.
+
+    A failing example is corrected to the code's result only when a fresh model
+    call, given just the objective, signature and call, derives the same value.
+    Every failing example must be resolved this way and at most half of the
+    examples may change; otherwise nothing is corrected and the slice fails.
+    """
+    import re
+
+    failing = sorted({int(n) for n in re.findall(rf"test_{plan['function_name']}_example_(\d+)", failure)
+                      if "FAILED" in failure})
+    examples = plan["examples"]
+    if not failing or len(failing) > len(examples) // 2 or any(not 1 <= n <= len(examples) for n in failing):
+        return []
+    derive = rederive or production_rederive
+    corrections = []
+    for n in failing:
+        check()
+        example = examples[n - 1]
+        actual = actual_result(worktree, plan, example["call"])
+        fresh = derive(packet, plan, example["call"])
+        if actual is None or fresh is NO_OPINION or repr(fresh) != actual or actual == example["expected"]:
+            return []
+        corrections.append({"example": n, "call": example["call"], "was": example["expected"], "now": actual})
+    for item in corrections:
+        examples[item["example"] - 1]["expected"] = item["now"]
+    plan["acceptance_criteria"] = [f"{e['call']} returns {e['expected']}" for e in examples] + [
+        "the module imports only the Python standard library"]
+    return corrections
+
+
+def mypy_configured(worktree: Path) -> bool:
+    for name, marker in (("pyproject.toml", "[tool.mypy"), ("mypy.ini", "[mypy"), ("setup.cfg", "[mypy")):
+        try:
+            if marker in (worktree / name).read_text(encoding="utf-8"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def type_check(worktree: Path, files: list[str], check: Callable[[], None]) -> dict[str, Any] | None:
+    """The repository's own mypy configuration on the two new files, when it has one (measured: strict mypy
+    was the only check a correct slice failed in knowledge-engine-ai)."""
+    if not mypy_configured(worktree):
+        return None
+    environment = repository_environment(worktree, check)
+    temp = worktree.parent / f"{worktree.name}.mypy.tmp"
+    env = {**os.environ, **environment["overrides"], "MYPY_CACHE_DIR": str(temp),
+           "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)])}
+    try:
+        result = NativeWindowsRuntime().execute_supervised(
+            RuntimeRequest((environment["python"], "-m", "mypy", *files), worktree, env, 600), check, interval=2.0,
+        )
+        return {"command": "python -m mypy " + " ".join(files), "returncode": result.returncode,
+                "ok": result.returncode == 0, "output_tail": _tail((result.stdout or "") + (result.stderr or ""))}
+    finally:
+        remove_tree(temp)
+
+
+def slice_checks(worktree: Path, module: str, test: str, check: Callable[[], None]) -> dict[str, Any]:
+    """Fail fast on the slice itself: its generated tests, then the repository's type checker if configured."""
+    tests = quick_test(worktree, test)
+    if not tests["ok"]:
+        return tests
+    types = type_check(worktree, [module, test], check)
+    if types is None or types["ok"]:
+        return tests
+    lines = [line for line in types["output_tail"].splitlines() if ": error:" in line][:20]
+    return {**types, "output_tail": "E mypy: " + "\nE mypy: ".join(lines) if lines else types["output_tail"]}
 
 
 def production_format(worktree: Path, files: list[str], check: Callable[[], None]) -> str:
@@ -476,6 +579,7 @@ def execute_product_packet(
     gates: Callable[[Path, str, list[str]], str | None] = production_gates,
     preflight: Callable[[Path, Callable[[], None], int], dict[str, Any]] = production_preflight,
     format_files: Callable[[Path, list[str], Callable[[], None]], str] = production_format,
+    rederive: Callable[[dict[str, Any], dict[str, Any], str], Any] | None = None,
 ) -> dict[str, Any]:
     """Plan and implement one product turn; returns the Canon handback (never raises for work failures)."""
     worktree = Path(packet["worktree"])
@@ -580,7 +684,7 @@ def execute_product_packet(
     foreign = stdlib_only_failure(worktree, module)
     if foreign:
         return finish("FAIL", f"STDLIB_GATE: {foreign}")
-    quick = quick_test(worktree, test)
+    quick = slice_checks(worktree, module, test, check)
     if not quick["ok"]:
         # One bounded repair: the model sees the exact failing assertions and may change only the module.
         handback["first_test_failure"] = quick["output_tail"][-1500:]
@@ -598,8 +702,14 @@ def execute_product_packet(
         foreign = stdlib_only_failure(worktree, module)
         if foreign:
             return finish("FAIL", f"STDLIB_GATE: {foreign}")
-        quick = quick_test(worktree, test)
+        quick = slice_checks(worktree, module, test, check)
         handback["repaired"] = True
+    if not quick["ok"] and "pytest" in quick["command"]:
+        corrected = adjudicate(worktree, packet, slice_plan, quick["output_tail"], check, rederive)
+        if corrected:
+            handback["adjudicated_examples"] = corrected
+            (worktree / test).write_text(render_tests(slice_plan), encoding="utf-8")
+            quick = slice_checks(worktree, module, test, check)
     handback["verification"] = [quick]
     if not quick["ok"]:
         return finish("FAIL", "SLICE_TESTS_FAILED")

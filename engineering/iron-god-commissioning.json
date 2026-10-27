@@ -253,6 +253,7 @@
     "exclude": [
       "jweter/project-orchestrator"
     ],
-    "capability_level": 3
+    "capability_level": 3,
+    "merge": "auto"
   }
 }
