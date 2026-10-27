@@ -222,6 +222,20 @@ def scope_envelope(clone: Path, base: str) -> list[str]:
     return sorted(roots)[:32]
 
 
+def python_packages(clone: Path, base: str, roots: list[str]) -> list[str]:
+    """Real packages (``__init__.py`` directories) inside the envelope, excluding tests."""
+    listed = _git(clone, "ls-tree", "-r", "--name-only", base).stdout.splitlines()
+    return sorted({p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith("/__init__.py") and under(p, roots)
+                   and not any(part in {"tests", "test"} for part in p.split("/"))})
+
+
+def record_readiness(lane: ProductLane, repo: str, base: str, *, ready: bool, reason: str = "") -> None:
+    readiness = lane._json(lane.root / "readiness.json", {"schema_version": 1, "repositories": {}})
+    readiness.setdefault("repositories", {})[repo] = {"repository": repo, "base_sha": base, "ready": ready,
+                                                       "reason": reason, "checked_at_utc": _now()}
+    atomic_json(lane.root / "readiness.json", readiness)
+
+
 def open_pr_paths(repo: str) -> list[str]:
     """Paths owned by any open pull request; a turn never touches files under review."""
     proc = subprocess.run(["gh", "pr", "list", "--repo", repo, "--state", "open", "--limit", "100",
@@ -638,9 +652,12 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
         return _report(lane, {"status": "REPOSITORY_SYNC_FAILED", "repository": repo,
                               "detail": f"{type(exc).__name__}: {str(exc)[:300]}"})
     roots = scope_envelope(clone, base)
-    if not roots:
+    if not roots or not python_packages(clone, base, roots):
+        # Product slices add a module to an existing Python package; a repository without
+        # one (e.g. an Unreal/C++ game with loose tools) is not eligible for this slice type.
         _advance_cursor(lane, repo, packet_id)
-        return _report(lane, {"status": "NO_SCOPE_ENVELOPE", "repository": repo})
+        record_readiness(lane, repo, base, ready=False, reason="NO_PYTHON_PACKAGE")
+        return _report(lane, {"status": "NOT_ELIGIBLE_NO_PYTHON_PACKAGE", "repository": repo})
     worktree = lane.worktrees / packet_id
     branch = f"iron-god/{name.lower()}/{packet_id.lower()}"
     added = _git(clone, "worktree", "add", "-b", branch, str(worktree), base)

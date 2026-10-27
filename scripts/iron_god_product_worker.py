@@ -72,11 +72,18 @@ def repository_brief(worktree: Path, base: str, roots: list[str]) -> str:
         if path.is_file():
             parts.append(f"--- {name} (opening) ---\n" + path.read_text(encoding="utf-8", errors="ignore")[:BRIEF_CHARS])
     listed = _git(worktree, "ls-tree", "-r", "--name-only", base).stdout.splitlines()
-    modules = sorted({p for p in listed if p.endswith(".py") and _under(p, roots) and "/test" not in "/" + p})
-    packages = sorted({p.rsplit("/", 1)[0] + "/" for p in modules})
-    parts.append("--- packages ---\n" + "\n".join(packages[:30]))
-    parts.append("--- some existing modules ---\n" + "\n".join(modules[:60]))
+    packages = python_packages(listed, roots)
+    modules = sorted({p for p in listed if p.endswith(".py") and p.rsplit("/", 1)[0] + "/" in packages
+                      and not p.endswith("__init__.py")})
+    parts.append("--- Python packages (put the new module in one of these) ---\n" + "\n".join(packages[:30]))
+    parts.append("--- existing modules (do NOT reuse these file names) ---\n" + "\n".join(modules[:60]))
     return "\n\n".join(parts)
+
+
+def python_packages(listed: list[str], roots: list[str]) -> list[str]:
+    """Real packages (directories with ``__init__.py``) inside the envelope, excluding tests."""
+    return sorted({p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith("/__init__.py") and _under(p, roots)
+                   and not any(part in {"tests", "test"} for part in p.split("/"))})
 
 
 def planning_prompt(packet: dict[str, Any], brief: str) -> str:
@@ -86,7 +93,9 @@ def planning_prompt(packet: dict[str, Any], brief: str) -> str:
         "Choose ONE new pure Python function that is useful for this repository's purpose. It takes and returns "
         "plain values (str, int, float, bool, list, dict, tuple, None): no files, audio, images, network, time or "
         "randomness, and it uses only the Python standard library. It goes in ONE new module inside one of the "
-        "existing packages listed below.\n\n"
+        "existing packages listed below. Prefer functions whose results are easy to state exactly, such as text "
+        "cleanup, filtering, counting, grouping or validation by explicit rules; avoid percentages and fuzzy "
+        "scores.\n\n"
         f"{brief}\n\n{memory}\n\n"
         'Reply with JSON only: {"function_name": "<snake_case name>", '
         '"signature": "<def line, e.g. def clamp(value: int, low: int, high: int) -> int:>", '
@@ -95,7 +104,7 @@ def planning_prompt(packet: dict[str, Any], brief: str) -> str:
         'same code; not just the topic>", '
         '"examples": [{"call": "<a Python call of the function with literal arguments>", '
         '"why": "<the short arithmetic or rule that gives the result>", '
-        '"expected": <the exact JSON value it must return>}, ...3 to 6 examples covering normal and edge cases], '
+        '"expected": <the exact JSON value it must return>}, ...3 to 5 examples covering normal and edge cases], '
         "Every argument an example passes must be a parameter of the signature, and every expected value must "
         "follow from its 'why'. "
         '"note": "<one sentence: why this helps the repository and what could come next>"}'
@@ -137,11 +146,18 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
     if not _under(module, packet["paths"]) or module.startswith("tests/"):
         raise PlanRejected("PLAN_PATH_OUTSIDE_ENVELOPE")
     test = f"tests/test_{module.rsplit('/', 1)[-1]}"
+
+    def exists(path: str) -> bool:
+        return _git(worktree, "cat-file", "-e", f"{base}:{path}").returncode == 0
+
+    if exists(module):  # the function is new: give it its own module named after it
+        module = f"{module.rsplit('/', 1)[0]}/{name}.py"
+        test = f"tests/test_{name}.py"
     forbidden = [*packet["planning"]["forbidden_paths"], *(packet.get("avoid_paths") or [])]
     if _under(module, forbidden) or _under(test, forbidden):
         raise PlanRejected("PLAN_PATH_FORBIDDEN_OR_UNDER_REVIEW")
     for path in (module, test):
-        if _git(worktree, "cat-file", "-e", f"{base}:{path}").returncode == 0:
+        if exists(path):
             raise PlanRejected(f"PLAN_WOULD_EDIT_EXISTING_FILE: {path}")
     package = module.rsplit("/", 1)[0]
     if _git(worktree, "cat-file", "-e", f"{base}:{package}/__init__.py").returncode != 0:
@@ -315,6 +331,26 @@ def quick_test(worktree: Path, test: str, timeout: int = 300) -> dict[str, Any]:
         remove_tree(temp)
 
 
+def production_format(worktree: Path, files: list[str], check: Callable[[], None]) -> str:
+    """Apply the repository's own formatter to the new files (measured: a correct slice failed only on format)."""
+    try:
+        config = (worktree / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return "none"
+    tool = "ruff" if "[tool.ruff" in config else "black" if "[tool.black" in config else None
+    if tool is None:
+        return "none"
+    environment = repository_environment(worktree, check)
+    argv = (environment["python"], "-m", "ruff", "format", *files) if tool == "ruff" else (
+        environment["python"], "-m", "black", "-q", *files)
+    result = NativeWindowsRuntime().execute_supervised(
+        RuntimeRequest(argv, worktree, {**os.environ, **environment["overrides"]}, 300), check, interval=2.0,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"{tool} format failed: {_tail((result.stdout or '') + (result.stderr or ''))[-200:]}")
+    return tool
+
+
 def production_gates(worktree: Path, base: str, paths: list[str]) -> str | None:
     from scripts.autonomous_slice_builder import generated_change_failure
 
@@ -439,6 +475,7 @@ def execute_product_packet(
     run_agent: Callable[[Path, str, list[str], Callable[[], None]], Any] = production_agent,
     gates: Callable[[Path, str, list[str]], str | None] = production_gates,
     preflight: Callable[[Path, Callable[[], None], int], dict[str, Any]] = production_preflight,
+    format_files: Callable[[Path, list[str], Callable[[], None]], str] = production_format,
 ) -> dict[str, Any]:
     """Plan and implement one product turn; returns the Canon handback (never raises for work failures)."""
     worktree = Path(packet["worktree"])
@@ -566,6 +603,12 @@ def execute_product_packet(
     handback["verification"] = [quick]
     if not quick["ok"]:
         return finish("FAIL", "SLICE_TESTS_FAILED")
+    try:
+        handback["formatted"] = format_files(worktree, [module, test], check)
+    except RuntimeError as exc:
+        if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+            return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_FORMAT")
+        return finish("ENVIRONMENT_FAILURE", f"FORMAT_FAILED: {str(exc)[:300]}")
     if not authority():
         return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_BEFORE_COMMIT")
     _git(worktree, "add", "--", *changed)

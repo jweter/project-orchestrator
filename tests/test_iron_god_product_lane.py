@@ -384,7 +384,8 @@ def test_the_worker_writes_the_tests_from_the_plans_exact_examples(env):
 
 
 @pytest.mark.parametrize(("change", "reason"), [
-    ({"module_path": "pkg/core.py"}, "PLAN_WOULD_EDIT_EXISTING_FILE"),
+    ({"module_path": "pkg/core.py", "function_name": "core", "signature": "def core(value: int) -> int:"},
+     "PLAN_WOULD_EDIT_EXISTING_FILE"),  # even the function-named fallback module exists
     ({"module_path": "extra.py"}, "PLAN_PATH_INVALID"),
     ({"module_path": "tests/extra.py"}, "PLAN_PATH_OUTSIDE_ENVELOPE"),
     ({"module_path": "pkg/../evil.py"}, "PLAN_PATH_INVALID"),
@@ -455,11 +456,11 @@ def test_a_rejected_plan_gets_one_repair_with_the_exact_reason(env):
 
     def planner(worktree, packet, check, feedback=""):
         seen.append(feedback)
-        return {**GOOD_PLAN, "module_path": "pkg/core.py"} if not feedback else dict(GOOD_PLAN)
+        return {**GOOD_PLAN, "examples": GOOD_PLAN["examples"][:1]} if not feedback else dict(GOOD_PLAN)
     runner = Runner(plan=planner)
     step(env, runner)
     assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
-    assert seen[0] == "" and "PLAN_WOULD_EDIT_EXISTING_FILE: pkg/core.py" in seen[1] and len(seen) == 2
+    assert seen[0] == "" and "PLAN_EXAMPLES_INSUFFICIENT: 1 usable" in seen[1] and len(seen) == 2
 
 
 def test_a_module_written_under_its_bare_name_is_moved_into_the_planned_path(env):
@@ -541,3 +542,24 @@ def test_repository_environment_is_reused_until_the_lockfile_changes(env):
     reused = WORKER.repository_environment(worktree, lambda: None)
     assert reused["status"] == "REUSED" and reused["overrides"]["POETRY_VIRTUALENVS_CREATE"] == "false"
     assert reused["overrides"]["VIRTUAL_ENV"] == str(envdir)
+
+
+def test_a_plan_reusing_an_existing_module_name_gets_a_new_module_named_after_its_function(env):
+    packet, worktree = plan_for(env)
+    plan = WORKER.validate_plan({**GOOD_PLAN, "module_path": "pkg/core.py"}, worktree, packet["base_sha"], packet)
+    assert plan["module_path"] == "pkg/add_two.py" and plan["test_path"] == "tests/test_add_two.py"
+
+
+def test_the_brief_offers_only_real_python_packages():
+    listed = ["pkg/__init__.py", "pkg/core.py", "prototypes/tool/run.py", "tests/__init__.py", "src/app/__init__.py"]
+    assert WORKER.python_packages(listed, ["pkg/", "prototypes/", "src/", "tests/"]) == ["pkg/", "src/app/"]
+
+
+def test_a_repository_without_a_python_package_is_recorded_not_eligible(env, monkeypatch):
+    monkeypatch.setattr(pl, "python_packages", lambda clone, base, roots: [])
+    runner = Runner()
+    result = step(env, runner)
+    assert result["status"] == "NOT_ELIGIBLE_NO_PYTHON_PACKAGE" and runner.spawned == 0
+    readiness = json.loads((pl.ProductLane(env.state).root / "readiness.json").read_text(encoding="utf-8"))
+    row = readiness["repositories"][result["repository"]]
+    assert row["ready"] is False and row["reason"] == "NO_PYTHON_PACKAGE"

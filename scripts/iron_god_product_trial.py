@@ -105,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:
             if not held():
                 raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
 
+        if args.preflight_only and not pl.python_packages(clone, base, roots):
+            pl.record_readiness(lane, repo, base, ready=False, reason="NO_PYTHON_PACKAGE")
+            print(json.dumps({"repository": repo, "ready": False, "reason": "NO_PYTHON_PACKAGE"}, indent=2))
+            return 0
         if args.preflight_only:
             result = worker.production_preflight(worktree, check, int(packet["preflight_timeout_s"]))
             ready = {"repository": repo, "base_sha": base, "ready": result["ok"], "checked_at_utc": report["started_at_utc"],
