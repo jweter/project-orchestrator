@@ -60,13 +60,41 @@ def test_a_method_is_replaced_at_its_own_indentation():
 
 
 @pytest.mark.parametrize(("reply", "problem"), [
-    (fenced("def other(value: int) -> int:\n    return 0"), "UNIT_MISMATCH"),
-    ("no code at all", "BLOCK_COUNT"),
-    (fenced("def change(value: int) -> int:\n    return (", ), "UNIT_MISMATCH"),
+    (fenced("def other(value: int) -> int:\n    return 0"), "UNEXPECTED_UNIT: other"),
+    ("no code at all", "NO_CODE_BLOCKS"),
+    (fenced("def change(value: int) -> int:\n    return (", ), "MALFORMED_BLOCK"),
+    (fenced("def change(value: int) -> int:\n    return 2", "def change(value: int) -> int:\n    return 3"),
+     "DUPLICATE_UNIT: change"),
+    (fenced("print('hi')\ndef change(value: int) -> int:\n    return 2"), "UNNAMED_CODE"),
+    (fenced("def change(value: int) -> int:\n    return 2", "def keep(value: int) -> int:\n    return 0"),
+     "UNEXPECTED_UNIT: keep"),  # an unauthorized unit is never written, even alongside a correct one
 ])
 def test_a_reply_that_does_not_match_the_direction_is_never_applied(reply, problem):
     with pytest.raises(de.DirectedEditError, match=problem):
         de.apply_reply(MODULE, reply, ["change"], add=[])
+
+
+def test_an_incomplete_reply_names_every_missing_unit():
+    reply = fenced("def change(value: int) -> int:\n    return value + 2")
+    with pytest.raises(de.DirectedEditError, match=r"MISSING_UNITS: \['imports', 'helper'\]"):
+        de.apply_reply(MODULE, reply, ["imports", "change"], add=[{"name": "helper", "after": "keep", "spec": "x"}])
+
+
+def test_reordered_blocks_and_imports_written_with_a_new_definition_are_matched_by_name():
+    # measured 2026-10-28: the model wrote the new import and the new helper in one block (BLOCK_COUNT before)
+    reply = fenced("import re\n\ndef helper(text: str) -> str:\n    return re.sub('x', '', text)",
+                   "def change(value: int) -> int:\n    return value + 2")
+    result = de.apply_reply(MODULE, reply, ["imports", "change"],
+                            add=[{"name": "helper", "after": "keep", "spec": "strip x"}])
+    assert "import re\n" in result and "import json" not in result  # the imports unit was replaced as written
+    assert result.index("def keep") < result.index("def helper") < result.index("def change")
+    assert "return value + 2" in result
+
+
+def test_a_direction_naming_an_unknown_unit_or_an_existing_new_name_is_rejected():
+    with pytest.raises(de.DirectedEditError, match="DIRECTION_INVALID"):
+        de.apply_reply(MODULE, fenced("def keep(value: int) -> int:\n    return 1"), [],
+                       add=[{"name": "keep", "after": "LIMIT", "spec": "x"}])
 
 
 def test_the_prompt_shows_only_the_targets_and_the_rest_as_one_line_signatures():

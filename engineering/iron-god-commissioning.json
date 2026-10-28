@@ -257,6 +257,7 @@
     "merge": "auto",
     "planning": "backlog",
     "planning_decision": "2026-10-27: owner directed roadmap-driven development; only approved items from engineering/state/iron-god-backlog.json are built, never self-invented slices",
-    "development_level": 1
+    "development_level": 2,
+    "development_level_decision": "2026-10-28: owner approved a Level 2 pilot limited to directed edits (named units in one existing module, one requirement, approved tests that fail on main); calibration 9/12 first try, then the named-block fix"
   }
 }

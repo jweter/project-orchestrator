@@ -659,6 +659,8 @@ def execute_product_packet(
     preflight: Callable[[Path, Callable[[], None], int], dict[str, Any]] = production_preflight,
     format_files: Callable[[Path, list[str], Callable[[], None]], str] = production_format,
     rederive: Callable[[dict[str, Any], dict[str, Any], str], Any] | None = None,
+    generate: Callable[[str, int, Callable[[], None]], dict[str, Any]] | None = None,
+    directed_tests: Callable[[Path, str, str, Callable[[], None]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Plan and implement one product turn; returns the Canon handback (never raises for work failures)."""
     worktree = Path(packet["worktree"])
@@ -691,6 +693,28 @@ def execute_product_packet(
     def check() -> None:
         if not authority():
             raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
+
+    direct = (packet.get("slice") or {}).get("direct")
+    if direct:  # an approved Level 2 slice: a directed edit of named units in one existing module
+        try:
+            directed_plan = validate_direct(direct, worktree, base, packet)
+        except PlanRejected as exc:
+            handback["plan_rejections"] = [str(exc)]
+            return finish("FAIL", f"BACKLOG_SLICE_INVALID: {exc}"[:400])
+        handback["plan"] = {k: v for k, v in directed_plan.items() if k != "test_source"}
+        handback["note"] = directed_plan["note"]
+        try:
+            return execute_directed_slice(packet, directed_plan, worktree, base, handback, finish,
+                                          authority=authority, check=check, generate=generate or production_generate,
+                                          tests=directed_tests or directed_checks, gates=gates, preflight=preflight,
+                                          format_files=format_files)
+        except RuntimeError as exc:
+            if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+                return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_DIRECTED_SLICE")
+            return finish("ENVIRONMENT_FAILURE", f"DIRECTED_SLICE_FAILED_TO_RUN: {str(exc)[:300]}")
+        except Exception as exc:  # an unreachable model or a broken environment; the handback is always written
+            return finish("ENVIRONMENT_FAILURE",
+                          f"DIRECTED_SLICE_FAILED_TO_RUN: {type(exc).__name__}: {str(exc)[:200]}")
 
     # An approved backlog slice is built exactly as written: the local model never re-plans it.
     approved = (packet.get("slice") or {}).get("build")
@@ -772,8 +796,21 @@ def execute_product_packet(
     handback["verification"] = [quick]
     if not quick["ok"]:
         return finish("FAIL", "SLICE_TESTS_FAILED")
+    return commit_and_verify(packet, worktree, base, changed, [module, test],
+                             f"iron-god: add {slice_plan['function_name']} ({packet['packet_id']})", quick, handback,
+                             finish, authority=authority, check=check, gates=gates, preflight=preflight,
+                             format_files=format_files)
+
+
+def commit_and_verify(packet: dict[str, Any], worktree: Path, base: str, changed: list[str], files: list[str],
+                      message: str, quick: dict[str, Any], handback: dict[str, Any],
+                      finish: Callable[[str, str], dict[str, Any]], *, authority: Callable[[], bool],
+                      check: Callable[[], None], gates: Callable[[Path, str, list[str]], str | None],
+                      preflight: Callable[[Path, Callable[[], None], int], dict[str, Any]],
+                      format_files: Callable[[Path, list[str], Callable[[], None]], str]) -> dict[str, Any]:
+    """Format, commit, the builder's change gates, then the canonical preflight at the exact head."""
     try:
-        handback["formatted"] = format_files(worktree, [module, test], check)
+        handback["formatted"] = format_files(worktree, files, check)
     except RuntimeError as exc:
         if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
             return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_FORMAT")
@@ -782,7 +819,7 @@ def execute_product_packet(
         return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_BEFORE_COMMIT")
     _git(worktree, "add", "--", *changed)
     commit = _git(worktree, "-c", "user.name=Iron God Product Worker", "-c", "user.email=iron-god-product@localhost",
-                  "commit", "-q", "-m", f"iron-god: add {slice_plan['function_name']} ({packet['packet_id']})")
+                  "commit", "-q", "-m", message)
     if commit.returncode != 0:
         return finish("ENVIRONMENT_FAILURE", "COMMIT_FAILED: " + _tail(commit.stderr)[:300])
     gate = gates(worktree, base, changed)
@@ -797,6 +834,170 @@ def execute_product_packet(
     handback["verification"] = [quick, result]
     return finish("PASS" if result["ok"] else "FAIL",
                   "canonical preflight passed at the exact head" if result["ok"] else "canonical preflight failed")
+
+
+DIRECT_TEST_CHARS = 6000
+DIRECT_MAX_UNITS = 3
+DIRECT_NUM_CTX = 8192
+
+
+def validate_direct(spec: Any, worktree: Path, base: str, packet: dict[str, Any]) -> dict[str, Any]:
+    """Fail-closed checks of an approved Level 2 direction before the model is called."""
+    from project_orchestrator import iron_god_directed_edit as de
+
+    if not isinstance(spec, dict):
+        raise PlanRejected("DIRECT_NOT_AN_OBJECT")
+    module = str(spec.get("module_path") or "").replace("\\", "/")
+    test = str(spec.get("test_path") or "").replace("\\", "/")
+    forbidden = [*packet["planning"]["forbidden_paths"], *(packet.get("avoid_paths") or [])]
+    for path in (module, test):
+        if not path.endswith(".py") or path.startswith("/") or ".." in path.split("/"):
+            raise PlanRejected(f"DIRECT_PATH_INVALID: {path[:120]}")
+        if _under(path, forbidden):
+            raise PlanRejected(f"DIRECT_PATH_FORBIDDEN_OR_UNDER_REVIEW: {path}")
+    if not _under(module, packet["paths"]) or module.startswith("tests/"):
+        raise PlanRejected("DIRECT_MODULE_OUTSIDE_ENVELOPE")
+    if not test.startswith("tests/") or not test.rsplit("/", 1)[-1].startswith("test_"):
+        raise PlanRejected("DIRECT_TEST_PATH_INVALID")
+    if _git(worktree, "cat-file", "-e", f"{base}:{module}").returncode != 0:
+        raise PlanRejected(f"DIRECT_MODULE_MISSING: {module}")
+    if _git(worktree, "cat-file", "-e", f"{base}:{test}").returncode == 0:
+        raise PlanRejected(f"DIRECT_TEST_WOULD_OVERWRITE: {test}")
+    targets = [str(t) for t in spec.get("targets") or []]
+    add = [{"name": str(a.get("name")), "after": str(a.get("after")), "spec": str(a.get("spec") or "")}
+           for a in spec.get("add") or [] if isinstance(a, dict)]
+    if not targets or len(targets) + len(add) > DIRECT_MAX_UNITS:
+        raise PlanRejected("DIRECT_UNITS_OUT_OF_BOUNDS")
+    direction = " ".join(str(spec.get("direction") or "").split())
+    if not 20 <= len(direction) <= MAX_TEXT:
+        raise PlanRejected("DIRECT_DIRECTION_INCOMPLETE")
+    source = str(spec.get("test_source") or "")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise PlanRejected("DIRECT_TEST_UNPARSEABLE") from None
+    if len(source) > DIRECT_TEST_CHARS or not any(
+            isinstance(n, ast.FunctionDef) and n.name.startswith("test_") for n in tree.body):
+        raise PlanRejected("DIRECT_TEST_INVALID")
+    found = de.units((worktree / module).read_text(encoding="utf-8"))
+    unknown = [t for t in targets if t not in found] + [a["name"] for a in add if a["name"] in found
+                                                        or a["after"] not in found or not a["name"].isidentifier()]
+    if unknown:
+        raise PlanRejected(f"DIRECT_UNITS_UNKNOWN: {unknown}")
+    return {"mode": "directed", "module_path": module, "test_path": test, "targets": targets, "add": add,
+            "direction": direction, "test_source": source, "objective": direction,
+            "note": " ".join(str(spec.get("note") or "").split())[:NOTE_CHARS]}
+
+
+def production_generate(prompt: str, num_predict: int, check: Callable[[], None]) -> dict[str, Any]:
+    """One plain completion from the local builder model, holding the shared model lock."""
+    import shutil
+
+    from scripts.autonomous_slice_builder import MODEL, _acquire_ollama_lock
+
+    check()
+    base = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
+    body = {"model": MODEL.split("/", 1)[-1], "prompt": prompt, "stream": False,
+            "options": {"temperature": 0.2, "num_ctx": DIRECT_NUM_CTX, "num_predict": num_predict}}
+    lock = _acquire_ollama_lock()
+    try:
+        request = urllib.request.Request(base + "/api/generate", data=json.dumps(body).encode("utf-8"),
+                                         headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=1800) as response:
+            reply = json.load(response)
+    finally:
+        shutil.rmtree(lock, ignore_errors=True)
+    check()
+    return {"text": reply.get("response") or "", "prompt_tokens": reply.get("prompt_eval_count"),
+            "output_tokens": reply.get("eval_count"), "model_s": round((reply.get("total_duration") or 0) / 1e9, 1)}
+
+
+def repository_test(worktree: Path, test: str, check: Callable[[], None], timeout: int = 600) -> dict[str, Any]:
+    """The slice's tests in the repository's own installed environment (an existing module has real imports)."""
+    environment = repository_environment(worktree, check)
+    temp = worktree.parent / f"{worktree.name}.quick.tmp"
+    env = private_temp_env({**os.environ, **environment["overrides"], "PYTHONDONTWRITEBYTECODE": "1",
+                            "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)])}, temp)
+    try:
+        result = NativeWindowsRuntime().execute_supervised(RuntimeRequest(
+            (environment["python"], "-m", "pytest", "-q", "-p", "no:cacheprovider", test), worktree, env, timeout),
+            check, interval=2.0)
+        return {"command": f"python -m pytest -q {test}", "returncode": result.returncode,
+                "ok": result.returncode == 0, "output_tail": _tail((result.stdout or "") + "\n" + (result.stderr or ""))}
+    finally:
+        remove_tree(temp)
+
+
+def directed_checks(worktree: Path, module: str, test: str, check: Callable[[], None]) -> dict[str, Any]:
+    """The slice's tests, then the repository's type checker and linter, on the changed module and its tests."""
+    tests = repository_test(worktree, test, check)
+    if not tests["ok"]:
+        return tests
+    for result, marker in ((type_check(worktree, [module, test], check), ": error:"),
+                           (lint_check(worktree, [module, test], check), ".py:")):
+        if result is not None and not result["ok"]:
+            lines = [line for line in result["output_tail"].splitlines() if marker in line][:20]
+            return {**result, "output_tail": "\n".join(lines) or result["output_tail"]}
+    return tests
+
+
+def failing_assertions(tail: str, limit: int = 40) -> str:
+    keep = [line for line in tail.splitlines() if line.startswith(("E ", ">", "FAILED", "ERROR"))]
+    return "\n".join(keep[:limit]) or tail[-1500:]
+
+
+def execute_directed_slice(packet: dict[str, Any], plan: dict[str, Any], worktree: Path, base: str,
+                           handback: dict[str, Any], finish: Callable[[str, str], dict[str, Any]], *,
+                           authority: Callable[[], bool], check: Callable[[], None],
+                           generate: Callable[[str, int, Callable[[], None]], dict[str, Any]],
+                           tests: Callable[[Path, str, str, Callable[[], None]], dict[str, Any]],
+                           gates: Callable[[Path, str, list[str]], str | None],
+                           preflight: Callable[[Path, Callable[[], None], int], dict[str, Any]],
+                           format_files: Callable[[Path, list[str], Callable[[], None]], str]) -> dict[str, Any]:
+    """One approved Level 2 slice: a directed function-level edit, built once and never retried in a loop.
+
+    Measured 2026-10-28 (calibration): directed edits passed 9/12 historical fixes first try with
+    zero test tampering, and the repair round rescued none of the failures (the model re-emitted
+    the same answer). A failed slice therefore goes back to the planner for decomposition.
+    """
+    from project_orchestrator import iron_god_directed_edit as de
+
+    module, test = plan["module_path"], plan["test_path"]
+    (worktree / test).parent.mkdir(parents=True, exist_ok=True)
+    (worktree / test).write_text(plan["test_source"], encoding="utf-8")  # the approved spec, never the model's
+    spec_bytes = (worktree / test).read_bytes()
+    before = tests(worktree, module, test, check)
+    if before["ok"]:
+        return finish("FAIL", "DIRECTED_TEST_NOT_DISCRIMINATING: the approved tests already pass on main")
+    original = (worktree / module).read_text(encoding="utf-8")
+    found = de.units(original)
+    lines = sum(found[t].end - found[t].start + 1 for t in plan["targets"])
+    prompt = de.build_prompt(original, module, plan["direction"], plan["targets"], add=plan["add"],
+                             failure=failing_assertions(before["output_tail"]))
+    reply = generate(prompt, min(4096, max(600, 30 * (lines + 25 * len(plan["add"])))), check)
+    text = str(reply.get("text") or "")
+    handback["directed"] = {**{k: reply.get(k) for k in ("prompt_tokens", "output_tokens", "model_s")},
+                            "reply": text[:8000]}
+    try:
+        edited = de.apply_reply(original, text, plan["targets"], add=plan["add"])
+    except de.DirectedEditError as exc:
+        handback["directed"]["apply_error"] = str(exc)[:300]
+        return finish("FAIL", f"DIRECTED_REPLY_REJECTED: {str(exc)[:300]}")
+    (worktree / module).write_text(edited, encoding="utf-8")
+    changed = changed_paths(worktree)
+    handback["changed_paths"] = changed
+    if set(changed) != {module, test} or (worktree / test).read_bytes() != spec_bytes:
+        return finish("REVIEW_REQUIRED", "DIRECTED_CHANGES_OUTSIDE_PLAN: " + ", ".join(sorted(changed)))
+    quick = tests(worktree, module, test, check)
+    handback["verification"] = [quick]
+    if not quick["ok"]:
+        handback["directed"]["test_failure"] = failing_assertions(quick["output_tail"])[:3000]
+        return finish("FAIL", "SLICE_TESTS_FAILED")
+    # (the repository's formatter may reflow the approved tests during the lint check; the model never writes files)
+    return commit_and_verify(packet, worktree, base, changed, [module, test],
+                             f"iron-god: change {', '.join(plan['targets'])} in {module} ({packet['packet_id']})",
+                             quick, handback, finish, authority=authority, check=check, gates=gates,
+                             preflight=preflight, format_files=format_files)
 
 
 def main(argv: list[str] | None = None) -> int:

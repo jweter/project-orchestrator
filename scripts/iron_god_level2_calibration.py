@@ -279,6 +279,7 @@ def directed_attempt(environment: dict[str, Any], clone: Path, case: dict[str, A
             reply = ollama_code(prompt, budget)
             row: dict[str, Any] = {k: reply[k] for k in ("prompt_tokens", "output_tokens", "model_s")}
             row["prompt_chars"] = len(prompt)
+            row["reply"] = reply["text"][:8000]  # local model output about this module only: diagnosis evidence
             try:
                 module.write_text(de.apply_reply(original, reply["text"], direction["targets"], add=direction["add"]),
                                   encoding="utf-8")
@@ -290,6 +291,8 @@ def directed_attempt(environment: dict[str, Any], clone: Path, case: dict[str, A
             tests = run_tests(environment, worktree, case["tests"]) if row["applied"] else {"ok": False, "tail": ""}
             row["tests_s"] = round(time.monotonic() - tests_started, 1)
             row["tests_ok"] = tests["ok"]
+            if row["applied"] and not tests["ok"]:
+                row["test_failure"] = failure_lines(tests["tail"])[:3000]
             row["tampered_tests"] = [t for t, b in tests_before.items() if (worktree / t).read_bytes() != b]
             changed = git(worktree, "diff", "--name-only", "HEAD").stdout.split()
             row["changed_outside_module"] = [p for p in changed if p != case["source"]]
@@ -314,12 +317,15 @@ def directed_attempt(environment: dict[str, Any], clone: Path, case: dict[str, A
     return result
 
 
-def run(state_root: Path, check, *, limit: int | None, edit_format: str, mode: str = "aider") -> dict[str, Any]:
+def run(state_root: Path, check, *, limit: int | None, edit_format: str, mode: str = "aider",
+        only: list[str] | None = None) -> dict[str, Any]:
     worker = load_worker()
     cases = json.loads((state_root / "iron-god-level2" / "cases.json").read_text(encoding="utf-8"))["cases"]
     # interleave repositories so a short run still samples every one
     by_repo = [[c for c in cases if c["repository"] == r] for r in REPOSITORIES]
     ordered = [c for group in zip(*by_repo) for c in group] + [c for g in by_repo for c in g[min(map(len, by_repo)):]]
+    if only:
+        ordered = [c for c in ordered if c["id"] in only or c["id"].split(":", 1)[-1] in only]
     selected = ordered[:limit] if limit else ordered
     products = state_root.parent / "canon-workspaces" / "products"
     label = "directed" if mode == "directed" else edit_format
@@ -356,6 +362,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-root", type=Path,
                         default=Path(os.environ.get("LOCALAPPDATA", "")) / "ExponentialEngine" / "flow-state")
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--case", action="append", help="run only this case id (repeatable)")
     parser.add_argument("--edit-format", choices=["whole", "diff"], default="whole")
     parser.add_argument("--mode", choices=["aider", "directed"], default="aider",
                         help="directed: function-level edits from planner-written directions")
@@ -382,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
         return 3
     try:
         print(json.dumps(run(args.state_root, check, limit=args.limit, edit_format=args.edit_format,
-                                    mode=args.mode), indent=2))
+                                    mode=args.mode, only=args.case), indent=2))
     finally:
         pool.release(LEASE_ID, lease.lease_id)
     return 0

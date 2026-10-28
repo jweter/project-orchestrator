@@ -134,9 +134,9 @@ def good_agent(worktree, message, files, check, source=GOOD_MODULE):
 
 class Runner:
     def __init__(self, agent=good_agent, preflight_ok=True, gate=None, plan=good_plan,
-                 rederive=lambda packet, plan, call: WORKER.NO_OPINION):
+                 rederive=lambda packet, plan, call: WORKER.NO_OPINION, generate=None):
         self.agent, self.preflight_ok, self.gate, self.plan = agent, preflight_ok, gate, plan
-        self.rederive = rederive
+        self.rederive, self.generate = rederive, generate
         self.spawned = 0
 
     def spawn(self, release_repo, packet_path, handback_path, *, release_sha, log_path):
@@ -144,7 +144,7 @@ class Runner:
         packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
         handback = WORKER.execute_product_packet(
             packet, authority=lambda: True, plan=self.plan, run_agent=self.agent, gates=lambda *_a: self.gate,
-            rederive=self.rederive, format_files=lambda *_a: "none",
+            rederive=self.rederive, format_files=lambda *_a: "none", generate=self.generate,
             preflight=lambda *_a: {"command": "python engineering/preflight.py", "returncode": 0 if self.preflight_ok
                                    else 1, "ok": self.preflight_ok, "output_tail": ""})
         WORKER._write(Path(handback_path), handback)
@@ -788,7 +788,10 @@ def test_real_backlog_covers_every_product_repository_and_is_well_formed():
     repos = {item["repository"] for item in items}
     assert all(sum(1 for i in items if i["repository"] == r) >= 5 for r in repos) and len(repos) == 6
     assert pl.rotation_config(POLICY)["planning"] == "backlog"
-    assert pl.rotation_config(POLICY)["development_level"] == 1
+    assert pl.rotation_config(POLICY)["development_level"] == 2  # the owner-approved directed Level 2 pilot
+    for item in items:  # every approved Level 2 item is a directed edit, never a self-planned change
+        if item["status"] == "approved" and item["level"] == 2:
+            assert item["direct"]["test_source"] and len(item["direct"]["targets"]) <= 2
     everward = [i for i in items if i["repository"] == "jweter/Project-Everward"]
     assert all(i["level"] not in backlog_mod.BUILDABLE_LEVELS or i["status"] != "approved" for i in everward)
 
@@ -825,3 +828,99 @@ def test_an_example_using_the_key_b_is_not_mistaken_for_bytes(env):
     with pytest.raises(WORKER.PlanRejected):
         WORKER.validate_plan({**plan, "examples": [{**e, "call": "count_keys(b'ab')"} for e in plan["examples"]]},
                              worktree, packet["base_sha"], packet)
+
+
+DIRECT_TEST = "from pkg.core import one\n\n\ndef test_one_is_two() -> None:\n    assert one() == 2\n"
+
+
+def direct_item(item_id, repo, **direct):
+    item = backlog_item(item_id, repo, level=2, build=False)
+    item["direct"] = {"module_path": "pkg/core.py", "targets": ["one"], "add": [],
+                      "direction": "one() must return 2 instead of 1.", "test_path": "tests/test_one_is_two.py",
+                      "test_source": DIRECT_TEST, **direct}
+    return item
+
+
+def directed_env(env, items):
+    backlog_env(env, items)
+    env.policy["portfolio_rotation"]["development_level"] = 2
+    return env
+
+
+def replying(text, seen=None):
+    def generate(prompt, num_predict, check):
+        check()
+        if seen is not None:
+            seen.append(prompt)
+        return {"text": text, "prompt_tokens": 10, "output_tokens": 5, "model_s": 0.1}
+    return generate
+
+
+def no_model(*_args):
+    pytest.fail("the model must not be called")
+
+
+def test_an_approved_directed_slice_changes_only_its_unit_and_is_published_with_its_roadmap_link(env):
+    directed_env(env, [direct_item("RS-2", REPOS[1])])
+    prompts = []
+    runner = Runner(plan=never_plans, agent=None, generate=replying("```python\ndef one():\n    return 2\n```", prompts))
+    github = FakeGitHub(("pass",))
+    assert step(env, runner, github)["backlog_item"] == "RS-2"
+    accepted = step(env, runner, github)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    assert "def one():\n    return 1" in prompts[0] and DIRECT_TEST not in prompts[0]  # the unit, never the tests
+    step(env, runner, github, allow=False)
+    assert github.opened[0]["title"].startswith("Iron God [RS-2]")
+    clone = pl.ProductLane(env.state).clone(REPOS[1])
+    head = github.pushed[0][1]
+    assert sorted(git(clone, "diff", "--name-only", f"{head}~1", head).split()) == ["pkg/core.py",
+                                                                                     "tests/test_one_is_two.py"]
+    assert git(clone, "show", f"{head}:tests/test_one_is_two.py") + "\n" == DIRECT_TEST
+
+
+@pytest.mark.parametrize(("reply", "summary"), [
+    ("```python\ndef one():\n    return 2\n```\n```python\ndef one():\n    return 3\n```", "DUPLICATE_UNIT"),
+    ("```python\ndef two():\n    return 2\n```", "UNEXPECTED_UNIT: two"),
+    ("no code", "NO_CODE_BLOCKS"),
+    ("```python\ndef one():\n    return 3\n```", "SLICE_TESTS_FAILED"),
+])
+def test_a_failed_directed_slice_is_never_retried_and_never_committed(env, reply, summary):
+    directed_env(env, [direct_item("RS-2", REPOS[1])])
+    runner = Runner(plan=never_plans, agent=None, generate=replying(reply))
+    step(env, runner)
+    harvested = step(env, runner)
+    assert harvested["worker_status"] == "FAIL" and summary in harvested["worker_summary"]
+    assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"  # back to planning, not a retry loop
+    diagnostics = next(pl.ProductLane(env.state).reports.glob("*-handback-diagnostics.json"))
+    assert json.loads(diagnostics.read_text(encoding="utf-8"))["directed"]["reply"] == reply[:8000]
+
+
+def test_a_directed_slice_whose_tests_already_pass_on_main_is_not_built(env):
+    passing = DIRECT_TEST.replace("== 2", "== 1")
+    directed_env(env, [direct_item("RS-2", REPOS[1], test_source=passing)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    assert "DIRECTED_TEST_NOT_DISCRIMINATING" in step(env, runner)["worker_summary"]
+
+
+@pytest.mark.parametrize(("change", "problem"), [
+    ({"test_path": "tests/test_core.py"}, "DIRECT_TEST_WOULD_OVERWRITE"),
+    ({"module_path": "tools/gen.py"}, "DIRECT_MODULE_OUTSIDE_ENVELOPE"),
+    ({"module_path": "engineering/preflight.py"}, "DIRECT_PATH_FORBIDDEN"),
+    ({"targets": ["missing"]}, "DIRECT_UNITS_UNKNOWN"),
+    ({"targets": ["one", "imports", "x", "y"]}, "DIRECT_UNITS_OUT_OF_BOUNDS"),
+    ({"test_source": "x = 1\n"}, "DIRECT_TEST_INVALID"),
+])
+def test_an_invalid_direction_is_rejected_before_the_model_is_called(env, change, problem):
+    directed_env(env, [direct_item("RS-2", REPOS[1], **change)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    harvested = step(env, runner)
+    assert harvested["worker_summary"].startswith("BACKLOG_SLICE_INVALID") and problem in harvested["worker_summary"]
+
+
+def test_an_approved_level_2_item_needs_a_complete_direction():
+    item = direct_item("X", REPOS[0])
+    assert backlog_mod.item_problems(item) == []
+    del item["direct"]["test_source"]
+    assert "APPROVED_ITEM_WITHOUT_DIRECTION" in backlog_mod.item_problems(item)

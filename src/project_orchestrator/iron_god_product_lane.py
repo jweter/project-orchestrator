@@ -285,8 +285,8 @@ def build_product_packet(repo: str, *, packet_id: str, base: str, worktree: Path
         },
     }
     if item is not None:
-        packet["slice"] = {key: item[key] for key in ("id", "title", "roadmap_ref", "addresses", "why", "consumer",
-                                                      "level", "build")}
+        packet["slice"] = {key: item.get(key) for key in ("id", "title", "roadmap_ref", "addresses", "why",
+                                                          "consumer", "level", "build", "direct")}
         packet["planning"]["roadmap_ref"] = item["roadmap_ref"]
         packet["planning"]["handoff_instructions"] = ("Build the approved backlog slice exactly as specified, run "
                                                       "the canonical preflight, and hand back exact evidence.")

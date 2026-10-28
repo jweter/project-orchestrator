@@ -115,45 +115,81 @@ def build_prompt(source: str, module: str, direction: str, targets: list[str], *
     return prompt
 
 
-def _block_name(code: str) -> str | None:
-    try:
-        tree = ast.parse(textwrap.dedent(code))
-    except SyntaxError:
-        return None
-    if tree.body and all(isinstance(n, (ast.Import, ast.ImportFrom)) for n in tree.body):
-        return IMPORTS
-    if len(tree.body) != 1:
-        return None
-    node = tree.body[0]
+def _piece_name(node: ast.stmt) -> str | None:
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
         return node.name
     if isinstance(node, (ast.Assign, ast.AnnAssign)):
         target = node.targets[0] if isinstance(node, ast.Assign) else node.target
-        return target.id if isinstance(target, ast.Name) else None
+        if isinstance(target, ast.Name) and (isinstance(node, ast.AnnAssign) or len(node.targets) == 1):
+            return target.id
     return None
 
 
-def apply_reply(source: str, reply: str, targets: list[str], *, add: list[dict[str, str]]) -> str:
-    """The module with exactly the named units replaced and the new functions inserted; else DirectedEditError."""
-    found = units(source)
+def reply_pieces(reply: str) -> list[tuple[str, str]]:
+    """Every named top-level piece of every fenced block, as (name, code), in reply order.
+
+    Measured on 2026-10-28: the model was right but one block short when a direction combined
+    an import change with a new definition -- it wrote both in one block. Pieces are therefore
+    matched to the directed units by name, never by block count or position. All imports in a
+    block form one ``imports`` piece; anything unnamed or unparseable rejects the whole reply.
+    """
     blocks = [b for b in _FENCE.findall(reply) if b.strip()]
-    expected = len(targets) + len(add)
-    if len(blocks) != expected:
-        raise DirectedEditError(f"BLOCK_COUNT: expected {expected}, got {len(blocks)}")
-    replacements: list[tuple[Unit, str]] = []
-    for target, code in zip(targets, blocks[:len(targets)]):
-        name = _block_name(code)
-        if name != target.rsplit(".", 1)[-1] and not (target == IMPORTS and name == IMPORTS):
-            raise DirectedEditError(f"UNIT_MISMATCH: expected {target}, got {name}")
-        replacements.append((found[target], code))
+    if not blocks:
+        raise DirectedEditError("NO_CODE_BLOCKS")
+    pieces: list[tuple[str, str]] = []
+    for number, block in enumerate(blocks, 1):
+        code = textwrap.dedent(block)
+        try:
+            tree = ast.parse(code)
+        except SyntaxError as exc:
+            raise DirectedEditError(f"MALFORMED_BLOCK: block {number}: {exc.msg} line {exc.lineno}") from None
+        lines = code.splitlines()
+        imports = [n for n in tree.body if isinstance(n, (ast.Import, ast.ImportFrom))
+                   and not (isinstance(n, ast.ImportFrom) and n.module == "__future__")]
+        if imports:
+            pieces.append((IMPORTS, "\n".join("\n".join(lines[n.lineno - 1:n.end_lineno]) for n in imports)))
+        for node in tree.body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            name = _piece_name(node)
+            if name is None:
+                raise DirectedEditError(f"UNNAMED_CODE: block {number} line {node.lineno}")
+            start, end = _span(node)
+            pieces.append((name, "\n".join(lines[start - 1:end])))
+    return pieces
+
+
+def apply_reply(source: str, reply: str, targets: list[str], *, add: list[dict[str, str]]) -> str:
+    """The module with exactly the named units replaced and the new definitions inserted; else DirectedEditError.
+
+    Every directed unit must appear exactly once, and nothing else may appear; the reply is
+    checked completely before anything is applied.
+    """
+    found = units(source)
+    wanted = {(IMPORTS if t == IMPORTS else t.rsplit(".", 1)[-1]): t for t in targets}
+    wanted.update({a["name"]: a["name"] for a in add})
+    if len(wanted) != len(targets) + len(add):
+        raise DirectedEditError("AMBIGUOUS_TARGETS: two directed units share a name")
+    unknown = [t for t in targets if t not in found] + [a["name"] for a in add if a["name"] in found]
+    if unknown:
+        raise DirectedEditError(f"DIRECTION_INVALID: unknown target or existing new name: {unknown}")
+    code_for: dict[str, str] = {}
+    for name, code in reply_pieces(reply):
+        if name not in wanted:
+            raise DirectedEditError(f"UNEXPECTED_UNIT: {name}")
+        if wanted[name] in code_for:
+            raise DirectedEditError(f"DUPLICATE_UNIT: {wanted[name]}")
+        code_for[wanted[name]] = code
+    missing = [unit for unit in wanted.values() if unit not in code_for]
+    if missing:
+        raise DirectedEditError(f"MISSING_UNITS: {missing}")
     lines = source.splitlines()
-    for unit, code in sorted(replacements, key=lambda r: r[0].start, reverse=True):
-        new = textwrap.indent(textwrap.dedent(code).strip("\n"), unit.indent).splitlines()
+    for unit in sorted((found[t] for t in targets), key=lambda u: u.start, reverse=True):
+        new = textwrap.indent(code_for[unit.name].strip("\n"), unit.indent).splitlines()
         lines[unit.start - 1:unit.end] = new
     result = "\n".join(lines) + "\n"
-    for spec, code in zip(add, blocks[len(targets):]):
-        if _block_name(code) != spec["name"]:
-            raise DirectedEditError(f"NEW_DEFINITION_MISMATCH: expected {spec['name']}")
+    for spec in add:
+        code = code_for[spec["name"]]
         anchor = units(result).get(spec["after"])
         if anchor is None:
             raise DirectedEditError(f"UNKNOWN_ANCHOR: {spec['after']}")

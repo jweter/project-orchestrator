@@ -12,9 +12,11 @@ An item is dispatched only when it is ``approved``, its level is within the
 measured ``development_level`` of the rotation policy, every item it depends on
 is done, and it has not exhausted its attempts. Levels follow the owner's
 progression: 1 small new function, 2 existing-module change, 3 feature
-integration, 4 multi-file feature, 5 complex development. Only level 1 has a
-measured worker today; higher levels stay in the backlog for a stronger
-implementer or a later calibration.
+integration, 4 multi-file feature, 5 complex development. Level 1 is built
+from an exact build spec; level 2 only as a directed edit (named units in one
+existing module, one behavioural requirement, approved tests that fail on main),
+the form measured at 9/12 first try in the 2026-10-28 calibration. Higher levels
+stay in the backlog for a stronger implementer or a later calibration.
 
 The backlog grants no execution: dispatch still requires the owner controller.
 """
@@ -34,9 +36,11 @@ REQUIRED_TEXT = ("id", "repository", "title", "roadmap_ref", "addresses", "why",
                  "verification", "definition_of_done", "complexity")
 REQUIRED_LISTS = ("interfaces", "depends_on", "acceptance_criteria", "tests")
 BUILD_FIELDS = ("module_path", "function_name", "signature", "objective", "examples")
+DIRECT_FIELDS = ("module_path", "targets", "direction", "test_path", "test_source")
 MAX_ITEM_ATTEMPTS = 3
 MAX_TEXT = 1100  # Canon bounds handoff text at 1200 characters; the packet adds an id prefix
-BUILDABLE_LEVELS = {1}  # the levels the local product worker can build (measured)
+BUILDABLE_LEVELS = {1, 2}  # the levels the local product worker can build (measured)
+DIRECT_ATTEMPTS = 1  # measured: a repeated directed edit re-emits the same answer; a failure goes back to planning
 
 
 def _now() -> str:
@@ -60,10 +64,14 @@ def item_problems(item: Any) -> list[str]:
     texts = [item.get("objective"), *(item.get("acceptance_criteria") or [])]
     if any(isinstance(text, str) and len(text) > MAX_TEXT for text in texts):
         problems.append("TEXT_OVER_CANON_BOUND")
-    if item.get("status") == "approved" and level in BUILDABLE_LEVELS:
+    if item.get("status") == "approved" and level == 1:
         build = item.get("build")
         if not isinstance(build, dict) or any(not build.get(name) for name in BUILD_FIELDS):
             problems.append("APPROVED_ITEM_WITHOUT_BUILD_SPEC")
+    if item.get("status") == "approved" and level == 2:
+        direct = item.get("direct")
+        if not isinstance(direct, dict) or any(not direct.get(name) for name in DIRECT_FIELDS):
+            problems.append("APPROVED_ITEM_WITHOUT_DIRECTION")
     return problems
 
 
@@ -125,6 +133,10 @@ def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
         if (item["repository"] == repo and item["status"] == "approved" and item["level"] <= max_level
                 and item["level"] in BUILDABLE_LEVELS and item["id"] not in done
                 and row.get("attempts", 0) < MAX_ITEM_ATTEMPTS
+                # a directed slice that the model failed is not retried: it needs decomposition (an
+                # interrupted or environment-failed attempt is not a model failure)
+                and not (item.get("direct") and row.get("attempts", 0) >= DIRECT_ATTEMPTS
+                         and not str(row.get("outcome", "")).startswith("ENVIRONMENT_FAILURE"))
                 # its pull request is in flight, or blocked on GitHub and waiting for the owner
                 and row.get("outcome") not in {"ACCEPTED_LOCAL", "PR_BLOCKED"}
                 and all(dep in done for dep in item["depends_on"])):
