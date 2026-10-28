@@ -17,6 +17,7 @@ committed, pushed or published.
 
     python scripts/iron_god_level2_calibration.py mine            # build verified cases (no model)
     python scripts/iron_god_level2_calibration.py run [--limit N] [--edit-format whole|diff]
+    python scripts/iron_god_level2_calibration.py run --mode directed   # function-level, planner-directed
 """
 
 from __future__ import annotations
@@ -230,7 +231,90 @@ def attempt(worker, environment: dict[str, Any], clone: Path, case: dict[str, An
     return result
 
 
-def run(state_root: Path, check, *, limit: int | None, edit_format: str) -> dict[str, Any]:
+DIRECTIONS = ROOT / "scripts" / "iron_god_level2_directions.json"
+
+
+def ollama_code(prompt: str, num_predict: int, timeout: int = 1800) -> dict[str, Any]:
+    """One plain completion from the local builder model, with its own timing counters."""
+    import urllib.request
+    from scripts.autonomous_slice_builder import MODEL
+
+    base = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
+    body = {"model": MODEL.split("/", 1)[-1], "prompt": prompt, "stream": False,
+            "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": num_predict}}
+    request = urllib.request.Request(base + "/api/generate", data=json.dumps(body).encode("utf-8"),
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        reply = json.load(response)
+    return {"text": reply.get("response") or "", "prompt_tokens": reply.get("prompt_eval_count"),
+            "output_tokens": reply.get("eval_count"), "model_s": round((reply.get("total_duration") or 0) / 1e9, 1)}
+
+
+def _clean(row: dict[str, Any]) -> bool:
+    return not row["tampered_tests"] and not row["changed_outside_module"]
+
+
+def directed_attempt(environment: dict[str, Any], clone: Path, case: dict[str, Any], direction: dict[str, Any],
+                     check) -> dict[str, Any]:
+    """Function-level edit: only the named units go to the model and only they can change."""
+    from project_orchestrator import iron_god_directed_edit as de
+
+    worktree = fresh_worktree(clone, case["commit"], case["id"].replace(":", "-"))
+    result: dict[str, Any] = {"id": case["id"], "mode": "directed", "targets": direction["targets"],
+                              "add": [a["name"] for a in direction["add"]]}
+    started = time.monotonic()
+    try:
+        put_back_pre_fix(worktree, case)
+        module = worktree / case["source"]
+        original = module.read_text(encoding="utf-8")
+        tests_before = {t: (worktree / t).read_bytes() for t in case["tests"]}
+        found = de.units(original)
+        target_lines = sum(found[t].end - found[t].start + 1 for t in direction["targets"])
+        budget = min(4096, max(600, 30 * (target_lines + 25 * len(direction["add"]))))
+        failure, previous = failure_lines(case["failure"]), ""
+        for round_name in ("first", "repair"):
+            check()
+            prompt = de.build_prompt(original, case["source"], direction["direction"], direction["targets"],
+                                     add=direction["add"], failure=failure, previous=previous)
+            reply = ollama_code(prompt, budget)
+            row: dict[str, Any] = {k: reply[k] for k in ("prompt_tokens", "output_tokens", "model_s")}
+            row["prompt_chars"] = len(prompt)
+            try:
+                module.write_text(de.apply_reply(original, reply["text"], direction["targets"], add=direction["add"]),
+                                  encoding="utf-8")
+                row["applied"] = True
+            except de.DirectedEditError as exc:
+                module.write_text(original, encoding="utf-8")
+                row.update(applied=False, apply_error=str(exc)[:200])
+            tests_started = time.monotonic()
+            tests = run_tests(environment, worktree, case["tests"]) if row["applied"] else {"ok": False, "tail": ""}
+            row["tests_s"] = round(time.monotonic() - tests_started, 1)
+            row["tests_ok"] = tests["ok"]
+            row["tampered_tests"] = [t for t, b in tests_before.items() if (worktree / t).read_bytes() != b]
+            changed = git(worktree, "diff", "--name-only", "HEAD").stdout.split()
+            row["changed_outside_module"] = [p for p in changed if p != case["source"]]
+            result[round_name] = row
+            if tests["ok"] or round_name == "repair":
+                break
+            if row["applied"]:
+                failure = failure_lines(tests["tail"])
+            else:
+                failure = f"Your answer could not be applied: {row['apply_error']}. Follow the reply format exactly."
+            previous = reply["text"][-4000:]
+        final = result.get("repair") or result["first"]
+        result["passed_first_try"] = bool(result["first"]["tests_ok"] and _clean(result["first"]))
+        result["passed"] = bool(final["tests_ok"] and _clean(final))
+        result["diff"] = git(worktree, "diff", "--", case["source"]).stdout[:6000]
+    except Exception as exc:  # one failed case never stops the calibration
+        result["error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+        result["passed"] = result["passed_first_try"] = False
+    finally:
+        result["wall_s"] = round(time.monotonic() - started, 1)
+        drop_worktree(clone, worktree)
+    return result
+
+
+def run(state_root: Path, check, *, limit: int | None, edit_format: str, mode: str = "aider") -> dict[str, Any]:
     worker = load_worker()
     cases = json.loads((state_root / "iron-god-level2" / "cases.json").read_text(encoding="utf-8"))["cases"]
     # interleave repositories so a short run still samples every one
@@ -238,16 +322,22 @@ def run(state_root: Path, check, *, limit: int | None, edit_format: str) -> dict
     ordered = [c for group in zip(*by_repo) for c in group] + [c for g in by_repo for c in g[min(map(len, by_repo)):]]
     selected = ordered[:limit] if limit else ordered
     products = state_root.parent / "canon-workspaces" / "products"
-    out_path = state_root / "iron-god-level2" / f"results-{edit_format}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
+    label = "directed" if mode == "directed" else edit_format
+    out_path = state_root / "iron-god-level2" / f"results-{label}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
+    directions = json.loads(DIRECTIONS.read_text(encoding="utf-8"))["cases"] if mode == "directed" else {}
     results = []
     environments = {repo: main_environment(worker, products / repo, check)
                     for repo in sorted({c["repository"] for c in selected})}
     for case in selected:
         check()
-        results.append(attempt(worker, environments[case["repository"]], products / case["repository"], case,
-                               edit_format, check))
-        atomic_json(out_path, {"edit_format": edit_format, "results": results})  # progress survives interruption
-    summary = {"edit_format": edit_format, "cases": len(results),
+        if mode == "directed":
+            results.append(directed_attempt(environments[case["repository"]], products / case["repository"], case,
+                                            directions[case["id"]], check))
+        else:
+            results.append(attempt(worker, environments[case["repository"]], products / case["repository"], case,
+                                   edit_format, check))
+        atomic_json(out_path, {"mode": label, "results": results})  # progress survives interruption
+    summary = {"mode": label, "cases": len(results),
                "passed": sum(r["passed"] for r in results),
                "passed_first_try": sum(r["passed_first_try"] for r in results),
                "tampered": sum(1 for r in results for k in ("first", "repair") if r.get(k, {}).get("tampered_tests")),
@@ -267,6 +357,8 @@ def main(argv: list[str] | None = None) -> int:
                         default=Path(os.environ.get("LOCALAPPDATA", "")) / "ExponentialEngine" / "flow-state")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--edit-format", choices=["whole", "diff"], default="whole")
+    parser.add_argument("--mode", choices=["aider", "directed"], default="aider",
+                        help="directed: function-level edits from planner-written directions")
     args = parser.parse_args(argv)
     root = owner_controller.control_root(args.state_root)
 
@@ -289,7 +381,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "REFUSED", "reason": f"MODEL_LEASE_BUSY: {type(exc).__name__}"}))
         return 3
     try:
-        print(json.dumps(run(args.state_root, check, limit=args.limit, edit_format=args.edit_format), indent=2))
+        print(json.dumps(run(args.state_root, check, limit=args.limit, edit_format=args.edit_format,
+                                    mode=args.mode), indent=2))
     finally:
         pool.release(LEASE_ID, lease.lease_id)
     return 0
