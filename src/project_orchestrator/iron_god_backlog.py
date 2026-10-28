@@ -106,13 +106,21 @@ def load_state(lane_root: Path) -> dict[str, Any]:
         return {"schema_version": 1, "items": {}}
 
 
-def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) -> dict[str, Any]:
+def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
+                failed_source_fingerprint: str | None = None) -> dict[str, Any]:
     """One attempt's outcome; MERGED marks the item done for dependency and dispatch purposes."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
         row["attempts"] = len(row["packets"])
+    if failed_source_fingerprint and outcome not in {"MERGED", "ACCEPTED_LOCAL", "DISPATCHED"}:
+        # Store fingerprints only for failed attempts. A repeated source is a
+        # planning signal, never permission to extend the existing retry cap.
+        previous = row.setdefault("failed_source_fingerprints", [])
+        row["repeated_failed_source"] = failed_source_fingerprint in previous
+        if failed_source_fingerprint not in previous:
+            previous.append(failed_source_fingerprint)
     row.update(outcome=outcome, updated_at_utc=_now())
     if outcome == "MERGED":
         row["merged_at_utc"] = _now()
