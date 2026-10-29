@@ -254,8 +254,9 @@ def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
                 # interrupted or environment-failed attempt is not a model failure)
                 and not (item.get("direct") and row.get("attempts", 0) >= DIRECT_ATTEMPTS
                          and not str(row.get("outcome", "")).startswith("ENVIRONMENT_FAILURE"))
-                # its pull request is in flight, or blocked on GitHub and waiting for the owner
-                and row.get("outcome") not in {"ACCEPTED_LOCAL", "PR_BLOCKED"}
+                # An existing dispatched packet retains ownership until it is harvested.
+                # Never dispatch it again after an active-worker record is lost or restarted.
+                and row.get("outcome") not in IN_FLIGHT
                 and all(dep in done for dep in item["depends_on"])):
             return item
     return None
