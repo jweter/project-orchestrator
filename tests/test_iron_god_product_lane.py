@@ -953,6 +953,20 @@ def test_quality_rules_state_only_the_gates_the_repository_configures(tmp_path, 
         assert "-> None" in rules[0] and "list[str]" in rules[0]
 
 
+def test_the_preflight_sees_a_ci_width_console_whatever_the_worker_console_is(tmp_path, monkeypatch):
+    # 2026-10-29 KEC-9: Rich wrapped a CLI error to the hidden console's width and two product tests failed
+    seen = {}
+    monkeypatch.setenv("COLUMNS", "20")
+    monkeypatch.setattr(WORKER, "repository_environment", lambda worktree, check: {
+        "python": "python", "kind": "uv", "overrides": {}})
+    monkeypatch.setattr(WORKER.NativeWindowsRuntime, "execute_supervised",
+                        lambda self, request, check, interval: seen.update(request.env) or SimpleNamespace(
+                            returncode=0, stdout="", stderr=""))
+    (tmp_path / "wt").mkdir()
+    assert WORKER.production_preflight(tmp_path / "wt", lambda: None, 60)["ok"]
+    assert seen["COLUMNS"] == "80" and seen["LINES"] == "24"
+
+
 def test_only_items_assigned_to_iron_god_are_dispatched_and_other_claims_reserve_their_files(env):
     # 2026-10-28: another agent built KEC-6 while it was approved for Iron God
     theirs = backlog_item("RS-1", REPOS[1], assignee="chatgpt-dowork")

@@ -55,6 +55,10 @@ from scripts.iron_god_canon_worker import (  # noqa: E402
 )
 
 PREFLIGHT_COMMAND = ("engineering/preflight.py",)
+# The hidden worker console is narrower than a CI runner's, and Rich wraps CLI errors to the
+# console width: on 2026-10-29 two knowledge-engine-core tests that match a wrapped message failed
+# only under the worker (KEC-9). The preflight sees the width a non-terminal CI job gets.
+PREFLIGHT_CONSOLE = {"COLUMNS": "80", "LINES": "24"}
 NOTE_CHARS = 600
 BRIEF_CHARS = 2500
 MAX_TEXT = 1200  # Canon's bounded handoff text
@@ -676,7 +680,7 @@ def production_preflight(worktree: Path, check: Callable[[], None], timeout: int
             raise
         return {"command": "prepare repository environment", "returncode": None, "ok": False,
                 "output_tail": str(exc)[:1500], "environment": "FAILED"}
-    env = private_temp_env({**os.environ, **environment["overrides"],
+    env = private_temp_env({**os.environ, **environment["overrides"], **PREFLIGHT_CONSOLE,
                             "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree),
                                                            os.environ.get("PYTHONPATH", "")])}, temp)
     try:
