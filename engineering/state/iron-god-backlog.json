@@ -933,7 +933,7 @@
       "complexity": "low",
       "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged with CI green; the Codex P2 finding on PR #187 is resolved.",
-      "status": "approved",
+      "status": "retired",
       "implementer": "iron-god-local-7b",
       "direct": {
         "module_path": "knowledge_engine_ai/remove_html_tags.py",
@@ -946,7 +946,58 @@
         "test_path": "tests/test_remove_html_tags_markup_only.py",
         "test_source": "from knowledge_engine_ai.remove_html_tags import remove_html_tags\n\n\ndef test_a_quoted_greater_than_inside_an_attribute_does_not_leak_the_tag() -> None:\n    assert remove_html_tags('<a title=\"1 > 0\">Link</a>') == \"Link\"\n\n\ndef test_a_multiline_opening_tag_is_removed_completely() -> None:\n    assert remove_html_tags('<div\\n class=\"content\">Hello</div>') == \"Hello\"\n\n\ndef test_comparison_operators_in_plain_text_are_preserved() -> None:\n    assert remove_html_tags(\"x < 5 and y > 3\") == \"x < 5 and y > 3\"\n\n\ndef test_ordinary_markup_is_still_stripped() -> None:\n    assert remove_html_tags(\"<p>Hello, <b>World</b>!</p>\") == \"Hello, World!\"\n    assert remove_html_tags('<img src=\"image.jpg\" alt=\"Image\">') == \"\"\n    assert remove_html_tags(\"\") == \"\"\n",
         "note": "remove_html_tags now parses HTML instead of matching angle brackets (Codex P2, PR #187)."
+      },
+      "superseded_by": "KEA-7",
+      "retirement": {
+        "reason": "FAILED_IMPLEMENTATION: correct behaviour, rejected by strict mypy (nested parser methods unannotated); the direction did not require annotations. One attempt used, not retried.",
+        "packet_id": "PRODUCT-KNOWLEDGE-ENGINE-AI-20261028T233959Z",
+        "outcome": "FAIL: SLICE_TESTS_FAILED",
+        "evidence": "flow-state/iron-god-products/handbacks/PRODUCT-KNOWLEDGE-ENGINE-AI-20261028T233959Z-handback-diagnostics.json",
+        "retired_at": "2026-10-28"
       }
+    },
+    {
+      "id": "KEA-7",
+      "repository": "jweter/knowledge-engine-ai",
+      "title": "remove_html_tags strips only real HTML markup, fully annotated (re-issue of KEA-6)",
+      "roadmap_ref": "KEA-2 (merged code must be correct and used); open Codex P2 review finding on PR #187",
+      "addresses": "remove_html_tags leaks attributes for quoted '>' and multiline tags and deletes plain text between '<' and '>' comparisons",
+      "why": "Iron God merged this helper with an open correctness finding; it must be right before KEA-4's source-text cleaning can use it.",
+      "consumer": "KEA-4 online-evidence adapter: cleaning fetched page text before evidence extraction.",
+      "objective": "Make remove_html_tags remove exactly HTML markup using the standard library HTML parser, keeping all text content, including '<' and '>' that are not part of a tag.",
+      "interfaces": [
+        "knowledge_engine_ai/remove_html_tags.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "remove_html_tags('<a title=\"1 > 0\">Link</a>') == 'Link'",
+        "a multiline opening tag is removed completely",
+        "'x < 5 and y > 3' is returned unchanged",
+        "existing tests/test_remove_html_tags.py still passes",
+        "mypy (strict), ruff check and ruff format --check pass on the module and test"
+      ],
+      "tests": [
+        "tests/test_remove_html_tags_markup_only.py (approved, written by the worker, never by the model)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green; the Codex P2 finding on PR #187 is resolved.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "direct": {
+        "module_path": "knowledge_engine_ai/remove_html_tags.py",
+        "targets": [
+          "imports",
+          "remove_html_tags"
+        ],
+        "add": [],
+        "direction": "Replace the regex with the standard library parser: import HTMLParser from html.parser (remove the unused re import). Inside remove_html_tags, keep the empty-input check, collect text with a small local HTMLParser subclass, feed the text, call close(), and return the joined text. Keep the signature and docstring. The repository runs strict mypy: annotate every function and method you introduce, exactly def __init__(self) -> None: (calling super().__init__()), def handle_data(self, data: str) -> None:, and the collected attribute as self.text: list[str] = []. Use double-quoted strings.",
+        "test_path": "tests/test_remove_html_tags_markup_only.py",
+        "test_source": "from knowledge_engine_ai.remove_html_tags import remove_html_tags\n\n\ndef test_a_quoted_greater_than_inside_an_attribute_does_not_leak_the_tag() -> None:\n    assert remove_html_tags('<a title=\"1 > 0\">Link</a>') == \"Link\"\n\n\ndef test_a_multiline_opening_tag_is_removed_completely() -> None:\n    assert remove_html_tags('<div\\n class=\"content\">Hello</div>') == \"Hello\"\n\n\ndef test_comparison_operators_in_plain_text_are_preserved() -> None:\n    assert remove_html_tags(\"x < 5 and y > 3\") == \"x < 5 and y > 3\"\n\n\ndef test_ordinary_markup_is_still_stripped() -> None:\n    assert remove_html_tags(\"<p>Hello, <b>World</b>!</p>\") == \"Hello, World!\"\n    assert remove_html_tags('<img src=\"image.jpg\" alt=\"Image\">') == \"\"\n    assert remove_html_tags(\"\") == \"\"\n",
+        "note": "remove_html_tags now parses HTML instead of matching angle brackets (Codex P2, PR #187)."
+      },
+      "supersedes": "KEA-6"
     },
     {
       "id": "KEC-6",
@@ -974,7 +1025,7 @@
       "complexity": "low",
       "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged with CI green; tests/test_extraction_sections.py unchanged and passing.",
-      "status": "approved",
+      "status": "done",
       "implementer": "iron-god-local-7b",
       "direct": {
         "module_path": "knowledge_engine/extraction/sections.py",
@@ -986,6 +1037,18 @@
         "test_path": "tests/test_roman_numbered_section_headings.py",
         "test_source": "from knowledge_engine.extraction.sections import detect_sections\nfrom knowledge_engine.parser import ParsedPage\n\n\ndef _types(text: str) -> list[str]:\n    return [span.section_type for span in detect_sections([ParsedPage(page_number=1, text=text)])]\n\n\ndef test_roman_numbered_headings_are_recognized() -> None:\n    text = \"I. Introduction\\nWhy.\\nII. Methods\\nHow.\\nIII. RESULTS\\nWhat.\\nIV. Discussion\\nSo.\\n\"\n    assert _types(text) == [\"introduction\", \"methods\", \"results\", \"discussion\"]\n\n\ndef test_roman_numbered_inline_label_is_recognized() -> None:\n    assert _types(\"V. Conclusions: the effect was small.\\n\") == [\"conclusion\"]\n\n\ndef test_digit_numbering_and_unnumbered_headings_still_match() -> None:\n    assert _types(\"2. Methods\\nHow.\\n3.1 Results\\nWhat.\\nReferences\\n\") == [\n        \"methods\",\n        \"results\",\n        \"references\",\n    ]\n\n\ndef test_roman_numbering_does_not_make_combined_or_mid_sentence_headings_match() -> None:\n    assert _types(\"II. Results and Discussion\\nText.\\nIn results we saw more.\\n\") == []\n",
         "note": "Section detection now recognizes Roman-numeral numbered headings."
+      },
+      "completion": {
+        "kind": "COMPLETED_EXTERNALLY",
+        "pull_request": "jweter/knowledge-engine-core#553",
+        "merge_commit": "deb3d83bc22b6027a2232691562001c6e25ce95e",
+        "verified_at": "2026-10-28",
+        "verification": "On deb3d83 the merged _NUMBERING_PREFIX equals the approved reference fix; the merged tests/test_roman_numbered_section_headings.py is byte-identical to the approved test; it and tests/test_extraction_sections.py pass (19 passed).",
+        "iron_god_attempt": {
+          "packet_id": "PRODUCT-KNOWLEDGE-ENGINE-CORE-20261028T235029Z",
+          "outcome": "FAIL: BACKLOG_SLICE_INVALID: DIRECT_PATH_FORBIDDEN_OR_UNDER_REVIEW",
+          "note": "correct refusal: PR #553 was open on knowledge_engine/extraction/sections.py"
+        }
       }
     },
     {

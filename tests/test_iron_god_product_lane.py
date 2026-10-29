@@ -792,7 +792,17 @@ def test_real_backlog_covers_every_product_repository_and_is_well_formed():
     for item in items:  # every approved Level 2 item is a directed edit, never a self-planned change
         if item["status"] == "approved" and item["level"] == 2:
             assert item["direct"]["test_source"] and len(item["direct"]["targets"]) <= 2
-    everward = [i for i in items if i["repository"] == "jweter/Project-Everward"]
+    by_id = {item["id"]: item for item in items}
+    for item in items:  # a retired slice names its successor and keeps its failure evidence
+        if item.get("superseded_by"):
+            successor = by_id[item["superseded_by"]]
+            assert item["status"] == "retired" and successor["supersedes"] == item["id"]
+            assert item["retirement"]["packet_id"] and item["retirement"]["outcome"]
+        completion = item.get("completion") or {}
+        if completion.get("kind") == "COMPLETED_EXTERNALLY":  # done only with verified merge evidence
+            assert item["status"] == "done" and completion["pull_request"] and completion["verification"]
+            assert len(completion["merge_commit"]) == 40
+    everward =[i for i in items if i["repository"] == "jweter/Project-Everward"]
     assert all(i["level"] not in backlog_mod.BUILDABLE_LEVELS or i["status"] != "approved" for i in everward)
 
 
