@@ -1286,6 +1286,185 @@
         "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
       },
       "assignee": "iron-god"
+    },
+    {
+      "id": "KEC-11",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "WorkerRequest.created_at_utc must be an ISO-8601 UTC timestamp (Codex finding on PR #495)",
+      "roadmap_ref": "Unattended worker contract v1 (PR #495); open Codex finding 'Validate the UTC timestamp fields'",
+      "addresses": "created_at_utc only requires a non-empty string, so 'not-a-date', naive and non-UTC timestamps are accepted by the machine-readable contract",
+      "why": "Consumers order requests and detect stale ones by this field; an unparseable or local time breaks that silently.",
+      "consumer": "unattended_worker request intake and the cross-repository consumers of the contract.",
+      "objective": "Add a module-level require_utc_timestamp helper and validate WorkerRequest.created_at_utc with it, returning the value unchanged.",
+      "interfaces": [
+        "knowledge_engine/unattended_verification_contract.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "'...Z', '...+00:00' and fractional-second UTC timestamps are accepted unchanged",
+        "'not-a-date', a naive timestamp, a non-UTC offset, an impossible date and ' ' are rejected",
+        "existing unattended worker contract, worker and publication tests still pass"
+      ],
+      "tests": [
+        "tests/test_worker_request_utc_timestamp.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green; WorkerRequest half of the PR #495 timestamp finding resolved.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "assignee": "iron-god",
+      "evidence": "Verified 2026-10-29 on deb3d83: the approved tests fail on main and pass with the reference fix, together with tests/test_unattended_verification_contract.py, test_unattended_worker.py and test_unattended_worker_publication.py (55 passed); strict mypy, ruff check and ruff format pass.",
+      "direct": {
+        "module_path": "knowledge_engine/unattended_verification_contract.py",
+        "targets": [
+          "imports",
+          "WorkerRequest"
+        ],
+        "add": [
+          {
+            "name": "require_utc_timestamp",
+            "after": "WorkerResultStatus",
+            "spec": "def require_utc_timestamp(value: str) -> str: parse value with datetime.fromisoformat (raise ValueError('timestamp must be an ISO-8601 timestamp') from the parse error); if parsed.utcoffset() != timedelta(0) raise ValueError('timestamp must be timezone-aware UTC'); return value unchanged. One-line docstring."
+          }
+        ],
+        "direction": "Add 'from datetime import datetime, timedelta' to the imports, keeping the existing imports. In WorkerRequest add, after validate_exact_sha, a validator exactly like the others: @field_validator(\"created_at_utc\") then @classmethod then def validate_created_at_utc(cls, value: str) -> str: return require_utc_timestamp(value). Keep every existing field and validator of WorkerRequest unchanged.",
+        "test_path": "tests/test_worker_request_utc_timestamp.py",
+        "test_source": "\"\"\"WorkerRequest.created_at_utc must be an ISO-8601 UTC timestamp (Codex finding, PR #495).\"\"\"\n\nfrom __future__ import annotations\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom knowledge_engine.unattended_verification_contract import WorkerRequest\n\n\ndef _request(created_at_utc: str) -> WorkerRequest:\n    return WorkerRequest(\n        repository=\"jweter/knowledge-engine-core\",\n        branch=\"main\",\n        exact_sha=\"a\" * 40,\n        request_id=\"request-1\",\n        requested_checks=(\"core-preflight\",),\n        environment_id=\"windows-worker-1\",\n        created_at_utc=created_at_utc,\n    )\n\n\n@pytest.mark.parametrize(\n    \"value\",\n    [\"2026-09-13T12:00:00Z\", \"2026-09-13T12:00:00+00:00\", \"2026-09-13T12:00:00.123456+00:00\"],\n)\ndef test_utc_timestamps_are_accepted_unchanged(value: str) -> None:\n    assert _request(value).created_at_utc == value\n\n\n@pytest.mark.parametrize(\n    \"value\",\n    [\"not-a-date\", \"2026-09-13T12:00:00\", \"2026-09-13T07:00:00-05:00\", \"2026-13-40T12:00:00Z\", \" \"],\n)\ndef test_malformed_naive_or_non_utc_timestamps_are_rejected(value: str) -> None:\n    with pytest.raises(ValidationError):\n        _request(value)\n",
+        "note": "WorkerRequest.created_at_utc must now be an ISO-8601 UTC timestamp (Codex finding, PR #495).",
+        "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
+      }
+    },
+    {
+      "id": "KEC-12",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "WorkerResult.completed_at_utc must be an ISO-8601 UTC timestamp (Codex finding on PR #495)",
+      "roadmap_ref": "Unattended worker contract v1 (PR #495); open Codex finding 'Validate the UTC timestamp fields'",
+      "addresses": "completed_at_utc only requires a non-empty string",
+      "why": "Results are matched and published with this time; it must be parseable UTC like the request's.",
+      "consumer": "unattended_worker results and unattended_worker_publication.",
+      "objective": "Validate WorkerResult.completed_at_utc with KEC-11's require_utc_timestamp.",
+      "interfaces": [
+        "knowledge_engine/unattended_verification_contract.py"
+      ],
+      "depends_on": [
+        "KEC-11"
+      ],
+      "acceptance_criteria": [
+        "UTC timestamps (Z, +00:00, fractional seconds) are accepted unchanged",
+        "malformed, naive, non-UTC, impossible and blank timestamps are rejected",
+        "existing unattended worker contract, worker and publication tests still pass"
+      ],
+      "tests": [
+        "tests/test_worker_result_utc_timestamp.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green; the PR #495 timestamp finding is fully resolved.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "assignee": "iron-god",
+      "evidence": "Verified 2026-10-29 on deb3d83: the approved tests fail on main and pass with the reference fix, together with tests/test_unattended_verification_contract.py, test_unattended_worker.py and test_unattended_worker_publication.py (55 passed); strict mypy, ruff check and ruff format pass. Dispatched only after KEC-11 merges (it uses KEC-11's helper).",
+      "direct": {
+        "module_path": "knowledge_engine/unattended_verification_contract.py",
+        "targets": [
+          "WorkerResult"
+        ],
+        "add": [],
+        "direction": "In WorkerResult add, after validate_exact_sha, a validator exactly like the others: @field_validator(\"completed_at_utc\") then @classmethod then def validate_completed_at_utc(cls, value: str) -> str: return require_utc_timestamp(value). require_utc_timestamp already exists in this module. Keep every existing field, validator and matches_request unchanged.",
+        "test_path": "tests/test_worker_result_utc_timestamp.py",
+        "test_source": "\"\"\"WorkerResult.completed_at_utc must be an ISO-8601 UTC timestamp (Codex finding, PR #495).\"\"\"\n\nfrom __future__ import annotations\n\nimport pytest\nfrom pydantic import ValidationError\n\nfrom knowledge_engine.unattended_verification_contract import WorkerResult\n\n\ndef _result(completed_at_utc: str) -> WorkerResult:\n    return WorkerResult(\n        request_id=\"request-1\",\n        repository=\"jweter/knowledge-engine-core\",\n        exact_sha=\"a\" * 40,\n        environment_id=\"windows-worker-1\",\n        status=\"PASS\",\n        completed_at_utc=completed_at_utc,\n        summary=\"ok\",\n    )\n\n\n@pytest.mark.parametrize(\n    \"value\", [\"2026-09-13T12:03:00Z\", \"2026-09-16T12:00:00+00:00\", \"2026-09-16T12:00:00.5+00:00\"]\n)\ndef test_utc_timestamps_are_accepted_unchanged(value: str) -> None:\n    assert _result(value).completed_at_utc == value\n\n\n@pytest.mark.parametrize(\n    \"value\",\n    [\"not-a-date\", \"2026-09-13T12:03:00\", \"2026-09-13T14:03:00+02:00\", \"2026-02-30T12:00:00Z\", \" \"],\n)\ndef test_malformed_naive_or_non_utc_timestamps_are_rejected(value: str) -> None:\n    with pytest.raises(ValidationError):\n        _result(value)\n",
+        "note": "WorkerResult.completed_at_utc must now be an ISO-8601 UTC timestamp (Codex finding, PR #495).",
+        "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
+      }
+    },
+    {
+      "id": "KEC-13",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Expired cache keys (first third of KEC-2)",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md: bounded ephemeral cache; replaces part of KEC-2",
+      "addresses": "Bounded ephemeral cache: age-based expiry",
+      "why": "KEC-2 diagnosis 2026-10-29 (evidence kept in the lane: packets PRODUCT-KNOWLEDGE-ENGINE-CORE-20261028T101318Z, -102346Z, -103415Z and their handback diagnostics). All three attempts produced byte-identical code: the local model is deterministic for an identical prompt, so retries added no information. Expiry was correct; the LRU step was inverted (it stopped when current_size + size > max_bytes and added sizes instead of removing them), so 4 of the 6 examples failed. The requirement is still valid: knowledge_engine/cache_eviction.py does not exist on main deb3d83 and KEC-3 still needs it. A reference split passes all six original examples. Proposed replacement: three slices, each one behaviour, with the loop direction stated in words.",
+      "consumer": "KEC-15 select_cache_evictions, then KEC-3.",
+      "objective": "New module knowledge_engine/cache_eviction.py with expired_cache_keys(entries, max_age_seconds, now) -> list[str]: keys whose now - last_used > max_age_seconds, ordered by last_used ascending then key ascending.",
+      "interfaces": [
+        "knowledge_engine/ (new module only)"
+      ],
+      "depends_on": [],
+      "level": 1,
+      "complexity": "low",
+      "status": "proposed",
+      "supersedes": "KEC-2 (with KEC-14 and KEC-15)",
+      "acceptance_criteria": [
+        "the expiry examples from KEC-2 hold (strictly older than max_age_seconds; order by last_used then key)",
+        "standard library only; strict mypy and ruff pass"
+      ],
+      "tests": [
+        "tests/test_cache_eviction_expiry.py"
+      ],
+      "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
+      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met."
+    },
+    {
+      "id": "KEC-14",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Least-recently-used evictions under a byte budget (second third of KEC-2)",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md: bounded ephemeral cache; replaces part of KEC-2",
+      "addresses": "Bounded ephemeral cache: size bound",
+      "why": "KEC-2 diagnosis 2026-10-29 (evidence kept in the lane: packets PRODUCT-KNOWLEDGE-ENGINE-CORE-20261028T101318Z, -102346Z, -103415Z and their handback diagnostics). All three attempts produced byte-identical code: the local model is deterministic for an identical prompt, so retries added no information. Expiry was correct; the LRU step was inverted (it stopped when current_size + size > max_bytes and added sizes instead of removing them), so 4 of the 6 examples failed. The requirement is still valid: knowledge_engine/cache_eviction.py does not exist on main deb3d83 and KEC-3 still needs it. A reference split passes all six original examples. Proposed replacement: three slices, each one behaviour, with the loop direction stated in words.",
+      "consumer": "KEC-15 select_cache_evictions, then KEC-3.",
+      "objective": "Add lru_cache_evictions(entries, max_bytes) -> list[str] to cache_eviction.py: start from the total size of all entries; walk entries by last_used then key; while the remaining total is greater than max_bytes, evict the next entry and subtract its size; stop as soon as it is <= max_bytes.",
+      "interfaces": [
+        "knowledge_engine/cache_eviction.py"
+      ],
+      "depends_on": [
+        "KEC-13"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "status": "proposed",
+      "supersedes": "KEC-2 (with KEC-13 and KEC-15)",
+      "acceptance_criteria": [
+        "walks by last_used then key and stops as soon as the remaining total is <= max_bytes",
+        "KEC-2 examples 4 and 5 hold for the size step alone"
+      ],
+      "tests": [
+        "tests/test_cache_eviction_lru.py"
+      ],
+      "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
+      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met."
+    },
+    {
+      "id": "KEC-15",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "select_cache_evictions composes expiry and the byte budget (last third of KEC-2)",
+      "roadmap_ref": "docs/OWNER_APPROVED_ROADMAP_2026-10-25.md: bounded ephemeral cache; replaces part of KEC-2",
+      "addresses": "Bounded ephemeral cache: the eviction decision KEC-3 calls",
+      "why": "KEC-2 diagnosis 2026-10-29 (evidence kept in the lane: packets PRODUCT-KNOWLEDGE-ENGINE-CORE-20261028T101318Z, -102346Z, -103415Z and their handback diagnostics). All three attempts produced byte-identical code: the local model is deterministic for an identical prompt, so retries added no information. Expiry was correct; the LRU step was inverted (it stopped when current_size + size > max_bytes and added sizes instead of removing them), so 4 of the 6 examples failed. The requirement is still valid: knowledge_engine/cache_eviction.py does not exist on main deb3d83 and KEC-3 still needs it. A reference split passes all six original examples. Proposed replacement: three slices, each one behaviour, with the loop direction stated in words.",
+      "consumer": "KEC-3's on-demand source cache.",
+      "objective": "Add select_cache_evictions(entries, max_bytes, max_age_seconds, now) -> list[str]: the expired keys, then lru_cache_evictions over the entries that were not expired. Acceptance: KEC-2's six original examples, unchanged.",
+      "interfaces": [
+        "knowledge_engine/cache_eviction.py"
+      ],
+      "depends_on": [
+        "KEC-13",
+        "KEC-14"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "status": "proposed",
+      "supersedes": "KEC-2 (with KEC-13 and KEC-14)",
+      "acceptance_criteria": [
+        "KEC-2's six original examples hold unchanged",
+        "expired keys come first"
+      ],
+      "tests": [
+        "tests/test_cache_eviction.py (KEC-2's examples)"
+      ],
+      "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
+      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met."
     }
   ],
   "ownership": "Every approved item names its assignee (iron-god, or another developer or agent). Iron God dispatches only items assigned to iron-god; an approved item assigned to anyone else reserves the files it edits. Read the table from the installed release folder with: PYTHONPATH=src python -m project_orchestrator.iron_god_backlog [--repository R] [--path P]."
