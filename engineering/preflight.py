@@ -35,7 +35,14 @@ DEFAULT_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_CHECK_TIMEOUT_SECO
 # On Azathoth the unabridged 18-case controller proof took 211.30 seconds.
 # Give this safety-critical lane a distinct bounded deadline; no tests are skipped.
 CONTROLLER_PROOFS_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_CONTROLLER_PROOFS_TIMEOUT_SECONDS", "300"))
-TEST_CHECK_TIMEOUT_SECONDS = int(os.environ.get("PREFLIGHT_TEST_TIMEOUT_SECONDS", "900"))
+# Measured exact-head full suite: 3,246 tests in 1,259 seconds (2026-10-28).
+# The former 900-second default timed out at 82% with no failing tests.
+# Keep a bounded deadline and preserve the operator's explicit override.
+DEFAULT_TEST_CHECK_TIMEOUT_SECONDS = 2400
+TEST_CHECK_TIMEOUT_SECONDS = int(
+    os.environ.get("PREFLIGHT_TEST_TIMEOUT_SECONDS",
+        str(DEFAULT_TEST_CHECK_TIMEOUT_SECONDS),)
+)
 
 
 def git_head(root: Path) -> str:

@@ -582,21 +582,29 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
         result = (outcome["status"] if outcome["status"] == "ACCEPTED_LOCAL" else "SUPERVISOR_RECHECK_FAILED"
                   if handback["status"] == "PASS" else f"{handback['status']}: {handback.get('summary', '')}"[:200])
         failed_source_fingerprint = None
-        if result not in {"ACCEPTED_LOCAL", "MERGED"} and handback.get("changed_paths"):
+        if handback["status"] == "FAIL" and handback.get("changed_paths"):
             # Only record source bytes when the worktree is still available.
             # This is passive evidence, not a new execution or dispatch gate.
-            from .iron_god_failed_source import source_fingerprint
+            from .iron_god_failed_source import (
+                read_candidate_sources,
+                source_fingerprint,
+            )
+
             candidate_root = Path(packet["worktree"])
             try:
-                candidate_files = {
-                    path: (candidate_root / path).read_bytes()
-                    for path in handback["changed_paths"]
-                }
+                candidate_files = read_candidate_sources(
+                    candidate_root, handback["changed_paths"]
+                )
                 failed_source_fingerprint = source_fingerprint(candidate_files)
             except (OSError, ValueError, TypeError):
                 pass
-        backlog.record_item(lane.root, packet["slice"]["id"], packet_id=packet_id,
-                            outcome=result, failed_source_fingerprint=failed_source_fingerprint)
+        backlog.record_item(
+            lane.root,
+            packet["slice"]["id"],
+            packet_id=packet_id,
+            outcome=result,
+            failed_source_fingerprint=failed_source_fingerprint,
+        )
     tried = (f"{slice_plan['function_name']} in {slice_plan['module_path']}" if slice_plan.get("function_name")
              else None)
     working_memory.record(lane.state_root, repo, "TURN_" + outcome["status"], packet_id=packet_id,
