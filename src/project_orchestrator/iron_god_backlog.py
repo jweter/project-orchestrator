@@ -150,10 +150,21 @@ def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
     done = {item["id"] for item in items if is_done(item, state)}
     for item in items:
         row = state.get("items", {}).get(item["id"], {})
+        packet_fingerprints = row.get("failed_source_by_packet", {})
+        fingerprints = (
+            [
+                fingerprint
+                for fingerprint in packet_fingerprints.values()
+                if isinstance(fingerprint, str)
+            ]
+            if isinstance(packet_fingerprints, dict)
+            else []
+        )
+        has_repeated_source = len(fingerprints) != len(set(fingerprints))
         if (item["repository"] == repo and item["status"] == "approved" and item["level"] <= max_level
                 and item["level"] in BUILDABLE_LEVELS and item["id"] not in done
                 and row.get("attempts", 0) < MAX_ITEM_ATTEMPTS
-                and not row.get("repeated_failed_source", False)
+                and not has_repeated_source
                 # a directed slice that the model failed is not retried: it needs decomposition (an
                 # interrupted or environment-failed attempt is not a model failure)
                 and not (item.get("direct") and row.get("attempts", 0) >= DIRECT_ATTEMPTS

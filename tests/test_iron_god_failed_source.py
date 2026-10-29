@@ -251,3 +251,55 @@ def test_distinct_failed_sources_do_not_preempt_existing_attempt_budget(tmp_path
     state = load_state(tmp_path)
     assert state["items"]["KEC-2"]["attempts"] == 2
     assert next_item([item], state, "jweter/knowledge-engine-core", max_level=1) is item
+
+
+def test_legacy_repeated_source_flag_does_not_veto_single_packet(tmp_path):
+    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+
+    item = {
+        "id": "KEC-2",
+        "repository": "jweter/knowledge-engine-core",
+        "status": "approved",
+        "level": 1,
+        "depends_on": [],
+    }
+    record_item(
+        tmp_path,
+        "KEC-2",
+        packet_id="attempt-1",
+        outcome="FAIL",
+        failed_source_fingerprint=source_fingerprint({"cache.py": b"broken"}),
+    )
+    state = load_state(tmp_path)
+    state["items"]["KEC-2"]["repeated_failed_source"] = True
+
+    assert next_item([item], state, "jweter/knowledge-engine-core", max_level=1) is item
+    assert state["items"]["KEC-2"]["attempts"] == 1
+    assert state["items"]["KEC-2"]["packets"] == ["attempt-1"]
+
+
+def test_packet_fingerprints_veto_even_if_legacy_flag_is_false(tmp_path):
+    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+
+    item = {
+        "id": "KEC-2",
+        "repository": "jweter/knowledge-engine-core",
+        "status": "approved",
+        "level": 1,
+        "depends_on": [],
+    }
+    digest = source_fingerprint({"cache.py": b"broken"})
+    for packet_id in ("attempt-1", "attempt-2"):
+        record_item(
+            tmp_path,
+            "KEC-2",
+            packet_id=packet_id,
+            outcome="FAIL",
+            failed_source_fingerprint=digest,
+        )
+    state = load_state(tmp_path)
+    state["items"]["KEC-2"]["repeated_failed_source"] = False
+
+    assert next_item([item], state, "jweter/knowledge-engine-core", max_level=1) is None
+    assert state["items"]["KEC-2"]["attempts"] == 2
+    assert state["items"]["KEC-2"]["packets"] == ["attempt-1", "attempt-2"]
