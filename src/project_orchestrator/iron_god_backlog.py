@@ -132,7 +132,11 @@ def load_backlog(release_repo: Path) -> tuple[list[dict[str, Any]], dict[str, li
         raw = json.loads((Path(release_repo) / BACKLOG_PATH).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return [], {"<backlog>": ["BACKLOG_UNREADABLE"]}
-    raw_items = raw.get("items", []) if isinstance(raw, dict) else []
+    if not isinstance(raw, dict):
+        return [], {"<backlog>": ["BACKLOG_ROOT_NOT_AN_OBJECT"]}
+    if "items" not in raw:
+        return [], {"<backlog>": ["BACKLOG_ITEMS_MISSING"]}
+    raw_items = raw["items"]
     if not isinstance(raw_items, list):
         return [], {"<backlog>": ["BACKLOG_ITEMS_NOT_A_LIST"]}
     ids = Counter(str(item.get("id")) if isinstance(item, dict) else "<item>" for item in raw_items)
