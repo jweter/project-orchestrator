@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from .state_io import atomic_json
+from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
 
 BACKLOG_PATH = Path("engineering") / "state" / "iron-god-backlog.json"
 STATUSES = {"proposed", "approved", "done", "retired"}
@@ -106,8 +107,8 @@ def load_state(lane_root: Path) -> dict[str, Any]:
         return {"schema_version": 1, "items": {}}
 
 
-def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
-                failed_source_fingerprint: str | None = None) -> dict[str, Any]:
+def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
+                          failed_source_fingerprint: str | None = None) -> dict[str, Any]:
     """One attempt's outcome; MERGED marks the item done for dependency and dispatch purposes."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
@@ -145,6 +146,19 @@ def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
         row["merged_at_utc"] = _now()
     atomic_json(state_path(lane_root), state)
     return row
+
+
+def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
+                failed_source_fingerprint: str | None = None) -> dict[str, Any]:
+    """Serialize the entire read/modify/write transaction across processes."""
+    lock = acquire_lifecycle_lock(state_path(lane_root))
+    try:
+        return _record_item_unlocked(
+            lane_root, item_id, packet_id=packet_id, outcome=outcome,
+            failed_source_fingerprint=failed_source_fingerprint,
+        )
+    finally:
+        release_lifecycle_lock(lock)
 
 
 def is_done(item: dict[str, Any], state: dict[str, Any]) -> bool:

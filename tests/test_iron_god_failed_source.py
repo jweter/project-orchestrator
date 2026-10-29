@@ -360,3 +360,77 @@ def test_dispatched_to_merged_transition_and_merged_replay_are_idempotent(tmp_pa
     assert replay["attempts"] == 1
     assert replay["outcome"] == "MERGED"
     assert "terminal_outcome_conflict" not in replay
+
+
+def test_concurrent_backlog_updates_preserve_both_items(tmp_path, monkeypatch):
+    """Two distinct worker outcomes cannot overwrite one another."""
+    import concurrent.futures
+    import threading
+
+    from project_orchestrator import iron_god_backlog as backlog
+
+    original_load = backlog.load_state
+    simultaneous_reads = threading.Barrier(2)
+
+    def load_with_forced_overlap(root):
+        state = original_load(root)
+        try:
+            simultaneous_reads.wait(timeout=0.2)
+        except threading.BrokenBarrierError:
+            pass  # Serialized writers cannot both enter the read phase.
+        return state
+
+    monkeypatch.setattr(backlog, "load_state", load_with_forced_overlap)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        a = pool.submit(backlog.record_item, tmp_path, "A", packet_id="a-1", outcome="FAIL")
+        b = pool.submit(backlog.record_item, tmp_path, "B", packet_id="b-1", outcome="MERGED")
+        a.result(timeout=5)
+        b.result(timeout=5)
+
+    items = original_load(tmp_path)["items"]
+    assert set(items) == {"A", "B"}
+    assert items["A"]["attempts"] == 1
+    assert items["B"]["outcome"] == "MERGED"
+
+
+def test_backlog_transaction_lock_blocks_another_process(tmp_path):
+    """The read/modify/write lock is effective across processes, not just threads."""
+    import os
+    import subprocess
+    import sys
+    import time
+
+    from project_orchestrator.iron_god_backlog import load_state, state_path
+    from project_orchestrator.grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
+
+    ready = tmp_path / "child-ready"
+    script = (
+        "import sys; from pathlib import Path; "
+        "from project_orchestrator.iron_god_backlog import record_item; "
+        "Path(sys.argv[2]).write_text('ready'); "
+        "record_item(Path(sys.argv[1]), 'child', packet_id='child-1', outcome='MERGED')"
+    )
+    lock = acquire_lifecycle_lock(state_path(tmp_path))
+    child = None
+    try:
+        child = subprocess.Popen(
+            [sys.executable, "-B", "-c", script, str(tmp_path), str(ready)],
+            env=os.environ.copy(), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + 8
+        while not ready.exists() and child.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert ready.exists(), "child did not reach the transaction boundary"
+        time.sleep(0.15)
+        assert not state_path(tmp_path).exists(), "child bypassed the held transaction lock"
+    finally:
+        release_lifecycle_lock(lock)
+    try:
+        stdout, stderr = child.communicate(timeout=8)
+        assert child.returncode == 0, (stdout, stderr)
+        assert load_state(tmp_path)["items"]["child"]["outcome"] == "MERGED"
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=5)
