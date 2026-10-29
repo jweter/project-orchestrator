@@ -91,14 +91,40 @@ def outline(source: str, exclude: set[str]) -> str:
     return "\n".join(rows)
 
 
+def shape_rules(source: str, targets: list[str], add: list[dict[str, str]]) -> list[str]:
+    """What each reply block must hold, stated per unit.
+
+    Measured on 2026-10-29 (pilot): with only "the complete new code of that part", the model
+    returned the one changed entry of a 20-line dict assignment (unparseable), and in another
+    slice moved a helper class out of the target function to module level (an unauthorized
+    unit). Both edits were otherwise right, and both replies were correctly rejected.
+    """
+    found = units(source)
+    rules = []
+    for target in targets:
+        if target == IMPORTS:
+            rules.append("The imports block holds every import the module needs after your change, and only imports.")
+        elif unit_source(source, found[target]).lstrip().startswith(("def ", "async def ", "class ", "@")):
+            rules.append(f"The {target} block is the whole definition of {target}; "
+                         "any helper class or function you need goes inside it.")
+        else:
+            rules.append(f"The {target} block is the whole assignment statement, from `{target}` to its last line, "
+                         "with every entry, including the entries that do not change.")
+    allowed = [a["name"] for a in add]
+    rules.append("Define no other top-level name" + (f" besides {', '.join(allowed)}." if allowed else "."))
+    return rules
+
+
 def build_prompt(source: str, module: str, direction: str, targets: list[str], *, add: list[dict[str, str]],
-                 failure: str, previous: str = "") -> str:
+                 failure: str, previous: str = "", rules: list[str] | None = None) -> str:
+    """The directed prompt; ``rules`` are the repository's own static gates (typing, line length)."""
     found = units(source)
     missing = [t for t in targets if t not in found]
     if missing:
         raise DirectedEditError(f"UNKNOWN_UNITS: {missing}")
     parts = "\n\n".join(f"### {t}\n```python\n{textwrap.dedent(unit_source(source, found[t]))}\n```" for t in targets)
     additions = "".join(f"\n- NEW top-level definition {a['name']}: {a['spec']}" for a in add)
+    stated = "".join(f"\n- {rule}" for rule in [*shape_rules(source, targets, add), *(rules or [])])
     prompt = (
         f"You are changing existing Python code in {module}.\n"
         f"Task: {direction}\n\n"
@@ -107,6 +133,7 @@ def build_prompt(source: str, module: str, direction: str, targets: list[str], *
         + "\nOther names already defined in this module (you may use them):\n" + outline(source, set(targets)) + "\n"
         + "\nFailing tests (they are correct; make them pass):\n" + failure.strip() + "\n"
         + (f"\nYour previous answer did not pass. It was:\n{previous.strip()}\n" if previous else "")
+        + "\nRules:" + stated + "\n"
         + "\nReply with one ```python block per part, in the order listed"
         + (", then one block per new definition" if add else "")
         + ". Each block holds the complete new code of that part only. Keep every name and signature unless the "

@@ -929,6 +929,23 @@ def test_an_invalid_direction_is_rejected_before_the_model_is_called(env, change
     assert harvested["worker_summary"].startswith("BACKLOG_SLICE_INVALID") and problem in harvested["worker_summary"]
 
 
+@pytest.mark.parametrize(("files", "expected"), [
+    ({"pyproject.toml": "[tool.mypy]\nstrict = true\n[tool.ruff]\nline-length = 100\n"}, ["strict", "100"]),
+    ({"pyproject.toml": "[tool.mypy]\nwarn_unused_ignores = true\n"}, []),
+    ({"mypy.ini": "[mypy]\ndisallow_untyped_defs = True\n", "ruff.toml": "line-length = 88\n"}, ["strict", "88"]),
+    ({"pyproject.toml": "not toml ["}, []),
+    ({}, []),
+])
+def test_quality_rules_state_only_the_gates_the_repository_configures(tmp_path, files, expected):
+    for name, text in files.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    rules = WORKER.quality_rules(tmp_path)
+    assert len(rules) == len(expected)
+    assert all(word in rule for word, rule in zip(expected, rules, strict=True))
+    if "strict" in expected:
+        assert "-> None" in rules[0] and "list[str]" in rules[0]
+
+
 def test_an_approved_level_2_item_needs_a_complete_direction():
     item = direct_item("X", REPOS[0])
     assert backlog_mod.item_problems(item) == []

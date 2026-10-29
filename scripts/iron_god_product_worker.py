@@ -414,6 +414,47 @@ def mypy_configured(worktree: Path) -> bool:
     return False
 
 
+def quality_rules(worktree: Path) -> list[str]:
+    """The repository's own static gates, stated for the model from its configuration (never relaxed).
+
+    Measured on 2026-10-28 (pilot KEA-6): a behaviourally correct directed edit failed strict mypy
+    because its nested parser methods were unannotated; nothing in the prompt said mypy was strict.
+    """
+    import configparser
+    import tomllib
+
+    def toml(name: str) -> dict[str, Any]:
+        try:
+            return tomllib.loads((worktree / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    tool = toml("pyproject.toml").get("tool", {})
+    mypy = tool.get("mypy", {})
+    strict = mypy.get("strict") is True or mypy.get("disallow_untyped_defs") is True
+    for name in ("mypy.ini", "setup.cfg"):
+        parser = configparser.ConfigParser()
+        try:
+            parser.read(worktree / name, encoding="utf-8")
+            strict = strict or any(parser.getboolean("mypy", key, fallback=False)
+                                   for key in ("strict", "disallow_untyped_defs"))
+        except (configparser.Error, ValueError):
+            continue
+    rules = []
+    if strict:
+        rules.append("mypy runs in strict mode: annotate every parameter and the return type of every function "
+                     "and method you write, nested ones included (__init__ and methods returning nothing take "
+                     "-> None), and give new list or dict attributes a type, e.g. self.parts: list[str] = [].")
+    ruff = tool.get("ruff", {})
+    for name in ("ruff.toml", ".ruff.toml"):
+        ruff = {**ruff, **toml(name)}
+    length = ruff.get("line-length")
+    if isinstance(length, int) and length > 0:
+        rules.append(f"Keep every line at most {length} characters; split a long string into adjacent "
+                     "string literals.")
+    return rules
+
+
 def type_check(worktree: Path, files: list[str], check: Callable[[], None]) -> dict[str, Any] | None:
     """The repository's own mypy configuration on the two new files, when it has one (measured: strict mypy
     was the only check a correct slice failed in knowledge-engine-ai)."""
@@ -973,7 +1014,7 @@ def execute_directed_slice(packet: dict[str, Any], plan: dict[str, Any], worktre
     found = de.units(original)
     lines = sum(found[t].end - found[t].start + 1 for t in plan["targets"])
     prompt = de.build_prompt(original, module, plan["direction"], plan["targets"], add=plan["add"],
-                             failure=failing_assertions(before["output_tail"]))
+                             failure=failing_assertions(before["output_tail"]), rules=quality_rules(worktree))
     reply = generate(prompt, min(4096, max(600, 30 * (lines + 25 * len(plan["add"])))), check)
     text = str(reply.get("text") or "")
     handback["directed"] = {**{k: reply.get(k) for k in ("prompt_tokens", "output_tokens", "model_s")},

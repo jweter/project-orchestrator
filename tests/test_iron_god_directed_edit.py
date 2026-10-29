@@ -105,3 +105,19 @@ def test_the_prompt_shows_only_the_targets_and_the_rest_as_one_line_signatures()
     assert "E assert 2 == 3" in prompt
     with pytest.raises(de.DirectedEditError, match="UNKNOWN_UNITS"):
         de.build_prompt(MODULE, "pkg/mod.py", "x", ["missing"], add=[], failure="")
+
+
+def test_the_prompt_states_what_each_block_must_hold_and_the_repository_rules():
+    # pilot 2026-10-29: a lone dict entry instead of the whole assignment; a helper hoisted to module level
+    prompt = de.build_prompt(MODULE, "pkg/mod.py", "Raise the limit.", ["imports", "LIMIT", "change", "Box.area"],
+                             add=[], failure="", rules=["mypy runs in strict mode: annotate everything."])
+    rules = prompt.split("\nRules:", 1)[1].split("\nReply with", 1)[0]
+    assert "The imports block holds every import the module needs" in rules
+    assert "The LIMIT block is the whole assignment statement" in rules and "including the entries that" in rules
+    assert "The change block is the whole definition of change; any helper" in rules
+    assert "The Box.area block is the whole definition" in rules
+    assert "Define no other top-level name." in rules
+    assert "- mypy runs in strict mode: annotate everything." in rules
+    added = de.build_prompt(MODULE, "pkg/mod.py", "Use a helper.", ["change"], failure="",
+                            add=[{"name": "_helper", "after": "keep", "spec": "returns 2"}])
+    assert "Define no other top-level name besides _helper." in added
