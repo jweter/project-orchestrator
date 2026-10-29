@@ -45,6 +45,7 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -125,13 +126,14 @@ def load_backlog(release_repo: Path) -> tuple[list[dict[str, Any]], dict[str, li
         raw = json.loads((Path(release_repo) / BACKLOG_PATH).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return [], {"<backlog>": ["BACKLOG_UNREADABLE"]}
-    items, rejected, seen = [], {}, set()
-    for item in raw.get("items", []) if isinstance(raw, dict) else []:
+    raw_items = raw.get("items", []) if isinstance(raw, dict) else []
+    ids = Counter(str(item.get("id")) if isinstance(item, dict) else "<item>" for item in raw_items)
+    items, rejected = [], {}
+    for item in raw_items:
         problems = item_problems(item)
         key = str(item.get("id")) if isinstance(item, dict) else "<item>"
-        if key in seen:
-            problems.append("DUPLICATE_ID")
-        seen.add(key)
+        if ids[key] > 1:
+            problems.append("DUPLICATE_ID")  # reject the first copy too: its identity is ambiguous
         if problems:
             rejected[key] = problems
         else:
