@@ -1185,7 +1185,7 @@
       "complexity": "low",
       "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged with CI green.",
-      "status": "approved",
+      "status": "retired",
       "implementer": "iron-god-local-7b",
       "direct": {
         "module_path": "knowledge_engine/extraction/sections.py",
@@ -1200,7 +1200,60 @@
         "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
       },
       "supersedes": "KEC-7",
-      "assignee": "iron-god"
+      "assignee": "iron-god",
+      "superseded_by": "KEC-16",
+      "retirement": {
+        "reason": "STATIC_LINE_LENGTH: the reply had the right shape and its code passed the approved test (3/3 offline on deb3d83), but one 140-character line failed ruff E501 against the repository's 100-character limit, which the prompt stated. One attempt used, not retried.",
+        "packet_id": "PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T214911Z",
+        "outcome": "FAIL: SLICE_TESTS_FAILED",
+        "evidence": "flow-state/iron-god-products/handbacks/PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T214911Z.json",
+        "retired_at": "2026-10-29"
+      }
+    },
+    {
+      "id": "KEC-16",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Recognize Methodology and 'Patients/Subjects and Methods' headings (re-issue of KEC-8)",
+      "roadmap_ref": "Issue #449 / KEC-4 (structured, auditable evidence); docs/phase2_design.md structured-section detection",
+      "addresses": "Common clinical methods headings are not detected, so methods text merges into the previous section",
+      "why": "Methods spans let evidence records cite study design; missing them weakens report-level auditability.",
+      "consumer": "detect_sections, used by claim-candidate extraction and evidence records (entrypoint.py).",
+      "objective": "Add 'methodology', 'patients and methods' and 'subjects and methods' to the methods heading alternatives.",
+      "interfaces": [
+        "knowledge_engine/extraction/sections.py"
+      ],
+      "depends_on": [
+        "KEC-6"
+      ],
+      "acceptance_criteria": [
+        "'Methodology' alone on a line is a methods heading",
+        "'2. Patients and Methods' and 'Subjects and methods: ...' are methods headings",
+        "existing methods headings still match; prose containing 'methodology' does not"
+      ],
+      "tests": [
+        "tests/test_methods_heading_variants.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "direct": {
+        "module_path": "knowledge_engine/extraction/sections.py",
+        "targets": [
+          "_SECTION_HEADING_PATTERNS"
+        ],
+        "add": [],
+        "direction": "Return the whole _SECTION_HEADING_PATTERNS assignment, from its first line to the closing brace, with every entry. Change only the methods entry and copy every other entry unchanged. Inside re.compile( of the methods entry write exactly these three adjacent rf-string lines, each on its own line, then the closing ),:\nrf\"(?im)^\\s*{_NUMBERING_PREFIX}(?:methods|materials and methods|study design|methodology\"\nrf\"|patients and methods|subjects and methods)\"\nrf\"{_INLINE_LABEL_SUFFIX}\"",
+        "test_path": "tests/test_methods_heading_variants.py",
+        "test_source": "from knowledge_engine.extraction.sections import detect_sections\nfrom knowledge_engine.parser import ParsedPage\n\n\ndef _types(text: str) -> list[str]:\n    return [span.section_type for span in detect_sections([ParsedPage(page_number=1, text=text)])]\n\n\ndef test_methodology_heading_is_a_methods_section() -> None:\n    assert _types(\"Methodology\\nWe sampled.\\nResults\\nIt worked.\\n\") == [\"methods\", \"results\"]\n\n\ndef test_patients_and_subjects_methods_headings_are_methods_sections() -> None:\n    assert _types(\"2. Patients and Methods\\nCohort.\\n\") == [\"methods\"]\n    assert _types(\"Subjects and methods: adults aged 40-65.\\n\") == [\"methods\"]\n\n\ndef test_existing_methods_headings_still_match_and_prose_does_not() -> None:\n    assert _types(\"Materials and Methods\\nHow.\\nStudy design\\nWhy.\\n\") == [\"methods\", \"methods\"]\n    assert _types(\"Our methodology was simple.\\n\") == []\n",
+        "note": "Section detection now recognizes Methodology and Patients/Subjects and Methods headings.",
+        "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
+      },
+      "supersedes": "KEC-8",
+      "assignee": "iron-god",
+      "evidence": "KEC-8's reply (packet PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T214911Z) passed the approved test 3/3 when applied to deb3d83 offline; it failed only ruff E501 (one 140-character line). This re-issue names the exact line split. Verified 2026-10-29 on deb3d83: with exactly these lines the approved test and the existing section tests pass (22 passed); ruff check, ruff format and strict mypy are clean."
     },
     {
       "id": "KEC-9",
