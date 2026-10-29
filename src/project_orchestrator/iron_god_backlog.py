@@ -154,6 +154,10 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
     """One attempt's outcome; MERGED marks the item done for dependency and dispatch purposes."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
+    # Accepted outcomes are terminal: late worker reports or scheduling blocks
+    # cannot undo a completed item or consume a fresh attempt.
+    if row.get("outcome") == "MERGED" or str(row.get("outcome", "")).startswith(EXTERNAL):
+        return row
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
         row["attempts"] = len(row["packets"])
@@ -177,6 +181,10 @@ def _record_block_unlocked(lane_root: Path, item_id: str, *, outcome: str) -> di
     """A turn that did not start (e.g. its files are under another developer's open PR): no attempt is used."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
+    # Accepted outcomes are terminal: late worker reports or scheduling blocks
+    # cannot undo a completed item or consume a fresh attempt.
+    if row.get("outcome") == "MERGED" or str(row.get("outcome", "")).startswith(EXTERNAL):
+        return row
     row.update(outcome=outcome, updated_at_utc=_now())
     atomic_json(state_path(lane_root), state)
     return row

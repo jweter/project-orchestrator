@@ -87,3 +87,25 @@ def test_block_write_respects_cross_process_lock(tmp_path):
         if child is not None and child.poll() is None:
             child.kill()
             child.wait(timeout=5)
+
+
+def test_terminal_outcome_survives_stale_replay(tmp_path):
+    """A delayed worker/block report must not reopen an accepted backlog item."""
+    for terminal in ("MERGED", backlog.EXTERNAL):
+        for stale_kind in ("worker", "block"):
+            root = tmp_path / (terminal + stale_kind)
+            root.mkdir()
+            original = backlog.record_item(
+                root, "KEC-8", packet_id="accepted-packet", outcome=terminal
+            )
+            assert original["attempts"] == 1
+            if stale_kind == "worker":
+                row = backlog.record_item(
+                    root, "KEC-8", packet_id="late-packet", outcome="FAIL"
+                )
+            else:
+                row = backlog.record_block(root, "KEC-8", outcome="BLOCKED_CONFLICT")
+            assert row["outcome"] == terminal
+            assert row["attempts"] == 1
+            assert row["packets"] == ["accepted-packet"]
+            assert backlog.load_state(root)["items"]["KEC-8"]["outcome"] == terminal
