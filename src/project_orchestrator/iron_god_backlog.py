@@ -111,6 +111,13 @@ def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
     """One attempt's outcome; MERGED marks the item done for dependency and dispatch purposes."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
+    if row.get("outcome") == "MERGED":
+        # Completion is terminal: a stale worker packet cannot undo acceptance,
+        # consume another attempt, or contaminate failed-source evidence.
+        if outcome != "MERGED" and not row.get("terminal_outcome_conflict"):
+            row["terminal_outcome_conflict"] = True
+            atomic_json(state_path(lane_root), state)
+        return row
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
         row["attempts"] = len(row["packets"])

@@ -303,3 +303,60 @@ def test_packet_fingerprints_veto_even_if_legacy_flag_is_false(tmp_path):
     assert next_item([item], state, "jweter/knowledge-engine-core", max_level=1) is None
     assert state["items"]["KEC-2"]["attempts"] == 2
     assert state["items"]["KEC-2"]["packets"] == ["attempt-1", "attempt-2"]
+
+
+def test_merged_item_rejects_conflicting_same_packet_replay(tmp_path):
+    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+
+    item = {
+        "id": "KEC-2",
+        "repository": "jweter/knowledge-engine-core",
+        "status": "approved",
+        "level": 1,
+        "depends_on": [],
+    }
+    original = record_item(tmp_path, item["id"], packet_id="packet-1", outcome="MERGED")
+    replay = record_item(
+        tmp_path,
+        item["id"],
+        packet_id="packet-1",
+        outcome="FAIL",
+        failed_source_fingerprint=source_fingerprint({"cache.py": b"bad"}),
+    )
+    assert replay["outcome"] == "MERGED"
+    assert replay["merged_at_utc"] == original["merged_at_utc"]
+    assert replay["attempts"] == 1
+    assert replay["packets"] == ["packet-1"]
+    assert replay["terminal_outcome_conflict"] is True
+    assert "failed_source_by_packet" not in replay
+    assert next_item([item], load_state(tmp_path), item["repository"], max_level=1) is None
+
+
+def test_merged_item_rejects_late_new_packet_without_retry_budget_change(tmp_path):
+    from project_orchestrator.iron_god_backlog import load_state, record_item
+
+    record_item(tmp_path, "KEC-2", packet_id="packet-1", outcome="MERGED")
+    replay = record_item(
+        tmp_path,
+        "KEC-2",
+        packet_id="packet-2",
+        outcome="FAIL",
+        failed_source_fingerprint=source_fingerprint({"cache.py": b"bad"}),
+    )
+    assert replay["outcome"] == "MERGED"
+    assert replay["attempts"] == 1
+    assert replay["packets"] == ["packet-1"]
+    assert replay["terminal_outcome_conflict"] is True
+    assert load_state(tmp_path)["items"]["KEC-2"]["outcome"] == "MERGED"
+
+
+def test_dispatched_to_merged_transition_and_merged_replay_are_idempotent(tmp_path):
+    from project_orchestrator.iron_god_backlog import record_item
+
+    record_item(tmp_path, "KEC-2", packet_id="packet-1", outcome="DISPATCHED")
+    merged = record_item(tmp_path, "KEC-2", packet_id="packet-1", outcome="MERGED")
+    replay = record_item(tmp_path, "KEC-2", packet_id="packet-1", outcome="MERGED")
+    assert replay == merged
+    assert replay["attempts"] == 1
+    assert replay["outcome"] == "MERGED"
+    assert "terminal_outcome_conflict" not in replay
