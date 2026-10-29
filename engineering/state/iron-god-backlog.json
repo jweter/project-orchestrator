@@ -1192,6 +1192,87 @@
         "note": "Section detection now recognizes Methodology and Patients/Subjects and Methods headings."
       },
       "supersedes": "KEC-7"
+    },
+    {
+      "id": "KEC-9",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "A PMCID in other_identifier must use ASCII digits (Codex P2 on PR #533)",
+      "roadmap_ref": "Issue #402 / #449 (reusable, auditable evidence identity); open Codex P2 finding on PR #533",
+      "addresses": "_PMCID_PATTERN uses Unicode-aware \\d+, so 'PMC' followed by non-ASCII digits is persisted as an authoritative PMCID",
+      "why": "An invented PMCID becomes identity metadata that later reuse detection trusts; the repository's other PMCID validator (reviewed_approval.SAFE_PMCID) already requires [0-9]+.",
+      "consumer": "Corpus manifest validation (_validate_rows -> CorpusSourceRow.normalized_pmcid) and the PMCID reuse checks that read it.",
+      "objective": "Make _PMCID_PATTERN accept only ASCII digits after PMC, keeping it case-insensitive.",
+      "interfaces": [
+        "knowledge_engine/corpus/validation.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "'PMC123456' and 'pmc42' still fully match",
+        "'PMC' followed by Arabic-Indic or fullwidth digits does not match",
+        "'PMC', 'PMID123' and 'PMC12a' do not match",
+        "existing corpus manifest and readiness tests still pass"
+      ],
+      "tests": [
+        "tests/test_pmcid_identifier_ascii_digits.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green; the Codex P2 finding on PR #533 is resolved.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "evidence": "Verified 2026-10-29 on deb3d83: the approved test fails on main and passes with the reference fix, together with the related existing tests; strict mypy, ruff check and ruff format pass.",
+      "direct": {
+        "module_path": "knowledge_engine/corpus/validation.py",
+        "targets": [
+          "_PMCID_PATTERN"
+        ],
+        "add": [],
+        "direction": "Change _PMCID_PATTERN so that only the ASCII digits 0-9 may follow PMC: replace \\d+ with [0-9]+. Keep it a raw string and keep re.IGNORECASE. Return the whole one-line assignment.",
+        "test_path": "tests/test_pmcid_identifier_ascii_digits.py",
+        "test_source": "from knowledge_engine.corpus.validation import _PMCID_PATTERN\n\n\ndef test_ascii_pmcids_are_recognized_in_either_case() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC123456\")\n    assert _PMCID_PATTERN.fullmatch(\"pmc42\")\n\n\ndef test_non_ascii_digits_are_not_a_pmcid() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC١٢٣\") is None  # Arabic-Indic digits\n    assert _PMCID_PATTERN.fullmatch(\"PMC１２\") is None  # fullwidth digits\n\n\ndef test_other_identifiers_are_still_not_a_pmcid() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC\") is None\n    assert _PMCID_PATTERN.fullmatch(\"PMID123\") is None\n    assert _PMCID_PATTERN.fullmatch(\"PMC12a\") is None\n",
+        "note": "PMCID recognition in corpus manifests now requires ASCII digits (Codex P2, PR #533)."
+      }
+    },
+    {
+      "id": "KEC-10",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Startup-timing evidence must hold nonnegative JSON integers (Codex P2 on PR #529)",
+      "roadmap_ref": "Issue #493 (unattended local verification worker) and #433 item 1; open Codex P2 finding on PR #529",
+      "addresses": "run_process_startup_timing coerces timings with int(), so true, 1.9 or '12' pass as 1, 1 and 12, and a negative value passes",
+      "why": "The worker exists to fail closed on malformed evidence; a coerced value reports PASS with invented metrics attributed to the verified SHA.",
+      "consumer": "The unattended verification worker's process-startup-timing check (execute_request).",
+      "objective": "Reject timing evidence whose values are not nonnegative JSON integers, reporting the existing ENVIRONMENT_FAILURE result.",
+      "interfaces": [
+        "knowledge_engine/unattended_worker.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "true, 1.9, '12', -1 or null in either timing field gives ENVIRONMENT_FAILURE / ENVIRONMENT_FAILURE",
+        "0 ms timings are valid and reported",
+        "existing tests/test_unattended_worker.py still passes"
+      ],
+      "tests": [
+        "tests/test_process_startup_timing_evidence_types.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green; the Codex P2 finding on PR #529 (malformed timing evidence) is resolved.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "evidence": "Verified 2026-10-29 on deb3d83: the approved test fails on main and passes with the reference fix, together with the related existing tests; strict mypy, ruff check and ruff format pass.",
+      "direct": {
+        "module_path": "knowledge_engine/unattended_worker.py",
+        "targets": [
+          "run_process_startup_timing"
+        ],
+        "add": [],
+        "direction": "In run_process_startup_timing, stop converting the two timings with int(). Inside the existing try block, read payload['import_to_command_ms'] and payload['database_open_ms'] as they are, and raise TypeError unless each one is an int that is not a bool and is at least 0, so the existing except clause returns the ENVIRONMENT_FAILURE result. Change nothing else in the function, and keep its docstring and return values.",
+        "test_path": "tests/test_process_startup_timing_evidence_types.py",
+        "test_source": "import json\nfrom pathlib import Path\n\nimport pytest\n\nfrom knowledge_engine import unattended_worker as worker\n\n\ndef _run_with_evidence(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence: dict[str, object]\n) -> tuple[str, str, str | None]:\n    def fake_run_logged(\n        args: list[str], *, cwd: Path, log_path: Path, timeout_seconds: float\n    ) -> tuple[int, float, bool]:\n        evidence_path = Path(args[-1])\n        evidence_path.parent.mkdir(parents=True, exist_ok=True)\n        evidence_path.write_text(json.dumps(evidence), encoding=\"utf-8\")\n        return 0, 0.5, False\n\n    monkeypatch.setattr(worker, \"run_logged\", fake_run_logged)\n    return worker.run_process_startup_timing(tmp_path, tmp_path / \"state\", 30)\n\n\n@pytest.mark.parametrize(\"value\", [True, 1.9, \"12\", -1, None])\n@pytest.mark.parametrize(\"field\", [\"import_to_command_ms\", \"database_open_ms\"])\ndef test_coercible_or_negative_timing_values_fail_closed(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 12, \"database_open_ms\": 3}\n    evidence[field] = value\n    status, _summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"ENVIRONMENT_FAILURE\"\n    assert failure_class == \"ENVIRONMENT_FAILURE\"\n\n\ndef test_zero_millisecond_timings_are_valid(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 0, \"database_open_ms\": 0}\n    status, summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"PASS\" and failure_class is None\n    assert \"import_to_command_ms=0\" in summary and \"database_open_ms=0\" in summary\n",
+        "note": "Startup-timing evidence is now rejected unless both timings are nonnegative JSON integers (Codex P2, PR #529)."
+      }
     }
   ]
 }
