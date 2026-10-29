@@ -80,14 +80,16 @@ def item_problems(item: Any) -> list[str]:
     problems = [f"MISSING_{name.upper()}" for name in REQUIRED_TEXT
                 if not isinstance(item.get(name), str) or not item[name].strip()]
     problems += [f"MISSING_{name.upper()}" for name in REQUIRED_LISTS if not isinstance(item.get(name), list)]
-    if item.get("status") not in STATUSES:
+    status = item.get("status")
+    if not isinstance(status, str) or status not in STATUSES:
         problems.append("STATUS_INVALID")
     level = item.get("level")
     if type(level) is not int or not 1 <= level <= 5:
         problems.append("LEVEL_INVALID")
     if isinstance(item.get("consumer"), str) and len(item["consumer"].strip()) < 12:
         problems.append("CONSUMER_UNIDENTIFIED")  # no disconnected helpers: name who calls it
-    texts = [item.get("objective"), *(item.get("acceptance_criteria") or [])]
+    criteria = item.get("acceptance_criteria")
+    texts = [item.get("objective"), *(criteria if isinstance(criteria, list) else [])]
     if any(isinstance(text, str) and len(text) > MAX_TEXT for text in texts):
         problems.append("TEXT_OVER_CANON_BOUND")
     if item.get("status") == "approved" and level == 1:
@@ -127,6 +129,8 @@ def load_backlog(release_repo: Path) -> tuple[list[dict[str, Any]], dict[str, li
     except (OSError, ValueError):
         return [], {"<backlog>": ["BACKLOG_UNREADABLE"]}
     raw_items = raw.get("items", []) if isinstance(raw, dict) else []
+    if not isinstance(raw_items, list):
+        return [], {"<backlog>": ["BACKLOG_ITEMS_NOT_A_LIST"]}
     ids = Counter(str(item.get("id")) if isinstance(item, dict) else "<item>" for item in raw_items)
     items, rejected = [], {}
     for item in raw_items:
