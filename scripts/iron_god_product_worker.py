@@ -902,7 +902,12 @@ def validate_direct(spec: Any, worktree: Path, base: str, packet: dict[str, Any]
         raise PlanRejected("DIRECT_TEST_PATH_INVALID")
     if _git(worktree, "cat-file", "-e", f"{base}:{module}").returncode != 0:
         raise PlanRejected(f"DIRECT_MODULE_MISSING: {module}")
-    if _git(worktree, "cat-file", "-e", f"{base}:{test}").returncode == 0:
+    approved_base = str(spec.get("approved_base") or "")
+    if approved_base and not re.fullmatch(r"[0-9a-f]{40}", approved_base):
+        raise PlanRejected("DIRECT_APPROVED_BASE_INVALID")
+    on_main = _git(worktree, "show", f"{base}:{test}")
+    # the same approved test already on main (another developer merged it) is checked, never overwritten
+    if on_main.returncode == 0 and on_main.stdout.replace("\r\n", "\n") != str(spec.get("test_source") or ""):
         raise PlanRejected(f"DIRECT_TEST_WOULD_OVERWRITE: {test}")
     targets = [str(t) for t in spec.get("targets") or []]
     add = [{"name": str(a.get("name")), "after": str(a.get("after")), "spec": str(a.get("spec") or "")}
@@ -927,7 +932,23 @@ def validate_direct(spec: Any, worktree: Path, base: str, packet: dict[str, Any]
         raise PlanRejected(f"DIRECT_UNITS_UNKNOWN: {unknown}")
     return {"mode": "directed", "module_path": module, "test_path": test, "targets": targets, "add": add,
             "direction": direction, "test_source": source, "objective": direction,
+            "approved_base": approved_base, "test_on_main": on_main.returncode == 0,
             "note": " ".join(str(spec.get("note") or "").split())[:NOTE_CHARS]}
+
+
+def external_completion(worktree: Path, base: str, plan: dict[str, Any]) -> dict[str, Any] | None:
+    """Evidence that another developer completed this slice: its approved tests, verified to fail at
+    ``approved_base``, now pass on main, and main changed the module since then. Never inferred from a
+    pull request title or the slice id alone; without an approval base nothing is claimed."""
+    approved = plan.get("approved_base") or ""
+    if not approved or _git(worktree, "merge-base", "--is-ancestor", approved, base).returncode != 0:
+        return None
+    commits = _git(worktree, "log", "--format=%H", f"{approved}..{base}", "--", plan["module_path"]).stdout.split()
+    if not commits:
+        return None
+    return {"approved_base": approved, "verified_base": base, "module_commits": commits[:20],
+            "summary": f"the approved tests pass on {base[:12]}; {plan['module_path']} changed in "
+                       f"{len(commits)} commit(s) since {approved[:12]}, latest {commits[0][:12]}"}
 
 
 def production_generate(prompt: str, num_predict: int, check: Callable[[], None]) -> dict[str, Any]:
@@ -1004,12 +1025,19 @@ def execute_directed_slice(packet: dict[str, Any], plan: dict[str, Any], worktre
     from project_orchestrator import iron_god_directed_edit as de
 
     module, test = plan["module_path"], plan["test_path"]
-    (worktree / test).parent.mkdir(parents=True, exist_ok=True)
-    (worktree / test).write_text(plan["test_source"], encoding="utf-8")  # the approved spec, never the model's
+    if not plan.get("test_on_main"):
+        (worktree / test).parent.mkdir(parents=True, exist_ok=True)
+        (worktree / test).write_text(plan["test_source"], encoding="utf-8")  # the approved spec, never the model's
     spec_bytes = (worktree / test).read_bytes()
     before = tests(worktree, module, test, check)
     if before["ok"]:
+        external = external_completion(worktree, base, plan)
+        if external is not None:  # nothing to build: recorded as completed elsewhere, with its evidence
+            handback["external_completion"] = external
+            return finish("FAIL", f"COMPLETED_EXTERNALLY: {external['summary']}")
         return finish("FAIL", "DIRECTED_TEST_NOT_DISCRIMINATING: the approved tests already pass on main")
+    if plan.get("test_on_main"):
+        return finish("REVIEW_REQUIRED", "NEEDS_REVALIDATION: the approved tests are already on main and fail there")
     original = (worktree / module).read_text(encoding="utf-8")
     found = de.units(original)
     lines = sum(found[t].end - found[t].start + 1 for t in plan["targets"])

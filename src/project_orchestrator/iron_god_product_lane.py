@@ -579,8 +579,10 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
     lane.save(current, ledger)
     lane.active_path.unlink(missing_ok=True)
     if packet.get("slice"):
+        summary = str(handback.get("summary", ""))
         result = (outcome["status"] if outcome["status"] == "ACCEPTED_LOCAL" else "SUPERVISOR_RECHECK_FAILED"
-                  if handback["status"] == "PASS" else f"{handback['status']}: {handback.get('summary', '')}"[:200])
+                  if handback["status"] == "PASS" else summary[:200] if summary.startswith(backlog.EXTERNAL)
+                  else f"{handback['status']}: {summary}"[:200])
         backlog.record_item(lane.root, packet["slice"]["id"], packet_id=packet_id, outcome=result)
     tried = (f"{slice_plan['function_name']} in {slice_plan['module_path']}" if slice_plan.get("function_name")
              else None)
@@ -718,6 +720,14 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
                               blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
         return _report(lane, {"status": "REPOSITORY_SYNC_FAILED", "repository": repo,
                               "detail": f"{type(exc).__name__}: {str(exc)[:300]}"})
+    held = sorted(backlog.edit_files(item) & set(avoid)) if item is not None else []
+    if held:
+        # 2026-10-28: KEC-6's one attempt was spent refusing a file under another developer's open pull
+        # request. A conflict is not an attempt: the item waits, and is re-checked on its next turn.
+        _advance_cursor(lane, repo, packet_id)
+        backlog.record_block(lane.root, item["id"], outcome=f"BLOCKED_CONFLICT: open pull request on {', '.join(held)}")
+        return _report(lane, {"status": "BLOCKED_CONFLICT", "repository": repo, "backlog_item": item["id"],
+                              "files": held})
     roots = scope_envelope(clone, base)
     if not roots or not python_packages(clone, base, roots):
         # Product slices add a module to an existing Python package; a repository without

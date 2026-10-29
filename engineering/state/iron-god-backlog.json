@@ -1049,7 +1049,8 @@
         "direction": "Replace the regex with the standard library parser: import HTMLParser from html.parser (remove the unused re import). Inside the body of remove_html_tags, after the empty-input check, define a small HTMLParser subclass (nested in the function, not at module level), feed the text, call close(), and return the joined text. Keep the signature and docstring. The repository runs strict mypy: annotate exactly def __init__(self) -> None: (calling super().__init__()), def handle_data(self, data: str) -> None:, and the collected attribute as self.text: list[str] = [].",
         "test_path": "tests/test_remove_html_tags_markup_only.py",
         "test_source": "from knowledge_engine_ai.remove_html_tags import remove_html_tags\n\n\ndef test_a_quoted_greater_than_inside_an_attribute_does_not_leak_the_tag() -> None:\n    assert remove_html_tags('<a title=\"1 > 0\">Link</a>') == \"Link\"\n\n\ndef test_a_multiline_opening_tag_is_removed_completely() -> None:\n    assert remove_html_tags('<div\\n class=\"content\">Hello</div>') == \"Hello\"\n\n\ndef test_comparison_operators_in_plain_text_are_preserved() -> None:\n    assert remove_html_tags(\"x < 5 and y > 3\") == \"x < 5 and y > 3\"\n\n\ndef test_ordinary_markup_is_still_stripped() -> None:\n    assert remove_html_tags(\"<p>Hello, <b>World</b>!</p>\") == \"Hello, World!\"\n    assert remove_html_tags('<img src=\"image.jpg\" alt=\"Image\">') == \"\"\n    assert remove_html_tags(\"\") == \"\"\n",
-        "note": "remove_html_tags now parses HTML instead of matching angle brackets (Codex P2, PR #187)."
+        "note": "remove_html_tags now parses HTML instead of matching angle brackets (Codex P2, PR #187).",
+        "approved_base": "bf1a232ade4b6b4046c82ff4bfa6de5309cf8e86"
       },
       "supersedes": "KEA-7",
       "assignee": "iron-god"
@@ -1195,7 +1196,8 @@
         "direction": "Return the whole _SECTION_HEADING_PATTERNS assignment, from its first line to the closing brace, with every entry. Change only the methods entry: extend its alternatives (methods|materials and methods|study design) with methodology, patients and methods, and subjects and methods. Copy every other entry unchanged. Keep every line at most 100 characters by splitting the methods pattern across adjacent rf-strings, as the existing entries do.",
         "test_path": "tests/test_methods_heading_variants.py",
         "test_source": "from knowledge_engine.extraction.sections import detect_sections\nfrom knowledge_engine.parser import ParsedPage\n\n\ndef _types(text: str) -> list[str]:\n    return [span.section_type for span in detect_sections([ParsedPage(page_number=1, text=text)])]\n\n\ndef test_methodology_heading_is_a_methods_section() -> None:\n    assert _types(\"Methodology\\nWe sampled.\\nResults\\nIt worked.\\n\") == [\"methods\", \"results\"]\n\n\ndef test_patients_and_subjects_methods_headings_are_methods_sections() -> None:\n    assert _types(\"2. Patients and Methods\\nCohort.\\n\") == [\"methods\"]\n    assert _types(\"Subjects and methods: adults aged 40-65.\\n\") == [\"methods\"]\n\n\ndef test_existing_methods_headings_still_match_and_prose_does_not() -> None:\n    assert _types(\"Materials and Methods\\nHow.\\nStudy design\\nWhy.\\n\") == [\"methods\", \"methods\"]\n    assert _types(\"Our methodology was simple.\\n\") == []\n",
-        "note": "Section detection now recognizes Methodology and Patients/Subjects and Methods headings."
+        "note": "Section detection now recognizes Methodology and Patients/Subjects and Methods headings.",
+        "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
       },
       "supersedes": "KEC-7",
       "assignee": "iron-god"
@@ -1238,7 +1240,8 @@
         "direction": "Change _PMCID_PATTERN so that only the ASCII digits 0-9 may follow PMC: replace \\d+ with [0-9]+. Keep it a raw string and keep re.IGNORECASE. Return the whole one-line assignment.",
         "test_path": "tests/test_pmcid_identifier_ascii_digits.py",
         "test_source": "from knowledge_engine.corpus.validation import _PMCID_PATTERN\n\n\ndef test_ascii_pmcids_are_recognized_in_either_case() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC123456\")\n    assert _PMCID_PATTERN.fullmatch(\"pmc42\")\n\n\ndef test_non_ascii_digits_are_not_a_pmcid() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC١٢٣\") is None  # Arabic-Indic digits\n    assert _PMCID_PATTERN.fullmatch(\"PMC１２\") is None  # fullwidth digits\n\n\ndef test_other_identifiers_are_still_not_a_pmcid() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC\") is None\n    assert _PMCID_PATTERN.fullmatch(\"PMID123\") is None\n    assert _PMCID_PATTERN.fullmatch(\"PMC12a\") is None\n",
-        "note": "PMCID recognition in corpus manifests now requires ASCII digits (Codex P2, PR #533)."
+        "note": "PMCID recognition in corpus manifests now requires ASCII digits (Codex P2, PR #533).",
+        "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
       },
       "assignee": "iron-god"
     },
@@ -1279,7 +1282,8 @@
         "direction": "In run_process_startup_timing, stop converting the two timings with int(). Inside the existing try block, read payload['import_to_command_ms'] and payload['database_open_ms'] as they are, and raise TypeError unless each one is an int that is not a bool and is at least 0, so the existing except clause returns the ENVIRONMENT_FAILURE result. Change nothing else in the function, and keep its docstring and return values.",
         "test_path": "tests/test_process_startup_timing_evidence_types.py",
         "test_source": "import json\nfrom pathlib import Path\n\nimport pytest\n\nfrom knowledge_engine import unattended_worker as worker\n\n\ndef _run_with_evidence(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence: dict[str, object]\n) -> tuple[str, str, str | None]:\n    def fake_run_logged(\n        args: list[str], *, cwd: Path, log_path: Path, timeout_seconds: float\n    ) -> tuple[int, float, bool]:\n        evidence_path = Path(args[-1])\n        evidence_path.parent.mkdir(parents=True, exist_ok=True)\n        evidence_path.write_text(json.dumps(evidence), encoding=\"utf-8\")\n        return 0, 0.5, False\n\n    monkeypatch.setattr(worker, \"run_logged\", fake_run_logged)\n    return worker.run_process_startup_timing(tmp_path, tmp_path / \"state\", 30)\n\n\n@pytest.mark.parametrize(\"value\", [True, 1.9, \"12\", -1, None])\n@pytest.mark.parametrize(\"field\", [\"import_to_command_ms\", \"database_open_ms\"])\ndef test_coercible_or_negative_timing_values_fail_closed(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 12, \"database_open_ms\": 3}\n    evidence[field] = value\n    status, _summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"ENVIRONMENT_FAILURE\"\n    assert failure_class == \"ENVIRONMENT_FAILURE\"\n\n\ndef test_zero_millisecond_timings_are_valid(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 0, \"database_open_ms\": 0}\n    status, summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"PASS\" and failure_class is None\n    assert \"import_to_command_ms=0\" in summary and \"database_open_ms=0\" in summary\n",
-        "note": "Startup-timing evidence is now rejected unless both timings are nonnegative JSON integers (Codex P2, PR #529)."
+        "note": "Startup-timing evidence is now rejected unless both timings are nonnegative JSON integers (Codex P2, PR #529).",
+        "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
       },
       "assignee": "iron-god"
     }

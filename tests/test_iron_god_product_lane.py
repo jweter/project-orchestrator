@@ -981,6 +981,102 @@ def test_an_approved_item_needs_an_assignee_and_the_ownership_command_filters_by
     assert table["agent"] == "iron-god" and [row["id"] for row in table["items"]] == ["RS-2"]
 
 
+def advance_main(env, repo, files, message="another developer's change"):
+    """Another developer merges a change to the 'GitHub' main branch."""
+    work = env.tmp / "other-dev" / repo.split("/")[1]
+    if not work.exists():
+        git(env.tmp, "clone", "-q", str(env.remotes[repo]), str(work))
+        git(work, "config", "user.email", "d@example.com")
+        git(work, "config", "user.name", "Dev")
+    git(work, "pull", "-q", "origin", "main")
+    for name, text in files.items():
+        (work / name).parent.mkdir(parents=True, exist_ok=True)
+        (work / name).write_text(text, encoding="utf-8")
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", message)
+    git(work, "push", "-q", "origin", "HEAD:main")
+    return git(work, "rev-parse", "HEAD")
+
+
+def main_sha(env, repo):
+    return git(env.remotes[repo], "rev-parse", "main")
+
+
+@pytest.mark.parametrize("with_test", [False, True])
+def test_a_slice_completed_by_another_developer_is_verified_on_main_and_unblocks_its_dependents(env, with_test):
+    # 2026-10-28: KEC-6 merged elsewhere as PR #553 while KEC-7 waited on it
+    repo = REPOS[1]
+    approved = main_sha(env, repo)
+    first = direct_item("RS-2", repo, approved_base=approved)
+    second = {**direct_item("RS-3", repo, test_path="tests/test_one_again.py", approved_base=approved),
+              "depends_on": ["RS-2"]}
+    directed_env(env, [first, second])
+    merged = advance_main(env, repo, {"pkg/core.py": "def one():\n    return 2\n",
+                                      **({"tests/test_one_is_two.py": DIRECT_TEST} if with_test else {})})
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    assert step(env, runner)["backlog_item"] == "RS-2"
+    harvested = step(env, runner)
+    assert harvested["worker_summary"].startswith("COMPLETED_EXTERNALLY") and merged[:12] in harvested["worker_summary"]
+    items, state = _live(env)
+    assert state["items"]["RS-2"]["outcome"].startswith("COMPLETED_EXTERNALLY") and backlog_mod.is_done(items[0], state)
+    rows = {row["id"]: row for row in backlog_mod.ownership(items, state)}
+    assert rows["RS-2"]["state"] == "COMPLETED_EXTERNALLY"
+    diagnostics = pl.ProductLane(env.state).reports / f"{harvested['packet_id']}-handback-diagnostics.json"
+    evidence = json.loads(diagnostics.read_text(encoding="utf-8"))["external_completion"]
+    assert evidence["module_commits"] == [merged] and evidence["approved_base"] == approved
+    assert step(env, runner)["backlog_item"] == "RS-3"  # the dependent is unblocked
+
+
+def test_external_completion_is_never_claimed_without_a_verified_change_to_the_module(env):
+    repo = REPOS[1]
+    advance_main(env, repo, {"pkg/core.py": "def one():\n    return 2\n"})
+    approved = main_sha(env, repo)  # the approval base already passes: the tests never discriminated
+    directed_env(env, [direct_item("RS-2", repo, approved_base=approved)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    assert step(env, runner)["worker_summary"].startswith("DIRECTED_TEST_NOT_DISCRIMINATING")
+    items, state = _live(env)
+    assert not backlog_mod.is_done(items[0], state)
+
+
+def test_an_approved_test_already_on_main_that_still_fails_needs_revalidation(env):
+    repo = REPOS[1]
+    approved = main_sha(env, repo)
+    advance_main(env, repo, {"tests/test_one_is_two.py": DIRECT_TEST})
+    directed_env(env, [direct_item("RS-2", repo, approved_base=approved)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    harvested = step(env, runner)
+    assert harvested["worker_status"] == "REVIEW_REQUIRED" and "NEEDS_REVALIDATION" in harvested["worker_summary"]
+    assert backlog_mod.ownership(*_live(env))[0]["state"] == "NEEDS_REVALIDATION"
+
+
+def test_a_file_under_another_open_pull_request_blocks_the_slice_without_using_its_attempt(env):
+    directed_env(env, [direct_item("RS-2", REPOS[1])])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    blocked = step(env, runner, owned=lambda repo: ["pkg/core.py"])
+    assert blocked["status"] == "BLOCKED_CONFLICT" and blocked["files"] == ["pkg/core.py"] and runner.spawned == 0
+    items, state = _live(env)
+    assert state["items"]["RS-2"]["attempts"] == 0 and backlog_mod.ownership(items, state)[0]["state"] == (
+        "BLOCKED_CONFLICT")
+    assert step(env, Runner(plan=never_plans, agent=None, generate=replying("x")))["backlog_item"] == "RS-2"
+
+
+@pytest.mark.parametrize(("change", "row", "expected"), [
+    ({"status": "proposed"}, {}, "PROPOSED"),
+    ({"status": "retired", "superseded_by": "Y"}, {}, "SUPERSEDED"),
+    ({"assignee": "claude-code"}, {}, "ASSIGNED_ELSEWHERE"),
+    ({}, {"outcome": "FAIL: DIRECTED_REPLY_REJECTED: UNEXPECTED_UNIT: x"}, "FAILED_IMPLEMENTATION"),
+    ({}, {"outcome": "DISPATCHED"}, "IN_FLIGHT"),
+    ({"depends_on": ["Z"]}, {}, "BLOCKED_DEPENDENCY"),
+    ({"status": "done"}, {}, "COMPLETED"),
+    ({}, {}, "READY"),
+])
+def test_every_semantic_slice_state_is_derived_from_the_backlog_and_the_lane_record(change, row, expected):
+    item = {**direct_item("X", REPOS[0]), **change}
+    assert backlog_mod.slice_state(item, row, done=set(), conflicting=[]) == expected
+
+
 def test_an_approved_level_2_item_needs_a_complete_direction():
     item = direct_item("X", REPOS[0])
     assert backlog_mod.item_problems(item) == []

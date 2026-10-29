@@ -29,6 +29,13 @@ with ``src`` on PYTHONPATH prints the ownership table
 (assignee, files, units, status, dependencies, active reservations and
 evidence) for any agent to read before changing shared code.
 
+External completion (2026-10-29): KEC-6 merged elsewhere while KEC-7 waited on
+it. A directed item may record ``approved_base``, the main commit where its approved
+tests were verified to fail. When the worker finds those tests passing on a later
+main that changed the module since then, it records ``COMPLETED_EXTERNALLY`` with the
+commits as evidence, and dependents proceed; an id in a PR title is never enough. A
+file under an open PR blocks the turn (``BLOCKED_CONFLICT``) without using an attempt.
+
 The backlog grants no execution: dispatch still requires the owner controller.
 """
 
@@ -57,6 +64,7 @@ BUILDABLE_LEVELS = {1, 2}  # the levels the local product worker can build (meas
 DIRECT_ATTEMPTS = 1  # measured: a repeated directed edit re-emits the same answer; a failure goes back to planning
 AGENT_ID = "iron-god"  # the assignee this engine builds; every other assignee owns its own items
 IN_FLIGHT = {"DISPATCHED", "ACCEPTED_LOCAL", "PR_BLOCKED"}  # an Iron God attempt that still holds its files
+EXTERNAL = "COMPLETED_EXTERNALLY"  # verified on main by the worker: approved tests pass and the module changed
 
 
 def _now() -> str:
@@ -155,8 +163,44 @@ def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) 
     return row
 
 
+def record_block(lane_root: Path, item_id: str, *, outcome: str) -> dict[str, Any]:
+    """A turn that did not start (e.g. its files are under another developer's open PR): no attempt is used."""
+    state = load_state(lane_root)
+    row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
+    row.update(outcome=outcome, updated_at_utc=_now())
+    atomic_json(state_path(lane_root), state)
+    return row
+
+
 def is_done(item: dict[str, Any], state: dict[str, Any]) -> bool:
-    return item.get("status") == "done" or state.get("items", {}).get(item["id"], {}).get("outcome") == "MERGED"
+    outcome = str(state.get("items", {}).get(item["id"], {}).get("outcome", ""))
+    return item.get("status") == "done" or outcome == "MERGED" or outcome.startswith(EXTERNAL)
+
+
+def slice_state(item: dict[str, Any], row: dict[str, Any], *, done: set[str], conflicting: list[str]) -> str:
+    """The item's semantic state, derived from the backlog and the lane record (never stored twice)."""
+    outcome = str(row.get("outcome", ""))
+    if outcome.startswith(EXTERNAL) or (item.get("completion") or {}).get("kind") == EXTERNAL:
+        return EXTERNAL
+    if item["status"] == "done" or outcome == "MERGED":
+        return "COMPLETED"
+    if item["status"] == "retired":
+        return "SUPERSEDED" if item.get("superseded_by") else "RETIRED"
+    if item["status"] == "proposed":
+        return "PROPOSED"
+    if item.get("assignee") != AGENT_ID:
+        return "ASSIGNED_ELSEWHERE"
+    if conflicting or outcome.startswith("BLOCKED_CONFLICT"):
+        return "BLOCKED_CONFLICT"
+    if outcome in IN_FLIGHT:
+        return "IN_FLIGHT"
+    if "NEEDS_REVALIDATION" in outcome:
+        return "NEEDS_REVALIDATION"
+    if outcome.startswith(("FAIL", "REVIEW_REQUIRED", "SUPERVISOR_RECHECK_FAILED")):
+        return "FAILED_IMPLEMENTATION"
+    if not all(dep in done for dep in item["depends_on"]):
+        return "BLOCKED_DEPENDENCY"
+    return "READY"
 
 
 def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
@@ -184,6 +228,7 @@ def ownership(items: list[dict[str, Any]], state: dict[str, Any], *, repository:
               path: str | None = None) -> list[dict[str, Any]]:
     """Who owns what: one row per item, for any agent to read before changing shared code (read-only)."""
     rows = []
+    done = {item["id"] for item in items if is_done(item, state)}
     for item in items:
         files = edit_files(item)
         if (repository and item["repository"] != repository) or (path and path.replace("\\", "/") not in files):
@@ -198,11 +243,13 @@ def ownership(items: list[dict[str, Any]], state: dict[str, Any], *, repository:
         direct = item.get("direct") if isinstance(item.get("direct"), dict) else {}
         build = item.get("build") if isinstance(item.get("build"), dict) else {}
         units = [*direct.get("targets", []), *(a.get("name") for a in direct.get("add", []) if isinstance(a, dict))]
+        conflicting = conflicts(item, items)
         rows.append({
             "id": item["id"], "assignee": item.get("assignee"), "repository": item["repository"],
-            "status": item["status"], "files": sorted(files),
+            "status": item["status"], "state": slice_state(item, row, done=done, conflicting=conflicting),
+            "files": sorted(files),
             "units": units or ([build["function_name"]] if build.get("function_name") else []),
-            "depends_on": item["depends_on"], "reservation": reservation, "conflicts": conflicts(item, items),
+            "depends_on": item["depends_on"], "reservation": reservation, "conflicts": conflicting,
             "evidence": {key: value for key, value in {
                 "completion": item.get("completion"), "retirement": item.get("retirement"),
                 "superseded_by": item.get("superseded_by"), "attempts": row.get("attempts"),
