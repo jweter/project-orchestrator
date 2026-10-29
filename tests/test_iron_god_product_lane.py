@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from project_orchestrator import iron_god_backlog as backlog_mod
+from project_orchestrator import iron_god_development_memory as devmem
 from project_orchestrator import iron_god_product_lane as pl
 from project_orchestrator import iron_god_product_metrics as metrics
 from project_orchestrator import iron_god_working_memory as wm
@@ -904,6 +905,11 @@ def test_a_failed_directed_slice_is_never_retried_and_never_committed(env, reply
     assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"  # back to planning, not a retry loop
     diagnostics = next(pl.ProductLane(env.state).reports.glob("*-handback-diagnostics.json"))
     assert json.loads(diagnostics.read_text(encoding="utf-8"))["directed"]["reply"] == reply[:8000]
+    lane_root = pl.ProductLane(env.state).root  # the attempt's observed facts reach the development memory
+    assert devmem.stats(lane_root)["attempts"] == 1
+    with devmem.closing(devmem._connect(lane_root)) as connection:
+        prompt, saved = connection.execute("SELECT prompt, reply FROM attempts").fetchone()
+    assert "Rules:" in prompt and saved == reply[:8000]
 
 
 def test_a_directed_slice_whose_tests_already_pass_on_main_is_not_built(env):

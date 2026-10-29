@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import sqlite3
 import subprocess
 import sys
 import time
@@ -34,6 +35,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
+from . import iron_god_development_memory as development_memory
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_working_memory as working_memory
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -584,7 +586,12 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
                   if handback["status"] == "PASS" else summary[:200] if summary.startswith(backlog.EXTERNAL)
                   else f"{handback['status']}: {summary}"[:200])
         backlog.record_item(lane.root, packet["slice"]["id"], packet_id=packet_id, outcome=result)
-    tried = (f"{slice_plan['function_name']} in {slice_plan['module_path']}" if slice_plan.get("function_name")
+    try:  # observed facts for planners; a memory failure never affects the lane
+        recorded = result if packet.get("slice") else str(outcome["status"])
+        development_memory.record_attempt(lane.root, packet, handback, recorded)
+    except (OSError, sqlite3.Error, KeyError, TypeError, ValueError):
+        pass
+    tried =(f"{slice_plan['function_name']} in {slice_plan['module_path']}" if slice_plan.get("function_name")
              else None)
     working_memory.record(lane.state_root, repo, "TURN_" + outcome["status"], packet_id=packet_id,
                           outcome=outcome["status"], note=note, attempt=tried,

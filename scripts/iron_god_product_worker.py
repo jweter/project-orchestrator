@@ -1046,7 +1046,8 @@ def execute_directed_slice(packet: dict[str, Any], plan: dict[str, Any], worktre
     reply = generate(prompt, min(4096, max(600, 30 * (lines + 25 * len(plan["add"])))), check)
     text = str(reply.get("text") or "")
     handback["directed"] = {**{k: reply.get(k) for k in ("prompt_tokens", "output_tokens", "model_s")},
-                            "reply": text[:8000]}
+                            "model": os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:7b"),
+                            "prompt": prompt[:16000], "reply": text[:8000]}
     try:
         edited = de.apply_reply(original, text, plan["targets"], add=plan["add"])
     except de.DirectedEditError as exc:
