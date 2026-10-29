@@ -777,6 +777,7 @@ def test_a_backlog_item_waits_for_its_dependencies_and_stops_after_its_attempts(
     ({"build": None}, "APPROVED_ITEM_WITHOUT_BUILD_SPEC"),
     ({"objective": "x" * 1200}, "TEXT_OVER_CANON_BOUND"),
     ({"level": 7}, "LEVEL_INVALID"),
+    ({"level": True}, "LEVEL_INVALID"),  # bool is an int subclass, never a build level
     ({"status": "maybe"}, "STATUS_INVALID"),
 ])
 def test_malformed_backlog_items_are_never_dispatched(change, problem):

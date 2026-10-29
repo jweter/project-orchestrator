@@ -82,7 +82,7 @@ def item_problems(item: Any) -> list[str]:
     if item.get("status") not in STATUSES:
         problems.append("STATUS_INVALID")
     level = item.get("level")
-    if not isinstance(level, int) or not 1 <= level <= 5:
+    if type(level) is not int or not 1 <= level <= 5:
         problems.append("LEVEL_INVALID")
     if isinstance(item.get("consumer"), str) and len(item["consumer"].strip()) < 12:
         problems.append("CONSUMER_UNIDENTIFIED")  # no disconnected helpers: name who calls it
