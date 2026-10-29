@@ -714,13 +714,13 @@ def test_planning_prompt_bounds_large_exclusion_list_without_weakening_validatio
 
 # Roadmap-driven backlog (2026-10-27): only approved, consumer-linked slices are built, exactly as written.
 
-def backlog_item(item_id, repo, *, status="approved", level=1, build=True, depends_on=()):
+def backlog_item(item_id, repo, *, status="approved", level=1, build=True, depends_on=(), assignee="iron-god"):
     item = {"id": item_id, "repository": repo, "title": f"{item_id} title", "roadmap_ref": "docs/ROADMAP.md slice 1",
             "addresses": "a roadmap gap", "why": "it unblocks the workflow", "consumer": "the export workflow step",
             "objective": "Add add_two to pkg/extra.py for the export workflow.", "interfaces": ["pkg/core.py"],
             "depends_on": list(depends_on), "acceptance_criteria": ["examples hold"], "tests": ["tests/test_extra.py"],
             "level": level, "complexity": "low", "verification": "preflight", "definition_of_done": "merged",
-            "status": status}
+            "status": status, "assignee": assignee}
     if build:
         item["build"] = {k: GOOD_PLAN[k] for k in ("module_path", "function_name", "signature", "objective",
                                                    "examples", "note")}
@@ -793,6 +793,7 @@ def test_real_backlog_covers_every_product_repository_and_is_well_formed():
         if item["status"] == "approved" and item["level"] == 2:
             assert item["direct"]["test_source"] and len(item["direct"]["targets"]) <= 2
     by_id = {item["id"]: item for item in items}
+    assert all(item["assignee"] for item in items if item["status"] == "approved")
     for item in items:  # a retired slice names its successor and keeps its failure evidence
         if item.get("superseded_by"):
             successor = by_id[item["superseded_by"]]
@@ -944,6 +945,40 @@ def test_quality_rules_state_only_the_gates_the_repository_configures(tmp_path, 
     assert all(word in rule for word, rule in zip(expected, rules, strict=True))
     if "strict" in expected:
         assert "-> None" in rules[0] and "list[str]" in rules[0]
+
+
+def test_only_items_assigned_to_iron_god_are_dispatched_and_other_claims_reserve_their_files(env):
+    # 2026-10-28: another agent built KEC-6 while it was approved for Iron God
+    theirs = backlog_item("RS-1", REPOS[1], assignee="chatgpt-dowork")
+    backlog_env(env, [theirs, backlog_item("RS-2", REPOS[1])])
+    assert step(env, Runner(plan=never_plans))["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"  # same file, reserved
+    items, rejected = backlog_mod.load_backlog(env.release)
+    assert rejected == {} and backlog_mod.conflicts(items[1], items) == ["RS-1"]
+    rows = {row["id"]: row for row in backlog_mod.ownership(items, {})}
+    assert rows["RS-1"]["reservation"] == {"by": "chatgpt-dowork", "outcome": "ASSIGNED"}
+    assert rows["RS-2"]["conflicts"] == ["RS-1"] and rows["RS-2"]["files"] == ["pkg/core.py", "pkg/extra.py"]
+    elsewhere = backlog_item("RS-1", REPOS[1], assignee="chatgpt-dowork")
+    elsewhere["interfaces"], elsewhere["build"]["module_path"] = ["pkg/other.py"], "pkg/other.py"
+    backlog_env(env, [elsewhere, backlog_item("RS-2", REPOS[1])])
+    assert step(env, Runner(plan=never_plans))["backlog_item"] == "RS-2"  # disjoint files: not blocked
+    row = next(r for r in backlog_mod.ownership(*_live(env)) if r["id"] == "RS-2")
+    assert row["reservation"]["by"] == "iron-god" and row["reservation"]["outcome"] == "DISPATCHED"
+
+
+def _live(env):
+    items, _rejected = backlog_mod.load_backlog(env.release)
+    return items, backlog_mod.load_state(pl.ProductLane(env.state).root)
+
+
+def test_an_approved_item_needs_an_assignee_and_the_ownership_command_filters_by_path(env, capsys):
+    item = backlog_item("X", REPOS[0], assignee="")
+    assert "APPROVED_ITEM_WITHOUT_ASSIGNEE" in backlog_mod.item_problems(item)
+    assert "APPROVED_ITEM_WITHOUT_ASSIGNEE" not in backlog_mod.item_problems({**item, "status": "proposed"})
+    backlog_env(env, [backlog_item("RS-1", REPOS[1]), {**backlog_item("RS-2", REPOS[2]), "interfaces": ["a.py"]}])
+    assert backlog_mod.main(["--release-repo", str(env.release), "--lane-root", str(env.state / "none"),
+                             "--path", "a.py"]) == 0
+    table = json.loads(capsys.readouterr().out)
+    assert table["agent"] == "iron-god" and [row["id"] for row in table["items"]] == ["RS-2"]
 
 
 def test_an_approved_level_2_item_needs_a_complete_direction():

@@ -18,12 +18,26 @@ existing module, one behavioural requirement, approved tests that fail on main),
 the form measured at 9/12 first try in the 2026-10-28 calibration. Higher levels
 stay in the backlog for a stronger implementer or a later calibration.
 
+Ownership (2026-10-29): Iron God shares these repositories with other agents,
+and on 2026-10-28 another agent built KEC-6 while it was approved here. Every
+approved item names its ``assignee``; the engine dispatches only items assigned
+to ``iron-god``, and an approved item assigned to anyone else reserves the
+files it edits, so no Iron God item touching those files is dispatched until it
+is done or retired. Open pull requests still reserve their files separately.
+From the installed release, ``python -m project_orchestrator.iron_god_backlog``
+with ``src`` on PYTHONPATH prints the ownership table
+(assignee, files, units, status, dependencies, active reservations and
+evidence) for any agent to read before changing shared code.
+
 The backlog grants no execution: dispatch still requires the owner controller.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -41,6 +55,8 @@ MAX_ITEM_ATTEMPTS = 3
 MAX_TEXT = 1100  # Canon bounds handoff text at 1200 characters; the packet adds an id prefix
 BUILDABLE_LEVELS = {1, 2}  # the levels the local product worker can build (measured)
 DIRECT_ATTEMPTS = 1  # measured: a repeated directed edit re-emits the same answer; a failure goes back to planning
+AGENT_ID = "iron-god"  # the assignee this engine builds; every other assignee owns its own items
+IN_FLIGHT = {"DISPATCHED", "ACCEPTED_LOCAL", "PR_BLOCKED"}  # an Iron God attempt that still holds its files
 
 
 def _now() -> str:
@@ -72,7 +88,26 @@ def item_problems(item: Any) -> list[str]:
         direct = item.get("direct")
         if not isinstance(direct, dict) or any(not direct.get(name) for name in DIRECT_FIELDS):
             problems.append("APPROVED_ITEM_WITHOUT_DIRECTION")
+    if item.get("status") == "approved" and (not isinstance(item.get("assignee"), str) or not item["assignee"].strip()):
+        problems.append("APPROVED_ITEM_WITHOUT_ASSIGNEE")
     return problems
+
+
+def edit_files(item: dict[str, Any]) -> set[str]:
+    """Every file an item may change: its interfaces plus its build or direct module and test."""
+    files = {str(path) for path in item.get("interfaces") or []}
+    for spec in (item.get("build"), item.get("direct")):
+        if isinstance(spec, dict):
+            files |= {str(spec[key]) for key in ("module_path", "test_path") if spec.get(key)}
+    return {path.replace("\\", "/") for path in files}
+
+
+def conflicts(item: dict[str, Any], items: list[dict[str, Any]]) -> list[str]:
+    """Approved items assigned to another developer that reserve a file this item would change."""
+    files = edit_files(item)
+    return [other["id"] for other in items
+            if other["id"] != item["id"] and other["repository"] == item["repository"]
+            and other["status"] == "approved" and other.get("assignee") != AGENT_ID and files & edit_files(other)]
 
 
 def load_backlog(release_repo: Path) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
@@ -131,6 +166,7 @@ def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
     for item in items:
         row = state.get("items", {}).get(item["id"], {})
         if (item["repository"] == repo and item["status"] == "approved" and item["level"] <= max_level
+                and item.get("assignee") == AGENT_ID and not conflicts(item, items)
                 and item["level"] in BUILDABLE_LEVELS and item["id"] not in done
                 and row.get("attempts", 0) < MAX_ITEM_ATTEMPTS
                 # a directed slice that the model failed is not retried: it needs decomposition (an
@@ -142,3 +178,53 @@ def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
                 and all(dep in done for dep in item["depends_on"])):
             return item
     return None
+
+
+def ownership(items: list[dict[str, Any]], state: dict[str, Any], *, repository: str | None = None,
+              path: str | None = None) -> list[dict[str, Any]]:
+    """Who owns what: one row per item, for any agent to read before changing shared code (read-only)."""
+    rows = []
+    for item in items:
+        files = edit_files(item)
+        if (repository and item["repository"] != repository) or (path and path.replace("\\", "/") not in files):
+            continue
+        row = state.get("items", {}).get(item["id"], {})
+        reservation = None
+        if item.get("assignee") == AGENT_ID and row.get("outcome") in IN_FLIGHT:
+            reservation = {"by": AGENT_ID, "outcome": row["outcome"], "packet_id": (row.get("packets") or [""])[-1],
+                           "since_utc": row.get("updated_at_utc")}
+        elif item["status"] == "approved" and item.get("assignee") != AGENT_ID:
+            reservation = {"by": item.get("assignee"), "outcome": "ASSIGNED"}
+        direct = item.get("direct") if isinstance(item.get("direct"), dict) else {}
+        build = item.get("build") if isinstance(item.get("build"), dict) else {}
+        units = [*direct.get("targets", []), *(a.get("name") for a in direct.get("add", []) if isinstance(a, dict))]
+        rows.append({
+            "id": item["id"], "assignee": item.get("assignee"), "repository": item["repository"],
+            "status": item["status"], "files": sorted(files),
+            "units": units or ([build["function_name"]] if build.get("function_name") else []),
+            "depends_on": item["depends_on"], "reservation": reservation, "conflicts": conflicts(item, items),
+            "evidence": {key: value for key, value in {
+                "completion": item.get("completion"), "retirement": item.get("retirement"),
+                "superseded_by": item.get("superseded_by"), "attempts": row.get("attempts"),
+                "outcome": row.get("outcome"), "merged_at_utc": row.get("merged_at_utc")}.items() if value},
+        })
+    return rows
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Print the Iron God backlog ownership table (read-only).")
+    parser.add_argument("--repository", help="only this repository, e.g. jweter/knowledge-engine-core")
+    parser.add_argument("--path", help="only items that may change this repository-relative file")
+    parser.add_argument("--release-repo", type=Path, default=Path(__file__).resolve().parents[2])
+    parser.add_argument("--lane-root", type=Path, default=Path(os.environ.get("LOCALAPPDATA", "."))
+                        / "ExponentialEngine" / "flow-state" / "iron-god-products")
+    args = parser.parse_args(argv)
+    items, rejected = load_backlog(args.release_repo)
+    table = ownership(items, load_state(args.lane_root), repository=args.repository, path=args.path)
+    json.dump({"agent": AGENT_ID, "items": table, "rejected": rejected}, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0 if not rejected else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -251,7 +251,8 @@
         ],
         "note": "Pure eviction policy for the bounded on-demand source cache (roadmap: bounded ephemeral cache); KEC-3 consumes it."
       },
-      "approval": "owner approved 2026-10-27 as the first authorized roadmap development slice"
+      "approval": "owner approved 2026-10-27 as the first authorized roadmap development slice",
+      "assignee": "iron-god"
     },
     {
       "id": "KEC-3",
@@ -954,7 +955,8 @@
         "outcome": "FAIL: SLICE_TESTS_FAILED",
         "evidence": "flow-state/iron-god-products/handbacks/PRODUCT-KNOWLEDGE-ENGINE-AI-20261028T233959Z-handback-diagnostics.json",
         "retired_at": "2026-10-28"
-      }
+      },
+      "assignee": "iron-god"
     },
     {
       "id": "KEA-7",
@@ -1005,7 +1007,8 @@
         "outcome": "FAIL: DIRECTED_REPLY_REJECTED: UNEXPECTED_UNIT: TextExtractor",
         "evidence": "flow-state/iron-god-products/handbacks/PRODUCT-KNOWLEDGE-ENGINE-AI-20261029T100025Z-handback-diagnostics.json",
         "retired_at": "2026-10-29"
-      }
+      },
+      "assignee": "iron-god"
     },
     {
       "id": "KEA-8",
@@ -1048,7 +1051,8 @@
         "test_source": "from knowledge_engine_ai.remove_html_tags import remove_html_tags\n\n\ndef test_a_quoted_greater_than_inside_an_attribute_does_not_leak_the_tag() -> None:\n    assert remove_html_tags('<a title=\"1 > 0\">Link</a>') == \"Link\"\n\n\ndef test_a_multiline_opening_tag_is_removed_completely() -> None:\n    assert remove_html_tags('<div\\n class=\"content\">Hello</div>') == \"Hello\"\n\n\ndef test_comparison_operators_in_plain_text_are_preserved() -> None:\n    assert remove_html_tags(\"x < 5 and y > 3\") == \"x < 5 and y > 3\"\n\n\ndef test_ordinary_markup_is_still_stripped() -> None:\n    assert remove_html_tags(\"<p>Hello, <b>World</b>!</p>\") == \"Hello, World!\"\n    assert remove_html_tags('<img src=\"image.jpg\" alt=\"Image\">') == \"\"\n    assert remove_html_tags(\"\") == \"\"\n",
         "note": "remove_html_tags now parses HTML instead of matching angle brackets (Codex P2, PR #187)."
       },
-      "supersedes": "KEA-7"
+      "supersedes": "KEA-7",
+      "assignee": "iron-god"
     },
     {
       "id": "KEC-6",
@@ -1100,7 +1104,8 @@
           "outcome": "FAIL: BACKLOG_SLICE_INVALID: DIRECT_PATH_FORBIDDEN_OR_UNDER_REVIEW",
           "note": "correct refusal: PR #553 was open on knowledge_engine/extraction/sections.py"
         }
-      }
+      },
+      "assignee": "iron-god"
     },
     {
       "id": "KEC-7",
@@ -1149,7 +1154,8 @@
         "outcome": "FAIL: DIRECTED_REPLY_REJECTED: MALFORMED_BLOCK: block 1: illegal target for annotation line 1",
         "evidence": "flow-state/iron-god-products/handbacks/PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T101051Z-handback-diagnostics.json",
         "retired_at": "2026-10-29"
-      }
+      },
+      "assignee": "iron-god"
     },
     {
       "id": "KEC-8",
@@ -1191,7 +1197,8 @@
         "test_source": "from knowledge_engine.extraction.sections import detect_sections\nfrom knowledge_engine.parser import ParsedPage\n\n\ndef _types(text: str) -> list[str]:\n    return [span.section_type for span in detect_sections([ParsedPage(page_number=1, text=text)])]\n\n\ndef test_methodology_heading_is_a_methods_section() -> None:\n    assert _types(\"Methodology\\nWe sampled.\\nResults\\nIt worked.\\n\") == [\"methods\", \"results\"]\n\n\ndef test_patients_and_subjects_methods_headings_are_methods_sections() -> None:\n    assert _types(\"2. Patients and Methods\\nCohort.\\n\") == [\"methods\"]\n    assert _types(\"Subjects and methods: adults aged 40-65.\\n\") == [\"methods\"]\n\n\ndef test_existing_methods_headings_still_match_and_prose_does_not() -> None:\n    assert _types(\"Materials and Methods\\nHow.\\nStudy design\\nWhy.\\n\") == [\"methods\", \"methods\"]\n    assert _types(\"Our methodology was simple.\\n\") == []\n",
         "note": "Section detection now recognizes Methodology and Patients/Subjects and Methods headings."
       },
-      "supersedes": "KEC-7"
+      "supersedes": "KEC-7",
+      "assignee": "iron-god"
     },
     {
       "id": "KEC-9",
@@ -1232,7 +1239,8 @@
         "test_path": "tests/test_pmcid_identifier_ascii_digits.py",
         "test_source": "from knowledge_engine.corpus.validation import _PMCID_PATTERN\n\n\ndef test_ascii_pmcids_are_recognized_in_either_case() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC123456\")\n    assert _PMCID_PATTERN.fullmatch(\"pmc42\")\n\n\ndef test_non_ascii_digits_are_not_a_pmcid() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC١٢٣\") is None  # Arabic-Indic digits\n    assert _PMCID_PATTERN.fullmatch(\"PMC１２\") is None  # fullwidth digits\n\n\ndef test_other_identifiers_are_still_not_a_pmcid() -> None:\n    assert _PMCID_PATTERN.fullmatch(\"PMC\") is None\n    assert _PMCID_PATTERN.fullmatch(\"PMID123\") is None\n    assert _PMCID_PATTERN.fullmatch(\"PMC12a\") is None\n",
         "note": "PMCID recognition in corpus manifests now requires ASCII digits (Codex P2, PR #533)."
-      }
+      },
+      "assignee": "iron-god"
     },
     {
       "id": "KEC-10",
@@ -1272,7 +1280,9 @@
         "test_path": "tests/test_process_startup_timing_evidence_types.py",
         "test_source": "import json\nfrom pathlib import Path\n\nimport pytest\n\nfrom knowledge_engine import unattended_worker as worker\n\n\ndef _run_with_evidence(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence: dict[str, object]\n) -> tuple[str, str, str | None]:\n    def fake_run_logged(\n        args: list[str], *, cwd: Path, log_path: Path, timeout_seconds: float\n    ) -> tuple[int, float, bool]:\n        evidence_path = Path(args[-1])\n        evidence_path.parent.mkdir(parents=True, exist_ok=True)\n        evidence_path.write_text(json.dumps(evidence), encoding=\"utf-8\")\n        return 0, 0.5, False\n\n    monkeypatch.setattr(worker, \"run_logged\", fake_run_logged)\n    return worker.run_process_startup_timing(tmp_path, tmp_path / \"state\", 30)\n\n\n@pytest.mark.parametrize(\"value\", [True, 1.9, \"12\", -1, None])\n@pytest.mark.parametrize(\"field\", [\"import_to_command_ms\", \"database_open_ms\"])\ndef test_coercible_or_negative_timing_values_fail_closed(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 12, \"database_open_ms\": 3}\n    evidence[field] = value\n    status, _summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"ENVIRONMENT_FAILURE\"\n    assert failure_class == \"ENVIRONMENT_FAILURE\"\n\n\ndef test_zero_millisecond_timings_are_valid(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 0, \"database_open_ms\": 0}\n    status, summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"PASS\" and failure_class is None\n    assert \"import_to_command_ms=0\" in summary and \"database_open_ms=0\" in summary\n",
         "note": "Startup-timing evidence is now rejected unless both timings are nonnegative JSON integers (Codex P2, PR #529)."
-      }
+      },
+      "assignee": "iron-god"
     }
-  ]
+  ],
+  "ownership": "Every approved item names its assignee (iron-god, or another developer or agent). Iron God dispatches only items assigned to iron-god; an approved item assigned to anyone else reserves the files it edits. Read the table from the installed release folder with: PYTHONPATH=src python -m project_orchestrator.iron_god_backlog [--repository R] [--path P]."
 }
