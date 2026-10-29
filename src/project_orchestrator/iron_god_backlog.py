@@ -80,6 +80,10 @@ def item_problems(item: Any) -> list[str]:
     problems = [f"MISSING_{name.upper()}" for name in REQUIRED_TEXT
                 if not isinstance(item.get(name), str) or not item[name].strip()]
     problems += [f"MISSING_{name.upper()}" for name in REQUIRED_LISTS if not isinstance(item.get(name), list)]
+    for name in REQUIRED_LISTS:
+        values = item.get(name)
+        if isinstance(values, list) and any(not isinstance(value, str) or not value.strip() for value in values):
+            problems.append(f"{name.upper()}_ENTRY_INVALID")
     status = item.get("status")
     if not isinstance(status, str) or status not in STATUSES:
         problems.append("STATUS_INVALID")
