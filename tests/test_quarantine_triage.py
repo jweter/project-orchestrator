@@ -45,3 +45,11 @@ def test_empty_quarantine_has_no_unverified_recovery_conclusion():
     assert result["disposition"] == "NO_QUARANTINES"
     assert result["recent_count"] == 0
     assert result["authority_mutated"] is False
+
+
+def test_a_future_finish_time_is_unverified_not_historical():
+    """PR #586 review: a negative age is skewed or corrupt evidence, never proof of an old grant."""
+    result = triage_quarantines({"skewed": {"result_status": "X", "finished_at": (NOW + timedelta(days=3)).isoformat()}},
+                                now=NOW)
+    assert result["historical_count"] == 0 and result["recent_count"] == 0
+    assert result["age_unverified_count"] == 1

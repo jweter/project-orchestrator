@@ -143,3 +143,21 @@ def test_authority_absence_and_bad_timestamp_fail_closed(tmp_path):
     )
     assert summary["status"] == "NO_AUTHORIZED_WORK"
     assert summary["current_execution_workers"] == 0
+
+
+def test_a_merge_verified_after_a_supervisor_restart_counts_for_the_new_run(tmp_path):
+    """PR #586 review: the worker finished before the restart, the merge was verified after it."""
+    record(tmp_path, {"a": {"state": "COMPLETED", "outcome_quality": "MERGED_VERIFIED",
+                            "exact_head": "a" * 40, "head_sha": "b" * 40,
+                            "finished_at": (START - timedelta(minutes=30)).isoformat(),
+                            "merged_verified_at": (START + timedelta(minutes=5)).isoformat()}})
+    result = assess(tmp_path)
+    assert result["verified_deliveries"] == 1 and result["status"] != "VERIFIED_DELIVERY_STALLED"
+
+
+def test_a_delivery_verified_before_this_run_is_not_counted_again(tmp_path):
+    record(tmp_path, {"a": {"state": "COMPLETED", "outcome_quality": "MERGED_VERIFIED",
+                            "exact_head": "a" * 40, "head_sha": "b" * 40,
+                            "finished_at": (START - timedelta(minutes=30)).isoformat(),
+                            "merged_verified_at": (START - timedelta(minutes=10)).isoformat()}})
+    assert assess(tmp_path)["verified_deliveries"] == 0
