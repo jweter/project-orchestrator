@@ -70,11 +70,12 @@ def test_uncommitted_work_is_archived_and_verified_before_removal(tmp_path):
     worktree = turn(state, root, clone, base, "P-DIRTY", dirty=True)
     row = next(r for r in cleanup.plan(state) if r["packet_id"] == "P-DIRTY")
     assert row["class"] == "UNCOMMITTED_CHANGES"
+    exact = (worktree / "new.py").read_bytes()  # archive keeps exact bytes (CRLF on Windows)
     result = cleanup.remove_one(state, row)
     assert result["result"] == "REMOVED" and not worktree.exists()
     archive = json.loads(Path(result["archive"]).read_text(encoding="utf-8"))
     assert "-x = 1" in archive["diff_against_head"] and "+x = 3" in archive["diff_against_head"]
-    assert archive["untracked"] == {"new.py": "z = 4\n"}
+    assert archive["untracked"] == {"new.py": exact.decode("utf-8")}
 
 
 def test_committed_work_stays_reachable_on_its_branch_after_removal(tmp_path):
@@ -104,3 +105,40 @@ def test_apply_refuses_unless_the_owner_holds_control(tmp_path, monkeypatch, cap
     monkeypatch.setattr(owner_controller, "owner_status", lambda _root: "AUTHORIZED")
     assert cleanup.main(["--state-root", str(state), "--apply"]) == 3
     assert "OWNER_MUST_HOLD_CONTROL" in capsys.readouterr().out and worktree.exists()
+
+
+def test_binary_work_is_archived_losslessly_before_removal(tmp_path):
+    """Regression (PR #586 review): binary untracked files and binary edits of tracked
+    files must be recoverable from the archive, not reduced to a placeholder."""
+    import base64
+
+    state, root, clone, base = lane(tmp_path)
+    worktree = turn(state, root, clone, base, "P-BINARY")
+    blob = bytes(range(256)) * 4
+    (worktree / "model.bin").write_bytes(blob)
+    (worktree / "a.py").write_bytes(b"\xff\xfe binary edit \x00\x01")
+    row = next(r for r in cleanup.plan(state) if r["packet_id"] == "P-BINARY")
+    result = cleanup.remove_one(state, row)
+    assert result["result"] == "REMOVED" and not worktree.exists()
+    archive = json.loads(Path(result["archive"]).read_text(encoding="utf-8"))
+    assert base64.b64decode(archive["untracked"]["model.bin"]["base64"]) == blob
+    assert "GIT binary patch" in archive["diff_against_head"]
+    assert archive["unreadable"] == []
+
+
+def test_unreadable_untracked_file_keeps_the_worktree(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    worktree = turn(state, root, clone, base, "P-LOCKED")
+    (worktree / "locked.dat").write_bytes(b"cannot be archived")
+    original = Path.read_bytes
+
+    def refuse(self):
+        if self.name == "locked.dat":
+            raise PermissionError("locked")
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", refuse)
+    row = next(r for r in cleanup.plan(state) if r["packet_id"] == "P-LOCKED")
+    result = cleanup.remove_one(state, row)
+    assert result["result"] == "KEPT_UNREADABLE_UNTRACKED_FILE"
+    assert result["unreadable"] == ["locked.dat"] and worktree.exists()

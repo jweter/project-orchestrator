@@ -24,6 +24,7 @@ can start meanwhile.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -90,17 +91,27 @@ def classify(lane_root: Path, worktree: Path) -> dict[str, Any]:
 
 
 def _evidence(worktree: Path, row: dict[str, Any], clone: Path) -> dict[str, Any]:
-    untracked = {}
+    # Lossless: UTF-8 text verbatim, anything else as base64 bytes. A file that
+    # cannot be read is listed in "unreadable" and remove_one keeps the worktree.
+    untracked: dict[str, Any] = {}
+    unreadable: list[str] = []
     listed = _git(worktree, "ls-files", "--others", "--exclude-standard", "-z").stdout.split("\0")
     for name in filter(None, listed):
         try:
-            untracked[name] = (worktree / name).read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            untracked[name] = "<unreadable or binary>"
+            data = (worktree / name).read_bytes()
+        except OSError:
+            unreadable.append(name)
+            continue
+        try:
+            untracked[name] = data.decode("utf-8")
+        except UnicodeDecodeError:
+            untracked[name] = {"base64": base64.b64encode(data).decode("ascii"), "bytes": len(data)}
     branch_ref = _git(clone, "rev-parse", "--verify", "-q", f"refs/heads/{row['branch']}").stdout.strip()
     return {**row, "branch_ref_sha": branch_ref or None,
             "status": _git(worktree, "status", "--porcelain").stdout,
-            "diff_against_head": _git(worktree, "diff", "HEAD").stdout,
+            # --binary: a plain diff records only "Binary files differ" for binary changes.
+            "diff_against_head": _git(worktree, "diff", "--binary", "HEAD").stdout,
+            "unreadable": unreadable,
             "commits": _git(worktree, "log", "--format=%H %s", f"{row['base_sha']}..HEAD").stdout,
             "untracked": untracked}
 
@@ -120,6 +131,8 @@ def remove_one(state_root: Path, row: dict[str, Any]) -> dict[str, Any]:
         return {**row, "result": "KEPT_NOT_A_GIT_WORKTREE"}
     clone = Path(common).parent
     evidence = _evidence(worktree, row, clone)
+    if evidence["unreadable"]:
+        return {**row, "result": "KEPT_UNREADABLE_UNTRACKED_FILE", "unreadable": evidence["unreadable"]}
     if row["commits_ahead"] and evidence["branch_ref_sha"] != row["head_sha"]:
         return {**row, "result": "KEPT_BRANCH_REF_DOES_NOT_HOLD_THE_COMMITS"}
     payload = json.dumps(evidence, indent=2, sort_keys=True)
