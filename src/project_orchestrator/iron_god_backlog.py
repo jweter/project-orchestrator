@@ -158,10 +158,24 @@ def state_path(lane_root: Path) -> Path:
 
 
 def load_state(lane_root: Path) -> dict[str, Any]:
+    """Only a genuinely absent ledger starts empty; corruption must block dispatch.
+
+    Treating an existing unreadable ledger as a new queue can lose in-flight
+    ownership and redispatch work that was already claimed.
+    """
     try:
-        return json.loads(state_path(lane_root).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        contents = state_path(lane_root).read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {"schema_version": 1, "items": {}}
+    except OSError as exc:
+        raise ValueError("BACKLOG_STATE_INVALID: unreadable ledger") from exc
+    try:
+        state = json.loads(contents)
+    except ValueError as exc:
+        raise ValueError("BACKLOG_STATE_INVALID: malformed JSON") from exc
+    if not isinstance(state, dict) or not isinstance(state.get("items"), dict):
+        raise ValueError("BACKLOG_STATE_INVALID: expected an items mapping")
+    return state
 
 
 def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) -> dict[str, Any]:
