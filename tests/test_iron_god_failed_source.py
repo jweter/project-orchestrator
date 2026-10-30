@@ -201,7 +201,7 @@ def test_environment_failure_is_not_recorded_as_failed_source(tmp_path):
 
 
 def test_repeated_failed_source_blocks_next_dispatch_without_resetting_budget(tmp_path):
-    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+    from project_orchestrator.iron_god_backlog import AGENT_ID, load_state, next_item, record_item
 
     item = {
         "id": "KEC-2",
@@ -209,6 +209,7 @@ def test_repeated_failed_source_blocks_next_dispatch_without_resetting_budget(tm
         "status": "approved",
         "level": 1,
         "depends_on": [],
+        "assignee": AGENT_ID,
     }
     digest = source_fingerprint({"cache.py": b"broken"})
     record_item(
@@ -231,7 +232,7 @@ def test_repeated_failed_source_blocks_next_dispatch_without_resetting_budget(tm
 
 
 def test_distinct_failed_sources_do_not_preempt_existing_attempt_budget(tmp_path):
-    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+    from project_orchestrator.iron_god_backlog import AGENT_ID, load_state, next_item, record_item
 
     item = {
         "id": "KEC-2",
@@ -239,6 +240,7 @@ def test_distinct_failed_sources_do_not_preempt_existing_attempt_budget(tmp_path
         "status": "approved",
         "level": 1,
         "depends_on": [],
+        "assignee": AGENT_ID,
     }
     for attempt, content in (("attempt-1", b"broken-v1"), ("attempt-2", b"broken-v2")):
         record_item(
@@ -254,7 +256,7 @@ def test_distinct_failed_sources_do_not_preempt_existing_attempt_budget(tmp_path
 
 
 def test_legacy_repeated_source_flag_does_not_veto_single_packet(tmp_path):
-    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+    from project_orchestrator.iron_god_backlog import AGENT_ID, load_state, next_item, record_item
 
     item = {
         "id": "KEC-2",
@@ -262,6 +264,7 @@ def test_legacy_repeated_source_flag_does_not_veto_single_packet(tmp_path):
         "status": "approved",
         "level": 1,
         "depends_on": [],
+        "assignee": AGENT_ID,
     }
     record_item(
         tmp_path,
@@ -279,7 +282,7 @@ def test_legacy_repeated_source_flag_does_not_veto_single_packet(tmp_path):
 
 
 def test_packet_fingerprints_veto_even_if_legacy_flag_is_false(tmp_path):
-    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+    from project_orchestrator.iron_god_backlog import AGENT_ID, load_state, next_item, record_item
 
     item = {
         "id": "KEC-2",
@@ -287,6 +290,7 @@ def test_packet_fingerprints_veto_even_if_legacy_flag_is_false(tmp_path):
         "status": "approved",
         "level": 1,
         "depends_on": [],
+        "assignee": AGENT_ID,
     }
     digest = source_fingerprint({"cache.py": b"broken"})
     for packet_id in ("attempt-1", "attempt-2"):
@@ -306,7 +310,7 @@ def test_packet_fingerprints_veto_even_if_legacy_flag_is_false(tmp_path):
 
 
 def test_merged_item_rejects_conflicting_same_packet_replay(tmp_path):
-    from project_orchestrator.iron_god_backlog import load_state, next_item, record_item
+    from project_orchestrator.iron_god_backlog import AGENT_ID, load_state, next_item, record_item
 
     item = {
         "id": "KEC-2",
@@ -314,6 +318,7 @@ def test_merged_item_rejects_conflicting_same_packet_replay(tmp_path):
         "status": "approved",
         "level": 1,
         "depends_on": [],
+        "assignee": AGENT_ID,
     }
     original = record_item(tmp_path, item["id"], packet_id="packet-1", outcome="MERGED")
     replay = record_item(
