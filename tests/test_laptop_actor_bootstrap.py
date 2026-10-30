@@ -119,6 +119,7 @@ def test_take_the_wheel_launch_stays_resident_until_idle_then_works(monkeypatch,
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: events.append("update") or SHA)
     monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: events.append("hygiene"))
+    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: events.append("verify") or SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: events.append("bridge") or 0)
     healthy_resources(monkeypatch)
     monkeypatch.setattr(
@@ -129,7 +130,7 @@ def test_take_the_wheel_launch_stays_resident_until_idle_then_works(monkeypatch,
             tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=permitted
         )
     assert sleeps == [60, 60, 60, 60]
-    assert events == ["update", "hygiene", "bridge"]
+    assert events == ["update", "hygiene", "verify", "bridge"]
     assert telemetry_states(state)[:2] == ["USER_ACTIVE", "IDLE_AVAILABLE"]
     # The kernel singleton is released once the resident actor ends.
     reacquired = bootstrap.acquire_single_instance(state)
@@ -143,7 +144,9 @@ def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, 
     updates = []
     sleeps = []
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
+    verifications = []
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: updates.append(True) or SHA)
+    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: verifications.append(True) or SHA)
     monkeypatch.setattr(
         bootstrap,
         "execute_bridge_once",
@@ -160,6 +163,8 @@ def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, 
     # without re-preparing the pinned checkout.
     assert len(updates) == 1
     assert len(cycles) == 3
+    # ...but the pinned checkout is re-verified before every single dispatch.
+    assert len(verifications) == 3
     assert sleeps == [60, 60, 60, 60, 60]
     assert telemetry_states(tmp_path / "state").count("USER_ACTIVE") == 1
 
@@ -167,6 +172,7 @@ def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, 
 def test_idle_session_stops_on_bridge_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
+    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: 2)
     monkeypatch.setattr(bootstrap.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt()))
     with pytest.raises(KeyboardInterrupt):
@@ -231,6 +237,7 @@ def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
     sleeps = []
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
+    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: next(results))
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
     healthy_resources(monkeypatch)
@@ -671,6 +678,8 @@ def test_revocation_mid_session_stops_new_cycles_but_stays_resident(monkeypatch,
     monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: None)
+    verifications = []
+    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: verifications.append(True) or SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: cycles.append(True) or 0)
     healthy_resources(monkeypatch)
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(4, sleeps))
@@ -678,6 +687,7 @@ def test_revocation_mid_session_stops_new_cycles_but_stays_resident(monkeypatch,
     with pytest.raises(_StopResidentActor):
         bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=authority)
     assert len(cycles) == 2
+    assert len(verifications) == 2
     assert telemetry_states(state).count("AUTHORITY_WAIT") == 1
 
 
@@ -756,3 +766,114 @@ def test_commissioning_policy_absent_or_corrupt(tmp_path):
     (tmp_path / "engineering").mkdir()
     (tmp_path / "engineering" / "iron-god-commissioning.json").write_text("{corrupt", encoding="utf-8")
     assert bootstrap.commissioning_exclusive(tmp_path) is True
+
+
+def _pinned(monkeypatch, tmp_path, actor_name="actor"):
+    actor = tmp_path / actor_name
+    source = tmp_path / "accepted"
+    (actor / ".git").mkdir(parents=True)
+    (source / ".git").mkdir(parents=True)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(source))
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", SHA)
+    return actor, source
+
+
+def _actor_git(head=SHA, dirty=""):
+    def fake_run(cmd, cwd=None):
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout=head + "\n")
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return completed(stdout=dirty)
+        return pytest.fail(f"verification must not fetch or reset: {cmd}")
+    return fake_run
+
+
+def test_pinned_actor_verification_accepts_clean_exact_head(monkeypatch, tmp_path):
+    actor, _ = _pinned(monkeypatch, tmp_path)
+    monkeypatch.setattr(bootstrap, "run", _actor_git())
+    assert bootstrap.verify_pinned_actor(actor) == SHA
+
+
+def test_pinned_actor_revision_drift_blocks_dispatch(monkeypatch, tmp_path):
+    actor, _ = _pinned(monkeypatch, tmp_path)
+    monkeypatch.setattr(bootstrap, "run", _actor_git(head="b" * 40))
+    with pytest.raises(RuntimeError, match="LOCAL_ACTOR_REVISION_DRIFT"):
+        bootstrap.verify_pinned_actor(actor)
+
+
+def test_pinned_actor_modified_after_preparation_blocks_dispatch(monkeypatch, tmp_path):
+    actor, _ = _pinned(monkeypatch, tmp_path)
+    monkeypatch.setattr(bootstrap, "run", _actor_git(dirty=" M scripts/laptop_actor_runner.py\n"))
+    with pytest.raises(RuntimeError, match="LOCAL_ACTOR_DIRTY_BEFORE_DISPATCH"):
+        bootstrap.verify_pinned_actor(actor)
+
+
+def test_pin_removed_after_preparation_blocks_dispatch(monkeypatch, tmp_path):
+    actor, _ = _pinned(monkeypatch, tmp_path)
+    monkeypatch.delenv("IRON_GOD_ACCEPTED_SHA")
+    monkeypatch.setattr(bootstrap, "run", lambda *a, **k: pytest.fail("no Git without a pin"))
+    with pytest.raises(RuntimeError, match="both repository and exact SHA"):
+        bootstrap.verify_pinned_actor(actor)
+
+
+def test_versioned_actor_directory_must_name_the_pinned_sha(monkeypatch, tmp_path):
+    actor, _ = _pinned(monkeypatch, tmp_path, actor_name="runtime-actors/" + "c" * 40)
+    monkeypatch.setattr(bootstrap, "run", lambda *a, **k: pytest.fail("mismatched actor must never reach Git"))
+    with pytest.raises(RuntimeError, match="LOCAL_ACTOR_DIRECTORY_SHA_MISMATCH"):
+        bootstrap.update_actor_checkout(actor)
+    with pytest.raises(RuntimeError, match="LOCAL_ACTOR_DIRECTORY_SHA_MISMATCH"):
+        bootstrap.verify_pinned_actor(actor)
+
+
+def test_versioned_actor_directory_named_for_the_pin_is_accepted(monkeypatch, tmp_path):
+    actor, _ = _pinned(monkeypatch, tmp_path, actor_name="runtime-actors/" + SHA)
+    monkeypatch.setattr(bootstrap, "run", _actor_git())
+    assert bootstrap.verify_pinned_actor(actor) == SHA
+
+
+def test_symlinked_release_source_is_rejected_before_git(monkeypatch, tmp_path):
+    actor, source = _pinned(monkeypatch, tmp_path)
+    link = tmp_path / "accepted-link"
+    try:
+        link.symlink_to(source, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is not permitted on this host")
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_REPO", str(link))
+    monkeypatch.setattr(bootstrap, "run", lambda *a, **k: pytest.fail("a repointable source must never reach Git"))
+    with pytest.raises(RuntimeError, match="LOCAL_ACCEPTED_CHECKOUT_SYMLINK"):
+        bootstrap.update_actor_checkout(actor)
+    with pytest.raises(RuntimeError, match="LOCAL_ACCEPTED_CHECKOUT_SYMLINK"):
+        bootstrap.verify_pinned_actor(actor)
+
+
+def test_idle_session_refuses_second_dispatch_after_actor_tampering(monkeypatch, tmp_path):
+    """Regression for #573: one-time preparation must not authorize later cycles."""
+    actor, _ = _pinned(monkeypatch, tmp_path)
+    state = {"dirty": ""}
+    bridges = []
+
+    def tamper_then_succeed(*_):
+        bridges.append(True)
+        state["dirty"] = " M src/project_orchestrator/execution_runtime.py\n"
+        return 0
+
+    def fake_run(cmd, cwd=None):
+        if cmd == ["git", "rev-parse", "HEAD"]:
+            return completed(stdout=SHA + "\n")
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return completed(stdout=state["dirty"])
+        return pytest.fail(f"unexpected Git command {cmd}")
+
+    monkeypatch.setattr(bootstrap, "run", fake_run)
+    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
+    monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: None)
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", tamper_then_succeed)
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(5, []))
+    healthy_resources(monkeypatch)
+    with pytest.raises(RuntimeError, match="LOCAL_ACTOR_DIRTY_BEFORE_DISPATCH"):
+        bootstrap.run_idle_session(
+            actor, tmp_path / "queue", tmp_path / "work", 300, 60, tmp_path / "state",
+            execution_authority=permitted,
+        )
+    assert len(bridges) == 1
