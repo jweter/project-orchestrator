@@ -12,8 +12,13 @@ permissions:
 
 jobs:
   full-preflight:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    # Iron God runs only on Windows (DPAPI owner control, job objects, msvcrt locks);
+    # verify it on the platform it actually runs on.
+    env:
+      PYTHONUTF8: "1"
     steps:
+      - run: git config --global core.longpaths true
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
