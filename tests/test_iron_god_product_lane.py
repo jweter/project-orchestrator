@@ -777,10 +777,20 @@ def test_a_backlog_item_waits_for_its_dependencies_and_stops_after_its_attempts(
     ({"build": None}, "APPROVED_ITEM_WITHOUT_BUILD_SPEC"),
     ({"objective": "x" * 1200}, "TEXT_OVER_CANON_BOUND"),
     ({"level": 7}, "LEVEL_INVALID"),
+    ({"level": True}, "LEVEL_INVALID"),  # bool is an int subclass, never a build level
     ({"status": "maybe"}, "STATUS_INVALID"),
 ])
 def test_malformed_backlog_items_are_never_dispatched(change, problem):
     assert problem in backlog_mod.item_problems({**backlog_item("X", REPOS[0]), **change})
+
+
+def test_duplicate_backlog_id_rejects_all_occurrences_even_if_first_is_valid(env):
+    first = backlog_item("RS-DUP", REPOS[1])
+    second = backlog_item("RS-DUP", REPOS[2])
+    backlog_env(env, [first, second])
+    items, rejected = backlog_mod.load_backlog(env.release)
+    assert items == []  # ambiguous ids must never enter the dispatchable pool
+    assert "DUPLICATE_ID" in rejected["RS-DUP"]
 
 
 def test_real_backlog_covers_every_product_repository_and_is_well_formed():

@@ -45,10 +45,12 @@ import argparse
 import json
 import os
 import sys
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
 from .state_io import atomic_json
 
 BACKLOG_PATH = Path("engineering") / "state" / "iron-god-backlog.json"
@@ -78,14 +80,20 @@ def item_problems(item: Any) -> list[str]:
     problems = [f"MISSING_{name.upper()}" for name in REQUIRED_TEXT
                 if not isinstance(item.get(name), str) or not item[name].strip()]
     problems += [f"MISSING_{name.upper()}" for name in REQUIRED_LISTS if not isinstance(item.get(name), list)]
-    if item.get("status") not in STATUSES:
+    for name in REQUIRED_LISTS:
+        values = item.get(name)
+        if isinstance(values, list) and any(not isinstance(value, str) or not value.strip() for value in values):
+            problems.append(f"{name.upper()}_ENTRY_INVALID")
+    status = item.get("status")
+    if not isinstance(status, str) or status not in STATUSES:
         problems.append("STATUS_INVALID")
     level = item.get("level")
-    if not isinstance(level, int) or not 1 <= level <= 5:
+    if type(level) is not int or not 1 <= level <= 5:
         problems.append("LEVEL_INVALID")
     if isinstance(item.get("consumer"), str) and len(item["consumer"].strip()) < 12:
         problems.append("CONSUMER_UNIDENTIFIED")  # no disconnected helpers: name who calls it
-    texts = [item.get("objective"), *(item.get("acceptance_criteria") or [])]
+    criteria = item.get("acceptance_criteria")
+    texts = [item.get("objective"), *(criteria if isinstance(criteria, list) else [])]
     if any(isinstance(text, str) and len(text) > MAX_TEXT for text in texts):
         problems.append("TEXT_OVER_CANON_BOUND")
     if item.get("status") == "approved" and level == 1:
@@ -124,13 +132,20 @@ def load_backlog(release_repo: Path) -> tuple[list[dict[str, Any]], dict[str, li
         raw = json.loads((Path(release_repo) / BACKLOG_PATH).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return [], {"<backlog>": ["BACKLOG_UNREADABLE"]}
-    items, rejected, seen = [], {}, set()
-    for item in raw.get("items", []) if isinstance(raw, dict) else []:
+    if not isinstance(raw, dict):
+        return [], {"<backlog>": ["BACKLOG_ROOT_NOT_AN_OBJECT"]}
+    if "items" not in raw:
+        return [], {"<backlog>": ["BACKLOG_ITEMS_MISSING"]}
+    raw_items = raw["items"]
+    if not isinstance(raw_items, list):
+        return [], {"<backlog>": ["BACKLOG_ITEMS_NOT_A_LIST"]}
+    ids = Counter(str(item.get("id")) if isinstance(item, dict) else "<item>" for item in raw_items)
+    items, rejected = [], {}
+    for item in raw_items:
         problems = item_problems(item)
         key = str(item.get("id")) if isinstance(item, dict) else "<item>"
-        if key in seen:
-            problems.append("DUPLICATE_ID")
-        seen.add(key)
+        if ids[key] > 1:
+            problems.append("DUPLICATE_ID")  # reject the first copy too: its identity is ambiguous
         if problems:
             rejected[key] = problems
         else:
@@ -143,16 +158,34 @@ def state_path(lane_root: Path) -> Path:
 
 
 def load_state(lane_root: Path) -> dict[str, Any]:
+    """Only a genuinely absent ledger starts empty; corruption must block dispatch.
+
+    Treating an existing unreadable ledger as a new queue can lose in-flight
+    ownership and redispatch work that was already claimed.
+    """
     try:
-        return json.loads(state_path(lane_root).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        contents = state_path(lane_root).read_text(encoding="utf-8")
+    except FileNotFoundError:
         return {"schema_version": 1, "items": {}}
+    except OSError as exc:
+        raise ValueError("BACKLOG_STATE_INVALID: unreadable ledger") from exc
+    try:
+        state = json.loads(contents)
+    except ValueError as exc:
+        raise ValueError("BACKLOG_STATE_INVALID: malformed JSON") from exc
+    if not isinstance(state, dict) or not isinstance(state.get("items"), dict):
+        raise ValueError("BACKLOG_STATE_INVALID: expected an items mapping")
+    return state
 
 
-def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) -> dict[str, Any]:
+def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) -> dict[str, Any]:
     """One attempt's outcome; MERGED marks the item done for dependency and dispatch purposes."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
+    # Accepted outcomes are terminal: late worker reports or scheduling blocks
+    # cannot undo a completed item or consume a fresh attempt.
+    if row.get("outcome") == "MERGED" or str(row.get("outcome", "")).startswith(EXTERNAL):
+        return row
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
         row["attempts"] = len(row["packets"])
@@ -163,13 +196,35 @@ def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) 
     return row
 
 
-def record_block(lane_root: Path, item_id: str, *, outcome: str) -> dict[str, Any]:
+def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) -> dict[str, Any]:
+    """Serialize each backlog outcome read/modify/write across processes."""
+    lock = acquire_lifecycle_lock(state_path(lane_root))
+    try:
+        return _record_item_unlocked(lane_root, item_id, packet_id=packet_id, outcome=outcome)
+    finally:
+        release_lifecycle_lock(lock)
+
+
+def _record_block_unlocked(lane_root: Path, item_id: str, *, outcome: str) -> dict[str, Any]:
     """A turn that did not start (e.g. its files are under another developer's open PR): no attempt is used."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
+    # Accepted outcomes are terminal: late worker reports or scheduling blocks
+    # cannot undo a completed item or consume a fresh attempt.
+    if row.get("outcome") == "MERGED" or str(row.get("outcome", "")).startswith(EXTERNAL):
+        return row
     row.update(outcome=outcome, updated_at_utc=_now())
     atomic_json(state_path(lane_root), state)
     return row
+
+
+def record_block(lane_root: Path, item_id: str, *, outcome: str) -> dict[str, Any]:
+    """Serialize non-attempting block outcomes with worker outcomes."""
+    lock = acquire_lifecycle_lock(state_path(lane_root))
+    try:
+        return _record_block_unlocked(lane_root, item_id, outcome=outcome)
+    finally:
+        release_lifecycle_lock(lock)
 
 
 def is_done(item: dict[str, Any], state: dict[str, Any]) -> bool:
@@ -217,8 +272,9 @@ def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
                 # interrupted or environment-failed attempt is not a model failure)
                 and not (item.get("direct") and row.get("attempts", 0) >= DIRECT_ATTEMPTS
                          and not str(row.get("outcome", "")).startswith("ENVIRONMENT_FAILURE"))
-                # its pull request is in flight, or blocked on GitHub and waiting for the owner
-                and row.get("outcome") not in {"ACCEPTED_LOCAL", "PR_BLOCKED"}
+                # An existing dispatched packet retains ownership until it is harvested.
+                # Never dispatch it again after an active-worker record is lost or restarted.
+                and row.get("outcome") not in IN_FLIGHT
                 and all(dep in done for dep in item["depends_on"])):
             return item
     return None
