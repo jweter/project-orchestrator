@@ -1,0 +1,100 @@
+diff --git a/tests/backend/services/test_ffmpeg_utils.py b/tests/backend/services/test_ffmpeg_utils.py
+index 6c06dcad..3cb171ba 100644
+--- a/tests/backend/services/test_ffmpeg_utils.py
++++ b/tests/backend/services/test_ffmpeg_utils.py
+@@ -20,6 +20,9 @@ def test_resolve_ffprobe_prefers_omnivoice_env_var(monkeypatch, tmp_path):
+     """OMNIVOICE_FFPROBE_PATH set to a real file → that path wins."""
+     from services import ffmpeg_utils
+ 
++    # Resolution-order tests use deterministic runnable candidates on every OS.
++    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda _path: True)
++
+     fake = tmp_path / "ffprobe"
+     fake.write_text("#!/bin/sh\necho 1\n")
+     fake.chmod(0o755)
+@@ -32,6 +35,9 @@ def test_resolve_ffprobe_falls_back_to_legacy_FFPROBE_PATH(monkeypatch, tmp_path
+     """OMNIVOICE_FFPROBE_PATH absent but legacy FFPROBE_PATH set → legacy used."""
+     from services import ffmpeg_utils
+ 
++    # Resolution-order tests use deterministic runnable candidates on every OS.
++    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda _path: True)
++
+     fake = tmp_path / "ffprobe-legacy"
+     fake.write_text("#!/bin/sh\necho 1\n")
+     fake.chmod(0o755)
+@@ -46,6 +52,9 @@ def test_resolve_ffprobe_omnivoice_path_takes_precedence_over_legacy(
+     """Both env vars set → OMNIVOICE_FFPROBE_PATH wins."""
+     from services import ffmpeg_utils
+ 
++    # Resolution-order tests use deterministic runnable candidates on every OS.
++    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda _path: True)
++
+     canonical = tmp_path / "ffprobe-canonical"
+     legacy = tmp_path / "ffprobe-legacy"
+     for f in (canonical, legacy):
+@@ -89,6 +98,8 @@ def test_resolve_ffprobe_rejects_non_runnable_candidate(monkeypatch, tmp_path):
+     good = tmp_path / "ffprobe-good"
+     good.write_text("#!/bin/sh\necho 1\n")
+     good.chmod(0o755)
++    # Exercise fallback selection independently of OS executable formats.
++    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda path: str(path) == str(good))
+ 
+     monkeypatch.setenv("OMNIVOICE_FFPROBE_PATH", str(broken))
+     monkeypatch.setattr(
+@@ -116,6 +127,9 @@ def test_resolve_ffprobe_env_var_with_command_name_resolves_via_which(
+     work."""
+     from services import ffmpeg_utils
+ 
++    # Resolution-order tests use deterministic runnable candidates on every OS.
++    monkeypatch.setattr(ffmpeg_utils, "_binary_runs", lambda _path: True)
++
+     fake = tmp_path / "ffprobe"
+     fake.write_text("#!/bin/sh\necho 1\n")
+     fake.chmod(0o755)
+@@ -198,6 +212,16 @@ def test_binary_probe_rejects_nonzero_exit(monkeypatch):
+     assert not ffmpeg_utils._binary_runs(sys.executable)
+ 
+ 
++def test_binary_probe_rejects_unlaunchable_fixture(monkeypatch, tmp_path):
++    """The real runnability probe must reject a corrupt candidate on every OS."""
++    from services import ffmpeg_utils
++
++    fake = tmp_path / "ffprobe-corrupt"
++    fake.write_bytes(b"\x00\x01not-a-binary")
++    monkeypatch.setattr(ffmpeg_utils, "_BINARY_OK", {})
++    assert not ffmpeg_utils._binary_runs(str(fake))
++
++
+ def test_sibling_probe_rejects_nonzero_exit(monkeypatch, tmp_path):
+     import subprocess
+     from services import ffmpeg_utils
+diff --git a/tests/backend/services/test_indextts_sidecar.py b/tests/backend/services/test_indextts_sidecar.py
+index 5561cc12..17b235aa 100644
+--- a/tests/backend/services/test_indextts_sidecar.py
++++ b/tests/backend/services/test_indextts_sidecar.py
+@@ -470,7 +470,7 @@ def test_no_indextts_import_in_tts_backend():
+     Anything that triggers an `import indextts` at module load time
+     re-opens #42.
+     """
+-    src = (REPO_ROOT / "backend" / "services" / "tts_backend.py").read_text()
++    src = (REPO_ROOT / "backend" / "services" / "tts_backend.py").read_text(encoding="utf-8")
+     # Allow comments / docstring mentions of the package name; reject
+     # actual import statements at module scope.
+     for bad in ("from indextts", "import indextts"):
+@@ -625,7 +625,7 @@ def test_sidecar_loader_keeps_user_managed_v2_compatibility(monkeypatch, tmp_pat
+ 
+     assert isinstance(loaded, FakeIndexTTS)
+     assert sidecar._model_version == "2"
+-    assert captured["cfg_path"].endswith("checkpoints/config.yaml")
++    assert Path(captured["cfg_path"]).parts[-2:] == ("checkpoints", "config.yaml")
+     assert captured["use_fp16"] is True
+     assert "use_qwen_emo" not in captured
+ 
+@@ -644,6 +644,6 @@ def test_sidecar_2_fallback_keeps_target_tokens_and_drops_25_only_kwargs():
+     model_kwargs = sidecar._model_init_kwargs(
+         "/models/index-tts", version="2", reduced_precision=True,
+     )
+-    assert model_kwargs["cfg_path"].endswith("checkpoints/config.yaml")
++    assert Path(model_kwargs["cfg_path"]).parts[-2:] == ("checkpoints", "config.yaml")
+     assert model_kwargs["use_fp16"] is True
+     assert "use_qwen_emo" not in model_kwargs

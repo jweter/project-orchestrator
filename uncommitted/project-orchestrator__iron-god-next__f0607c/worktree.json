@@ -1,0 +1,158 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/.repair-worktrees/iron-god-next",
+ "head": "538684b901b92e3f8d8e6447e3f7e4ad0a55eccf",
+ "branch": "feat/iron-god-resilient-advancement",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [],
+ "untracked_skipped": [
+  [
+   ".pytest-iron-god-3656/test_active_grant_clears_idle_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_active_grant_clears_idle_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_active_grant_clears_idle_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_active_grant_clears_idle_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_durable_runner_occupancy_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_durable_runner_occupancy_2/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_durable_runner_occupancy_3/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_durable_runner_occupancy_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_head_change_resets_idle_s0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_head_change_resets_idle_s0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_head_change_resets_idle_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_stale_claimed_grant_does_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_stale_claimed_grant_does_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_stale_claimed_grant_does_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_stale_claimed_grant_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_two_identical_authorized_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_two_identical_authorized_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-3656/test_two_identical_authorized_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_active_grant_clears_idle_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_active_grant_clears_idle_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_active_grant_clears_idle_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_active_grant_clears_idle_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_durable_runner_occupancy_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_durable_runner_occupancy_2/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_durable_runner_occupancy_3/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_durable_runner_occupancy_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_head_change_resets_idle_s0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_head_change_resets_idle_s0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_head_change_resets_idle_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_stale_claimed_grant_does_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_stale_claimed_grant_does_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_stale_claimed_grant_does_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_stale_claimed_grant_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_two_identical_authorized_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_two_identical_authorized_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god2-19796/test_two_identical_authorized_current",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__iron-god-next__f0607c"
+}

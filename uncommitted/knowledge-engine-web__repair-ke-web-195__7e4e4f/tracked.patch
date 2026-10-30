@@ -1,0 +1,30 @@
+diff --git a/knowledge_engine_web/graph_reader.py b/knowledge_engine_web/graph_reader.py
+index 7640fd0..f29f3d6 100644
+--- a/knowledge_engine_web/graph_reader.py
++++ b/knowledge_engine_web/graph_reader.py
+@@ -204,7 +204,7 @@ def list_unconfirmed_claims(engine: Engine) -> list[ClaimListItem]:
+         return list_claims(engine)
+ 
+     with engine.connect() as connection:
+-        confirmed_ids = set(
++        confirmed_ids: set[int] = set(
+             connection.execute(select(relationships.c.source_claim_id)).scalars()
+         ) | set(connection.execute(select(relationships.c.target_claim_id)).scalars())
+ 
+diff --git a/knowledge_engine_web/retrieval.py b/knowledge_engine_web/retrieval.py
+index a7552d3..01b7885 100644
+--- a/knowledge_engine_web/retrieval.py
++++ b/knowledge_engine_web/retrieval.py
+@@ -213,10 +213,10 @@ def _token_idf_weights(connection: Connection, tokens: set[str]) -> dict[str, fl
+ 
+     if not tokens:
+         return {}
+-    total_papers = connection.execute(text("SELECT count(*) FROM paper_search")).scalar_one()
++    total_papers: int = connection.execute(text("SELECT count(*) FROM paper_search")).scalar_one()
+     weights: dict[str, float] = {}
+     for token in tokens:
+-        document_frequency = connection.execute(
++        document_frequency: int = connection.execute(
+             text("SELECT count(*) FROM paper_search WHERE paper_search MATCH :token"),
+             {"token": token},
+         ).scalar_one()

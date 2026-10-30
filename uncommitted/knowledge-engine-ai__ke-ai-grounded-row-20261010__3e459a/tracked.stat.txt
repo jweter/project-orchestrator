@@ -1,0 +1,4 @@
+ CHANGELOG.md                                   |  7 +++++++
+ knowledge_engine_ai/copilot/research_report.py |  6 ++++++
+ tests/copilot/test_research_report.py          | 34 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 47 insertions(+)

@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/GitHub/orchestrator-registry-dispatch",
+ "head": "b48696ce655747c4de24e9866dff7c0e8fd64b24",
+ "branch": "hands-off/registry-dispatch-bridge",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "src/project_orchestrator/registry_dispatch.py",
+   "256bfe24f8c612b21b8274ddc52fe67560d57ddce16de554a840221edc557111"
+  ],
+  [
+   "tests/test_registry_dispatch.py",
+   "e2d66bff918ed4f4701612dda5234c98bd596e8c55bf6a8e384e862f8e01c5d5"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__orchestrator-registry-dispatch__01a8e9"
+}

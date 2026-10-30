@@ -1,0 +1,17 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_verify-ever-current3",
+ "head": "cef9b05d3f2f805911c25c6adca8294aeb8e55ac",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "81d36e05238793f322453497ad18b942e01af683e4e3dcf6a1dc59db3568bc97"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward___verify-ever-current3__e2e146"
+}

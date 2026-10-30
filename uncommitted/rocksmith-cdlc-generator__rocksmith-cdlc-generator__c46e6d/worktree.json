@@ -1,0 +1,34 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/rocksmith-cdlc-generator",
+ "head": "23d958abdb78063e90bc50a56978a8dc2240a087",
+ "branch": "recovery/quarantine-20261010-human-only-debt",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "905c9033fbeca03c7af644c7c9ebddb8cc2cd6c0fa479a75233d148ad7fdbbc9"
+  ],
+  [
+   ".aider.input.history",
+   "1253db889ef8bd44ae45859c0a96adee42261940b7fee94797bbde49c8146ccf"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "e6305f4e07ab1fa000eee290122ffbdda4f79c79635a87b266bdc3f18af8305f"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-shm",
+   "4be8bc6b5fc937c5e49cb231ccf7c87a00160603a468056bf4079123f39e0780"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-wal",
+   "1e4696ad656e18ebbd885d4aba2cd17566fe8c37c57bb77388126e0a080a0d3f"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__rocksmith-cdlc-generator__c46e6d"
+}

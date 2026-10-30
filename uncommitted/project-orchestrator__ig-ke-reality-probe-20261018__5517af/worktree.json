@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/IronGodLocal/ig-ke-reality-probe-20261018",
+ "head": "beadf5f5b53d4e3cec97b86670d5a68a3c8c14d6",
+ "branch": "iron-god/ke-reality-probe-20261018",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "src/project_orchestrator/iron_god_knowledge_engine_live_retrieval.py",
+   "136f89d7fe7f40212ebccba3e34e7fcb4d6fd415e4fba07bc9669511741b3d8d"
+  ],
+  [
+   "tests/test_iron_god_knowledge_engine_live_retrieval.py",
+   "e89472430f770919fb4c413b05d07c9e2db615292aa62e038907e3c1be2c557c"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__ig-ke-reality-probe-20261018__5517af"
+}

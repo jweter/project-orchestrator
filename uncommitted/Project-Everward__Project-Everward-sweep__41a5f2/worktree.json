@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/Project-Everward-sweep",
+ "head": "f5ca6c0cce1e77a8d79dff3c19fd857285ec0be9",
+ "branch": "repair/moving-body-sweep",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "src/simulation/include/everward/simulation/software_policy.hpp"
+ ],
+ "patch_sha256": "5ab4516bdb188cc606486921acb8cfb117e5057fb345fcd1d5037538d3c38e8d",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__Project-Everward-sweep__41a5f2"
+}

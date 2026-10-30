@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "repository": "jweter/knowledge-engine-core",
+  "head_sha": "00846ee417c6325ad45730a1920e130e2a5cc2bb",
+  "mode": "FULL",
+  "generated_at": "2026-10-29T22:14:50.845301+00:00",
+  "status": "FAILED",
+  "checks": [
+    {
+      "id": "quality_preflight",
+      "kind": "quality",
+      "status": "FAIL",
+      "returncode": 1
+    }
+  ]
+}

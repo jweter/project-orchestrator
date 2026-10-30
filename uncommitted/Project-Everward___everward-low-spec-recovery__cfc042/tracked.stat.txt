@@ -1,0 +1,8 @@
+ docs/UNATTENDED_VERIFICATION.md                             |   4 ++++
+ docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md                  |  29 +++++++++++++++++++++++++++
+ tools/everward_unattended_worker.py                         | 100 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tools/publish_unattended_product_reality.ps1                |   5 +++++
+ tools/test_unattended_product_reality_reporting.py          |  16 +++++++++++++++
+ tools/test_unattended_product_reality_safety_regressions.py |  72 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tools/test_unattended_product_reality_worker.py             | 142 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 7 files changed, 368 insertions(+)

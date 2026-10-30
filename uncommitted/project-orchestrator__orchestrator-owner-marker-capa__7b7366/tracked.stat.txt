@@ -1,0 +1,7 @@
+ docs/CAPA_OWNER_MARKER_CONTRACT_20261010.md |  4 +++-
+ scripts/fallback/Watch-GitHubMailbox.ps1    |  3 ++-
+ scripts/start_full_power.ps1                | 10 +++++++++-
+ tests/test_fallback_control_contract.py     |  2 +-
+ tests/test_human_control_contract.py        |  7 ++++---
+ tests/test_owner_marker_capa.py             |  8 ++++++++
+ 6 files changed, 27 insertions(+), 7 deletions(-)

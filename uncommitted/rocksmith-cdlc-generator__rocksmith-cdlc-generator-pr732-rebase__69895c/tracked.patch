@@ -1,0 +1,346 @@
+diff --git a/docs/private-product-reality-runner-v1.md b/docs/private-product-reality-runner-v1.md
+index 21f3b7b..6eb7cc4 100644
+--- a/docs/private-product-reality-runner-v1.md
++++ b/docs/private-product-reality-runner-v1.md
+@@ -179,6 +179,7 @@ Investigate safe automation for launching a staging copy into Rocksmith 2014, co
+ 
+ Every runner session should expose only what still genuinely needs a person. If that list is empty, the user should not be asked to open the laptop test workflow.
+ 
++<<<<<<< HEAD
+ `human_only_debt.human_only_debt_payload()` (schema 3) derives this report from runner evidence, and `cdlc-product-reality` prints it as the report's final section:
+ 
+ - Only scenario `human_only_acceptance` items that describe subjective musical judgment (`SUBJECTIVE_MUSICAL_JUDGMENT`: feel, tone, comfort, fingering, ...) or external Rocksmith runtime acceptance not yet automated (`EXTERNAL_ROCKSMITH_RUNTIME`) are human debt.
+@@ -186,6 +187,9 @@ Every runner session should expose only what still genuinely needs a person. If
+ - The report fails closed (`FAIL_CLOSED`, `human_attention_required: null`, no human items) when evidence is missing, has no build identity or automated checks, does not match the expected build commit, or is not an all-PASS result. Items mixing measurable and judgment language, or matching neither vocabulary, also fail closed as unclassified instead of being labeled human-only.
+ - Bass, Lead, and Rhythm first-event coverage is reported independently for every report, including `NOT_OBSERVED` roles.
+ - The report carries only build commit, scenario ID, check codes/statuses, and the scenario-authored acceptance text. Check messages, private paths, and content hashes are not copied into it.
++=======
++`human_only_debt_payload(evidence, current_commit_sha=...)` surfaces only `SUBJECTIVE_MUSICAL_JUDGMENT` / `PRIVATE_RUNTIME_ACCEPTANCE` items. Items naming an automated check (per-role first event, spread, shared timing, checkpoints, beat grid, build identity, PSARC, Official TAB, printed score) are excluded when their checks PASS and block otherwise; unclassified items block. Status is `CLEAR`, `HUMAN_ATTENTION_REQUIRED`, or `BLOCKED` (never PASS): missing, stale, unknown-build, or non-PASS evidence is `BLOCKED` with `blocking_reasons`, and human debt is withheld until evidence is current and passing.
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)
+ 
+ ## Success condition
+ 
+diff --git a/src/rocksmith_cdlc_generator/human_only_debt.py b/src/rocksmith_cdlc_generator/human_only_debt.py
+index ca675f1..a4042af 100644
+--- a/src/rocksmith_cdlc_generator/human_only_debt.py
++++ b/src/rocksmith_cdlc_generator/human_only_debt.py
+@@ -1,13 +1,24 @@
++<<<<<<< HEAD
+ """Human-only Product Reality debt over private-runner evidence (issue #612).
+ 
+ Only subjective musical judgment or not-yet-automated Rocksmith runtime
+ acceptance is human debt. Measurable facts are covered or automation debt.
+ Missing or non-PASS evidence fails closed; check messages are never copied.
++=======
++"""Fail-closed human-only Product Reality debt report (issue #612).
++
++Only subjective or external-runtime items reach a person. Items naming a check
++the runner already automates are excluded when that check PASSed and block the
++report otherwise; unclassified items, and missing, stale, or non-PASS evidence,
++block the report. Output carries check codes/statuses and scenario item text
++only, never check messages, paths, hashes, or source material.
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)
+ """
+ 
+ from __future__ import annotations
+ 
+ import re
++<<<<<<< HEAD
+ from typing import TYPE_CHECKING
+ 
+ from .score_source import ArrangementRole
+@@ -95,11 +106,110 @@ def _classify(item: str, passing: set[str]) -> dict[str, object]:
+         category = CATEGORY_SUBJECTIVE if subjective else CATEGORY_EXTERNAL_RUNTIME
+         return {"kind": "human", "category": category, "roles": roles}
+     return {"kind": "unclassified", "reason": "no_recognized_human_or_deterministic_terms"}
++=======
++from datetime import datetime, timedelta, timezone
++
++from .private_product_reality import PrivateProductRealityEvidence
++from .score_source import ArrangementRole
++
++_HUMAN_CATEGORIES = ("SUBJECTIVE_MUSICAL_JUDGMENT", "PRIVATE_RUNTIME_ACCEPTANCE")
++_ROLE_SCOPED = "{role}_first_event"
++# Deterministic topics mapped to the check codes that cover them.
++_DETERMINISTIC_TOPICS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
++    (("first note", "first event", "first-event", "first playable", "offset"), (_ROLE_SCOPED,)),
++    (("spread",), ("arrangement_first_event_spread",)),
++    (("shared timing", "timing transform", "same recording"), ("shared_timing_transform",)),
++    (("checkpoint", "drift"), ("checkpoint_*",)),
++    (("beat grid", "tempo map"), ("audio_beat_grid",)),
++    (("build identity", "build commit"), ("build_identity",)),
++    (("psarc registration", "psarc receipt"), ("psarc_registration",)),
++    (("official tab",), ("official_tab_registration",)),
++    (("printed score", "printed-score", "score recognition"), ("printed_score_recognition",)),
++)
++_SUBJECTIVE_TOKENS = ("feel", "playability", "musical", "subjective", "taste", "phrasing")
++_RUNTIME_TOKENS = ("in-game", "in game", "gameplay", "rocksmith", "launch", "runtime")
++_ROLE_PATTERN = re.compile(r"\b(" + "|".join(role.value for role in ArrangementRole) + r")\b")
++
++
++def _required_check_codes(
++    patterns: tuple[str, ...], roles: list[str], evidence: PrivateProductRealityEvidence
++) -> list[str]:
++    present = [check.code for check in evidence.checks]
++    codes: list[str] = []
++    for pattern in patterns:
++        if pattern == _ROLE_SCOPED:
++            # Each role is judged by its own evidence; unscoped items need every evaluated role.
++            scoped = roles or [r.value for r in ArrangementRole if pattern.format(role=r.value) in present]
++            codes.extend(pattern.format(role=role) for role in scoped)
++        elif pattern.endswith("*"):
++            # An absent wildcard family means the topic was never measured.
++            codes.extend(sorted(c for c in present if c.startswith(pattern[:-1])) or [pattern])
++        else:
++            codes.append(pattern)
++    return codes
++
++
++def classify_human_only_item(item: str, evidence: PrivateProductRealityEvidence) -> dict[str, object]:
++    """Classify one scenario-authored acceptance item against automated evidence."""
++    normalized = item.lower()
++    roles = sorted(set(_ROLE_PATTERN.findall(normalized)))
++    status_by_code = {check.code: check.status for check in evidence.checks}
++    for tokens, patterns in _DETERMINISTIC_TOPICS:
++        if any(token in normalized for token in tokens):
++            codes = _required_check_codes(patterns, roles, evidence)
++            statuses = {code: status_by_code.get(code, "MISSING") for code in codes}
++            return {
++                "category": "AUTOMATED_DETERMINISTIC", "description": item, "roles": roles,
++                "covering_checks": statuses,
++                "covered_by_automation": bool(codes) and all(s == "PASS" for s in statuses.values()),
++            }
++    if any(token in normalized for token in _SUBJECTIVE_TOKENS):
++        category = "SUBJECTIVE_MUSICAL_JUDGMENT"
++    elif any(token in normalized for token in _RUNTIME_TOKENS):
++        category = "PRIVATE_RUNTIME_ACCEPTANCE"
++    else:
++        category = "UNCLASSIFIED"
++    return {"category": category, "description": item, "roles": roles}
++
++
++def _evidence_blockers(
++    evidence: PrivateProductRealityEvidence | None,
++    current_commit_sha: str | None,
++    now: datetime | None,
++    max_age: timedelta | None,
++) -> list[str]:
++    if evidence is None:
++        return ["EVIDENCE_MISSING"]
++    blockers: list[str] = []
++    if not evidence.build.commit_sha:
++        blockers.append("EVIDENCE_BUILD_UNKNOWN")
++    elif not current_commit_sha:
++        blockers.append("CURRENT_BUILD_UNKNOWN")
++    elif evidence.build.commit_sha != current_commit_sha:
++        blockers.append("EVIDENCE_STALE_BUILD")
++    if max_age is not None:
++        try:
++            observed = datetime.fromisoformat(evidence.observed_at_utc.replace("Z", "+00:00"))
++        except ValueError:
++            observed = None
++        if observed is None or observed.tzinfo is None:
++            blockers.append("EVIDENCE_TIME_UNKNOWN")
++        elif (now or datetime.now(timezone.utc)) - observed > max_age:
++            blockers.append("EVIDENCE_STALE_AGE")
++    if not evidence.checks:
++        blockers.append("AUTOMATED_EVIDENCE_EMPTY")
++    elif evidence.result != "PASS":
++        blockers.append(f"AUTOMATED_EVIDENCE_{evidence.result}")
++    elif any(check.status != "PASS" for check in evidence.checks):
++        blockers.append("AUTOMATED_EVIDENCE_INCONSISTENT")
++    return blockers
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)
+ 
+ 
+ def human_only_debt_payload(
+     evidence: PrivateProductRealityEvidence | None,
+     *,
++<<<<<<< HEAD
+     expected_commit_sha: str | None = None,
+ ) -> dict[str, object]:
+     """Return a sanitized machine-readable queue of genuinely human-only debt."""
+@@ -115,6 +225,46 @@ def human_only_debt_payload(
+         },
+         "evidence_blockers": blockers,
+         "blocking_check_codes": [code for code, status in status_by_code.items() if status != "PASS"],
++=======
++    current_commit_sha: str | None,
++    now: datetime | None = None,
++    max_age: timedelta | None = None,
++) -> dict[str, object]:
++    """Return a sanitized report; status is CLEAR, HUMAN_ATTENTION_REQUIRED, or BLOCKED, never PASS."""
++    blockers = _evidence_blockers(evidence, current_commit_sha, now, max_age)
++    classified = (
++        [] if evidence is None
++        else [classify_human_only_item(item, evidence) for item in evidence.human_only_acceptance]
++    )
++    human_items = [i for i in classified if i["category"] in _HUMAN_CATEGORIES]
++    deterministic = [i for i in classified if i["category"] == "AUTOMATED_DETERMINISTIC"]
++    automation_debt = [i for i in deterministic if not i["covered_by_automation"]]
++    unclassified = [i for i in classified if i["category"] == "UNCLASSIFIED"]
++    if automation_debt:
++        blockers.append("DETERMINISTIC_ITEM_NOT_COVERED")
++    if unclassified:
++        blockers.append("UNCLASSIFIED_ITEM")
++    # Human debt is withheld until the automated evidence is current and passing.
++    surfaced = [] if blockers else human_items
++    status = "BLOCKED" if blockers else "HUMAN_ATTENTION_REQUIRED" if surfaced else "CLEAR"
++    return {
++        "schema_version": 3,
++        "status": status,
++        "build_commit_sha": evidence.build.commit_sha if evidence is not None else None,
++        "current_commit_sha": current_commit_sha,
++        "scenario_id": evidence.scenario_id if evidence is not None else None,
++        "blocking_reasons": blockers,
++        "human_attention_required": bool(surfaced),
++        "automation_attention_required": bool(blockers),
++        "item_count": len(surfaced),
++        "categories": sorted({str(i["category"]) for i in surfaced}),
++        "items": [i["description"] for i in surfaced],
++        "categorized_items": surfaced,
++        "deferred_human_item_count": len(human_items) - len(surfaced),
++        "excluded_automated_items": [i for i in deterministic if i["covered_by_automation"]],
++        "automation_debt_items": automation_debt,
++        "unclassified_items": unclassified,
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)
+     }
+     buckets: dict[str, list[dict[str, object]]] = {"human": [], "excluded": [], "unclassified": []}
+     if evidence is not None and not blockers:
+diff --git a/tests/test_human_only_debt.py b/tests/test_human_only_debt.py
+index 8f68dc1..0903415 100644
+--- a/tests/test_human_only_debt.py
++++ b/tests/test_human_only_debt.py
+@@ -1,4 +1,5 @@
+ import json
++<<<<<<< HEAD
+ 
+ import pytest
+ 
+@@ -8,12 +9,18 @@ from rocksmith_cdlc_generator.human_only_debt import (
+     STATUS_FAIL_CLOSED,
+     human_only_debt_payload,
+ )
++=======
++from datetime import datetime, timedelta, timezone
++
++from rocksmith_cdlc_generator.human_only_debt import classify_human_only_item, human_only_debt_payload
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)
+ from rocksmith_cdlc_generator.private_product_reality import (
+     BuildObservation,
+     PrivateProductRealityEvidence,
+     ProductRealityCheck,
+ )
+ 
++<<<<<<< HEAD
+ _CODES = ["audio_beat_grid", "bass_first_event", "lead_first_event", "rhythm_first_event",
+           "arrangement_first_event_spread", "shared_timing_transform", "checkpoint_chorus_drift"]
+ 
+@@ -29,15 +36,38 @@ def _evidence(
+     result: str = "PASS",
+     commit_sha: str | None = "b" * 40,
+ ) -> PrivateProductRealityEvidence:
++=======
++COMMIT = "b" * 40
++CODES = [
++    "build_identity", "audio_beat_grid", "bass_first_event", "lead_first_event", "rhythm_first_event",
++    "arrangement_first_event_spread", "shared_timing_transform", "checkpoint_chorus", "psarc_registration",
++]
++
++
++def _evidence(
++    items: list[str], *, drop: str = "", status: dict[str, str] | None = None,
++    commit_sha: str | None = COMMIT, observed_at_utc: str = "2026-09-14T02:30:00Z",
++) -> PrivateProductRealityEvidence:
++    checks = [
++        ProductRealityCheck(code=code, status=(status or {}).get(code, "PASS"), message=f"private detail {code}")
++        for code in CODES if not (drop and code.startswith(drop))
++    ]
++    statuses = {check.status for check in checks}
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)
+     return PrivateProductRealityEvidence(
+         scenario_id="synthetic-shared-timing",
+-        observed_at_utc="2026-09-14T02:30:00Z",
++        observed_at_utc=observed_at_utc,
+         scenario_sha256="a" * 64,
++<<<<<<< HEAD
+         result=result,
++=======
++        result="FAIL" if "FAIL" in statuses else "REVIEW_REQUIRED" if "REVIEW_REQUIRED" in statuses else "PASS",
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)
+         build=BuildObservation(
+             version="test", commit_sha=commit_sha,
+             built_at_utc="2026-09-14T02:29:00Z", packaged=False,
+         ),
++<<<<<<< HEAD
+         checks=[_check(code) for code in _CODES] if checks is None else checks,
+         human_only_acceptance=items,
+     )
+@@ -127,3 +157,67 @@ def test_missing_evidence_fails_closed_without_leaking_private_messages() -> Non
+     payload = human_only_debt_payload(evidence)
+     assert "private" not in json.dumps(payload)
+     assert payload["blocking_check_codes"] == ["collection_1"]
++=======
++        checks=checks if drop != "*" else [], human_only_acceptance=items,
++    )
++
++
++def _reasons(evidence: PrivateProductRealityEvidence | None, **kwargs: object) -> list[str]:
++    kwargs.setdefault("current_commit_sha", COMMIT)
++    return human_only_debt_payload(evidence, **kwargs)["blocking_reasons"]  # type: ignore[arg-type,return-value]
++
++
++def test_current_passing_evidence_surfaces_only_subjective_and_runtime_items() -> None:
++    items = [
++        "Judge final Rocksmith gameplay feel.",
++        "Confirm the package appears in the in-game song list.",
++        "Confirm Bass first note lines up with the recording.",
++        "Check chorus checkpoint drift stays small.",
++    ]
++    payload = human_only_debt_payload(_evidence(items), current_commit_sha=COMMIT)
++    assert payload["status"] == "HUMAN_ATTENTION_REQUIRED"
++    assert payload["items"] == items[:2]
++    assert [item["description"] for item in payload["excluded_automated_items"]] == items[2:]
++    assert human_only_debt_payload(_evidence([]), current_commit_sha=COMMIT)["status"] == "CLEAR"
++    text = json.dumps(payload)
++    assert "private detail" not in text and "a" * 64 not in text
++
++
++def test_missing_stale_or_unverified_evidence_fails_closed_and_withholds_human_debt() -> None:
++    stale = human_only_debt_payload(_evidence(["Judge feel."]), current_commit_sha="e" * 40)
++    assert (stale["status"], stale["items"], stale["deferred_human_item_count"]) == ("BLOCKED", [], 1)
++    assert stale["blocking_reasons"] == ["EVIDENCE_STALE_BUILD"]
++    assert _reasons(None) == ["EVIDENCE_MISSING"]
++    assert _reasons(_evidence([], commit_sha=None)) == ["EVIDENCE_BUILD_UNKNOWN"]
++    assert _reasons(_evidence([]), current_commit_sha=None) == ["CURRENT_BUILD_UNKNOWN"]
++    now, day = datetime(2026, 9, 20, tzinfo=timezone.utc), timedelta(days=1)
++    assert _reasons(_evidence([]), now=now, max_age=day) == ["EVIDENCE_STALE_AGE"]
++    assert _reasons(_evidence([], observed_at_utc="yesterday"), now=now, max_age=day) == ["EVIDENCE_TIME_UNKNOWN"]
++    review = _evidence(["Judge feel."], status={"lead_first_event": "REVIEW_REQUIRED"})
++    assert _reasons(review) == ["AUTOMATED_EVIDENCE_REVIEW_REQUIRED"]
++    assert _reasons(_evidence([], status={"psarc_registration": "FAIL"})) == ["AUTOMATED_EVIDENCE_FAIL"]
++    assert _reasons(_evidence(["Judge feel."], drop="*")) == ["AUTOMATED_EVIDENCE_EMPTY"]
++
++
++def test_uncovered_deterministic_or_unclassified_items_block_instead_of_reaching_humans() -> None:
++    payload = human_only_debt_payload(
++        _evidence(["Check chorus checkpoint drift."], drop="checkpoint_"), current_commit_sha=COMMIT
++    )
++    assert payload["blocking_reasons"] == ["DETERMINISTIC_ITEM_NOT_COVERED"]
++    assert payload["automation_debt_items"][0]["covering_checks"] == {"checkpoint_*": "MISSING"}
++    assert _reasons(_evidence(["Look over the project."])) == ["UNCLASSIFIED_ITEM"]
++
++
++def test_each_arrangement_role_is_judged_by_its_own_evidence() -> None:
++    evidence = _evidence([], drop="rhythm_first_event")
++    offset = classify_human_only_item("Verify the first playable event offset.", evidence)
++    assert offset["covering_checks"] == {"bass_first_event": "PASS", "lead_first_event": "PASS"}
++    for role in ("bass", "lead"):
++        item = classify_human_only_item(f"Confirm {role.title()} first note timing.", evidence)
++        assert (item["roles"], item["covered_by_automation"]) == ([role], True)
++    rhythm = classify_human_only_item("Confirm Rhythm first note timing.", evidence)
++    assert rhythm["covering_checks"] == {"rhythm_first_event": "MISSING"}
++    subjective = classify_human_only_item("Judge Rhythm arrangement playability.", evidence)
++    assert (subjective["category"], subjective["roles"]) == ("SUBJECTIVE_MUSICAL_JUDGMENT", ["rhythm"])
++    assert classify_human_only_item("Judge rhythmic phrasing feel.", evidence)["roles"] == []
++>>>>>>> 8da35ea (actor autonomous bounded slice 20260926-145453)

@@ -1,0 +1,78 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/IronGodLocal/rdi001-resident-worker-1",
+ "head": "c591422af394cdb28dea260ab14e7a68ff01a264",
+ "branch": "iron-god/rdi001-resident-dispatch-20261016",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 20,
+ "tracked_changes": [
+  "engineering/preflight.py",
+  "src/project_orchestrator/iron_god_conflict_aware_scheduling.py",
+  "src/project_orchestrator/iron_god_migration_readiness.py",
+  "src/project_orchestrator/iron_god_recovery_reconstruction_report.py",
+  "tests/test_iron_god_recovery_reconstruction_report.py",
+  "tests/test_preflight_environment_contract.py"
+ ],
+ "patch_sha256": "c40b13417a82992be59ef9bddb9725331a1562931eb09c72448722bf8c840a44",
+ "untracked_copied": [
+  [
+   "src/project_orchestrator/development_denial_ledger.py",
+   "867be81b58af1b41111de612e0ea20b48255c00eeeff0abc45af7d2308786915"
+  ],
+  [
+   "src/project_orchestrator/development_denial_store.py",
+   "e0ff36f2877de3b638d4170a7f39c5a105f834b8e87ebca0dd55001cd166f8df"
+  ],
+  [
+   "src/project_orchestrator/development_execution_policy.py",
+   "d8b615dd6a98cf61a27a12686d355f479eeb07fdbe9df9efbac1a050bb737aa5"
+  ],
+  [
+   "src/project_orchestrator/development_handoff_projection.py",
+   "aaa49812b18f19c7b5c13a93a4cd8ddb9f44435eea934b54c65e34ccd2dca524"
+  ],
+  [
+   "src/project_orchestrator/development_selection_boundary.py",
+   "26fec12e6218b4ddb0c30c66d245c38f5a4465b633639516a0c86e79f81afaac"
+  ],
+  [
+   "src/project_orchestrator/resident_dispatch_authority.py",
+   "25c7cbead9b994d23361f831216f4032a4fafea5bc4c83d0abdcb675390bad30"
+  ],
+  [
+   "src/project_orchestrator/resident_dispatch_binding.py",
+   "b7862c6dca44019d6528c5a7a3c49a3d47d51373967374f85bd757e743dc5b2d"
+  ],
+  [
+   "tests/test_development_denial_ledger.py",
+   "2ffd4dc92bb7b0062d1d10ccc526e8b555d8aa186dce96d4128e8c2b42e606c7"
+  ],
+  [
+   "tests/test_development_denial_store.py",
+   "f1e58e974e31ff2dd7e2eae9a998e8181787da82213a2d7a630af7fb0eec01b5"
+  ],
+  [
+   "tests/test_development_execution_policy.py",
+   "a86a5478bd7402e4a19a6f2d20100e4b8663c518ced11e7dbd951023abc820c7"
+  ],
+  [
+   "tests/test_development_handoff_projection.py",
+   "07660d61cdcf7dbae4d39e4819ba16a12018f66a2c7af3b4f1a989d7d2a58056"
+  ],
+  [
+   "tests/test_development_selection_boundary.py",
+   "e0c0c399b5a151935e900e27b5553cc80fea807f91b8f15ebf74b008e1e00f13"
+  ],
+  [
+   "tests/test_resident_dispatch_authority.py",
+   "81ba36cfa0b3ca0bd72e4219724ab01b2db52cd437b98bcea4346254b9a27257"
+  ],
+  [
+   "tests/test_resident_dispatch_binding.py",
+   "145cfa9e2553faa6a3a39eebbae51692920211ba26774a5a642c00c8fe436d8c"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__rdi001-resident-worker-1__62d858"
+}

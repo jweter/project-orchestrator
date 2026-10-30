@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/GitHub/orchestrator-prepublish-refresh",
+ "head": "a23c993d8f30fa38e3652c1aad22de2e1d48c911",
+ "branch": "fix/prepublish-base-refresh",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "_preflight.err",
+   "cc654e687ec57144602c42e7f278670a84ecc336068c59ed08a1059ef60eb7ae"
+  ],
+  [
+   "_preflight.out",
+   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__orchestrator-prepublish-refresh__fbf510"
+}

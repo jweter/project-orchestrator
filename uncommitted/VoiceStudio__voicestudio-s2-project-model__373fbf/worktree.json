@@ -1,0 +1,1382 @@
+{
+ "path": "C:/Users/jerem/GitHub/voicestudio-s2-project-model",
+ "head": "12071412ef5132ac94a7d7652fcc20b249ed1534",
+ "branch": "feat/singing-s2-project-model",
+ "repo": "VoiceStudio",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\VoiceStudio",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [],
+ "untracked_skipped": [
+  [
+   ".pytest-iron-god-s2-isolated/test_a_backup_alone_is_still_a0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_a_backup_alone_is_still_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_a_file_that_vanishes_mid_0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_a_file_that_vanishes_mid_0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_a_file_that_vanishes_mid_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_a_padded_override_resolvecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_a_vanished_rotated_file_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_all_families_share_the_110/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_all_families_share_the_11current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_audiocpp_runtime_installe0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_audiocpp_runtime_installecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_covers_a_backup_cre0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_covers_a_backup_cre0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_covers_a_backup_crecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_empties_the_backups0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_empties_the_backups0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_empties_the_backupscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_keeps_the_backend_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_clear_reports_nothing_whecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_desktop_spawned_backend_g0/data/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_desktop_spawned_backend_g0/data/run_sentinel.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_desktop_spawned_backend_gcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_diarisation_status_distin0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_diarisation_status_distincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_omits_se0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_omits_securrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_preserve0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_preserve1/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_preserve2/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_preserve3/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_preserve4/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_discovery_preservecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_caches_inst0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_caches_instcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_in_process_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_in_process_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_is_admin_ga0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_is_admin_gacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_subprocess_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_subprocess_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_unknown_id0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engine_health_unknown_idcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engines_response_curated_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engines_response_curated_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engines_response_includes0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engines_response_includescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engines_response_marks_en0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_engines_response_marks_encurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_forwards_control0/fake-omnivoice-tts",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_forwards_control0/omnivoice-base-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_forwards_control0/omnivoice-tokenizer-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_forwards_controlcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_passes_ref_text_0/fake-omnivoice-tts",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_passes_ref_text_0/omnivoice-base-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_passes_ref_text_0/omnivoice-tokenizer-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_passes_ref_text_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_returns_tensor_f0/fake-omnivoice-tts",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_returns_tensor_f0/omnivoice-base-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_returns_tensor_f0/omnivoice-tokenizer-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_generate_returns_tensor_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_get_engines_asr_family_sh0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_get_engines_asr_family_shcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_gpu_compat_omnivoice_vari0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_gpu_compat_omnivoice_varicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_hf_repo_id_size_bound_pre0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_hf_repo_id_size_bound_precurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_indextts2_entry_has_subpr0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_indextts2_entry_has_subprcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_is_available_passes_when_0/omnivoice-tts-linux-x86_64",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_is_available_passes_when_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_is_available_when_binary_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_is_available_when_sha_mis0/omnivoice-tts-linux-x86_64",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_is_available_when_sha_miscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_llm_entries_are_network_n0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_llm_entries_are_network_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_mps_picker_hides_redundan0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_mps_picker_hides_redundan0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_mps_picker_hides_redundancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_no_hf_token_leak_in_engin0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_no_hf_token_leak_in_engincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_no_hf_token_leak_in_healt0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_no_hf_token_leak_in_healtcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_no_hf_token_leak_in_selft0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_no_hf_token_leak_in_selftcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_no_log_at_all_still_reporcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_omnivoice_entry_has_in_pr0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_omnivoice_entry_has_in_prcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_omnivoice_variants_route_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_omnivoice_variants_route_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_probe_load_filenotfoundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_probe_load_timeout0/omnivoice-tts-linux-x86_64",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_probe_load_timeoutcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_allows_cpu_fallbac0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_allows_cpu_fallbac0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_allows_cpu_fallbaccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_env_var_still_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_env_var_still_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_env_var_still_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_persists_pref_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_persists_pref_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_persists_pref_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_unavailable_ba0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_unavailable_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_unknown_backen0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_asr_unknown_backencurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_blocks_engine_unav0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_blocks_engine_unavcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_llm_never_routing_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_llm_never_routing_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_llm_never_routing_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_curated_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_curated_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_curated_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_raw_repo0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_raw_repo0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_raw_repocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_1/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_2/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_3/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_4/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_5/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_6/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_7/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_8/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_repo_id_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_repo_id_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_repo_id_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_unknown_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_unknown_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_without_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_without_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_mlx_audio_without_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_model_id_ignored_f0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_model_id_ignored_f0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_select_model_id_ignored_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_captures_synth_e0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_captures_synth_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_in_process_succe0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_in_process_succecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_is_admin_gated0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_is_admin_gatedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_rejects_subproce0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_rejects_subprocecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_timeout_returns_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_timeout_returns_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_unavailable_engi0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_unavailable_engicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_unknown_id_is_400/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_selftest_unknown_id_is_40current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_server_mode_engine_health0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_server_mode_engine_healthcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_server_mode_engine_mutati0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_server_mode_engine_mutaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_server_mode_sidecar_insta0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_server_mode_sidecar_instacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_setup_snippet_present_for0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_setup_snippet_present_forcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tail_reaches_across_a_rol0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tail_reaches_across_a_rol0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tail_reaches_across_a_rolcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_the_backend_redirect_follcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_the_common_case_still_rea0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_the_common_case_still_reacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tts_asr_routing_keys_are_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tts_asr_routing_keys_are_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tts_catalogue_can_filter_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tts_catalogue_can_filter_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tts_catalogue_exposes_exp0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-iron-god-s2-isolated/test_tts_catalogue_exposes_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_a_backup_alone_is_still_a0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_a_backup_alone_is_still_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_a_file_that_vanishes_mid_0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_a_file_that_vanishes_mid_0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_a_file_that_vanishes_mid_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_a_padded_override_resolvecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_a_vanished_rotated_file_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_all_families_share_the_110/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_all_families_share_the_11current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_audiocpp_runtime_installe0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_audiocpp_runtime_installecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_covers_a_backup_cre0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_covers_a_backup_cre0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_covers_a_backup_crecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_empties_the_backups0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_empties_the_backups0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_empties_the_backupscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_keeps_the_backend_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_clear_reports_nothing_whecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_desktop_spawned_backend_g0/data/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_desktop_spawned_backend_g0/data/run_sentinel.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_desktop_spawned_backend_gcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_diarisation_status_distin0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_diarisation_status_distincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_omits_se0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_omits_securrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_preserve0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_preserve1/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_preserve2/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_preserve3/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_preserve4/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_discovery_preservecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_caches_inst0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_caches_instcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_in_process_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_in_process_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_is_admin_ga0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_is_admin_gacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_subprocess_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_subprocess_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_unknown_id0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engine_health_unknown_idcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engines_response_curated_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engines_response_curated_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engines_response_includes0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engines_response_includescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engines_response_marks_en0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_engines_response_marks_encurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_forwards_control0/fake-omnivoice-tts",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_forwards_control0/omnivoice-base-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_forwards_control0/omnivoice-tokenizer-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_forwards_controlcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_passes_ref_text_0/fake-omnivoice-tts",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_passes_ref_text_0/omnivoice-base-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_passes_ref_text_0/omnivoice-tokenizer-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_passes_ref_text_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_returns_tensor_f0/fake-omnivoice-tts",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_returns_tensor_f0/omnivoice-base-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_returns_tensor_f0/omnivoice-tokenizer-Q8_0.gguf",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_generate_returns_tensor_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_get_engines_asr_family_sh0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_get_engines_asr_family_shcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_gpu_compat_omnivoice_vari0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_gpu_compat_omnivoice_varicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_hf_repo_id_size_bound_pre0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_hf_repo_id_size_bound_precurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_indextts2_entry_has_subpr0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_indextts2_entry_has_subprcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_is_available_passes_when_0/omnivoice-tts-linux-x86_64",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_is_available_passes_when_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_is_available_when_binary_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_is_available_when_sha_mis0/omnivoice-tts-linux-x86_64",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_is_available_when_sha_miscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_llm_entries_are_network_n0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_llm_entries_are_network_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_mps_picker_hides_redundan0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_mps_picker_hides_redundan0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_mps_picker_hides_redundancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_no_hf_token_leak_in_engin0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_no_hf_token_leak_in_engincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_no_hf_token_leak_in_healt0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_no_hf_token_leak_in_healtcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_no_hf_token_leak_in_selft0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_no_hf_token_leak_in_selftcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_no_log_at_all_still_reporcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_omnivoice_entry_has_in_pr0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_omnivoice_entry_has_in_prcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_omnivoice_variants_route_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_omnivoice_variants_route_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_probe_load_filenotfoundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_probe_load_timeout0/omnivoice-tts-linux-x86_64",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_probe_load_timeoutcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_allows_cpu_fallbac0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_allows_cpu_fallbac0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_allows_cpu_fallbaccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_env_var_still_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_env_var_still_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_env_var_still_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_persists_pref_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_persists_pref_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_persists_pref_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_unavailable_ba0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_unavailable_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_unknown_backen0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_asr_unknown_backencurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_blocks_engine_unav0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_blocks_engine_unavcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_llm_never_routing_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_llm_never_routing_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_llm_never_routing_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_curated_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_curated_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_curated_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_raw_repo0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_raw_repo0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_raw_repocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_1/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_2/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_3/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_4/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_5/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_6/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_7/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_8/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_repo_id_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_repo_id_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_repo_id_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_unknown_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_unknown_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_without_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_without_0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_mlx_audio_without_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_model_id_ignored_f0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_model_id_ignored_f0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_select_model_id_ignored_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_captures_synth_e0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_captures_synth_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_in_process_succe0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_in_process_succecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_is_admin_gated0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_is_admin_gatedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_rejects_subproce0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_rejects_subprocecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_timeout_returns_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_timeout_returns_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_unavailable_engi0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_unavailable_engicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_unknown_id_is_400/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_selftest_unknown_id_is_40current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_server_mode_engine_health0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_server_mode_engine_healthcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_server_mode_engine_mutati0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_server_mode_engine_mutaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_server_mode_sidecar_insta0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_server_mode_sidecar_instacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_setup_snippet_present_for0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_setup_snippet_present_forcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tail_reaches_across_a_rol0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tail_reaches_across_a_rol0/omnivoice.log.2",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tail_reaches_across_a_rolcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_the_backend_redirect_follcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_the_common_case_still_rea0/omnivoice.log.1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_the_common_case_still_reacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tts_asr_routing_keys_are_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tts_asr_routing_keys_are_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tts_catalogue_can_filter_0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tts_catalogue_can_filter_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tts_catalogue_exposes_exp0/omnivoice.db.backup-0.5.6-1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp-dowork-2/test_tts_catalogue_exposes_expcurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\VoiceStudio__voicestudio-s2-project-model__373fbf"
+}

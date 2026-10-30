@@ -1,0 +1,31 @@
+diff --git a/scripts/continuous_flow_supervisor.py b/scripts/continuous_flow_supervisor.py
+index 477daca..e17b822 100644
+--- a/scripts/continuous_flow_supervisor.py
++++ b/scripts/continuous_flow_supervisor.py
+@@ -1255,7 +1255,8 @@ def runner_affinity_history(state_root:Path,task_class:str)->dict[str,dict[str,i
+             continue
+         row=history.setdefault(runner_id,{"success":0,"failure":0})
+         status=str(record.get("result_status") or "")
+-        if record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"}:
++        nonproductive={"NO_OP","SELF_REPAIRED_TO_NO_OP"}
++        if record.get("state")=="COMPLETED" and "FAILED" not in status and status not in {"PREFLIGHT_FAILED","PUSH_FAILED","PR_CREATE_FAILED"} | nonproductive:
+             row["success"]+=1
+         else:
+             row["failure"]+=1
+diff --git a/tests/test_task_runner_affinity.py b/tests/test_task_runner_affinity.py
+index 14b05a8..762b177 100644
+--- a/tests/test_task_runner_affinity.py
++++ b/tests/test_task_runner_affinity.py
+@@ -37,3 +37,12 @@ def test_affinity_history_is_class_scoped(tmp_path):
+       "b":{"state":"COMPLETED","runner_id":"aider-ollama","result_status":"GREEN","execution_slice":{"task_class":"repair"}},
+     })
+     assert supervisor.runner_affinity_history(tmp_path,"tests")=={"claude-code":{"success":1,"failure":0}}
++
++
++def test_affinity_treats_completed_no_op_as_failure(tmp_path):
++    write(tmp_path,{
++      "a":{"state":"COMPLETED","runner_id":"aider-ollama","result_status":"NO_OP","execution_slice":{"task_class":"code"}},
++      "b":{"state":"COMPLETED","runner_id":"aider-ollama","result_status":"SELF_REPAIRED_TO_NO_OP","execution_slice":{"task_class":"code"}},
++      "c":{"state":"COMPLETED","runner_id":"aider-ollama","result_status":"GREEN","execution_slice":{"task_class":"code"}},
++    })
++    assert supervisor.runner_affinity_history(tmp_path,"code")=={"aider-ollama":{"success":1,"failure":2}}

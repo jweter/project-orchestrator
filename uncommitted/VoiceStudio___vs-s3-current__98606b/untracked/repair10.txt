@@ -1,0 +1,1 @@
+Repair current PR review findings on this branch. Implement deterministic local audio-to-F0Track extraction, strict non-coercing schema validation, known-melody golden/regression tests, and update structure metadata accurately. Run tests/preflight, commit and push same branch.

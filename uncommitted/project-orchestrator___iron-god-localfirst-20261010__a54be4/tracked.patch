@@ -1,0 +1,183 @@
+diff --git a/DoWork.txt b/DoWork.txt
+index bb8a12a..73211a6 100644
+--- a/DoWork.txt
++++ b/DoWork.txt
+@@ -15,8 +15,11 @@ Manage four independent projects across six repositories:
+    - active authority: docs/projects/singing-mode.md
+    - milestone order: S0 -> S1 -> S2 -> S3 -> S4 -> S5 -> S6 -> S7 -> S8
+ 
+-AUTHORITY ORDER
+-1. Live GitHub/repository evidence.
++LOCAL-FIRST DEVELOPMENT TARGET (2026-10-14; SHADOW MIGRATION ONLY)
++Use docs/IRON_GOD_AUTONOMOUS_LOCAL_GIT_FACTORY.md and docs/ROADMAP.md for the intended local-Git development authority. Persistent local controller must automatically refill eligible worker capacity on completion; hourly DoWork is a watchdog/CAPA observer, not the production clock. GitHub CI/review/merge remains the separate external release gate; it must never become a prerequisite to begin the next independent locally accepted slice after the tested canary cutover. Until verified, existing live promotion authority and fail-closed owner-control remain unchanged.
++
++AUTHORITY ORDER (existing GitHub-coupled production mode; migration pending)
++1. Live GitHub/repository evidence for external releases; local Git and receipts for locally developed candidates when their canary is proven.
+ 2. Each repository's governing roadmap/architecture/vision documents.
+ 3. Each repository's engineering/control-plane.json when present.
+ 4. This portfolio control plane for cross-project scheduling and policy.
+diff --git a/docs/EXECUTION_AUTHORITY.md b/docs/EXECUTION_AUTHORITY.md
+index 2dc396f..5f75299 100644
+--- a/docs/EXECUTION_AUTHORITY.md
++++ b/docs/EXECUTION_AUTHORITY.md
+@@ -25,6 +25,10 @@ If two sources conflict, fail closed and use the higher-precedence source. Never
+ - Connector/tool failure is not product failure and is not permission to stop the schedule.
+ - Human escalation is reserved for genuinely human-authority decisions; routine diagnosis and deterministic repair stay automated.
+ 
++## Local-first execution authority (target; requires tested migration)
++
++Design authority: `docs/IRON_GOD_AUTONOMOUS_LOCAL_GIT_FACTORY.md`. The persistent Azathoth controller, not ChatGPT nor the hourly job, must eventually handle next-slice dispatch. Local Git candidate commits and exact-head integration into protected accepted baselines are development authority. GitHub PR/CI/review/merge is a distinct asynchronous major-release and recovery pipeline. Publication failure does not block independent safe local development. No existing promotion or owner gate is weakened until a controlled verified canary has replaced it. Explicit TAKE THE WHEEL and central fail-closed owner-control always supersede autonomous action.
++
+ ## Execution loop
+ 
+ For each run: observe live state -> diagnose the highest-priority concrete defect -> make one bounded repair -> verify exact head -> record evidence -> rotate while asynchronous gates run.
+diff --git a/docs/IRON_GOD_ROADMAP_PROGRESS.md b/docs/IRON_GOD_ROADMAP_PROGRESS.md
+index 7474679..133d00d 100644
+--- a/docs/IRON_GOD_ROADMAP_PROGRESS.md
++++ b/docs/IRON_GOD_ROADMAP_PROGRESS.md
+@@ -25,13 +25,31 @@ roadmap.
+ - [ ] IG-011: forward-only schema migrations.
+ - [x] IG-012: transactional append-only journal for milestone/publication state
+   in the candidate foundation.
+-- [ ] IG-013–016: leases, health, backup, compatibility exports and crash suite.
++- [ ] IG-013: transactional leases and crash/timeout tests.
++- [x] IG-014: read-only SQLite v2 state health checker exists in a separate
++  laptop-only candidate worktree `iron-god/local-ig014-worker-20261012` at
++  `d7c0a901ea367d5d00afc4a0b8c6cb405daddfa1`; Claude Code produced
++  the candidate, 20/20 focused tests and Ruff lint/format passed, and
++  exact-head FULL native preflight passed 26/26 checks with 2010 pytest
++  passing (2026-10-13T02:00Z). No production deployment, accepted baseline
++  change, GitHub push/PR, or external Product Reality proof is claimed.
++- [ ] IG-015–016: safe backups, compatibility exports and recovery tests.
+ 
+ ## Phase 2 — Local Git authority
+ 
+ - [x] IG-020–024: candidate immutable refs, milestone/recovery refs, accepted
+   baseline compare-and-swap and owner-control veto; verified locally.
+ - [ ] IG-025–026: worktree lifecycle and orphan scanning.
++  - Controller handoff transition advanced 2026-10-13: the laptop shadow
++    reconciler now verifies IG-014 against its exact worktree, branch, SHA and
++    SHA-256-pinned 26-gate FULL preflight receipt before suppressing replay;
++    the data-driven queue resolves IG-026 as the sole next normal slice.
++    Per-slice worktree isolation is enforced and the absent IG-026 worktree
++    fails closed. SQLite slice-generation fencing and failure-to-repair routing
++    (including IG-026 -> IG-026-R01 priority and repeated-signature quarantine)
++    passed disposable local validation. These are transitional shadow-controller
++    results only: IG-026 is not implemented/accepted, candidate mode has not run,
++    and no new native repository preflight is claimed for the controller edits.
+ 
+ ## Phase 3 — Verification and integration
+ 
+@@ -64,9 +82,14 @@ roadmap.
+     now verifies that the integration worktree and protected ref store share the
+     same Git common directory rather than requiring the same checkout path.
+     8/8 acceptance tests pass, including linked-worktree prepare/CAS/finalize
+-    and rejection of unrelated repositories.
+-  - [ ] IG-036B full Phase 3 exit demonstration: two independent candidates,
+-    accepted-baseline advancement without GitHub, combined regression evidence.
++    and rejection of unrelated repositories. Exact-head FULL preflight is GREEN
++    on d78ce530c4cbd8a2fdd5ef4038ec23dcb30c949c (26/26 checks; 1990 pytest
++    tests passed in 126.96s).
++  - ~~IG-036B full Phase 3 exit demonstration~~ — PASSED on disposable local
++    clone of d78ce530c4cbd8a2fdd5ef4038ec23dcb30c949c: two independent candidates
++    were integrated and accepted in order with GitHub unused; both exact-head
++    FULL preflights passed 26/26 checks with 1990 pytest tests each, and the
++    durable acceptance queue ended with zero pending intents.
+   No production accepted-ref advancement or Product Reality adapter proof has
+   been claimed; repositories that require Product Reality still fail closed.
+ 
+@@ -74,6 +97,13 @@ roadmap.
+ 
+ - [ ] IG-040–049: local job model/state machine are foundation only. GitHub
+   transport, CI/review, safe merge, retry and outage demonstrations remain.
++  - IG-044 read-only eligibility/provenance inspection added locally on
++    2026-10-12: 109/109 focused native tests passed across acceptance, refs,
++    verification, FIFO/recovery and new regression suites; Ruff lint and
++    formatting checks passed for the four new files. Not committed, not a
++    fenced claim, not deployed; full exact-head preflight and Product Reality
++    remain required. Forged SQLite acceptance rows are rejected by the new
++    inspection path but old publication paths remain unguarded.
+ 
+ ## Phase 5 — Storage and recovery
+ 
+@@ -114,3 +144,42 @@ roadmap.
+ - Prevent duplicate \`.venv\` builds and stop heavy work below 25 GiB free.
+ - Every hourly run should update this ledger with exact commits/evidence and
+   identify the next unblocked IG ID. Never cross out unverified claims.
++
++## 2026-10-13 — Authoritative roadmap source integrity
++
++- Verified the Project Library `Roadmap.txt` is **1750 lines**, covering Phases 0–10, IG-001–086, controlled migration and three major demonstrations. The Azathoth `IronGodLocal/Roadmap.txt` copy was an **exact 1225-line prefix**, missing the final 525 lines. Appended only those missing lines and re-read the laptop file: **1750/1750 lines exactly match** the authoritative Library text. Existing prefix preserved byte-for-byte at the text level.
++- Read-only fresh Git inspection: implementation worktree HEAD `d78ce530c4cbd8a2fdd5ef4038ec23dcb30c949c`; roadmap progress ledger was already modified; `refs/iron-god/accepted` absent; required `ig026-worker-1` not registered. IG-014 receipt SHA-256 remains `bffefadfdd03fd20f4ff8f6ba80268edd92a2035cf956c4c295fbb0902ff5af7`.
++- Owner marker was `enabled:false`; Iron God exclusive target enabled. C: had approximately 89.02 GiB free; OS-reported available physical RAM approximately 3.69 GiB. Legacy Portfolio Idle and Rocksmith unattended worker tasks were Disabled. No candidate builder, native pytest/preflight, worktree-add, GitHub mutation, accepted-ref advancement or production cutover occurred in this update.
++- **Still blocked:** IG-026 remains ELIGIBLE but its isolated worktree is absent; prior worktree provisioning route was safety-denied (BLK-001). Native controller pytest launch route was also denied (BLK-003). Neither denied operation was retried or rerouted. Transitional shadow mode and `candidate_execution_authorized=false` remain unchanged. No IG completion or major demo is newly claimed.
++
++## 2026-10-13 06:25 CDT — Transitional verifier hardening
++
++- Fresh owner marker `enabled:false`; C: free 95,423,361,024 bytes (about 88.9 GiB), available physical RAM 3,924,804 KiB (about 3.74 GiB). Existing legacy worker tasks inspected read-only and remain disabled. No worktree provisioning, builder, GitHub mutation, accepted-ref update or task change.
++- Read-only Git: IG-014 exact HEAD `d7c0a901ea367d5d00afc4a0b8c6cb405daddfa1`, receipt SHA-256 `bffefadfdd03fd20f4ff8f6ba80268edd92a2035cf956c4c295fbb0902ff5af7`; main implementation HEAD `d78ce530c4cbd8a2fdd5ef4038ec23dcb30c949c`. Existing IG-044 untracked files and modified ledger preserved; accepted ref still absent. Registered worktrees contain no `ig026-worker-1`.
++- Hardened **transitional shadow** `local_continuous_worker.py` verifier: pre-candidate result now requires `mode=FULL`, 26 uniquely named GREEN checks, explicit `timed_out=false` and `interrupted=false`, and exact commit identity. Python 3.12 `py_compile` exit code 0. This is **not** native repository regression, FULL preflight, or a verified IG-026 implementation; IG-026 remains unchecked.
++- Newly recorded BLK-004: 1800-second fenced lease may expire during verification (per-stage limits total 1980 seconds without in-stage heartbeat). Must implement and independently prove lease renewal/fencing before candidate-mode authorization. BLK-001 worktree denial and BLK-003 native pytest denial remain binding and were not retried or rerouted. `shadow_state_only` and `candidate_execution_authorized=false` remain unchanged; all three major demos incomplete.
++
++## 2026-10-13 09:26 CDT — Transitional repair-scope correctness
++
++- Audited the full 1750-line laptop roadmap and the transitional controller/handoff, blocker, repair, event and build-status artifacts after owner-control read returned `enabled:false`.
++- Identified a concrete repair-loop dead end: when a failed agent changes only one of the two permitted files, `queued_repair_handoffs()` previously used the partial changed-path list as the repair scope and rejected it with `REPAIR_PATH_SHAPE_UNSUPPORTED`. This could leave R01 indefinitely unbuildable despite a valid original SliceSpec.
++- Surgically updated only transitional `IronGodLocal/local_continuous_worker.py`: repair path validation still forbids out-of-scope changes, but the repair agent receives the full parent source/test scope and separately sees which paths the prior attempt changed. No worktree, Git ref, publication, or owner marker was changed.
++- Python 3.12 `py_compile` PASS; C: free ~88.73 GiB; available physical RAM ~3.47 GiB. Behavioral repair regression and native FULL preflight are **NOT** proven. The separate verification-stage lease-heartbeat wiring remains blocked by its prior safety denial (BLK-004/005); no denied operation was rerouted.
++- IG-014 remains DO_NOT_REBUILD; IG-026 remains the next eligible slice but cannot run without its legitimate isolated worktree. Candidate execution remains disabled. No new roadmap item is crossed off; three major demos remain incomplete.
++
++## 2026-10-13 14:24 CDT — Owner-gate-before-mutex safety repair
++
++- Read owner marker first: `enabled:false`. Re-read before compilation: still false. Read the complete 1750-line local authoritative roadmap, the controller handoff/state/events/repair/blocker/status files, IG-026/IG-050 handoffs, and this ledger.
++- Fresh read-only environment: C: free ~88.13 GiB; available physical RAM ~3.23 GiB. Legacy Portfolio Idle Worker, Portfolio n8n Automation, and Rocksmith unattended worker tasks remain Disabled. No active Iron God builder was established by process inspection.
++- Fresh Git inspection: implementation HEAD `d78ce530c4cbd8a2fdd5ef4038ec23dcb30c949c`; modified ledger and IG-044 untracked files remain protected; `refs/iron-god/accepted` absent. IG-014 worktree is clean, on branch `iron-god/local-ig014-worker-20261012` at exact HEAD `d7c0a901ea367d5d00afc4a0b8c6cb405daddfa1`; its receipt SHA-256 matches `bffefadfdd03fd20f4ff8f6ba80268edd92a2035cf956c4c295fbb0902ff5af7`, with FULL/GREEN, 26 unique successful checks and matching HEAD. Direct metadata check confirms required `ig026-worker-1` is absent. No denied worktree inventory/provisioning operation was retried.
++- Identified and surgically repaired a new independent owner-safety defect: controller `main()` previously opened and initialized `local-worker-mutex` before checking owner/exclusive control. It now fails closed on `gate()` before any mutex-file access, while retaining its post-lock gate recheck. Python 3.12 `py_compile` exit 0. No native behavioral regression or 26-gate preflight was attempted or claimed.
++- Existing denials remain binding, including IG-026 provisioning and native pytest launch; verification-stage lease heartbeat is still unwired. Candidate mode remains disabled, IG-014 remains DO_NOT_REBUILD, IG-026 remains ELIGIBLE but blocked, and all three major demonstrations remain incomplete. No GitHub/accepted-ref/production mutation or new roadmap completion is claimed.
++
++## 2026-10-14 20:51 CDT — Owner-approved local-Git autonomous factory clarified
++
++- Owner explicitly chose **local Git, not GitHub PRs, as the normal development authority** and asked to eliminate repeated "next"/"continue" prompts. GitHub remains independent release CI/review, selected major milestone publication and off-device recovery.
++- Appended section 41 to Azathoth's complete canonical `IronGodLocal/Roadmap.txt` without rewriting its original 1750 lines; marked immediate next-slice refill as an early acceptance dependency, not a completed Phase 7.
++- Added `docs/IRON_GOD_AUTONOMOUS_LOCAL_GIT_FACTORY.md` with execution roles, event-driven loop, failure routing, local acceptance, deferred publication, autonomy budgets, owner takeover protection, rollout and acceptance tests.
++- Registered this architecture in the existing local-first candidate's `docs/ROADMAP.md`, `docs/EXECUTION_AUTHORITY.md`, `DoWork.txt` and `engineering/control-plane.json`. Existing worktree's uncommitted IG-044 candidates and other independent changes were left intact.
++- Live handoff remains `shadow_state_only` and `candidate_execution_authorized=false` at inspection. Previous native test and worktree safety denials remain in force. No worker start, controller cutover, GitHub push/PR/merge, scheduler change, accepted-ref advance, or owner-marker edit is authorized by documentation alone.
++- Next real engineering acceptance gate: preserve/audit Claude work; demonstrate **real locally verified product slice A -> accepted local Git baseline -> automatically dispatched independent slice B**, with no GitHub or chat dependency. Then independently prove reboot/outage/owner takeover and major-milestone publication.
+diff --git a/docs/ROADMAP.md b/docs/ROADMAP.md
+index 705dc23..1c40330 100644
+--- a/docs/ROADMAP.md
++++ b/docs/ROADMAP.md
+@@ -1,5 +1,19 @@
+ # Roadmap
+ 
++## Iron God operating priority — autonomous LOCAL GIT software factory (2026-10-14)
++
++**Authoritative target:** [Autonomous Local-Git Factory](IRON_GOD_AUTONOMOUS_LOCAL_GIT_FACTORY.md). Local Git commits, candidate worktrees and protected accepted baselines govern development. GitHub governs separately queued major releases, independent CI and off-device recovery; publishing is **not** a prerequisite for the next safe local development slice. Existing production policy remains unchanged until a verified shadow/canary cutover.
++
++- [x] Adopt and document the controlling architecture and intended ownership/authority boundaries (design only).
++- [ ] Audit/preserve Claude Code's current candidates, dirty worktrees, and executable engine status before migration.
++- [ ] **FIRST PROOF:** one real product slice passes independent exact-head verification and local acceptance, then a second eligible slice starts automatically without chat, hourly cadence, or GitHub.
++- [ ] Advance candidate/accepted local Git authority, SQLite durable journal/recovery, independent Product Reality, and owner-control fencing; do not infer deployment from green isolated tests.
++- [ ] Simulate GitHub unavailable; verify two locally accepted milestones proceed and publish in order after service recovery.
++- [ ] Add bounded autonomy budget, planner dedupe, repair routing, conflict-aware capacity and event-driven worker refill.
++- [ ] Recover after restart, protect owner TAKE THE WHEEL, and roll out safely across all products.
++
++**Order adjustment:** minimal immediate event-driven dispatch/refill is an EARLY Milestone 1 dependency, not postponed to advanced Phase 7 scheduling. The hourly DoWork job is a watchdog and CAPA loop, **not** the execution clock. Product usability outranks orchestration expansion unless a demonstrated P0/P1 defect prevents safe delivery. Nothing above is claimed production-ready.
++
+ ## v1 — Portfolio brain
+ 
+ - [x] Canonical three-project / five-repository inventory
+diff --git a/engineering/control-plane.json b/engineering/control-plane.json
+index a0e3882..72259e8 100644
+--- a/engineering/control-plane.json
++++ b/engineering/control-plane.json
+@@ -51,7 +51,8 @@
+     "engineering/state/closed-loop-product-run.json",
+     "engineering/state/pre-change-risk.json",
+     "engineering/state/process-experiments.json",
+-    "docs/IRON_MEMORY.md"
++    "docs/IRON_MEMORY.md",
++    "docs/IRON_GOD_AUTONOMOUS_LOCAL_GIT_FACTORY.md"
+   ],
+   "invariants": [
+     "product_repositories_retain_product_authority",

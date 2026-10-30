@@ -1,0 +1,15 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_verify-rs-live",
+ "head": "e353e4067ceff6d061ffbe2360a8ed76e974cecd",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "preflight-evidence.json"
+ ],
+ "patch_sha256": "1d8c3a7268f5e7ac7377f104e75b7df268e3d075f230c9f2d6b39ca07ad3e0af",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator___verify-rs-live__25f2fd"
+}

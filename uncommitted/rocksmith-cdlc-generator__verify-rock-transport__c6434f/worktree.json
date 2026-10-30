@@ -1,0 +1,15 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ProjectOrchestrator/verify-rock-transport",
+ "head": "51d92ce44df89d27db12c30f0d3c5d677b831f05",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "preflight-evidence.json"
+ ],
+ "patch_sha256": "6f5dbf0ef7ce6f00db8cece3b348d0c5269dad3d2add1a3407f8c7a33fbde50a",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__verify-rock-transport__c6434f"
+}

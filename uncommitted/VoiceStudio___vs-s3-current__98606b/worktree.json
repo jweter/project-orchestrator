@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_vs-s3-current",
+ "head": "51d940f13487a6b15566364e4837f32347b89c68",
+ "branch": "repair/singing-s3-current",
+ "repo": "VoiceStudio",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\VoiceStudio",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "repair10.txt",
+   "89718fb7635966c41e696064090e0db32c7ee5ab456ef12726ea248ae2408a44"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\VoiceStudio___vs-s3-current__98606b"
+}

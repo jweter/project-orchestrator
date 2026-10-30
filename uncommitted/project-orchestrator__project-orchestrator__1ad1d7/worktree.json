@@ -1,0 +1,34 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/project-orchestrator",
+ "head": "51f5818c6a8ef559f3967ce2037619d340c9e9fa",
+ "branch": "fix/takeover-drain-before-refill",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "ef5867af61a211ff27ad8415a140f1dbebbb4b54c3c308ca0ff1450adc0f86de"
+  ],
+  [
+   ".aider.input.history",
+   "af23d9a083e0cd893212fc7eb3823cfa7561d294d06e6897e0c0c3e11e659f03"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "ded2a417a704ff33dcd485470cba9b4bc381095e4cdb5a1a060fb21d41044981"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-shm",
+   "0ea910df207e6e432f188c44ec662c37d647f342a217d52c1648cd0551bf5349"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-wal",
+   "9f51d17c7aa81bf55eb8005f1ffdd2c674d64c92b1080cf18e793af20b80a863"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__project-orchestrator__1ad1d7"
+}

@@ -1,0 +1,15 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_rs-parity-contract",
+ "head": "af4ae91238270f598ccaa3927f96dacf053eeeef",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "preflight-evidence.json"
+ ],
+ "patch_sha256": "21a142d4718365d4483d6ae3f3b1b8eb7fbe35f0b08d676e6688c7e13c8c7a7d",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator___rs-parity-contract__8cd736"
+}

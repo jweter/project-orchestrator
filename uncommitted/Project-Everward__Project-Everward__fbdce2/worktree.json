@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/.worker-worktrees/everward-worker-2/Project-Everward",
+ "head": "13c2209cef82f1f995d36b7d37f2cb7dd993991b",
+ "branch": "actor/autonomous-project-everward-20260929-014345",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "1c3c4a4d8476d015e5ceb6703d5cd53d536a2fedc65f9453bd15cbe74a8acd06"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__Project-Everward__fbdce2"
+}

@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/GitHub/ke-web-pr195-reconcile",
+ "head": "1a406b3bc684260ef18d7ce15da102691dba1f0a",
+ "branch": "repair/pr195-current-main",
+ "repo": "knowledge-engine-web",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-web",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "95d2592e10278ca566f6fd087003254bdcbb3674efcf826bf30feda853700631"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-web__ke-web-pr195-reconcile__3e3ca9"
+}

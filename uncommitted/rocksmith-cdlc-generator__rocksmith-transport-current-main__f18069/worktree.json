@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/GitHub/rocksmith-transport-current-main",
+ "head": "28e103991d58376cea94ac6fae96c1e608cd8b1c",
+ "branch": "repair/live-review-transport-current-main",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "preflight-evidence.json"
+ ],
+ "patch_sha256": "f42dbbfab46a2504c584cea6ba27bda58a115f931dbfb63348fa33c45e0b6ce0",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__rocksmith-transport-current-main__f18069"
+}

@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/canon-workspaces/products/worktrees/PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T221019Z",
+ "head": "00846ee417c6325ad45730a1920e130e2a5cc2bb",
+ "branch": "iron-god/knowledge-engine-core/product-knowledge-engine-core-20261029t221019z",
+ "repo": "knowledge-engine-core",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\canon-workspaces\\products\\knowledge-engine-core",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "a4b4c7535b71ac8c49e01f2d33a2d721f9668b626b656ee4335ee2937ccef60a"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-core__PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T221019Z__8eb3ba"
+}

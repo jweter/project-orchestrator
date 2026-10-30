@@ -1,0 +1,42 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_burst-ke",
+ "head": "84729339c3e9604ce84724437655d8c52d8a159c",
+ "branch": "orchestrator/burst-ke-20260923",
+ "repo": "knowledge-engine-core",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-core",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "ba7961d1f6031cc4c4ee8c3196096fc96615b237910ffe2555e5f37e1a001537"
+  ],
+  [
+   ".aider.input.history",
+   "f1524a4ed2ec462aa9070e314797c0cfd54bb4abb011194ab5922e1cd41e0625"
+  ],
+  [
+   ".aider.tags.cache.v4/20/d7/2aa4073bc1ab230a52fd14ff0e70.val",
+   "e8cc6ef6cbc353920d805315513c370084d8d7f980f9e979c29b842b6e6c6c82"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "bec43c8807cc54dbd901965b4d809d7034d1e11845b6de0d6b38645671c058f9"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-shm",
+   "04f6c3317e9c836ac6864bd50bc3cc0345f42024fd8ae3c5a22e1f07cfbf30bf"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-wal",
+   "ac0a3c899de676bee548562f41cae8bdde69eea410e1724b6c2934c55dc83c72"
+  ],
+  [
+   ".aider.tags.cache.v4/e0/ed/956ee762415d64d1fd229a19b8c4.val",
+   "4ad704a49f9f990d055a4f2e39fe90dc7219162e1dd6aaad6fedadec3cbbba78"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-core___burst-ke__ed6329"
+}

@@ -1,0 +1,29 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/Project-Everward",
+ "head": "cef9b05d3f2f805911c25c6adca8294aeb8e55ac",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 4,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "playtests/phase2/observations/phase2-first-run-20260923-042938.json",
+   "6e87e2faac2728c199f54545e63c2004fa45e89c28eb6897e44b71613940f9e9"
+  ],
+  [
+   "playtests/phase2/observations/phase2-first-run-20260923-052856.json",
+   "48ffceac126d0ef86ad377a837e32a4ff3615c2435c473784b295700a91ddeec"
+  ],
+  [
+   "playtests/phase2/observations/phase2-first-run-20260923-073545.json",
+   "5d500af8e0dca89b5f84896d991155251dbce1a5451f188158b2162af595eeac"
+  ],
+  [
+   "preflight-evidence.json",
+   "cb31f36e786af037ff06ecd758dd33350fb3ffca07abcb1158dc7a10f109ea32"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__Project-Everward__b76a08"
+}

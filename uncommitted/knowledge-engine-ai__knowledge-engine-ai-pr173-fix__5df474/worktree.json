@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/GitHub/knowledge-engine-ai-pr173-fix",
+ "head": "5b1867b8c3583ebe742e0075c0f66c57a6c0e308",
+ "branch": "repair/pr173-current",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "d93342f0d4fd35fc870ff6c3f50024eacf5140dc04ba7d6bc264d72d4ff6ca3c"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__knowledge-engine-ai-pr173-fix__5df474"
+}

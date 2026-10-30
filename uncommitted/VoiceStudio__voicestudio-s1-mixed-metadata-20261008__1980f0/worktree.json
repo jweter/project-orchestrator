@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/worktrees/voicestudio-s1-mixed-metadata-20261008",
+ "head": "621b867e41aa64960525932e97dad869403040ad",
+ "branch": "repair/singing-s1-mixed-metadata-20261008",
+ "repo": "VoiceStudio",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\VoiceStudio",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [],
+ "untracked_skipped": [
+  [
+   ".pytest-s1-isolated-20261008/test_mlx_audio_active_model_id0/prefs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-s1-isolated-20261008/test_mlx_audio_active_model_idcurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\VoiceStudio__voicestudio-s1-mixed-metadata-20261008__1980f0"
+}

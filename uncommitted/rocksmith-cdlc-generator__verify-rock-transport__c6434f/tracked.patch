@@ -1,0 +1,16 @@
+diff --git a/preflight-evidence.json b/preflight-evidence.json
+index 25bae25..1167f65 100644
+--- a/preflight-evidence.json
++++ b/preflight-evidence.json
+@@ -1,9 +1,9 @@
+ {
+   "schema_version": 1,
+   "repository": "jweter/rocksmith-cdlc-generator",
+-  "head_sha": "3d5db3971cff45cd34919b022bcc07fcfa4d4601",
++  "head_sha": "51d92ce44df89d27db12c30f0d3c5d677b831f05",
+   "mode": "FULL",
+-  "generated_at": "2026-09-19T22:57:31.511363+00:00",
++  "generated_at": "2026-10-03T22:33:23.057916+00:00",
+   "status": "GREEN",
+   "checks": [
+     {

@@ -1,0 +1,628 @@
+diff --git a/docs/UNATTENDED_VERIFICATION.md b/docs/UNATTENDED_VERIFICATION.md
+index d5486f2..948b90f 100644
+--- a/docs/UNATTENDED_VERIFICATION.md
++++ b/docs/UNATTENDED_VERIFICATION.md
+@@ -27,9 +27,13 @@ Pending worker verification blocks only the dependent lane. Deterministic simula
+ 
+ ## Everward application
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\docs\UNATTENDED_VERIFICATION.md
+ Objective checks such as UBT compilation, Unreal Automation tests, packaged startup, deterministic fixed-step behavior, save/load round trips, component/system state, resource/mining/repair invariants, input-state transitions, HUD data contracts, crash detection, screenshots, and reproducible telemetry should move into CI or the unattended worker.
+ 
+ The private Windows worker currently runs full preflight, the UBT editor build, the headless Unreal smoke, and then a bounded low-spec startup/process-memory check that reuses the manual `-LowSpec -MeasureMemory` launch contract. That last check records startup survival and working-set facts for the exact tested commit only. Missing telemetry is `REVIEW_REQUIRED`, an editor exit is `FAIL`, and neither result, nor a PASS, is visual, control-feel, frame-time, or gameplay acceptance. See `docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md`.
++=======
++Objective checks such as UBT compilation, Unreal Automation tests, packaged startup, deterministic fixed-step behavior, save/load round trips, component/system state, resource/mining/repair invariants, input-state transitions, HUD data contracts, crash detection, screenshots, reproducible telemetry, and bounded opt-in low-spec startup/process-memory capture should move into CI or the unattended worker.
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker0.txt
+ 
+ Human review remains appropriate for irreducibly subjective gameplay feel, visual quality, pacing, artistic presentation, or product-direction decisions. Even then, automate setup, navigation, evidence capture, and regression checks so Jeremy evaluates only the final subjective question.
+ 
+diff --git a/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md b/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+index d06b73f..bd822ca 100644
+--- a/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md
++++ b/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+@@ -61,6 +61,7 @@ The worker then:
+ 7. runs the repository-standard `python tools/quality_preflight.py --full` gate;
+ 8. only if full preflight passes, locates Unreal Engine 5.8 using the same explicit/env/registry/common-path model as the manual harness;
+ 9. builds `EverwardEditor Win64 Development` through UnrealBuildTool without launching Unreal Editor;
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\docs\UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+ 10. runs the headless `-NullRHI` Unreal map/load smoke (`tools/run_unreal_headless_smoke.ps1`);
+ 11. only if the headless smoke passes, runs the bounded low-spec startup check (`tools/run_unattended_low_spec_startup.ps1`, see below);
+ 12. writes exact-commit PASS / FAIL / REVIEW_REQUIRED evidence locally;
+@@ -82,6 +83,12 @@ Classification:
+ - `REVIEW_REQUIRED` — evidence missing/unreadable, commit mismatch, telemetry unavailable, timeout, launcher refusal, or unconfirmed cleanup.
+ 
+ `product_reality_claimed` is always `false`. A PASS is a startup-survival and process-memory fact on the target laptop. It is not visual, control-feel, frame-time, or gameplay acceptance, and those items stay in the human-only debt list.
++=======
++10. runs a bounded headless Unreal smoke (map/load) check, then, only if that passes, a bounded opt-in Low-Spec Development startup/memory check that reuses the exact `-LowSpec -MeasureMemory` scalability contract from `tools/run_phase2_first_playtest.ps1` as per-launch `-ExecCmds` only, never as a persisted setting;
++11. writes exact-commit PASS / FAIL / REVIEW_REQUIRED evidence locally;
++12. caches a successful exact commit so an unchanged green build is not rebuilt on every idle episode;
++13. best-effort updates GitHub issue #243 with the latest sanitized status when GitHub CLI is authenticated.
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker1.txt
+ 
+ The scheduled worker always exits zero to Task Scheduler. Test truth is in the evidence JSON, not in a retry storm. GitHub publication is presentation only and cannot change PASS/FAIL truth.
+ 
+@@ -92,15 +99,24 @@ Default state lives outside the repository:
+ ```text
+ %LOCALAPPDATA%\Everward\unattended-worker\
+   latest.json
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\docs\UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+   last_passed_headless_smoke_commit.txt
+   last_passed_low_spec_startup_commit.txt
++=======
++  last_passed_commit.txt
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker1.txt
+   history\<timestamp>.json
+   logs\<commit>\full-preflight.log
+   logs\<commit>\unreal-build.log
+   logs\<commit>\unreal-headless-smoke.log
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\docs\UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+   logs\<commit>\low-spec-startup.log
+   logs\<commit>\low-spec-startup.json
+   logs\<commit>\low-spec-startup-unreal.log
++=======
++  logs\<commit>\lowspec-startup-evidence.log
++  logs\<commit>\lowspec-startup-evidence.json
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker1.txt
+   preserved-playtests\<timestamp>\phase2-observations\...
+ ```
+ 
+@@ -113,7 +129,12 @@ The worker records:
+ - canonical full-preflight status, exit code, duration, and local log;
+ - Unreal Engine 5.8 discovery status;
+ - UBT build status, exit code, duration, and local log;
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\docs\UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+ - headless smoke status and low-spec startup/process-memory facts;
++=======
++- headless Unreal smoke status, exit code, duration, and local log;
++- bounded opt-in Low-Spec Development startup success/failure and peak process working-set evidence, with exact commit identity, only after the headless smoke passes;
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker1.txt
+ - a redacted failure tail that replaces the dedicated checkout, user profile, and Unreal installation roots;
+ - the explicit human-only debt that remains.
+ 
+@@ -139,7 +160,11 @@ The worker does not:
+ - modify player saves;
+ - commit, push, or merge source code;
+ - upload detailed local logs;
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\docs\UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+ - declare rendering, controls, art, frame-time, or gameplay feel correct from a successful compile;
++=======
++- declare rendering, controls, art, frame-time, or gameplay feel correct from a successful compile, headless smoke, or bounded low-spec startup/memory check;
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker1.txt
+ - replace Everward's existing deterministic simulation CI;
+ - turn missing evidence into PASS.
+ 
+@@ -182,7 +207,11 @@ The natural follow-on work for #240 is:
+ 2. script the opening deterministic gameplay chain: damaged awakening → target selection → scan → José approach → manipulator/mining → material gain → Fix_It repair;
+ 3. assert telemetry and state transitions from that chain automatically;
+ 4. add deterministic screenshots and asset/reference checks for gross visual regressions such as wireframe mode, missing HUD, missing probe/tools, or severe camera clipping;
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\docs\UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+ 5. add instrumented frame-time capture for the low-spec Product Reality target (bounded startup survival and process working-set capture now exist; frame-time does not);
++=======
++5. add instrumented frame-time capture for the low-spec Product Reality target (bounded startup success and peak process RAM are now captured by the worker; frame-time remains open);
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker1.txt
+ 6. feed deterministic worker evidence into the existing read-only mobile evidence surface;
+ 7. optionally use local Ollama to classify sanitized derived failure evidence, while keeping Python/tests/build tools as authority;
+ 8. retire each human checklist item as soon as an independent machine oracle exists.
+diff --git a/tools/everward_unattended_worker.py b/tools/everward_unattended_worker.py
+index 51961e0..0285da5 100644
+--- a/tools/everward_unattended_worker.py
++++ b/tools/everward_unattended_worker.py
+@@ -25,9 +25,12 @@ SENTINEL_NAME = "everward-unattended-worker"
+ MANUAL_LOCK_NAME = "everward-manual-playtest.lock"
+ LOCK_NAME = "worker.lock"
+ LAST_PASS_MARKER = "last_passed_headless_smoke_commit.txt"
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+ LOW_SPEC_PASS_MARKER = "last_passed_low_spec_startup_commit.txt"
+ LOW_SPEC_EVIDENCE_SCHEMA_VERSION = 1
+ LOW_SPEC_SAMPLE_WINDOW_SECONDS = 60
++=======
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+ REPORT_SCHEMA_VERSION = 1
+ 
+ 
+@@ -461,6 +464,7 @@ def run_unreal_headless_smoke(
+     }
+ 
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+ def _finite_number(value: Any) -> float | None:
+     if isinstance(value, bool) or not isinstance(value, (int, float)):
+         return None
+@@ -591,6 +595,27 @@ def run_unreal_low_spec_startup(
+     evidence_path = log_dir / "low-spec-startup.json"
+     log_path = log_dir / "low-spec-startup.log"
+     evidence_path.unlink(missing_ok=True)
++=======
++def run_unreal_lowspec_startup_evidence(
++    repo_root: Path, unreal_root: Path, log_path: Path, evidence_path: Path
++) -> dict[str, Any]:
++    script = repo_root / "tools" / "run_unreal_lowspec_startup_evidence.ps1"
++    if not script.is_file():
++        return {
++            "status": "REVIEW_REQUIRED",
++            "reason": "tools/run_unreal_lowspec_startup_evidence.ps1 is missing",
++        }
++    if os.name != "nt":
++        return {
++            "status": "REVIEW_REQUIRED",
++            "reason": "Low-spec startup evidence requires Windows",
++        }
++
++    evidence_path.parent.mkdir(parents=True, exist_ok=True)
++    if evidence_path.exists():
++        evidence_path.unlink()
++
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+     code, duration = run_logged(
+         [
+             "powershell.exe",
+@@ -601,6 +626,7 @@ def run_unreal_low_spec_startup(
+             str(script),
+             "-UnrealRoot",
+             str(unreal_root),
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+             "-ExpectedCommit",
+             expected_commit,
+             "-EvidencePath",
+@@ -629,6 +655,48 @@ def run_unreal_low_spec_startup(
+         else log_tail(log_path, repo_root=repo_root, unreal_root=unreal_root)
+     )
+     return result
++=======
++            "-EvidencePath",
++            str(evidence_path),
++        ],
++        cwd=repo_root,
++        log_path=log_path,
++        timeout_seconds=240.0,
++    )
++
++    evidence: dict[str, Any] | None = None
++    if evidence_path.is_file():
++        try:
++            evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
++        except (OSError, json.JSONDecodeError):
++            evidence = None
++
++    if evidence is None:
++        return {
++            "status": "REVIEW_REQUIRED",
++            "reason": "Bounded low-spec startup/memory evidence file was not produced; no Product Reality was inferred.",
++            "exit_code": code,
++            "duration_seconds": round(duration, 3),
++            "log": str(log_path),
++            "failure_tail": log_tail(log_path, repo_root=repo_root, unreal_root=unreal_root),
++        }
++
++    startup_success = bool(evidence.get("startup_success"))
++    status = "PASS" if (code == 0 and startup_success) else "FAIL"
++    return {
++        "status": status,
++        "exit_code": code,
++        "duration_seconds": round(duration, 3),
++        "log": str(log_path),
++        "startup_success": startup_success,
++        "peak_working_set_mib": evidence.get("peak_working_set_mib"),
++        "sample_window_seconds": evidence.get("sample_window_seconds"),
++        "profile": evidence.get("profile"),
++        "failure_tail": ""
++        if status == "PASS"
++        else log_tail(log_path, repo_root=repo_root, unreal_root=unreal_root),
++    }
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+ 
+ 
+ def acquire_lock(state_dir: Path) -> tuple[int | None, bool]:
+@@ -674,14 +742,21 @@ def aggregate_status(checks: dict[str, dict[str, Any]]) -> Status:
+     return "PASS"
+ 
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+ def _read_marker(state_dir: Path, name: str) -> str | None:
+     try:
+         value = (state_dir / name).read_text(encoding="ascii").strip().lower()
++=======
++def read_last_pass(state_dir: Path) -> str | None:
++    try:
++        value = (state_dir / LAST_PASS_MARKER).read_text(encoding="ascii").strip().lower()
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+     except OSError:
+         return None
+     return value if re.fullmatch(r"[0-9a-f]{40}", value) else None
+ 
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+ def read_last_pass(state_dir: Path) -> str | None:
+     # A cached PASS requires both the headless-smoke marker and the low-spec
+     # startup marker for the same exact commit; markers written by earlier worker
+@@ -692,6 +767,8 @@ def read_last_pass(state_dir: Path) -> str | None:
+     return smoke
+ 
+ 
++=======
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+ def write_report(
+     state_dir: Path, report: dict[str, Any], *, update_latest: bool = True
+ ) -> Path:
+@@ -769,7 +846,11 @@ def run_worker(
+         report["tested_commit"] = target
+         report["checks"]["cached_exact_commit"] = {
+             "status": "PASS",
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+             "reason": "This exact Foundation-green commit already passed unattended full preflight, UBT build, and headless Unreal smoke, plus the bounded low-spec startup check.",
++=======
++            "reason": "This exact Foundation-green commit already passed unattended full preflight, UBT build, and headless Unreal smoke.",
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+         }
+         report["notes"].append("No rerun was needed; exact fully verified commit is unchanged.")
+         report["completed_at_utc"] = utc_now()
+@@ -840,21 +921,40 @@ def run_worker(
+     report["checks"]["unreal_headless_smoke"] = headless_smoke
+     if headless_smoke.get("status") != "PASS":
+         report["notes"].append(
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+             "Low-spec startup check was not attempted because headless Unreal smoke did not pass."
++=======
++            "Bounded low-spec startup/memory evidence was not attempted because headless Unreal smoke did not pass."
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+         )
+         report["completed_at_utc"] = utc_now()
+         report["result"] = aggregate_status(report["checks"])
+         return report
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+     low_spec = run_unreal_low_spec_startup(repo_root, unreal_root, logs, target)
+     report["checks"]["unreal_low_spec_startup"] = low_spec
++=======
++    lowspec_startup_evidence = run_unreal_lowspec_startup_evidence(
++        repo_root,
++        unreal_root,
++        logs / "lowspec-startup-evidence.log",
++        logs / "lowspec-startup-evidence.json",
++    )
++    report["checks"]["unreal_lowspec_startup_evidence"] = lowspec_startup_evidence
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+     report["completed_at_utc"] = utc_now()
+     report["result"] = aggregate_status(report["checks"])
+     if report["result"] == "PASS":
+         (state_dir / LAST_PASS_MARKER).write_text(target + "\n", encoding="ascii")
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\everward_unattended_worker.py
+         (state_dir / LOW_SPEC_PASS_MARKER).write_text(target + "\n", encoding="ascii")
+         report["notes"].append(
+             "Deterministic engineering gates, headless map/load smoke, and the bounded low-spec startup/process-memory check passed. Visual, interaction-feel, frame-time, and gameplay Product Reality remain human-only."
++=======
++        report["notes"].append(
++            "Deterministic engineering gates, headless map/load smoke, and bounded low-spec startup/memory evidence passed. Visual, interaction-feel, performance, and gameplay Product Reality remain human-only."
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker2.txt
+         )
+     return report
+ 
+diff --git a/tools/publish_unattended_product_reality.ps1 b/tools/publish_unattended_product_reality.ps1
+index 6ac72b7..8e2a69f 100644
+--- a/tools/publish_unattended_product_reality.ps1
++++ b/tools/publish_unattended_product_reality.ps1
+@@ -65,6 +65,7 @@ function Get-FailureFingerprint {
+     if ($Tail -match "(?i)cmake") { return "cmake|exit=$ExitCode" }
+     if ($Tail -match "(?i)ctest|test failed|tests failed") { return "test|exit=$ExitCode" }
+     if ($Tail -match "(?i)build\.bat|unrealbuildtool|ubt") { return "unreal_build|exit=$ExitCode" }
++    if ($Tail -match "(?i)low-spec editor startup evidence") { return "lowspec_startup|exit=$ExitCode" }
+     if ($Tail -match "(?i)traceback|error|failed") { return "command_failure|exit=$ExitCode" }
+     return "exit=$ExitCode"
+ }
+@@ -123,7 +124,11 @@ $CheckNames = @(
+     "unreal_5_8",
+     "unreal_editor_build",
+     "unreal_headless_smoke",
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\publish_unattended_product_reality.ps1
+     "unreal_low_spec_startup",
++=======
++    "unreal_lowspec_startup_evidence",
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker3.txt
+     "worker_exception"
+ )
+ 
+diff --git a/tools/test_unattended_product_reality_reporting.py b/tools/test_unattended_product_reality_reporting.py
+index 10d09f4..a8e0fc2 100644
+--- a/tools/test_unattended_product_reality_reporting.py
++++ b/tools/test_unattended_product_reality_reporting.py
+@@ -1,9 +1,12 @@
+ from __future__ import annotations
+ 
+ from pathlib import Path
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_reporting.py
+ import shutil
+ import subprocess
+ import tempfile
++=======
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker4.txt
+ import unittest
+ 
+ 
+@@ -46,6 +49,16 @@ class UnattendedProductRealityReportingTests(unittest.TestCase):
+         self.assertIn("sanitized failure fingerprint", source)
+         self.assertNotIn("repo_root", source)
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_reporting.py
++=======
++    def test_publisher_reports_lowspec_startup_evidence_check_with_sanitized_fingerprint(
++        self,
++    ) -> None:
++        source = PUBLISHER.read_text(encoding="utf-8")
++        self.assertIn('"unreal_lowspec_startup_evidence"', source)
++        self.assertIn('return "lowspec_startup|exit=$ExitCode"', source)
++
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker4.txt
+ 
+ if __name__ == "__main__":
+     unittest.main()
+@@ -55,6 +68,7 @@ def test_publisher_avoids_encoding_sensitive_punctuation_and_ambiguous_variable_
+     script = (ROOT / "tools" / "publish_unattended_product_reality.ps1").read_text(encoding="utf-8")
+     assert "—" not in script
+     assert '"- **${Name}:** $Status"' in script
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_reporting.py
+ 
+ 
+ def _fingerprint_function_source() -> str:
+@@ -113,3 +127,5 @@ class FailureFingerprintBehaviorTests(unittest.TestCase):
+             'failure_tail="cmake failed" }'
+         )
+         self.assertEqual(value, "cmake|exit=17")
++=======
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker4.txt
+diff --git a/tools/test_unattended_product_reality_safety_regressions.py b/tools/test_unattended_product_reality_safety_regressions.py
+index c051330..922120a 100644
+--- a/tools/test_unattended_product_reality_safety_regressions.py
++++ b/tools/test_unattended_product_reality_safety_regressions.py
+@@ -9,6 +9,10 @@ WORKER = ROOT / "tools/everward_unattended_worker.py"
+ REGISTER = ROOT / "tools/register_unattended_product_reality.ps1"
+ HARNESS = ROOT / "tools/run_phase2_first_playtest.ps1"
+ SETUP = ROOT / "tools/Setup_Everward_Unattended_Testing.bat"
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_safety_regressions.py
++=======
++LOWSPEC_SCRIPT = ROOT / "tools/run_unreal_lowspec_startup_evidence.ps1"
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker5.txt
+ 
+ 
+ class UnattendedSafetyRegressionTests(unittest.TestCase):
+@@ -84,6 +88,74 @@ class UnattendedSafetyRegressionTests(unittest.TestCase):
+         self.assertIn("full preflight, UBT build, and headless Unreal smoke", run_body)
+         self.assertIn("read_last_pass(state_dir) == target", run_body)
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_safety_regressions.py
++=======
++    def test_lowspec_startup_evidence_runs_only_after_headless_smoke_and_before_marker(self) -> None:
++        source = WORKER.read_text(encoding="utf-8")
++        self.assertIn("def run_unreal_lowspec_startup_evidence", source)
++        self.assertIn('"run_unreal_lowspec_startup_evidence.ps1"', source)
++        self.assertIn(
++            'report["checks"]["unreal_lowspec_startup_evidence"] = lowspec_startup_evidence', source
++        )
++
++        run_body = source.split("def run_worker", 1)[1].split("def build_parser", 1)[0]
++        self.assertIn('if headless_smoke.get("status") != "PASS":', run_body)
++        smoke_index = run_body.index("run_unreal_headless_smoke(")
++        lowspec_index = run_body.index("run_unreal_lowspec_startup_evidence(")
++        marker_index = run_body.index("LAST_PASS_MARKER).write_text")
++        self.assertLess(smoke_index, lowspec_index)
++        self.assertLess(lowspec_index, marker_index)
++
++    def test_lowspec_startup_evidence_fails_closed_on_missing_or_negative_telemetry(self) -> None:
++        source = WORKER.read_text(encoding="utf-8")
++        func_body = source.split("def run_unreal_lowspec_startup_evidence", 1)[1].split(
++            "def acquire_lock", 1
++        )[0]
++        self.assertIn("if evidence is None:", func_body)
++        self.assertIn('"status": "REVIEW_REQUIRED"', func_body)
++        self.assertIn("was not produced", func_body)
++        self.assertIn(
++            'status = "PASS" if (code == 0 and startup_success) else "FAIL"', func_body
++        )
++        self.assertIn(
++            "log_tail(log_path, repo_root=repo_root, unreal_root=unreal_root)", func_body
++        )
++
++    def test_lowspec_startup_evidence_script_is_bounded_and_leaves_safe_state(self) -> None:
++        source = LOWSPEC_SCRIPT.read_text(encoding="utf-8")
++        self.assertIn("LaunchTimeoutSeconds", source)
++        self.assertIn("SampleWindowSeconds", source)
++        self.assertIn("taskkill.exe /PID $Process.Id /T /F", source)
++        self.assertIn("finally {", source)
++        self.assertNotIn("Set-ItemProperty", source)
++        self.assertIn('timeout_seconds=240.0', WORKER.read_text(encoding="utf-8"))
++
++    def test_lowspec_startup_evidence_does_not_claim_visual_or_gameplay_pass(self) -> None:
++        source = LOWSPEC_SCRIPT.read_text(encoding="utf-8")
++        self.assertIn(
++            "does not assert visual, control-feel, or gameplay Product Reality", source
++        )
++        self.assertNotIn("PRODUCT_REALITY_VERIFIED", source)
++        self.assertNotIn("Product Reality PASS", source)
++
++    def test_lowspec_evidence_json_excludes_private_paths(self) -> None:
++        source = LOWSPEC_SCRIPT.read_text(encoding="utf-8")
++        function_body = source.split("function Write-Evidence", 1)[1].split(
++            "$Process = $null", 1
++        )[0]
++        json_fields = function_body.split("[ordered]@{", 1)[1].split("} | ConvertTo-Json", 1)[0]
++        self.assertNotIn("$RepoRoot", json_fields)
++        self.assertNotIn("$EditorExe", json_fields)
++        self.assertNotIn("$ProjectPath", json_fields)
++        self.assertNotIn("$EvidencePath", json_fields)
++
++    def test_lowspec_startup_evidence_only_changes_settings_via_per_launch_execcmds(self) -> None:
++        source = LOWSPEC_SCRIPT.read_text(encoding="utf-8")
++        self.assertIn("-ExecCmds=", source)
++        self.assertNotIn("DefaultScalability.ini", source)
++        self.assertNotIn("GameUserSettings.ini", source)
++
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker5.txt
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tools/test_unattended_product_reality_worker.py b/tools/test_unattended_product_reality_worker.py
+index 6691e33..2ecd307 100644
+--- a/tools/test_unattended_product_reality_worker.py
++++ b/tools/test_unattended_product_reality_worker.py
+@@ -1,6 +1,10 @@
+ from __future__ import annotations
+ 
+ import importlib.util
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_worker.py
++=======
++import json
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker6.txt
+ import tempfile
+ import unittest
+ from pathlib import Path
+@@ -11,6 +15,10 @@ WORKER_PATH = ROOT / "tools" / "everward_unattended_worker.py"
+ REGISTER_PATH = ROOT / "tools" / "register_unattended_product_reality.ps1"
+ PUBLISH_PATH = ROOT / "tools" / "publish_unattended_product_reality.ps1"
+ HARNESS_PATH = ROOT / "tools" / "run_phase2_first_playtest.ps1"
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_worker.py
++=======
++LOWSPEC_SCRIPT_PATH = ROOT / "tools" / "run_unreal_lowspec_startup_evidence.ps1"
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker6.txt
+ 
+ spec = importlib.util.spec_from_file_location("everward_unattended_worker", WORKER_PATH)
+ assert spec is not None and spec.loader is not None
+@@ -140,6 +148,140 @@ class UnattendedProductRealityWorkerTests(unittest.TestCase):
+         self.assertIn("register_unattended_product_reality.ps1", text)
+         self.assertIn("Manual playtest will continue", text)
+ 
++<<<<<<< C:\Users\jerem\Documents\GitHub\_everward-low-spec-recovery\tools\test_unattended_product_reality_worker.py
++=======
++    def test_lowspec_startup_evidence_missing_script_fails_closed(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            repo = Path(temp)
++            (repo / "tools").mkdir()
++            with mock.patch.object(worker.os, "name", "nt"):
++                result = worker.run_unreal_lowspec_startup_evidence(
++                    repo, Path("C:/UE_5.8"), repo / "log.log", repo / "evidence.json"
++                )
++            self.assertEqual(result["status"], "REVIEW_REQUIRED")
++            self.assertIn("run_unreal_lowspec_startup_evidence.ps1", result["reason"])
++
++    def test_lowspec_startup_evidence_requires_windows(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            repo = Path(temp)
++            (repo / "tools").mkdir()
++            (repo / "tools" / "run_unreal_lowspec_startup_evidence.ps1").write_text("", encoding="utf-8")
++            with mock.patch.object(worker.os, "name", "posix"):
++                result = worker.run_unreal_lowspec_startup_evidence(
++                    repo, Path("/opt/UE_5.8"), repo / "log.log", repo / "evidence.json"
++                )
++            self.assertEqual(result["status"], "REVIEW_REQUIRED")
++            self.assertIn("Windows", result["reason"])
++
++    def test_lowspec_startup_evidence_fails_closed_when_telemetry_missing(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            repo = Path(temp)
++            (repo / "tools").mkdir()
++            (repo / "tools" / "run_unreal_lowspec_startup_evidence.ps1").write_text("", encoding="utf-8")
++            log_path = repo / "logs" / "lowspec.log"
++            evidence_path = repo / "logs" / "lowspec.json"
++            with mock.patch.object(worker.os, "name", "nt"), mock.patch.object(
++                worker, "run_logged", return_value=(0, 1.0)
++            ):
++                result = worker.run_unreal_lowspec_startup_evidence(
++                    repo, Path("C:/UE_5.8"), log_path, evidence_path
++                )
++            self.assertEqual(result["status"], "REVIEW_REQUIRED")
++            self.assertIn("was not produced", result["reason"])
++
++    def test_lowspec_startup_evidence_fails_when_startup_success_is_false(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            repo = Path(temp)
++            (repo / "tools").mkdir()
++            (repo / "tools" / "run_unreal_lowspec_startup_evidence.ps1").write_text("", encoding="utf-8")
++            log_path = repo / "logs" / "lowspec.log"
++            evidence_path = repo / "logs" / "lowspec.json"
++
++            def fake_run_logged(args, *, cwd, log_path, timeout_seconds):
++                log_path.parent.mkdir(parents=True, exist_ok=True)
++                log_path.write_text(
++                    "Low-spec editor startup evidence failed: process exited during the bounded sample window.",
++                    encoding="utf-8",
++                )
++                evidence_path.parent.mkdir(parents=True, exist_ok=True)
++                evidence_path.write_text(
++                    json.dumps(
++                        {
++                            "startup_success": False,
++                            "peak_working_set_mib": 512.0,
++                            "sample_window_seconds": 12,
++                            "profile": "low_spec_development",
++                        }
++                    ),
++                    encoding="utf-8",
++                )
++                return 1, 12.0
++
++            with mock.patch.object(worker.os, "name", "nt"), mock.patch.object(
++                worker, "run_logged", side_effect=fake_run_logged
++            ):
++                result = worker.run_unreal_lowspec_startup_evidence(
++                    repo, Path("C:/UE_5.8"), log_path, evidence_path
++                )
++            self.assertEqual(result["status"], "FAIL")
++            self.assertFalse(result["startup_success"])
++            self.assertIn("bounded sample window", result["failure_tail"])
++
++    def test_lowspec_startup_evidence_passes_on_bounded_success(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            repo = Path(temp)
++            (repo / "tools").mkdir()
++            (repo / "tools" / "run_unreal_lowspec_startup_evidence.ps1").write_text("", encoding="utf-8")
++            log_path = repo / "logs" / "lowspec.log"
++            evidence_path = repo / "logs" / "lowspec.json"
++
++            def fake_run_logged(args, *, cwd, log_path, timeout_seconds):
++                evidence_path.parent.mkdir(parents=True, exist_ok=True)
++                evidence_path.write_text(
++                    json.dumps(
++                        {
++                            "startup_success": True,
++                            "peak_working_set_mib": 812.4,
++                            "sample_window_seconds": 60,
++                            "profile": "low_spec_development",
++                        }
++                    ),
++                    encoding="utf-8",
++                )
++                return 0, 61.0
++
++            with mock.patch.object(worker.os, "name", "nt"), mock.patch.object(
++                worker, "run_logged", side_effect=fake_run_logged
++            ):
++                result = worker.run_unreal_lowspec_startup_evidence(
++                    repo, Path("C:/UE_5.8"), log_path, evidence_path
++                )
++            self.assertEqual(result["status"], "PASS")
++            self.assertTrue(result["startup_success"])
++            self.assertEqual(result["peak_working_set_mib"], 812.4)
++            self.assertEqual(result["failure_tail"], "")
++
++    def test_lowspec_startup_evidence_script_reuses_exact_lowspec_contract(self) -> None:
++        manual = HARNESS_PATH.read_text(encoding="utf-8")
++        lowspec = LOWSPEC_SCRIPT_PATH.read_text(encoding="utf-8")
++        for token in (
++            "t.MaxFPS 30",
++            "r.ScreenPercentage 65",
++            "sg.ViewDistanceQuality 0",
++            "sg.AntiAliasingQuality 0",
++            "sg.ShadowQuality 0",
++            "sg.GlobalIlluminationQuality 0",
++            "sg.ReflectionQuality 0",
++            "sg.PostProcessQuality 0",
++            "sg.TextureQuality 0",
++            "sg.EffectsQuality 0",
++            "sg.FoliageQuality 0",
++            "r.Streaming.PoolSize 384",
++        ):
++            self.assertIn(token, manual)
++            self.assertIn(token, lowspec)
++
++>>>>>>> C:\Users\jerem\AppData\Local\Temp\everward-threeway\worker6.txt
+ 
+ if __name__ == "__main__":
+     unittest.main()

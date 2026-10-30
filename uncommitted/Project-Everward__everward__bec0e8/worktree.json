@@ -1,0 +1,58 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/bursts/20260922-0955/everward",
+ "head": "ec84438e5f648a30a25568d8041876182a5bbf55",
+ "branch": "orchestrator/issue-240-sanitized-diagnostic-companion",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "1657f3abe14bc6e5fae09d4d0f22e382922688f02523ab0304b6a06c8aace73c"
+  ],
+  [
+   ".aider.tags.cache.v4/30/2b/4d6497c5548d1fc352c0704c0894.val",
+   "226beda81fe39a5f5e656cd61ab7b9e2ae61d00e375609800b2b1a26a9d360cd"
+  ],
+  [
+   ".aider.tags.cache.v4/36/39/7118c455bf6084fcf32e66b5b5cf.val",
+   "d22658202f9b9f2afc482c5afaf3c1ce0dd507fb69ebddb79e6ddb3beb170253"
+  ],
+  [
+   ".aider.tags.cache.v4/8a/48/8c1bd06e86b4adc15102947507c9.val",
+   "f89e63b2b801b41fbf35f32a18af82c7b1b02d473ae1f0f06f4454e9691a9168"
+  ],
+  [
+   ".aider.tags.cache.v4/95/de/d5940d10b5a1c1c53f5654870726.val",
+   "c347763a260b59cf397b7739ff26624921448188205e2df91717303ae39fc123"
+  ],
+  [
+   ".aider.tags.cache.v4/99/25/a23c30dd88c93b7b15d550a352a4.val",
+   "241d8b50c608a749e7dfc1d6eeb8b445772899bd798caa9377b17ed2e7cc6256"
+  ],
+  [
+   ".aider.tags.cache.v4/9a/e4/664efe45182d23f41741175ab11b.val",
+   "62a1c23037a949fe1de5013f0ea0bb606f57b9fd07d046c375a67e9f71a901f8"
+  ],
+  [
+   ".aider.tags.cache.v4/af/62/38c0ec864c1e4597a743ff54400c.val",
+   "366e0d53406ee339435760654a491b8c5479acc7841760a5c4b4565a0dc13e1a"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "9657dd4482de87ef162ff8f37b9cccc7ad2ade92d858e7891fad2d91dd31e0bf"
+  ],
+  [
+   ".aider.tags.cache.v4/e8/07/304f5fe065d5c5bd6ce382acbb0d.val",
+   "289315f6c3cb748e6a685e7a3e03e33400ec992dd1d5ffe860e49208c396440b"
+  ],
+  [
+   ".aider.tags.cache.v4/f3/b3/54b4e120d4f4e291c6f1aa272dd5.val",
+   "5eb464af6dab60378a900b43fa4fe9841ea84a3ab834c64d52955774fb67e034"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__everward__bec0e8"
+}

@@ -1,0 +1,17 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_ke-ai-verify",
+ "head": "418361dd0e6d7ccffcca713806d00a0c2abd73be",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "6774c406846ef5994a55cebeb10c64b9e3f76c19c61cc1e3cf48d56bb493f4f7"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai___ke-ai-verify__97dcb4"
+}

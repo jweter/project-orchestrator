@@ -1,0 +1,7 @@
+ docs/UNATTENDED_VERIFICATION.md              |   4 ++
+ docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md   |  39 ++++++++++++++++++-
+ tools/everward_unattended_worker.py          | 208 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ tools/publish_unattended_product_reality.ps1 |  15 ++++++++
+ tools/run_unattended_low_spec_startup.ps1    | 168 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tools/test_unattended_low_spec_startup.py    | 300 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 731 insertions(+), 3 deletions(-)

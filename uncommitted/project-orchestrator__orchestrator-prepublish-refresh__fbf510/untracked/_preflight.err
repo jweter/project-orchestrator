@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "C:\Users\jerem\GitHub\orchestrator-prepublish-refresh\engineering\preflight.py", line 55, in <module>
+    completed = subprocess.run(argv, cwd=ROOT, text=True, capture_output=True, env=PREFLIGHT_ENV)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 550, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1209, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1628, in _communicate
+    self.stdout_thread.join(self._remaining_time(endtime))
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1149, in join
+    self._wait_for_tstate_lock()
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\threading.py", line 1169, in _wait_for_tstate_lock
+    if lock.acquire(block, timeout):
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

@@ -1,0 +1,17 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_orchestrator_burst",
+ "head": "54ef7020afa013fa8e74e951d67c447534e0250a",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "burst-state.json",
+   "5e2e143a662d7ee41c5c826b2a43d6a4a6b6d0c7d1bca5e0362a890b44c954b7"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator___orchestrator_burst__e761ff"
+}

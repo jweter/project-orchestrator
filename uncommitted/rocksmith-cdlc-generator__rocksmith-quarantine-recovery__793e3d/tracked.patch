@@ -1,0 +1,89 @@
+diff --git a/src/rocksmith_cdlc_generator/human_only_debt.py b/src/rocksmith_cdlc_generator/human_only_debt.py
+index 69788701..7c56d62c 100644
+--- a/src/rocksmith_cdlc_generator/human_only_debt.py
++++ b/src/rocksmith_cdlc_generator/human_only_debt.py
+@@ -7,6 +7,7 @@ Missing or non-PASS evidence fails closed; check messages are never copied.
+ 
+ from __future__ import annotations
+ 
++<<<<<<< HEAD
+ import re
+ from typing import TYPE_CHECKING
+ 
+@@ -56,8 +57,18 @@ _DETERMINISTIC_RULES: tuple[tuple[re.Pattern[str], tuple[str, ...]], ...] = (
+     (re.compile(r"\bprinted[- ]score\b"), ("printed_score_recognition",)),
+     (re.compile(r"\b(xml|note counts?|hash|hashes|sha-?256|validation)\b"), ()),
+ )
++=======
++import hashlib
++import json
++import os
++from pathlib import Path
++from typing import Any, Dict, List, Optional
++>>>>>>> 23d958ab (Preserve quarantined human-only debt work)
+ 
++ROOT = Path(__file__).resolve().parents[1]
++PRIVATE_EVIDENCE_DIR = ROOT / "private" / "product-reality-evidence"
+ 
++<<<<<<< HEAD
+ def _evidence_blockers(
+     evidence: PrivateProductRealityEvidence | None,
+     expected_commit_sha: str | None,
+@@ -118,8 +129,20 @@ def _classify(item: str, passing: set[str]) -> dict[str, object]:
+         "kind": "unclassified",
+         "reason": "no_recognized_human_or_deterministic_terms",
+     }
++=======
++def load_private_evidence() -> Dict[str, Any]:
++    evidence_path = PRIVATE_EVIDENCE_DIR / "human-only-debt.json"
++    if evidence_path.exists():
++        return json.loads(evidence_path.read_text(encoding="utf-8"))
++    return {}
++>>>>>>> 23d958ab (Preserve quarantined human-only debt work)
+ 
++def save_private_evidence(evidence: Dict[str, Any]) -> None:
++    evidence_path = PRIVATE_EVIDENCE_DIR / "human-only-debt.json"
++    evidence_path.parent.mkdir(parents=True, exist_ok=True)
++    evidence_path.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+ 
++<<<<<<< HEAD
+ def human_only_debt_payload(
+     evidence: PrivateProductRealityEvidence | None,
+     *,
+@@ -209,3 +232,36 @@ def format_human_only_debt_section(payload: dict[str, object]) -> list[str]:
+     for entry in payload["excluded_items"]:  # type: ignore[union-attr]
+         lines.append(f"- not human debt ({entry['reason']}): {entry['description']}")
+     return lines
++=======
++def generate_human_only_debt_report() -> Dict[str, Any]:
++    evidence = load_private_evidence()
++    report = {
++        "schema_version": 1,
++        "repository": "jweter/rocksmith-cdlc-generator",
++        "generated_at": datetime.now().isoformat(),
++        "human_only_debt": []
++    }
++
++    for lane, details in evidence.items():
++        if details.get("status") == "PENDING":
++            report["human_only_debt"].append({
++                "lane": lane,
++                "status": "PENDING",
++                "summary": details.get("summary", "No summary provided")
++            })
++
++    return report
++
++def record_human_only_debt(lane: str, status: str, summary: str) -> None:
++    evidence = load_private_evidence()
++    evidence[lane] = {
++        "status": status,
++        "summary": summary,
++        "recorded_at": datetime.now().isoformat()
++    }
++    save_private_evidence(evidence)
++
++def validate_human_only_debt() -> None:
++    report = generate_human_only_debt_report()
++    print(json.dumps(report, indent=2))
++>>>>>>> 23d958ab (Preserve quarantined human-only debt work)

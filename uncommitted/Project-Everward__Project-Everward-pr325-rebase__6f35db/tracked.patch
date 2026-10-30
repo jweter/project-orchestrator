@@ -1,0 +1,1020 @@
+diff --git a/docs/UNATTENDED_VERIFICATION.md b/docs/UNATTENDED_VERIFICATION.md
+index d5486f2..41cfa78 100644
+--- a/docs/UNATTENDED_VERIFICATION.md
++++ b/docs/UNATTENDED_VERIFICATION.md
+@@ -29,7 +29,11 @@ Pending worker verification blocks only the dependent lane. Deterministic simula
+ 
+ Objective checks such as UBT compilation, Unreal Automation tests, packaged startup, deterministic fixed-step behavior, save/load round trips, component/system state, resource/mining/repair invariants, input-state transitions, HUD data contracts, crash detection, screenshots, and reproducible telemetry should move into CI or the unattended worker.
+ 
++<<<<<<< HEAD
+ The private Windows worker currently runs full preflight, the UBT editor build, the headless Unreal smoke, and then a bounded low-spec startup/process-memory check that reuses the manual `-LowSpec -MeasureMemory` launch contract. That last check records startup survival and working-set facts for the exact tested commit only. Missing telemetry is `REVIEW_REQUIRED`, an editor exit is `FAIL`, and neither result, nor a PASS, is visual, control-feel, frame-time, or gameplay acceptance. See `docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md`.
++=======
++The unattended Windows worker's low-spec startup check records bounded editor startup and process working-set facts for the exact tested commit. Missing or failed telemetry stays `REVIEW_REQUIRED`/`FAIL`, and a passing check is never converted into visual, control-feel, frame-time, or gameplay Product Reality (see `docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md`).
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ 
+ Human review remains appropriate for irreducibly subjective gameplay feel, visual quality, pacing, artistic presentation, or product-direction decisions. Even then, automate setup, navigation, evidence capture, and regression checks so Jeremy evaluates only the final subjective question.
+ 
+diff --git a/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md b/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+index d06b73f..86f39f1 100644
+--- a/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md
++++ b/docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md
+@@ -60,6 +60,7 @@ The worker then:
+ 6. fetches origin and checks out that exact previously discovered commit detached;
+ 7. runs the repository-standard `python tools/quality_preflight.py --full` gate;
+ 8. only if full preflight passes, locates Unreal Engine 5.8 using the same explicit/env/registry/common-path model as the manual harness;
++<<<<<<< HEAD
+ 9. builds `EverwardEditor Win64 Development` through UnrealBuildTool without launching Unreal Editor;
+ 10. runs the headless `-NullRHI` Unreal map/load smoke (`tools/run_unreal_headless_smoke.ps1`);
+ 11. only if the headless smoke passes, runs the bounded low-spec startup check (`tools/run_unattended_low_spec_startup.ps1`, see below);
+@@ -82,6 +83,28 @@ Classification:
+ - `REVIEW_REQUIRED` — evidence missing/unreadable, commit mismatch, telemetry unavailable, timeout, launcher refusal, or unconfirmed cleanup.
+ 
+ `product_reality_claimed` is always `false`. A PASS is a startup-survival and process-memory fact on the target laptop. It is not visual, control-feel, frame-time, or gameplay acceptance, and those items stay in the human-only debt list.
++=======
++9. builds `EverwardEditor Win64 Development` through UnrealBuildTool;
++10. only if the build passes, runs the headless Unreal map/load smoke (`tools/run_unreal_headless_smoke.ps1`);
++11. only if the headless smoke passes, runs the bounded low-spec startup/memory probe described below;
++12. writes exact-commit PASS / FAIL / REVIEW_REQUIRED evidence locally;
++13. caches a successful exact commit so an unchanged green build is not rebuilt on every idle episode — the cache requires both the headless-smoke and low-spec-startup markers for the same commit;
++14. best-effort updates GitHub issue #243 with the latest sanitized status when GitHub CLI is authenticated.
++
++### Low-spec startup/memory evidence
++
++`tools/run_unattended_low_spec_startup.ps1` reuses the opt-in Low-Spec Development launch contract of `tools/run_phase2_first_playtest.ps1 -LowSpec -MeasureMemory`: the same windowed 1280×720 editor launch, the same `-ExecCmds` console-variable list, and the same `UnrealEditor` process `WorkingSet64` memory source. A regression test (`tools/test_unattended_low_spec_startup.py`) fails if the two argument lists drift apart. The worker adds only `-Unattended` (suppress modal dialogs) and a worker-owned `-log=` path. Production/default settings, `LowSpecPlay.ini`, saves, and simulation mechanics are not touched, and no Phase-2 observation file is written.
++
++The probe is bounded: it waits at most 900 seconds for the engine initialization log marker (`Engine is initialized.` or `(Engine Initialization) Total time:`), then samples process memory for a further 60 seconds, then always terminates the editor process tree it launched. It writes a path-free JSON result containing only the exact commit, marker/exit/cleanup booleans and enums, elapsed seconds, engine-reported init seconds when present, peak working set MiB, and sample counts.
++
++The worker interprets that result fail-closed as check `unreal_low_spec_startup`:
++
++- `PASS` — the exact tested commit reached the engine initialization marker within the bound, stayed alive for the full post-startup sample window, produced positive working-set samples, and was confirmed stopped;
++- `FAIL` — startup timed out, the editor exited before or during the window, or the probe itself exceeded its outer bound (allow-listed `failure_category`);
++- `REVIEW_REQUIRED` — the result was missing/malformed, the commit identity did not match, the editor was not launched or could not be confirmed stopped, the window was incomplete, or memory telemetry was unavailable.
++
++The check records `build_identity` (exact commit, `EverwardEditor Win64 Development`, and the Unreal Engine version/changelist from `Engine/Build/Build.version`), `product_reality_claimed: false`, and an explicit `not_evidence_for` list. A low-spec `PASS` is **not** evidence of visual quality, control feel, HUD readability, frame time/playability, or gameplay-loop quality; those remain human-only debt. Failure tails and probe errors are redacted (dedicated checkout, Unreal root, user profile, and Windows user name, case-insensitively), and the published issue body carries only the status, an allow-listed failure category, startup seconds, and peak working-set MiB.
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ 
+ The scheduled worker always exits zero to Task Scheduler. Test truth is in the evidence JSON, not in a retry storm. GitHub publication is presentation only and cannot change PASS/FAIL truth.
+ 
+@@ -98,9 +121,14 @@ Default state lives outside the repository:
+   logs\<commit>\full-preflight.log
+   logs\<commit>\unreal-build.log
+   logs\<commit>\unreal-headless-smoke.log
++<<<<<<< HEAD
+   logs\<commit>\low-spec-startup.log
+   logs\<commit>\low-spec-startup.json
+   logs\<commit>\low-spec-startup-unreal.log
++=======
++  logs\<commit>\unreal-low-spec-startup.log
++  logs\<commit>\unreal-low-spec-startup.json
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+   preserved-playtests\<timestamp>\phase2-observations\...
+ ```
+ 
+@@ -113,7 +141,12 @@ The worker records:
+ - canonical full-preflight status, exit code, duration, and local log;
+ - Unreal Engine 5.8 discovery status;
+ - UBT build status, exit code, duration, and local log;
++<<<<<<< HEAD
+ - headless smoke status and low-spec startup/process-memory facts;
++=======
++- headless Unreal smoke status;
++- low-spec startup/memory status with exact build identity, startup seconds, and editor peak working set;
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ - a redacted failure tail that replaces the dedicated checkout, user profile, and Unreal installation roots;
+ - the explicit human-only debt that remains.
+ 
+@@ -134,7 +167,7 @@ Before reset/clean, current Phase-2 observation evidence is copied to local work
+ 
+ The worker does not:
+ 
+-- launch PIE or manipulate the Unreal UI in this first slice;
++- launch PIE or manipulate the Unreal UI (the low-spec probe only launches the editor, waits, samples process memory, and terminates it);
+ - modify authoritative simulation state to make a test pass;
+ - modify player saves;
+ - commit, push, or merge source code;
+@@ -182,7 +215,11 @@ The natural follow-on work for #240 is:
+ 2. script the opening deterministic gameplay chain: damaged awakening → target selection → scan → José approach → manipulator/mining → material gain → Fix_It repair;
+ 3. assert telemetry and state transitions from that chain automatically;
+ 4. add deterministic screenshots and asset/reference checks for gross visual regressions such as wireframe mode, missing HUD, missing probe/tools, or severe camera clipping;
++<<<<<<< HEAD
+ 5. add instrumented frame-time capture for the low-spec Product Reality target (bounded startup survival and process working-set capture now exist; frame-time does not);
++=======
++5. add instrumented frame-time capture for the low-spec Product Reality target (bounded startup and editor working-set capture now exist; frame time does not);
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ 6. feed deterministic worker evidence into the existing read-only mobile evidence surface;
+ 7. optionally use local Ollama to classify sanitized derived failure evidence, while keeping Python/tests/build tools as authority;
+ 8. retire each human checklist item as soon as an independent machine oracle exists.
+diff --git a/tools/everward_unattended_worker.py b/tools/everward_unattended_worker.py
+index 51961e0..33a05b2 100644
+--- a/tools/everward_unattended_worker.py
++++ b/tools/everward_unattended_worker.py
+@@ -26,9 +26,22 @@ MANUAL_LOCK_NAME = "everward-manual-playtest.lock"
+ LOCK_NAME = "worker.lock"
+ LAST_PASS_MARKER = "last_passed_headless_smoke_commit.txt"
+ LOW_SPEC_PASS_MARKER = "last_passed_low_spec_startup_commit.txt"
++<<<<<<< HEAD
+ LOW_SPEC_EVIDENCE_SCHEMA_VERSION = 1
+ LOW_SPEC_SAMPLE_WINDOW_SECONDS = 60
++=======
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ REPORT_SCHEMA_VERSION = 1
++LOW_SPEC_RESULT_SCHEMA_VERSION = 1
++LOW_SPEC_STARTUP_TIMEOUT_SECONDS = 900
++LOW_SPEC_SAMPLE_WINDOW_SECONDS = 60
++LOW_SPEC_NOT_EVIDENCE_FOR = [
++    "visual quality or art direction",
++    "control or movement feel",
++    "HUD readability",
++    "frame time or playability",
++    "gameplay loop quality",
++]
+ 
+ 
+ def utc_now() -> str:
+@@ -285,8 +298,12 @@ def sanitize_text(text: str, *, repo_root: Path, unreal_root: Path | None = None
+     result = text
+     for raw, replacement in replacements:
+         if raw:
+-            result = result.replace(raw, replacement)
+-            result = result.replace(raw.replace("\\", "/"), replacement)
++            for variant in (raw, raw.replace("\\", "/")):
++                # Windows paths are case-insensitive and Unreal logs often change drive/letter case.
++                result = re.sub(re.escape(variant), lambda _m, r=replacement: r, result, flags=re.IGNORECASE)
++    user = os.environ.get("USERNAME") or os.environ.get("USER") or ""
++    if len(user) >= 3:
++        result = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(user)}(?![A-Za-z0-9_])", "<USER>", result, flags=re.IGNORECASE)
+     return result
+ 
+ 
+@@ -461,6 +478,7 @@ def run_unreal_headless_smoke(
+     }
+ 
+ 
++<<<<<<< HEAD
+ def _finite_number(value: Any) -> float | None:
+     if isinstance(value, bool) or not isinstance(value, (int, float)):
+         return None
+@@ -591,6 +609,128 @@ def run_unreal_low_spec_startup(
+     evidence_path = log_dir / "low-spec-startup.json"
+     log_path = log_dir / "low-spec-startup.log"
+     evidence_path.unlink(missing_ok=True)
++=======
++def read_unreal_engine_version(unreal_root: Path) -> str | None:
++    try:
++        payload = json.loads(
++            (unreal_root / "Engine" / "Build" / "Build.version").read_text(encoding="utf-8-sig")
++        )
++        parts = [int(payload[key]) for key in ("MajorVersion", "MinorVersion", "PatchVersion")]
++        changelist = int(payload.get("Changelist", 0))
++    except (OSError, ValueError, TypeError, KeyError, AttributeError):
++        return None
++    return f"{parts[0]}.{parts[1]}.{parts[2]}-CL{changelist}"
++
++
++def _finite_number(value: Any, *, positive: bool = False) -> float | None:
++    if isinstance(value, bool) or not isinstance(value, (int, float)):
++        return None
++    number = float(value)
++    if number != number or number in (float("inf"), float("-inf")):
++        return None
++    if number < 0 or (positive and number <= 0):
++        return None
++    return round(number, 1)
++
++
++def interpret_low_spec_startup(
++    payload: Any, *, expected_commit: str, runner_exit_code: int
++) -> dict[str, Any]:
++    """Classify raw low-spec startup facts fail-closed.
++
++    Only allow-listed numeric/boolean facts are copied out of the probe result.
++    PASS means bounded engine startup plus measured process memory for the exact
++    commit; it never implies visual, control-feel, frame-time, or gameplay PASS.
++    """
++    check: dict[str, Any] = {
++        "status": "REVIEW_REQUIRED",
++        "profile": "low-spec-development",
++        "scope": "bounded editor startup and process working-set telemetry only",
++        "product_reality_claimed": False,
++        "not_evidence_for": list(LOW_SPEC_NOT_EVIDENCE_FOR),
++        "exit_code": runner_exit_code,
++    }
++    if runner_exit_code == 124:
++        check.update(status="FAIL", failure_category="probe_timeout",
++                     reason="Low-spec startup probe exceeded its outer time bound.")
++        return check
++    if not isinstance(payload, dict) or payload.get("schema_version") != LOW_SPEC_RESULT_SCHEMA_VERSION:
++        check["reason"] = "Low-spec startup result was missing or had an unexpected schema."
++        return check
++    commit = str(payload.get("git_commit") or "").lower()
++    if not re.fullmatch(r"[0-9a-f]{40}", commit) or commit != expected_commit:
++        check["reason"] = "Low-spec startup build identity did not match the exact tested commit."
++        return check
++    check["commit"] = commit
++
++    marker = payload.get("startup_marker_observed") is True
++    exited = payload.get("exited_before_window_end") is True
++    exit_code = payload.get("exit_code")
++    facts = {
++        "startup_marker_observed": marker,
++        "startup_seconds": _finite_number(payload.get("startup_seconds")),
++        "engine_reported_init_seconds": _finite_number(payload.get("engine_reported_init_seconds")),
++        "startup_timeout_seconds": _finite_number(payload.get("startup_timeout_seconds")),
++        "sample_window_seconds": _finite_number(payload.get("sample_window_seconds")),
++        "sampled_after_startup_seconds": _finite_number(payload.get("sampled_after_startup_seconds")),
++        "exited_before_window_end": exited,
++        "editor_exit_code": exit_code if isinstance(exit_code, int) and not isinstance(exit_code, bool) else None,
++    }
++    check["startup"] = facts
++    peak = _finite_number(payload.get("peak_working_set_mib"), positive=True)
++    samples = payload.get("memory_sample_count")
++    samples = samples if isinstance(samples, int) and not isinstance(samples, bool) and samples >= 0 else 0
++    check["memory"] = {
++        "metric": "editor_peak_working_set_mib",
++        "value": peak,
++        "sample_count": samples,
++        "source": "UnrealEditor process WorkingSet64",
++        "interpretation": "process working set only; not total system RAM or shared-GPU memory",
++    }
++    cleanup = payload.get("cleanup")
++    check["cleanup"] = cleanup if cleanup in ("terminated", "already_exited", "failed", "pending", "not_started") else "unknown"
++
++    if payload.get("editor_launched") is not True:
++        check["reason"] = "Unreal Editor was not launched; low-spec startup telemetry is unavailable."
++        return check
++    if check["cleanup"] not in ("terminated", "already_exited"):
++        check["reason"] = "The launched Unreal Editor could not be confirmed stopped."
++        return check
++    if not marker:
++        category = "exited_before_startup" if exited else "startup_timeout"
++        check.update(status="FAIL", failure_category=category,
++                     reason="Unreal Editor did not reach the engine initialization marker within the bound.")
++        return check
++    if exited:
++        check.update(status="FAIL", failure_category="exited_during_sample_window",
++                     reason="Unreal Editor exited during the post-startup memory sample window.")
++        return check
++    window = facts["sample_window_seconds"]
++    sampled = facts["sampled_after_startup_seconds"]
++    if facts["startup_seconds"] is None or window is None or sampled is None or sampled + 1.0 < window:
++        check["reason"] = "Startup timing or the post-startup sample window was incomplete."
++        return check
++    if peak is None or samples <= 0:
++        check["reason"] = "Process memory telemetry was unavailable."
++        return check
++    check["status"] = "PASS"
++    return check
++
++
++def run_unreal_low_spec_startup(
++    repo_root: Path, unreal_root: Path, tested_commit: str, log_dir: Path, state_dir: Path
++) -> dict[str, Any]:
++    script = repo_root / "tools" / "run_unattended_low_spec_startup.ps1"
++    if not script.is_file():
++        return {"status": "REVIEW_REQUIRED", "reason": "tools/run_unattended_low_spec_startup.ps1 is missing"}
++    if os.name != "nt":
++        return {"status": "REVIEW_REQUIRED", "reason": "Low-spec startup evidence requires Windows"}
++
++    runner_log = log_dir / "unreal-low-spec-startup-runner.log"
++    unreal_log = log_dir / "unreal-low-spec-startup.log"
++    result_path = log_dir / "unreal-low-spec-startup.json"
++    result_path.unlink(missing_ok=True)
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+     code, duration = run_logged(
+         [
+             "powershell.exe",
+@@ -601,16 +741,26 @@ def run_unreal_low_spec_startup(
+             str(script),
+             "-UnrealRoot",
+             str(unreal_root),
++<<<<<<< HEAD
+             "-ExpectedCommit",
+             expected_commit,
+             "-EvidencePath",
+             str(evidence_path),
+             "-UnrealLogPath",
+             str(log_dir / "low-spec-startup-unreal.log"),
++=======
++            "-ResultPath",
++            str(result_path),
++            "-LogPath",
++            str(unreal_log),
++            "-StartupTimeoutSeconds",
++            str(LOW_SPEC_STARTUP_TIMEOUT_SECONDS),
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+             "-SampleWindowSeconds",
+             str(LOW_SPEC_SAMPLE_WINDOW_SECONDS),
+         ],
+         cwd=repo_root,
++<<<<<<< HEAD
+         log_path=log_path,
+         timeout_seconds=float(LOW_SPEC_SAMPLE_WINDOW_SECONDS + 240),
+     )
+@@ -629,6 +779,31 @@ def run_unreal_low_spec_startup(
+         else log_tail(log_path, repo_root=repo_root, unreal_root=unreal_root)
+     )
+     return result
++=======
++        log_path=runner_log,
++        timeout_seconds=float(LOW_SPEC_STARTUP_TIMEOUT_SECONDS + LOW_SPEC_SAMPLE_WINDOW_SECONDS + 240),
++    )
++    try:
++        payload: Any = json.loads(result_path.read_text(encoding="utf-8-sig"))
++    except (OSError, ValueError):
++        payload = None
++    check = interpret_low_spec_startup(payload, expected_commit=tested_commit, runner_exit_code=code)
++    check["duration_seconds"] = round(duration, 3)
++    check["build_identity"] = {
++        "commit": tested_commit,
++        "target": "EverwardEditor Win64 Development",
++        "unreal_engine_version": read_unreal_engine_version(unreal_root),
++    }
++    check["log"] = unreal_log.relative_to(state_dir).as_posix() if unreal_log.is_relative_to(state_dir) else unreal_log.name
++    if isinstance(payload, dict) and isinstance(payload.get("error"), str) and payload["error"]:
++        check["probe_error"] = sanitize_text(
++            payload["error"], repo_root=repo_root, unreal_root=unreal_root
++        )[:300]
++    if check["status"] != "PASS":
++        tail_source = unreal_log if unreal_log.is_file() else runner_log
++        check["failure_tail"] = log_tail(tail_source, repo_root=repo_root, unreal_root=unreal_root)
++    return check
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ 
+ 
+ def acquire_lock(state_dir: Path) -> tuple[int | None, bool]:
+@@ -674,15 +849,22 @@ def aggregate_status(checks: dict[str, dict[str, Any]]) -> Status:
+     return "PASS"
+ 
+ 
++<<<<<<< HEAD
+ def _read_marker(state_dir: Path, name: str) -> str | None:
+     try:
+         value = (state_dir / name).read_text(encoding="ascii").strip().lower()
++=======
++def _read_commit_marker(path: Path) -> str | None:
++    try:
++        value = path.read_text(encoding="ascii").strip().lower()
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+     except OSError:
+         return None
+     return value if re.fullmatch(r"[0-9a-f]{40}", value) else None
+ 
+ 
+ def read_last_pass(state_dir: Path) -> str | None:
++<<<<<<< HEAD
+     # A cached PASS requires both the headless-smoke marker and the low-spec
+     # startup marker for the same exact commit; markers written by earlier worker
+     # versions without low-spec evidence therefore force a full rerun.
+@@ -690,6 +872,12 @@ def read_last_pass(state_dir: Path) -> str | None:
+     if smoke is None or _read_marker(state_dir, LOW_SPEC_PASS_MARKER) != smoke:
+         return None
+     return smoke
++=======
++    """Return the exact commit that passed every unattended lane, including low-spec startup."""
++    smoke = _read_commit_marker(state_dir / LAST_PASS_MARKER)
++    low_spec = _read_commit_marker(state_dir / LOW_SPEC_PASS_MARKER)
++    return smoke if smoke is not None and smoke == low_spec else None
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ 
+ 
+ def write_report(
+@@ -769,7 +957,11 @@ def run_worker(
+         report["tested_commit"] = target
+         report["checks"]["cached_exact_commit"] = {
+             "status": "PASS",
++<<<<<<< HEAD
+             "reason": "This exact Foundation-green commit already passed unattended full preflight, UBT build, and headless Unreal smoke, plus the bounded low-spec startup check.",
++=======
++            "reason": "This exact Foundation-green commit already passed unattended full preflight, UBT build, and headless Unreal smoke, plus bounded low-spec startup/memory evidence.",
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+         }
+         report["notes"].append("No rerun was needed; exact fully verified commit is unchanged.")
+         report["completed_at_utc"] = utc_now()
+@@ -840,13 +1032,21 @@ def run_worker(
+     report["checks"]["unreal_headless_smoke"] = headless_smoke
+     if headless_smoke.get("status") != "PASS":
+         report["notes"].append(
++<<<<<<< HEAD
+             "Low-spec startup check was not attempted because headless Unreal smoke did not pass."
++=======
++            "Low-spec startup evidence was not attempted because the headless Unreal smoke did not pass."
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+         )
+         report["completed_at_utc"] = utc_now()
+         report["result"] = aggregate_status(report["checks"])
+         return report
+ 
++<<<<<<< HEAD
+     low_spec = run_unreal_low_spec_startup(repo_root, unreal_root, logs, target)
++=======
++    low_spec = run_unreal_low_spec_startup(repo_root, unreal_root, synced, logs, state_dir)
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+     report["checks"]["unreal_low_spec_startup"] = low_spec
+     report["completed_at_utc"] = utc_now()
+     report["result"] = aggregate_status(report["checks"])
+@@ -854,7 +1054,11 @@ def run_worker(
+         (state_dir / LAST_PASS_MARKER).write_text(target + "\n", encoding="ascii")
+         (state_dir / LOW_SPEC_PASS_MARKER).write_text(target + "\n", encoding="ascii")
+         report["notes"].append(
++<<<<<<< HEAD
+             "Deterministic engineering gates, headless map/load smoke, and the bounded low-spec startup/process-memory check passed. Visual, interaction-feel, frame-time, and gameplay Product Reality remain human-only."
++=======
++            "Deterministic engineering gates, headless map/load smoke, and bounded low-spec startup/memory telemetry passed. Visual, interaction-feel, frame-time, and gameplay Product Reality remain human-only."
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+         )
+     return report
+ 
+diff --git a/tools/publish_unattended_product_reality.ps1 b/tools/publish_unattended_product_reality.ps1
+index 5d60053..95ed5cc 100644
+--- a/tools/publish_unattended_product_reality.ps1
++++ b/tools/publish_unattended_product_reality.ps1
+@@ -42,6 +42,8 @@ function Get-FailureFingerprint {
+     }
+     if ($Status -ne "FAIL") { return "" }
+     $ExitCode = [string]$Check.exit_code
++    $Category = [string]$Check.failure_category
++    if ($Category -match "^[a-z_]{1,40}$") { return "$Category|exit=$ExitCode" }
+     $Tail = [string]$Check.failure_tail
+     if ($Tail -match "(?i)timeout") { return "timeout|exit=$ExitCode" }
+     if ($Tail -match "(?i)cmake") { return "cmake|exit=$ExitCode" }
+@@ -109,6 +111,14 @@ $CheckNames = @(
+     "worker_exception"
+ )
+ 
++function Format-AllowListedNumber {
++    param([object]$Value)
++    if ($Value -is [double] -or $Value -is [decimal] -or $Value -is [int] -or $Value -is [long]) {
++        return ([double]$Value).ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture)
++    }
++    return "unavailable"
++}
++
+ foreach ($Name in $CheckNames) {
+     $Property = $Report.checks.PSObject.Properties[$Name]
+     if ($null -eq $Property) { continue }
+@@ -119,6 +129,11 @@ foreach ($Name in $CheckNames) {
+     if ($Fingerprint) {
+         $Lines.Add("  - sanitized failure fingerprint: ``$Fingerprint``")
+     }
++    if ($Name -eq "unreal_low_spec_startup" -and $null -ne $Check.startup) {
++        $StartupSeconds = Format-AllowListedNumber $Check.startup.startup_seconds
++        $PeakMiB = Format-AllowListedNumber $Check.memory.value
++        $Lines.Add("  - low-spec startup seconds: $StartupSeconds; editor peak working set MiB: $PeakMiB (process working set only; not visual, control-feel, frame-time, or gameplay evidence)")
++    }
+ }
+ 
+ $Lines.Add("")
+diff --git a/tools/run_unattended_low_spec_startup.ps1 b/tools/run_unattended_low_spec_startup.ps1
+index 0132cec..57b408b 100644
+--- a/tools/run_unattended_low_spec_startup.ps1
++++ b/tools/run_unattended_low_spec_startup.ps1
+@@ -1,6 +1,7 @@
+ [CmdletBinding()]
+ param(
+     [Parameter(Mandatory=$true)][string]$UnrealRoot,
++<<<<<<< HEAD
+     [Parameter(Mandatory=$true)][string]$ExpectedCommit,
+     [Parameter(Mandatory=$true)][string]$EvidencePath,
+     [Parameter(Mandatory=$true)][string]$UnrealLogPath,
+@@ -159,3 +160,170 @@ Write-Host ("Low-spec startup status={0} peak_working_set_mib={1} samples={2} cl
+ if ($Evidence.startup.status -eq "pass" -and $Evidence.cleanup.status -ne "failed") { exit 0 }
+ if ($Evidence.startup.status -eq "fail") { exit 1 }
+ exit 2
++=======
++    [Parameter(Mandatory=$true)][string]$ResultPath,
++    [Parameter(Mandatory=$true)][string]$LogPath,
++    [int]$StartupTimeoutSeconds = 900,
++    [int]$SampleWindowSeconds = 60
++)
++
++# Bounded unattended startup/memory probe for the opt-in Low-Spec Development
++# launch contract owned by tools/run_phase2_first_playtest.ps1 (-LowSpec
++# -MeasureMemory). The editor arguments below must stay identical to that
++# harness; tools/test_unattended_low_spec_startup.py locks the two together.
++#
++# This script only records raw machine facts (exact commit, whether the engine
++# initialization marker appeared, elapsed time, process working set). It never
++# classifies visual quality, control feel, frame time, or gameplay, and it
++# never decides PASS: tools/everward_unattended_worker.py interprets the result
++# fail-closed. No file paths are written into the result JSON.
++
++$ErrorActionPreference = "Stop"
++
++$StartupMarkers = @("Engine is initialized.", "(Engine Initialization) Total time:")
++$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
++$ProjectPath = Join-Path $RepoRoot "unreal\Everward.uproject"
++$EditorExe = Join-Path $UnrealRoot "Engine\Binaries\Win64\UnrealEditor.exe"
++
++$Result = [ordered]@{
++    schema_version = 1
++    profile = "low-spec-development"
++    git_commit = $null
++    editor_launched = $false
++    startup_marker_observed = $false
++    startup_seconds = $null
++    engine_reported_init_seconds = $null
++    exited_before_window_end = $false
++    exit_code = $null
++    startup_timeout_seconds = $StartupTimeoutSeconds
++    sample_window_seconds = $SampleWindowSeconds
++    sampled_after_startup_seconds = 0.0
++    peak_working_set_mib = $null
++    memory_sample_count = 0
++    telemetry_errors = 0
++    cleanup = "not_started"
++    error = $null
++}
++
++$EditorProcess = $null
++$LogOffset = 0L
++$LogCarry = ""
++
++function Read-NewLogText {
++    if (-not (Test-Path $LogPath -PathType Leaf)) { return "" }
++    $Stream = $null
++    try {
++        $Share = [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete
++        $Stream = [System.IO.File]::Open($LogPath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, $Share)
++        if ($Stream.Length -lt $script:LogOffset) { $script:LogOffset = 0L }
++        [void]$Stream.Seek($script:LogOffset, [System.IO.SeekOrigin]::Begin)
++        $Reader = New-Object System.IO.StreamReader($Stream)
++        $Text = $Reader.ReadToEnd()
++        $script:LogOffset = $Stream.Position
++        return $Text
++    }
++    catch { return "" }
++    finally { if ($Stream) { $Stream.Dispose() } }
++}
++
++function Update-PeakWorkingSet {
++    try {
++        $EditorProcess.Refresh()
++        if ($EditorProcess.HasExited) { return }
++        $Bytes = $EditorProcess.WorkingSet64
++        $Result.memory_sample_count += 1
++        $MiB = [Math]::Round($Bytes / 1MB, 1)
++        if ($null -eq $Result.peak_working_set_mib -or $MiB -gt $Result.peak_working_set_mib) { $Result.peak_working_set_mib = $MiB }
++    }
++    catch { $Result.telemetry_errors += 1 }
++}
++
++try {
++    if (-not (Test-Path $ProjectPath -PathType Leaf)) { throw "Everward project was not found." }
++    if (-not (Test-Path $EditorExe -PathType Leaf)) { throw "Unreal Engine 5.8 UnrealEditor.exe was not found." }
++    $GitCommit = (& git -C $RepoRoot rev-parse HEAD).Trim()
++    if ($LASTEXITCODE -ne 0 -or -not $GitCommit) { throw "Unable to resolve the current Git commit." }
++    $Result.git_commit = $GitCommit.ToLowerInvariant()
++
++    $LogDirectory = Split-Path -Parent $LogPath
++    if ($LogDirectory) { New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null }
++    if (Test-Path $LogPath -PathType Leaf) { Remove-Item -Force $LogPath }
++
++    # Low-Spec Development launch contract (keep identical to run_phase2_first_playtest.ps1).
++    $LowSpecCommands = @("t.MaxFPS 30", "r.ScreenPercentage 65", "sg.ViewDistanceQuality 0", "sg.AntiAliasingQuality 0", "sg.ShadowQuality 0", "sg.GlobalIlluminationQuality 0", "sg.ReflectionQuality 0", "sg.PostProcessQuality 0", "sg.TextureQuality 0", "sg.EffectsQuality 0", "sg.FoliageQuality 0", "r.Streaming.PoolSize 384") -join ","
++    $EditorArguments = @("`"$ProjectPath`"", "-WINDOWED", "-ResX=1280", "-ResY=720", "-ExecCmds=`"$LowSpecCommands`"")
++    # Worker-only safety flags: suppress modal dialogs and route the log to the worker evidence directory.
++    $EditorArguments += @("-Unattended", "-log=`"$LogPath`"")
++
++    $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
++    $EditorProcess = Start-Process -FilePath $EditorExe -ArgumentList $EditorArguments -PassThru
++    $Result.editor_launched = $true
++    $Result.cleanup = "pending"
++
++    $StartupDeadline = $StartupTimeoutSeconds
++    $SampleEndSeconds = $null
++    while ($true) {
++        $Elapsed = $Stopwatch.Elapsed.TotalSeconds
++        if ($EditorProcess.HasExited) { break }
++        Update-PeakWorkingSet
++
++        if (-not $Result.startup_marker_observed) {
++            $Chunk = $LogCarry + (Read-NewLogText)
++            foreach ($Marker in $StartupMarkers) {
++                if ($Chunk.Contains($Marker)) {
++                    $Result.startup_marker_observed = $true
++                    $Result.startup_seconds = [Math]::Round($Elapsed, 1)
++                    $SampleEndSeconds = $Elapsed + $SampleWindowSeconds
++                    break
++                }
++            }
++            $Match = [regex]::Match($Chunk, "\(Engine Initialization\) Total time:\s*([0-9]+(?:\.[0-9]+)?)\s*seconds")
++            if ($Match.Success) { $Result.engine_reported_init_seconds = [double]$Match.Groups[1].Value }
++            $LogCarry = if ($Chunk.Length -gt 512) { $Chunk.Substring($Chunk.Length - 512) } else { $Chunk }
++            if (-not $Result.startup_marker_observed -and $Elapsed -ge $StartupDeadline) { break }
++        }
++        else {
++            if ($null -eq $Result.engine_reported_init_seconds) {
++                $Chunk = $LogCarry + (Read-NewLogText)
++                $Match = [regex]::Match($Chunk, "\(Engine Initialization\) Total time:\s*([0-9]+(?:\.[0-9]+)?)\s*seconds")
++                if ($Match.Success) { $Result.engine_reported_init_seconds = [double]$Match.Groups[1].Value }
++                $LogCarry = if ($Chunk.Length -gt 512) { $Chunk.Substring($Chunk.Length - 512) } else { $Chunk }
++            }
++            $Result.sampled_after_startup_seconds = [Math]::Round($Elapsed - $Result.startup_seconds, 1)
++            if ($Elapsed -ge $SampleEndSeconds) { break }
++        }
++        Start-Sleep -Milliseconds 500
++    }
++
++    $EditorProcess.Refresh()
++    if ($EditorProcess.HasExited) {
++        $Result.exited_before_window_end = $true
++        try { $Result.exit_code = [int]$EditorProcess.ExitCode } catch { $Result.exit_code = $null }
++    }
++}
++catch {
++    $Result.error = $_.Exception.Message
++}
++finally {
++    if ($null -ne $EditorProcess) {
++        try {
++            if ($EditorProcess.HasExited) { $Result.cleanup = "already_exited" }
++            else {
++                & taskkill.exe /PID $EditorProcess.Id /T /F | Out-Null
++                if ($EditorProcess.WaitForExit(30000)) { $Result.cleanup = "terminated" }
++                else {
++                    Stop-Process -Id $EditorProcess.Id -Force -ErrorAction SilentlyContinue
++                    $Result.cleanup = if ($EditorProcess.WaitForExit(10000)) { "terminated" } else { "failed" }
++                }
++            }
++        }
++        catch { $Result.cleanup = "failed" }
++    }
++    $ResultDirectory = Split-Path -Parent $ResultPath
++    if ($ResultDirectory) { New-Item -ItemType Directory -Force -Path $ResultDirectory | Out-Null }
++    $Result | ConvertTo-Json -Depth 5 | Set-Content -Path $ResultPath -Encoding UTF8
++}
++
++Write-Host "Low-spec startup probe finished: marker_observed=$($Result.startup_marker_observed) startup_seconds=$($Result.startup_seconds) peak_working_set_mib=$($Result.peak_working_set_mib) cleanup=$($Result.cleanup)"
++exit 0
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+diff --git a/tools/test_unattended_low_spec_startup.py b/tools/test_unattended_low_spec_startup.py
+index cfd83b2..52fa8c5 100644
+--- a/tools/test_unattended_low_spec_startup.py
++++ b/tools/test_unattended_low_spec_startup.py
+@@ -1,8 +1,14 @@
+ from __future__ import annotations
+ 
++<<<<<<< HEAD
+ import copy
+ import importlib.util
+ import json
++=======
++import importlib.util
++import json
++import os
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ import re
+ import tempfile
+ import unittest
+@@ -11,7 +17,11 @@ from unittest import mock
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ WORKER_PATH = ROOT / "tools" / "everward_unattended_worker.py"
++<<<<<<< HEAD
+ LAUNCHER_PATH = ROOT / "tools" / "run_unattended_low_spec_startup.ps1"
++=======
++PROBE_PATH = ROOT / "tools" / "run_unattended_low_spec_startup.ps1"
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ HARNESS_PATH = ROOT / "tools" / "run_phase2_first_playtest.ps1"
+ PUBLISH_PATH = ROOT / "tools" / "publish_unattended_product_reality.ps1"
+ 
+@@ -23,6 +33,7 @@ spec.loader.exec_module(worker)
+ COMMIT = "a" * 40
+ 
+ 
++<<<<<<< HEAD
+ def passing_evidence() -> dict:
+     return {
+         "schema_version": 1,
+@@ -54,10 +65,43 @@ def passing_evidence() -> dict:
+ def harness_low_spec_commands() -> str:
+     text = HARNESS_PATH.read_text(encoding="utf-8")
+     match = re.search(r"\$LowSpecCommands = (@\([^)]*\))", text)
++=======
++def probe_payload(**overrides: object) -> dict[str, object]:
++    payload: dict[str, object] = {
++        "schema_version": 1,
++        "profile": "low-spec-development",
++        "git_commit": COMMIT,
++        "editor_launched": True,
++        "startup_marker_observed": True,
++        "startup_seconds": 212.4,
++        "engine_reported_init_seconds": 198.7,
++        "exited_before_window_end": False,
++        "exit_code": None,
++        "startup_timeout_seconds": 900,
++        "sample_window_seconds": 60,
++        "sampled_after_startup_seconds": 60.3,
++        "peak_working_set_mib": 3121.5,
++        "memory_sample_count": 540,
++        "telemetry_errors": 0,
++        "cleanup": "terminated",
++        "error": None,
++    }
++    payload.update(overrides)
++    return payload
++
++
++def interpret(payload: object, exit_code: int = 0) -> dict[str, object]:
++    return worker.interpret_low_spec_startup(payload, expected_commit=COMMIT, runner_exit_code=exit_code)
++
++
++def low_spec_commands(source: str) -> str:
++    match = re.search(r"\$LowSpecCommands = @\((.*?)\) -join \",\"", source)
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+     assert match is not None
+     return match.group(1)
+ 
+ 
++<<<<<<< HEAD
+ class LowSpecStartupEvidenceTests(unittest.TestCase):
+     def evaluate(self, evidence, *, exit_code: int = 0) -> dict:
+         return worker.evaluate_low_spec_startup_evidence(
+@@ -211,6 +255,178 @@ class LowSpecStartupRunnerTests(unittest.TestCase):
+ 
+ class LowSpecCacheTests(unittest.TestCase):
+     def test_cached_pass_requires_low_spec_marker_for_same_commit(self) -> None:
++=======
++class LowSpecStartupInterpretationTests(unittest.TestCase):
++    def test_complete_bounded_startup_with_memory_passes_without_product_reality_claim(self) -> None:
++        check = interpret(probe_payload())
++        self.assertEqual(check["status"], "PASS")
++        self.assertEqual(check["commit"], COMMIT)
++        self.assertEqual(check["memory"]["value"], 3121.5)
++        self.assertEqual(check["startup"]["startup_seconds"], 212.4)
++        self.assertIs(check["product_reality_claimed"], False)
++        self.assertIn("frame time or playability", check["not_evidence_for"])
++        self.assertIn("gameplay loop quality", check["not_evidence_for"])
++
++    def test_missing_or_malformed_result_is_review_required(self) -> None:
++        for payload in (None, [], "PASS", {"schema_version": 2}, probe_payload(schema_version="1")):
++            with self.subTest(payload=payload):
++                self.assertEqual(interpret(payload)["status"], "REVIEW_REQUIRED")
++
++    def test_commit_identity_mismatch_is_review_required(self) -> None:
++        for commit in ("b" * 40, None, "", "A" * 39, "not-a-commit"):
++            with self.subTest(commit=commit):
++                check = interpret(probe_payload(git_commit=commit))
++                self.assertEqual(check["status"], "REVIEW_REQUIRED")
++                self.assertIn("build identity", check["reason"])
++
++    def test_unavailable_memory_telemetry_is_review_required(self) -> None:
++        for overrides in (
++            {"peak_working_set_mib": None},
++            {"peak_working_set_mib": 0},
++            {"peak_working_set_mib": -5.0},
++            {"peak_working_set_mib": "3000"},
++            {"peak_working_set_mib": float("nan")},
++            {"peak_working_set_mib": True},
++            {"memory_sample_count": 0},
++            {"memory_sample_count": "540"},
++        ):
++            with self.subTest(overrides=overrides):
++                check = interpret(probe_payload(**overrides))
++                self.assertEqual(check["status"], "REVIEW_REQUIRED")
++
++    def test_editor_not_launched_or_not_stopped_is_review_required(self) -> None:
++        self.assertEqual(interpret(probe_payload(editor_launched=False))["status"], "REVIEW_REQUIRED")
++        for cleanup in ("failed", "pending", "unexpected", None):
++            with self.subTest(cleanup=cleanup):
++                self.assertEqual(interpret(probe_payload(cleanup=cleanup))["status"], "REVIEW_REQUIRED")
++
++    def test_startup_failures_are_fail_with_allow_listed_category(self) -> None:
++        cases = {
++            "startup_timeout": probe_payload(startup_marker_observed=False, startup_seconds=None),
++            "exited_before_startup": probe_payload(
++                startup_marker_observed=False, exited_before_window_end=True, exit_code=3
++            ),
++            "exited_during_sample_window": probe_payload(exited_before_window_end=True, exit_code=-1),
++        }
++        for category, payload in cases.items():
++            with self.subTest(category=category):
++                check = interpret(payload)
++                self.assertEqual(check["status"], "FAIL")
++                self.assertEqual(check["failure_category"], category)
++        timeout = interpret(probe_payload(), exit_code=124)
++        self.assertEqual(timeout["status"], "FAIL")
++        self.assertEqual(timeout["failure_category"], "probe_timeout")
++
++    def test_marker_without_marker_value_is_not_truthy_coerced(self) -> None:
++        check = interpret(probe_payload(startup_marker_observed="true"))
++        self.assertEqual(check["status"], "FAIL")
++
++    def test_incomplete_post_startup_window_is_review_required(self) -> None:
++        for overrides in (
++            {"sampled_after_startup_seconds": 12.0},
++            {"sampled_after_startup_seconds": None},
++            {"startup_seconds": None},
++            {"sample_window_seconds": None},
++        ):
++            with self.subTest(overrides=overrides):
++                self.assertEqual(interpret(probe_payload(**overrides))["status"], "REVIEW_REQUIRED")
++
++    def test_only_allow_listed_facts_are_copied_from_probe(self) -> None:
++        secret = r"C:\Users\someone\secret\UnrealEditor.exe"
++        check = interpret(probe_payload(error=secret, extra_path=secret, profile=secret))
++        self.assertNotIn(secret, json.dumps(check))
++        self.assertNotIn("someone", json.dumps(check))
++
++
++class LowSpecStartupRunnerTests(unittest.TestCase):
++    def _run(self, payload: object | None, *, exit_code: int = 0, log_text: str = "") -> dict[str, object]:
++        with tempfile.TemporaryDirectory() as temp:
++            base = Path(temp)
++            repo = base / "Everward Playtest" / "Project-Everward"
++            (repo / "tools").mkdir(parents=True)
++            (repo / "tools" / "run_unattended_low_spec_startup.ps1").write_text("# probe\n", encoding="utf-8")
++            unreal = base / "UE_5.8"
++            (unreal / "Engine" / "Build").mkdir(parents=True)
++            (unreal / "Engine" / "Build" / "Build.version").write_text(
++                json.dumps({"MajorVersion": 5, "MinorVersion": 8, "PatchVersion": 0, "Changelist": 123}),
++                encoding="utf-8",
++            )
++            state = base / "state"
++            logs = state / "logs" / COMMIT[:12]
++            # Paths are precomputed: os.name is patched below, so avoid constructing bare Path() there.
++            result_path = logs / "unreal-low-spec-startup.json"
++            unreal_log = logs / "unreal-low-spec-startup.log"
++
++            def fake_run_logged(args: list[str], *, cwd: Path, log_path: Path, timeout_seconds: float):
++                self.assertEqual(args[args.index("-ResultPath") + 1], str(result_path))
++                self.assertEqual(args[args.index("-LogPath") + 1], str(unreal_log))
++                self.assertLessEqual(timeout_seconds, 1500.0)
++                log_path.parent.mkdir(parents=True, exist_ok=True)
++                log_path.write_text("runner\n", encoding="utf-8")
++                if log_text:
++                    unreal_log.write_text(log_text.format(repo=repo, unreal=unreal), encoding="utf-8")
++                if payload is not None:
++                    result_path.write_text(json.dumps(payload), encoding="utf-8-sig")
++                return exit_code, 5.0
++
++            with mock.patch.object(worker.os, "name", "nt"), mock.patch.object(
++                worker, "run_logged", side_effect=fake_run_logged
++            ), mock.patch.object(worker.Path, "home", return_value=base / "home"), mock.patch.dict(
++                os.environ, {"USERNAME": "privateuser"}
++            ):
++                return worker.run_unreal_low_spec_startup(repo, unreal, COMMIT, logs, state)
++
++    def test_runner_records_exact_build_identity_and_relative_log(self) -> None:
++        check = self._run(probe_payload())
++        self.assertEqual(check["status"], "PASS")
++        self.assertEqual(
++            check["build_identity"],
++            {"commit": COMMIT, "target": "EverwardEditor Win64 Development", "unreal_engine_version": "5.8.0-CL123"},
++        )
++        self.assertEqual(check["log"], f"logs/{COMMIT[:12]}/unreal-low-spec-startup.log")
++        self.assertNotIn("failure_tail", check)
++
++    def test_missing_result_file_fails_closed(self) -> None:
++        check = self._run(None)
++        self.assertEqual(check["status"], "REVIEW_REQUIRED")
++
++    def test_failure_tail_and_probe_error_are_sanitized(self) -> None:
++        log_text = (
++            "LogInit: Command Line: {repo}\\unreal\\Everward.uproject\n"
++            "LogInit: User: privateuser\n"
++            "Error: crash in {unreal}\\Engine\\Binaries\\Win64\\UnrealEditor.exe\n"
++        )
++        payload = probe_payload(
++            startup_marker_observed=False,
++            exited_before_window_end=True,
++            error="Failed near C:/Users/PRIVATEUSER/AppData/x",
++        )
++        check = self._run(payload, log_text=log_text)
++        self.assertEqual(check["status"], "FAIL")
++        serialized = json.dumps(check)
++        self.assertNotIn("Everward Playtest", serialized)
++        self.assertNotIn("UE_5.8", serialized)
++        self.assertNotIn("privateuser", serialized.lower())
++        self.assertIn("<REPO_ROOT>", check["failure_tail"])
++        self.assertIn("<UE_5_8_ROOT>", check["failure_tail"])
++        self.assertIn("<USER>", check["probe_error"])
++
++    def test_missing_probe_script_is_review_required(self) -> None:
++        with tempfile.TemporaryDirectory() as temp:
++            check = worker.run_unreal_low_spec_startup(
++                Path(temp), Path(temp), COMMIT, Path(temp) / "logs", Path(temp)
++            )
++        self.assertEqual(check["status"], "REVIEW_REQUIRED")
++
++    def test_sanitize_text_is_case_insensitive_for_windows_paths(self) -> None:
++        repo = Path(r"C:\Users\Someone\Documents\Everward Playtest\Project-Everward")
++        text = r"c:\users\someone\documents\everward playtest\project-everward\unreal"
++        self.assertEqual(worker.sanitize_text(text, repo_root=repo), r"<REPO_ROOT>\unreal")
++
++
++class LowSpecStartupWorkerOrderingTests(unittest.TestCase):
++    def test_cache_requires_low_spec_marker_for_the_same_commit(self) -> None:
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+         with tempfile.TemporaryDirectory() as temp:
+             state = Path(temp)
+             (state / worker.LAST_PASS_MARKER).write_text(COMMIT + "\n", encoding="ascii")
+@@ -220,6 +436,7 @@ class LowSpecCacheTests(unittest.TestCase):
+             (state / worker.LOW_SPEC_PASS_MARKER).write_text(COMMIT + "\n", encoding="ascii")
+             self.assertEqual(worker.read_last_pass(state), COMMIT)
+ 
++<<<<<<< HEAD
+ 
+ class LowSpecWorkerOrderingTests(unittest.TestCase):
+     def test_low_spec_runs_only_after_headless_smoke_passes_and_before_cache(self) -> None:
+@@ -241,10 +458,34 @@ class LowSpecWorkerOrderingTests(unittest.TestCase):
+         self.assertLess(gate_index, low_spec_index)
+         self.assertLess(low_spec_index, marker_index)
+         self.assertIn('report["checks"]["unreal_low_spec_startup"] = low_spec', run_body)
++=======
++    def test_low_spec_runs_only_after_headless_smoke_and_before_pass_markers(self) -> None:
++        source = WORKER_PATH.read_text(encoding="utf-8")
++        run_body = source.split("def run_worker", 1)[1].split("def build_parser", 1)[0]
++        smoke = run_body.index("run_unreal_headless_smoke(")
++        smoke_gate = run_body.index('if headless_smoke.get("status") != "PASS":')
++        low_spec = run_body.index("run_unreal_low_spec_startup(")
++        marker = run_body.index("LAST_PASS_MARKER).write_text")
++        low_marker = run_body.index("LOW_SPEC_PASS_MARKER).write_text")
++        self.assertLess(smoke, smoke_gate)
++        self.assertLess(smoke_gate, low_spec)
++        self.assertLess(low_spec, marker)
++        self.assertLess(low_spec, low_marker)
++        self.assertIn('report["checks"]["unreal_low_spec_startup"] = low_spec', run_body)
++        # The exact synced commit, not a second lookup, is the identity the probe must match.
++        self.assertIn("run_unreal_low_spec_startup(repo_root, unreal_root, synced,", run_body)
++
++    def test_low_spec_failure_prevents_pass_and_cache(self) -> None:
++        checks = {"unreal_headless_smoke": {"status": "PASS"}, "unreal_low_spec_startup": {"status": "REVIEW_REQUIRED"}}
++        self.assertEqual(worker.aggregate_status(checks), "REVIEW_REQUIRED")
++        checks["unreal_low_spec_startup"] = {"status": "FAIL"}
++        self.assertEqual(worker.aggregate_status(checks), "FAIL")
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ 
+     def test_human_only_debt_keeps_frame_time_and_gameplay(self) -> None:
+         source = WORKER_PATH.read_text(encoding="utf-8")
+         self.assertIn("actual frame-time/playability until automated Unreal telemetry exists", source)
++<<<<<<< HEAD
+         self.assertIn("control and movement feel", source)
+ 
+     def test_publisher_lists_low_spec_check_with_fingerprint_only(self) -> None:
+@@ -297,6 +538,65 @@ class LowSpecLauncherContractTests(unittest.TestCase):
+         self.assertIn("[switch]$LowSpec", text)
+         self.assertIn("[switch]$MeasureMemory", text)
+         self.assertIn('-MeasureMemory is currently restricted to -LowSpec evidence runs.', text)
++=======
++        self.assertIn("gameplay desire-to-continue judgment", source)
++
++
++class LowSpecLaunchContractTests(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls) -> None:
++        cls.probe = PROBE_PATH.read_text(encoding="utf-8")
++        cls.harness = HARNESS_PATH.read_text(encoding="utf-8")
++
++    def test_probe_reuses_the_exact_harness_low_spec_console_commands(self) -> None:
++        self.assertEqual(low_spec_commands(self.probe), low_spec_commands(self.harness))
++
++    def test_probe_reuses_the_harness_window_and_memory_source(self) -> None:
++        for expected in ('"-WINDOWED", "-ResX=1280", "-ResY=720", "-ExecCmds=`"$LowSpecCommands`""', "WorkingSet64"):
++            self.assertIn(expected, self.harness)
++            self.assertIn(expected, self.probe)
++
++    def test_probe_is_bounded_and_always_stops_its_editor(self) -> None:
++        self.assertIn("[int]$StartupTimeoutSeconds = 900", self.probe)
++        self.assertIn("[int]$SampleWindowSeconds = 60", self.probe)
++        finally_body = self.probe.rsplit("finally {", 1)[1]
++        self.assertIn("taskkill.exe /PID $EditorProcess.Id /T /F", finally_body)
++        self.assertIn('$Result.cleanup = "failed"', finally_body)
++        self.assertIn("Set-Content -Path $ResultPath", finally_body)
++
++    def test_probe_does_not_change_defaults_mechanics_or_repository_evidence(self) -> None:
++        for forbidden in (
++            "DefaultEngine.ini",
++            "DefaultGame.ini",
++            "LowSpecPlay.ini",
++            "playtests\\phase2",
++            "everward-manual-playtest.lock",
++            "register_unattended_product_reality",
++            "src\\simulation",
++            "Set-ObservationCheck",
++        ):
++            self.assertNotIn(forbidden, self.probe)
++
++    def test_probe_result_contains_no_path_fields(self) -> None:
++        result_block = self.probe.split("$Result = [ordered]@{", 1)[1].split("}", 1)[0]
++        self.assertNotRegex(result_block, r"(?i)path|root|log\b")
++
++    def test_probe_never_claims_product_reality(self) -> None:
++        self.assertNotRegex(self.probe, r"(?i)\"PASS\"")
++        self.assertIn("never decides PASS", self.probe)
++
++
++class LowSpecPublisherTests(unittest.TestCase):
++    def test_publisher_lists_low_spec_check_with_allow_listed_facts_only(self) -> None:
++        text = PUBLISH_PATH.read_text(encoding="utf-8")
++        self.assertIn('"unreal_low_spec_startup"', text)
++        self.assertIn("Format-AllowListedNumber", text)
++        self.assertIn('if ($Category -match "^[a-z_]{1,40}$")', text)
++        self.assertIn("not visual, control-feel, frame-time, or gameplay evidence", text)
++        self.assertNotIn("$Check.failure_tail)", text)
++        self.assertNotIn("$Check.probe_error", text)
++        self.assertNotIn("$Check.log", text)
++>>>>>>> 6178775 (actor autonomous bounded slice 20260926-144201)
+ 
+ 
+ if __name__ == "__main__":

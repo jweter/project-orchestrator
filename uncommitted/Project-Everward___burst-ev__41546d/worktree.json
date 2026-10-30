@@ -1,0 +1,70 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_burst-ev",
+ "head": "9484adb31de04d10d2b2af556ecbb1865cd006ef",
+ "branch": "orchestrator/burst-ev-20260923",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "4391d000a7b4814ac3e897ac2371ea30fa05976403aaae05ea108254ff3e7566"
+  ],
+  [
+   ".aider.input.history",
+   "9f70edb3109d542707c1eb3474077250453d69750a63b4cb5da1c54ebc7bccf5"
+  ],
+  [
+   ".aider.tags.cache.v4/1f/e2/1fbf473281d12e616a3c98ada553.val",
+   "76c1199587017333e559e664fe1ac3badecb3d8eb2617f743a6ed02cbcc1054c"
+  ],
+  [
+   ".aider.tags.cache.v4/83/1d/89eb5581265ea43e2977d826958d.val",
+   "8dea81aa5586a058c1c1043cf66d411070ce2f7754c00339bdffc6183e5178d3"
+  ],
+  [
+   ".aider.tags.cache.v4/96/91/3f970f266dd4ab70031c6d99d13b.val",
+   "3e8931af22afefa4d9e842a78952812db539b976f157f76b6055d51f059adadf"
+  ],
+  [
+   ".aider.tags.cache.v4/af/4f/73b384d02eb7817c5b7b294a8fd6.val",
+   "8555d6cbbf46caec62bdd56cd5dca1d25b1489b501d42f0c3f315757a0a92337"
+  ],
+  [
+   ".aider.tags.cache.v4/bd/f0/3731be76b5d85d5337cee5836e9f.val",
+   "603c556b3a9d1dea16a2a00b791e64dbb0d0d42ef690208d2e3f91ed4a6fb87d"
+  ],
+  [
+   ".aider.tags.cache.v4/c4/7f/9fd7e2e27cddc5fe77425bbf23c2.val",
+   "acd022c2df6f762261baa2d167dc6cc733d2f911f6a2508f95f1809be68e25bf"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "6b667f4dd64cbe5f8b54aecf9ad7231a71450b33867cdbcd8e50c3879f700cb4"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-shm",
+   "78f16233cd8dd059b02b71e7f6eea17d2646bc04f9c3092c69904269ad3e2c03"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db-wal",
+   "277a0d2755e523b4a6992af6ed81b1112dc84ef5433a3aa26ae57f908a1050bb"
+  ],
+  [
+   ".aider.tags.cache.v4/ce/ce/f51073167043eb1053de18286838.val",
+   "d581df393e212683abc2167acf653bb7b1ca285b32d89395141a2161cc52a266"
+  ],
+  [
+   ".aider.tags.cache.v4/df/a9/f1d16aa1d2273e6bd794b3343330.val",
+   "b4b8ef652278f9e470d2d5697a68e3f40ab6e9721442cf20160020a06933c5ec"
+  ],
+  [
+   ".aider.tags.cache.v4/ff/8c/b962ed83840a59a0702ccc91814e.val",
+   "17001c9cc7d48455bf2502f6f8f10149bf0e52b1fe33a2efa665c651444849e0"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward___burst-ev__41546d"
+}

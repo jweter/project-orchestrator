@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/knowledge-engine-web",
+ "head": "242e9d3f42f329911f06c81eab9bde34220bc0e7",
+ "branch": "main",
+ "repo": "knowledge-engine-web",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-web",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "data/knowledge_engine.sqlite3"
+ ],
+ "patch_sha256": "faf361587e8aa717a146a1bf11d11828e5516896de0be0f2f510792007212e92",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-web__knowledge-engine-web__048cad"
+}

@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/GitHub/rocksmith-issue612-human-debt-current-v2",
+ "head": "e353e4067ceff6d061ffbe2360a8ed76e974cecd",
+ "branch": "repair/issue612-human-debt-current-v2",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "src/rocksmith_cdlc_generator/human_only_debt.py"
+ ],
+ "patch_sha256": "878663d462f3062e68ec25e97ea6233d400e9efa914c84dba08cbcd52f0c6432",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__rocksmith-issue612-human-debt-current-v2__172e3c"
+}

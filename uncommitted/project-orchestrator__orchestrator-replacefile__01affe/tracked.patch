@@ -1,0 +1,208 @@
+diff --git a/src/project_orchestrator/state_io.py b/src/project_orchestrator/state_io.py
+index 2c06139..d09d404 100644
+--- a/src/project_orchestrator/state_io.py
++++ b/src/project_orchestrator/state_io.py
+@@ -2,42 +2,95 @@ from __future__ import annotations
+ 
+ import json
+ import os
++import shutil
+ import time
+ import uuid
+ from pathlib import Path
+ from typing import Any
+ 
++ERROR_UNABLE_TO_REMOVE_REPLACED = 1175
++ERROR_UNABLE_TO_MOVE_REPLACEMENT = 1176
++ERROR_UNABLE_TO_MOVE_REPLACEMENT_2 = 1177
++
++
++def _call_windows_replace_file(
++    destination: Path,
++    replacement: Path,
++    backup: Path,
++) -> tuple[bool, int]:
++    """Call ReplaceFileW and capture GetLastError immediately."""
++    import ctypes
++    from ctypes import wintypes
++
++    replace_file = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
++    replace_file.argtypes = [
++        wintypes.LPCWSTR,
++        wintypes.LPCWSTR,
++        wintypes.LPCWSTR,
++        wintypes.DWORD,
++        ctypes.c_void_p,
++        ctypes.c_void_p,
++    ]
++    replace_file.restype = wintypes.BOOL
++    ctypes.set_last_error(0)
++    ok = bool(
++        replace_file(
++            str(destination.absolute()),
++            str(replacement.absolute()),
++            str(backup.absolute()),
++            0,
++            None,
++            None,
++        )
++    )
++    return ok, int(ctypes.get_last_error())
++
++
++def _restore_windows_backup(backup: Path, destination: Path) -> None:
++    """Restore the previous canonical file after a documented partial ReplaceFileW failure."""
++    if destination.exists():
++        return
++    if not backup.exists():
++        raise OSError("ReplaceFileW partial failure left no canonical file or backup")
++    try:
++        backup.replace(destination)
++        return
++    except PermissionError:
++        restore_tmp = destination.with_name(
++            f"{destination.name}.restore.{os.getpid()}.{uuid.uuid4().hex}"
++        )
++        try:
++            shutil.copy2(backup, restore_tmp)
++            restore_tmp.replace(destination)
++        finally:
++            restore_tmp.unlink(missing_ok=True)
++
+ 
+ def _windows_replace_file(replacement: Path, destination: Path) -> bool:
+-    """Use the Windows replacement primitive when MoveFileEx-style replace is denied."""
++    """Use ReplaceFileW while preserving canonical state on every documented failure mode."""
+     if os.name != "nt":
+         return False
++    backup = destination.with_name(
++        f"{destination.name}.backup.{os.getpid()}.{uuid.uuid4().hex}"
++    )
+     try:
+-        import ctypes
+-        from ctypes import wintypes
+-
+-        replace_file = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
+-        replace_file.argtypes = [
+-            wintypes.LPCWSTR,
+-            wintypes.LPCWSTR,
+-            wintypes.LPCWSTR,
+-            wintypes.DWORD,
+-            ctypes.c_void_p,
+-            ctypes.c_void_p,
+-        ]
+-        replace_file.restype = wintypes.BOOL
+-        return bool(
+-            replace_file(
+-                str(destination.absolute()),
+-                str(replacement.absolute()),
+-                None,
+-                0,
+-                None,
+-                None,
+-            )
+-        )
+-    except (AttributeError, OSError):
++        try:
++            succeeded, error = _call_windows_replace_file(destination, replacement, backup)
++        except (AttributeError, OSError):
++            return False
++        if succeeded:
++            backup.unlink(missing_ok=True)
++            return True
++        if error == ERROR_UNABLE_TO_MOVE_REPLACEMENT_2:
++            _restore_windows_backup(backup, destination)
++        elif error == ERROR_UNABLE_TO_MOVE_REPLACEMENT and not destination.exists():
++            _restore_windows_backup(backup, destination)
++        elif error == ERROR_UNABLE_TO_REMOVE_REPLACED and not destination.exists():
++            _restore_windows_backup(backup, destination)
+         return False
++    finally:
++        if destination.exists():
++            backup.unlink(missing_ok=True)
+ 
+ 
+ def atomic_json(path: Path, payload: dict[str, Any], *, replace_attempts: int = 5) -> None:
+@@ -60,6 +113,7 @@ def atomic_json(path: Path, payload: dict[str, Any], *, replace_attempts: int =
+     finally:
+         tmp.unlink(missing_ok=True)
+ 
++
+ def optional_atomic_json(path: Path, payload: dict[str, Any], *, replace_attempts: int = 5) -> bool:
+     """Publish redundant telemetry atomically without taking down its owner on contention."""
+     try:
+diff --git a/tests/test_state_io.py b/tests/test_state_io.py
+index fb4649b..bdd8f65 100644
+--- a/tests/test_state_io.py
++++ b/tests/test_state_io.py
+@@ -134,3 +134,70 @@ def test_atomic_json_windows_replacefile_handles_node_reader(tmp_path):
+     finally:
+         child.terminate()
+         child.wait(timeout=5)
++
++
++@pytest.mark.skipif(os.name != "nt", reason="Windows ReplaceFileW partial-failure semantics")
++def test_windows_replacefile_1176_preserves_original_destination(tmp_path, monkeypatch):
++    import project_orchestrator.state_io as state_io
++
++    destination = tmp_path / "supervisor.json"
++    replacement = tmp_path / "supervisor.json.tmp"
++    destination.write_text('{"generation":"old"}\n', encoding="utf-8")
++    replacement.write_text('{"generation":"new"}\n', encoding="utf-8")
++    observed = {}
++
++    def fail_1176(dest, repl, backup):
++        observed["backup"] = backup
++        assert dest == destination
++        assert repl == replacement
++        return False, state_io.ERROR_UNABLE_TO_MOVE_REPLACEMENT
++
++    monkeypatch.setattr(state_io, "_call_windows_replace_file", fail_1176)
++    assert state_io._windows_replace_file(replacement, destination) is False
++    assert json.loads(destination.read_text(encoding="utf-8")) == {"generation": "old"}
++    assert replacement.exists()
++    assert observed["backup"] != destination
++    assert observed["backup"].parent == destination.parent
++
++
++@pytest.mark.skipif(os.name != "nt", reason="Windows ReplaceFileW partial-failure semantics")
++def test_windows_replacefile_1177_restores_backup_to_canonical_path(tmp_path, monkeypatch):
++    import project_orchestrator.state_io as state_io
++
++    destination = tmp_path / "supervisor.json"
++    replacement = tmp_path / "supervisor.json.tmp"
++    destination.write_text('{"generation":"old"}\n', encoding="utf-8")
++    replacement.write_text('{"generation":"new"}\n', encoding="utf-8")
++
++    def fail_1177(dest, repl, backup):
++        dest.replace(backup)
++        assert not dest.exists()
++        assert repl.exists()
++        assert backup.exists()
++        return False, state_io.ERROR_UNABLE_TO_MOVE_REPLACEMENT_2
++
++    monkeypatch.setattr(state_io, "_call_windows_replace_file", fail_1177)
++    assert state_io._windows_replace_file(replacement, destination) is False
++    assert json.loads(destination.read_text(encoding="utf-8")) == {"generation": "old"}
++    assert replacement.exists()
++    assert not list(tmp_path.glob("supervisor.json.backup.*"))
++
++
++@pytest.mark.skipif(os.name != "nt", reason="Windows ReplaceFileW partial-failure semantics")
++def test_windows_replacefile_success_removes_old_backup(tmp_path, monkeypatch):
++    import project_orchestrator.state_io as state_io
++
++    destination = tmp_path / "supervisor.json"
++    replacement = tmp_path / "supervisor.json.tmp"
++    destination.write_text('{"generation":"old"}\n', encoding="utf-8")
++    replacement.write_text('{"generation":"new"}\n', encoding="utf-8")
++
++    def succeed(dest, repl, backup):
++        dest.replace(backup)
++        repl.replace(dest)
++        return True, 0
++
++    monkeypatch.setattr(state_io, "_call_windows_replace_file", succeed)
++    assert state_io._windows_replace_file(replacement, destination) is True
++    assert json.loads(destination.read_text(encoding="utf-8")) == {"generation": "new"}
++    assert not list(tmp_path.glob("supervisor.json.backup.*"))

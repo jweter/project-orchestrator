@@ -1,0 +1,2575 @@
+{
+ "path": "C:/Users/jerem/GitHub/rocksmith-pr741-review-fixes",
+ "head": "ee0d92f05d56d4d210c74b8e3adb9a4b7e96681d",
+ "branch": "repair/pr741-review-fixes-20261006",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 8,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "full-pr741.out",
+   "60c0c2e8cdbe71ca4b5a0398afa56d49ef59789d5ac11e385538e492c64be72a"
+  ]
+ ],
+ "untracked_skipped": [
+  [
+   ".pytest-ci-repair/test_bass_export_fails_closed_0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_fails_closed_0/project/analysis/reviewed_score_timing.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_fails_closed_0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_fails_closed_0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_fails_closed_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_routes_throug0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_routes_throug0/project/analysis/reviewed_score_timing.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_routes_throug0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_routes_throug0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_routes_throug0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_routes_througcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_m0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_m0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_m0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_m0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_m0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_m0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_m0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bass_export_uses_legacy_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bend_and_slide_get_action0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bend_and_slide_get_action0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bend_and_slide_get_action0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_bend_and_slide_get_actioncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_fully_fingered_chord_does0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_fully_fingered_chord_does0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_fully_fingered_chord_does0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_fully_fingered_chord_doescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_summary_pairs_acti0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_summary_pairs_acti0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_summary_pairs_acti0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_summary_pairs_acticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_validation_warns_o0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_validation_warns_o0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_validation_warns_o0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_guitar_validation_warns_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_throug0/project/analysis/reviewed_score_timing.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_throug0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_throug0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_throug0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_throug0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_throug0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_throug0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_routes_througcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/eof/LEAD_README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/eof/arr_lead_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/eof/lead_export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_c0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_export_uses_legacy_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_validation_surfaces_0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_validation_surfaces_0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_validation_surfaces_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_lead_validation_surfaces_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/eof/LEAD_README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/eof/arr_lead_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/eof/lead_export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_write0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_project_lead_export_writecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_rocksmith_fret_limit_bloc0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_rocksmith_fret_limit_bloc0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_rocksmith_fret_limit_bloc0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_rocksmith_fret_limit_bloccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_unresolved_guitar_note_bl0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_unresolved_guitar_note_bl0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_unresolved_guitar_note_bl0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_unresolved_guitar_note_bl0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_unresolved_guitar_note_bl0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_unresolved_guitar_note_bl0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair/test_unresolved_guitar_note_blcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_fails_closed_0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_fails_closed_0/project/analysis/reviewed_score_timing.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_fails_closed_0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_fails_closed_0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_fails_closed_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/analysis/reviewed_score_timing.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_throug0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_routes_througcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_m0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_m0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_m0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_m0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_m0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_m0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_m0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bass_export_uses_legacy_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bend_and_slide_get_action0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bend_and_slide_get_action0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bend_and_slide_get_action0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_bend_and_slide_get_actioncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_fully_fingered_chord_does0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_fully_fingered_chord_does0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_fully_fingered_chord_does0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_fully_fingered_chord_doescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_summary_pairs_acti0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_summary_pairs_acti0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_summary_pairs_acti0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_summary_pairs_acticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_validation_warns_o0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_validation_warns_o0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_validation_warns_o0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_guitar_validation_warns_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/analysis/reviewed_score_timing.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/eof/LEAD_README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/eof/arr_lead_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/eof/lead_export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_throug0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_routes_througcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/eof/LEAD_README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/eof/arr_lead_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/eof/lead_export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_c0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_export_uses_legacy_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_validation_surfaces_0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_validation_surfaces_0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_validation_surfaces_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_lead_validation_surfaces_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/eof/LEAD_README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/eof/arr_lead_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/eof/lead_export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_write0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_project_lead_export_writecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_rocksmith_fret_limit_bloc0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_rocksmith_fret_limit_bloc0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_rocksmith_fret_limit_bloc0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_rocksmith_fret_limit_bloccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_unresolved_guitar_note_bl0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_unresolved_guitar_note_bl0/project/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_unresolved_guitar_note_bl0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_unresolved_guitar_note_bl0/project/review/lead_flags.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_unresolved_guitar_note_bl0/project/review/lead_summary.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_unresolved_guitar_note_bl0/project/review/lead_validation_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-ci-repair2/test_unresolved_guitar_note_blcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_ambiguous_hammer_pulloff_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_ambiguous_hammer_pulloff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_arrangement_bends_propert0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_arrangement_bends_propertcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bass_export_adds_count_an0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bass_export_adds_count_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bass_export_fails_closed_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bass_export_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bass_export_uses_eof_nogu0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bass_export_uses_eof_nogucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bend_curve_with_point_vib0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bend_curve_with_point_vibcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bend_with_curve_data_expo0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bend_with_curve_data_expocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bend_without_curve_data_s0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_bend_without_curve_data_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_capo_does_not_offset_indi0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_capo_does_not_offset_indicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_capo_offsets_chord_templacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_capo_tag_reflects_arrange0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_capo_tag_reflects_arrangecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_capo_zero_matches_prior_h0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_capo_zero_matches_prior_hcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_ids_are_reused_withcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_note_bend_curve_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_note_legato_slide_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_template_exports_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_template_finger_defcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_template_muted_stricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_template_open_strincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_template_thumb_fingcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_chord_template_with_particurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_end_phrase_falls_back_to_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_end_phrase_falls_back_to_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_export_is_blocked_when_va0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_export_is_blocked_when_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_guitar_export_adds_count_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_guitar_export_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_guitar_export_uses_eof_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_guitar_xml_refuses_unresocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_hammer_on_and_pull_off_ex0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_hammer_on_and_pull_off_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_lead_xml_emits_path_tunincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_legato_slide_with_link_ne0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_legato_slide_with_link_necurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_link_next_without_exporta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_link_next_without_exportacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_pinch_harmonic_gets_disti0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_pinch_harmonic_gets_disticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_rhythm_xml_sets_rhythm_pacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_section_fallback_falls_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_section_fallback_falls_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_shift_slide_without_link_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_shift_slide_without_link_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_single_note_bend_curve_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_single_note_legato_slide_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_single_note_shift_slide_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_slap_pluck_and_fret_hand_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_slap_pluck_and_fret_hand_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_slide_with_resolved_targe0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_slide_with_resolved_targecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_slide_without_resolved_ta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_slide_without_resolved_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_par0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_par0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_par0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_par0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_par0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_par0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_par0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_valid_project_exports_parcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_xml_matches_core_rocksmit0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741/test_xml_matches_core_rocksmitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_ambiguous_hammer_pulloff_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_ambiguous_hammer_pulloff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_arrangement_bends_propert0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_arrangement_bends_propertcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bass_export_adds_count_an0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bass_export_adds_count_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bass_export_fails_closed_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bass_export_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bass_export_uses_eof_nogu0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bass_export_uses_eof_nogucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bend_curve_with_point_vib0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bend_curve_with_point_vibcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bend_with_curve_data_expo0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bend_with_curve_data_expocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bend_without_curve_data_s0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_bend_without_curve_data_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_capo_does_not_offset_indi0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_capo_does_not_offset_indicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_capo_offsets_chord_templacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_capo_tag_reflects_arrange0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_capo_tag_reflects_arrangecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_capo_zero_matches_prior_h0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_capo_zero_matches_prior_hcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_ids_are_reused_withcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_note_bend_curve_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_note_legato_slide_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_template_exports_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_template_finger_defcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_template_muted_stricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_template_open_strincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_template_thumb_fingcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_chord_template_with_particurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_end_phrase_falls_back_to_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_end_phrase_falls_back_to_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_export_is_blocked_when_va0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_export_is_blocked_when_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_guitar_export_adds_count_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_guitar_export_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_guitar_export_uses_eof_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_guitar_xml_refuses_unresocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_hammer_on_and_pull_off_ex0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_hammer_on_and_pull_off_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_lead_xml_emits_path_tunincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_legato_slide_with_link_ne0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_legato_slide_with_link_necurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_link_next_without_exporta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_link_next_without_exportacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_pinch_harmonic_gets_disti0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_pinch_harmonic_gets_disticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_rhythm_xml_sets_rhythm_pacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_section_fallback_falls_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_section_fallback_falls_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_shift_slide_without_link_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_shift_slide_without_link_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_single_note_bend_curve_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_single_note_legato_slide_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_single_note_shift_slide_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_slap_pluck_and_fret_hand_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_slap_pluck_and_fret_hand_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_slide_with_resolved_targe0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_slide_with_resolved_targecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_slide_without_resolved_ta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_slide_without_resolved_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_par0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_par0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_par0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_par0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_par0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_par0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_par0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_valid_project_exports_parcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_xml_matches_core_rocksmit0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741b/test_xml_matches_core_rocksmitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_ambiguous_hammer_pulloff_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_ambiguous_hammer_pulloff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_arrangement_bends_propert0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_arrangement_bends_propertcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bass_export_adds_count_an0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bass_export_adds_count_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bass_export_fails_closed_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bass_export_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bass_export_uses_eof_nogu0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bass_export_uses_eof_nogucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bend_curve_with_point_vib0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bend_curve_with_point_vibcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bend_with_curve_data_expo0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bend_with_curve_data_expocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bend_without_curve_data_s0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_bend_without_curve_data_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_capo_does_not_offset_indi0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_capo_does_not_offset_indicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_capo_offsets_chord_templacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_capo_tag_reflects_arrange0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_capo_tag_reflects_arrangecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_capo_zero_matches_prior_h0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_capo_zero_matches_prior_hcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_ids_are_reused_withcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_note_bend_curve_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_note_legato_slide_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_template_exports_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_template_finger_defcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_template_muted_stricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_template_open_strincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_template_thumb_fingcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_chord_template_with_particurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_end_phrase_falls_back_to_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_end_phrase_falls_back_to_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_export_is_blocked_when_va0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_export_is_blocked_when_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_guitar_export_adds_count_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_guitar_export_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_guitar_export_uses_eof_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_guitar_xml_refuses_unresocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_hammer_on_and_pull_off_ex0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_hammer_on_and_pull_off_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_lead_xml_emits_path_tunincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_legato_slide_with_link_ne0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_legato_slide_with_link_necurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_link_next_without_exporta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_link_next_without_exportacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_pinch_harmonic_gets_disti0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_pinch_harmonic_gets_disticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_rhythm_xml_sets_rhythm_pacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_section_fallback_falls_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_section_fallback_falls_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_shift_slide_without_link_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_shift_slide_without_link_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_single_note_bend_curve_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_single_note_legato_slide_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_single_note_shift_slide_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_slap_pluck_and_fret_hand_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_slap_pluck_and_fret_hand_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_slide_with_resolved_targe0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_slide_with_resolved_targecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_slide_without_resolved_ta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_slide_without_resolved_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_par0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_par0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_par0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_par0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_par0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_par0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_par0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_valid_project_exports_parcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_xml_matches_core_rocksmit0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-merge741c/test_xml_matches_core_rocksmitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_ambiguous_hammer_pulloff_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_ambiguous_hammer_pulloff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_arrangement_bends_propert0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_arrangement_bends_propertcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_requires_0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_requires_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_requires_0/project/sources/imported/page1-bass-612015df8ed1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_requires_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_succeeds_0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_succeeds_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_succeeds_0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_authoring_input_succeeds_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bass_export_adds_count_an0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bass_export_adds_count_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bass_export_fails_closed_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bass_export_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bass_export_uses_eof_nogu0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bass_export_uses_eof_nogucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bend_curve_with_point_vib0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bend_curve_with_point_vibcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bend_with_curve_data_expo0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bend_with_curve_data_expocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bend_without_curve_data_s0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_bend_without_curve_data_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_build_printed_notation_ba0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_build_printed_notation_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_build_printed_notation_ba0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_build_printed_notation_ba1/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_build_printed_notation_ba1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_build_printed_notation_ba1/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_build_printed_notation_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_capo_does_not_offset_indi0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_capo_does_not_offset_indicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_capo_offsets_chord_templacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_capo_tag_reflects_arrange0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_capo_tag_reflects_arrangecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_capo_zero_matches_prior_h0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_capo_zero_matches_prior_hcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_ids_are_reused_withcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_note_bend_curve_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_note_legato_slide_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_template_exports_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_template_finger_defcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_template_muted_stricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_template_open_strincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_template_thumb_fingcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_chord_template_with_particurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_end_phrase_falls_back_to_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_end_phrase_falls_back_to_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_export_is_blocked_when_va0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_export_is_blocked_when_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_guitar_export_adds_count_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_guitar_export_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_guitar_export_uses_eof_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_guitar_xml_refuses_unresocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_hammer_on_and_pull_off_ex0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_hammer_on_and_pull_off_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no0/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no0/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no0/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no1/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no1/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no1/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no1/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no1/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no2/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no2/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no2/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no2/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no2/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no2/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no3/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no3/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no3/project/sources/imported/page1-bass-612015df8ed1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/project/references/official-tab/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_no4/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_import_project_printed_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_lead_xml_emits_path_tunincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_legato_slide_with_link_ne0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_legato_slide_with_link_necurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_link_next_without_exporta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_link_next_without_exportacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_pinch_harmonic_gets_disti0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_pinch_harmonic_gets_disticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_register_printed_notation0/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_register_printed_notation0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_register_printed_notation0/project/references/official-tab/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_register_printed_notation1/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_register_printed_notation1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_register_printed_notationcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_rhythm_xml_sets_rhythm_pacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_section_fallback_falls_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_section_fallback_falls_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_shift_slide_without_link_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_shift_slide_without_link_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_single_note_bend_curve_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_single_note_legato_slide_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_single_note_shift_slide_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_slap_pluck_and_fret_hand_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_slap_pluck_and_fret_hand_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_slide_with_resolved_targe0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_slide_with_resolved_targecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_slide_without_resolved_ta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_slide_without_resolved_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_par0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_par0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_par0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_par0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_par0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_par0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_par0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_valid_project_exports_parcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_xml_input_round_trips_fro0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_xml_input_round_trips_fro0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_xml_input_round_trips_fro0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_xml_input_round_trips_frocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_xml_matches_core_rocksmit0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix/test_xml_matches_core_rocksmitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_ambiguous_hammer_pulloff_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_ambiguous_hammer_pulloff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_arrangement_bends_propert0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_arrangement_bends_propertcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_requires_0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_requires_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_requires_0/project/sources/imported/page1-bass-612015df8ed1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_requires_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_succeeds_0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_succeeds_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_succeeds_0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_authoring_input_succeeds_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bass_export_adds_count_an0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bass_export_adds_count_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bass_export_fails_closed_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bass_export_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bass_export_uses_eof_nogu0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bass_export_uses_eof_nogucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bend_curve_with_point_vib0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bend_curve_with_point_vibcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bend_with_curve_data_expo0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bend_with_curve_data_expocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bend_without_curve_data_s0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_bend_without_curve_data_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_build_printed_notation_ba0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_build_printed_notation_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_build_printed_notation_ba0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_build_printed_notation_ba1/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_build_printed_notation_ba1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_build_printed_notation_ba1/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_build_printed_notation_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_capo_does_not_offset_indi0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_capo_does_not_offset_indicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_capo_offsets_chord_templacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_capo_tag_reflects_arrange0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_capo_tag_reflects_arrangecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_capo_zero_matches_prior_h0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_capo_zero_matches_prior_hcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_ids_are_reused_withcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_note_bend_curve_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_note_legato_slide_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_template_exports_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_template_finger_defcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_template_muted_stricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_template_open_strincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_template_thumb_fingcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_chord_template_with_particurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_end_phrase_falls_back_to_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_end_phrase_falls_back_to_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_export_is_blocked_when_va0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_export_is_blocked_when_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_guitar_export_adds_count_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_guitar_export_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_guitar_export_uses_eof_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_guitar_xml_refuses_unresocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_hammer_on_and_pull_off_ex0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_hammer_on_and_pull_off_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no0/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no0/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no0/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no1/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no1/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no1/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no1/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no1/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no2/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no2/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no2/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no2/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no2/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no2/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no3/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no3/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no3/project/sources/imported/page1-bass-612015df8ed1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/project/references/official-tab/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_no4/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_import_project_printed_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_lead_xml_emits_path_tunincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_legato_slide_with_link_ne0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_legato_slide_with_link_necurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_link_next_without_exporta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_link_next_without_exportacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_pinch_harmonic_gets_disti0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_pinch_harmonic_gets_disticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_register_printed_notation0/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_register_printed_notation0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_register_printed_notation0/project/references/official-tab/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_register_printed_notation1/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_register_printed_notation1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_register_printed_notationcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_rhythm_xml_sets_rhythm_pacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_section_fallback_falls_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_section_fallback_falls_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_shift_slide_without_link_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_shift_slide_without_link_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_single_note_bend_curve_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_single_note_legato_slide_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_single_note_shift_slide_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_slap_pluck_and_fret_hand_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_slap_pluck_and_fret_hand_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_slide_with_resolved_targe0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_slide_with_resolved_targecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_slide_without_resolved_ta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_slide_without_resolved_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_par0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_par0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_par0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_par0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_par0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_par0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_par0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_valid_project_exports_parcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_xml_input_round_trips_fro0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_xml_input_round_trips_fro0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_xml_input_round_trips_fro0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_xml_input_round_trips_frocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_xml_matches_core_rocksmit0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-printedfix2/test_xml_matches_core_rocksmitcurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__rocksmith-pr741-review-fixes__c71fcc"
+}

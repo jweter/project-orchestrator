@@ -1,0 +1,17 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ProjectOrchestrator/verify-ever-pid",
+ "head": "8960b166b75a5dd1da28ff6bc8c2735694075e02",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "95ff1ed1dd4ba98d3debd7eb5a993ed4e0ee730bfd3fcadb07f45e08b015a970"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__verify-ever-pid__73919d"
+}

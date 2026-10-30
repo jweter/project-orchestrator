@@ -1,0 +1,231 @@
+diff --git a/engineering/preflight.py b/engineering/preflight.py
+index cefdb20..d50587b 100644
+--- a/engineering/preflight.py
++++ b/engineering/preflight.py
+@@ -8,20 +8,22 @@ import subprocess
+ import sys
+ import tempfile
+ import time
++import uuid
+ from datetime import datetime, timezone
+ from pathlib import Path
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+ EVIDENCE = ROOT / "preflight-evidence.json"
+ SRC = ROOT / "src"
+-# Windows Git can fail to create .git/objects in tests when the pytest
+-# basetemp is nested under a long isolated worktree path. Use a short,
+-# stable, worktree-specific temp root; never share or delete another repo's
+-# scratch space. Do not change or skip any tests or verification gates.
++# Keep Windows Git fixture paths short. Each invocation MUST own a unique
++# scratch directory: two simultaneous preflights previously shared a
++# deterministic basetemp and one run could delete the other's live fixtures.
++# Never weaken, skip, or reorder verification checks.
+ _ROOT_KEY = hashlib.sha256(
+     os.path.normcase(str(ROOT.resolve())).encode("utf-8")
+ ).hexdigest()[:16]
+-PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / "ig-preflight" / _ROOT_KEY
++_RUN_KEY = f"{_ROOT_KEY}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
++PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / "ig-preflight" / _RUN_KEY
+ PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
+ PREFLIGHT_ENV = os.environ.copy()
+ PREFLIGHT_ENV["PYTHONPATH"] = str(SRC)
+diff --git a/src/project_orchestrator/iron_god_conflict_aware_scheduling.py b/src/project_orchestrator/iron_god_conflict_aware_scheduling.py
+index 346469d..94ecb15 100644
+--- a/src/project_orchestrator/iron_god_conflict_aware_scheduling.py
++++ b/src/project_orchestrator/iron_god_conflict_aware_scheduling.py
+@@ -54,42 +54,39 @@ def schedule_conflict_aware(
+     if available_slots < 0:
+         raise SchedulingError("available_slots must be >= 0")
+ 
+-    conflict_free, conflict_reports = conflict_free_subset(footprints)
+-
+-    conflicted_against: dict[str, list[str]] = {}
+-    for report in conflict_reports:
+-        conflicted_against.setdefault(report.slice_a, []).append(report.slice_b)
+-
+-    selected_ids = {f.slice_id for f in conflict_free[:available_slots]}
++    if len({item.slice_id for item in footprints}) != len(footprints):
++        raise SchedulingError("duplicate slice identity")
+ 
++    selected: list[SliceChangeFootprint] = []
+     decisions: list[SchedulingDecision] = []
+     for candidate in footprints:
+-        if candidate.slice_id in selected_ids:
+-            decisions.append(
+-                SchedulingDecision(
+-                    slice_id=candidate.slice_id,
+-                    status=SELECTED,
+-                    reason="conflict-free and within available capacity",
+-                )
+-            )
+-        elif candidate.slice_id in conflicted_against:
+-            against = ", ".join(sorted(conflicted_against[candidate.slice_id]))
+-            decisions.append(
+-                SchedulingDecision(
+-                    slice_id=candidate.slice_id,
+-                    status=REJECTED_CONFLICT,
+-                    reason=f"conflicts with already-selected slice(s): {against}",
+-                )
+-            )
+-        else:
+-            decisions.append(
+-                SchedulingDecision(
+-                    slice_id=candidate.slice_id,
+-                    status=REJECTED_CAPACITY,
+-                    reason=(
+-                        "conflict-free but no capacity remained "
+-                        f"(available_slots={available_slots})"
+-                    ),
+-                )
+-            )
++        # Capacity rejection is not a reservation: only actually selected
++        # footprints may constrain later candidates.
++        if available_slots == 0:
++            decisions.append(SchedulingDecision(
++                candidate.slice_id, REJECTED_CAPACITY,
++                f"no capacity remained (available_slots={available_slots})",
++            ))
++            continue
++        subset, reports = conflict_free_subset([*selected, candidate])
++        if candidate.slice_id not in {item.slice_id for item in subset}:
++            against = sorted({
++                report.slice_b for report in reports if report.slice_a == candidate.slice_id
++            })
++            decisions.append(SchedulingDecision(
++                candidate.slice_id, REJECTED_CONFLICT,
++                f"conflicts with already-selected slice(s): {', '.join(against)}",
++            ))
++            continue
++        if len(selected) >= available_slots:
++            decisions.append(SchedulingDecision(
++                candidate.slice_id, REJECTED_CAPACITY,
++                f"no capacity remained (available_slots={available_slots})",
++            ))
++            continue
++        selected.append(candidate)
++        decisions.append(SchedulingDecision(
++            candidate.slice_id, SELECTED,
++            "conflict-free and within available capacity",
++        ))
+     return tuple(decisions)
+diff --git a/src/project_orchestrator/iron_god_migration_readiness.py b/src/project_orchestrator/iron_god_migration_readiness.py
+index 992b982..421fd4b 100644
+--- a/src/project_orchestrator/iron_god_migration_readiness.py
++++ b/src/project_orchestrator/iron_god_migration_readiness.py
+@@ -121,7 +121,19 @@ def assess_migration_readiness(
+         )
+ 
+     next_stage = STAGE_ORDER[stage_index + 1]
+-    required = required_capabilities_by_stage.get(next_stage, frozenset())
++    # An absent or empty stage policy is not evidence that migration is safe.
++    # Explicit requirements must be supplied before readiness is assessable.
++    required = required_capabilities_by_stage.get(next_stage)
++    if not isinstance(required, frozenset) or not required or any(
++        not isinstance(capability, str) or not capability.strip()
++        for capability in required
++    ):
++        return ReadinessAssessment(
++            current_stage=current_stage,
++            next_stage=next_stage,
++            status=EVIDENCE_INSUFFICIENT,
++            reason=f"missing or invalid approved capability policy for {next_stage}",
++        )
+     missing = required - evidence_capabilities
+ 
+     if missing:
+diff --git a/src/project_orchestrator/iron_god_recovery_reconstruction_report.py b/src/project_orchestrator/iron_god_recovery_reconstruction_report.py
+index cc77711..f5739fc 100644
+--- a/src/project_orchestrator/iron_god_recovery_reconstruction_report.py
++++ b/src/project_orchestrator/iron_god_recovery_reconstruction_report.py
+@@ -41,11 +41,20 @@ class SliceReconstructionRequest:
+     milestone_id: str
+ 
+ 
++# A scan of Git slices/worktrees alone cannot establish post-reboot
++# reconstruction of the other durable state authorities.
++REQUIRED_RECOVERY_SOURCES = frozenset({
++    "accepted_baseline", "publication_queue", "candidates",
++    "active_work", "leases",
++})
++
++
+ @dataclass(frozen=True)
+ class RecoveryReconstructionReport:
+     slice_states: tuple[ReconstructedSliceState, ...]
+     worktree_bootstrap: tuple[BootstrapEntry, ...]
+     worktree_classifications: tuple[WorktreeClassification, ...]
++    verified_recovery_sources: frozenset[str] = frozenset()
+ 
+     @property
+     def has_ambiguous_slice(self) -> bool:
+@@ -58,11 +67,24 @@ class RecoveryReconstructionReport:
+         )
+ 
+     @property
+-    def clean(self) -> bool:
+-        """True only when nothing ambiguous or orphaned was found --
+-        the proof that reconstruction would be unambiguous right now."""
++    def inventory_clean(self) -> bool:
++        """Only the examined slice/worktree inventory was unambiguous."""
+         return not self.has_ambiguous_slice and not self.has_orphaned_worktree
+ 
++    @property
++    def missing_recovery_sources(self) -> frozenset[str]:
++        """Durable authorities not independently reconstructed by this report."""
++        return REQUIRED_RECOVERY_SOURCES - self.verified_recovery_sources
++
++    @property
++    def clean(self) -> bool:
++        """Full recovery is unproven until every required authority is covered."""
++        return (
++            bool(self.slice_states)
++            and self.inventory_clean
++            and not self.missing_recovery_sources
++        )
++
+ 
+ def build_recovery_reconstruction_report(
+     repo_root: Path,
+diff --git a/tests/test_iron_god_recovery_reconstruction_report.py b/tests/test_iron_god_recovery_reconstruction_report.py
+index 65cf71b..489bca0 100644
+--- a/tests/test_iron_god_recovery_reconstruction_report.py
++++ b/tests/test_iron_god_recovery_reconstruction_report.py
+@@ -65,7 +65,11 @@ def test_clean_scenario_has_no_ambiguity_or_orphans(tmp_path):
+         known_worktree_names=frozenset({repo.name, wt.name}),
+     )
+ 
+-    assert report.clean is True
++    assert report.inventory_clean is True
++    assert report.clean is False  # Other durable authorities are not reconstructed.
++    assert report.missing_recovery_sources == frozenset({
++        "accepted_baseline", "publication_queue", "candidates", "active_work", "leases"
++    })
+     assert report.has_ambiguous_slice is False
+     assert report.has_orphaned_worktree is False
+     assert report.slice_states[0].status == "NO_CANDIDATE"
+diff --git a/tests/test_preflight_environment_contract.py b/tests/test_preflight_environment_contract.py
+index fbcbeb2..78495be 100644
+--- a/tests/test_preflight_environment_contract.py
++++ b/tests/test_preflight_environment_contract.py
+@@ -12,12 +12,16 @@ def test_preflight_isolates_imports_and_temp_root():
+     assert 'PREFLIGHT_BASETEMP = ROOT.parent / ".preflight-tmp" / ROOT.name' not in text
+     assert 'os.path.normcase(str(ROOT.resolve()))' in text
+     assert "hashlib.sha256(" in text
++    # Every preflight invocation must own its own short temporary root,
++    # even when two runs target the same checkout concurrently.
++    assert '_RUN_KEY = f"{_ROOT_KEY}-{os.getpid()}-{uuid.uuid4().hex[:8]}"' in text
+     assert (
+-        'PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / "ig-preflight" / _ROOT_KEY'
++        'PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / "ig-preflight" / _RUN_KEY'
+         in text
+     )
+     assert 'PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)' in text
+     assert '"--basetemp", str(PREFLIGHT_BASETEMP)' in text
+     assert "import shutil" in text
+     assert "shutil.rmtree(PREFLIGHT_BASETEMP, ignore_errors=True)" in text
+-    assert "os.getpid()" not in text
+\ No newline at end of file
++    assert "os.getpid()" in text
++    assert "uuid.uuid4()" in text
+\ No newline at end of file

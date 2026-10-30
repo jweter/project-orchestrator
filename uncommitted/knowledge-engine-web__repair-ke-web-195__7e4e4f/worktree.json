@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ProjectOrchestrator/repair-ke-web-195",
+ "head": "631477eae9eb6cb265805995f04ecb1cf16e7149",
+ "branch": "repair/pr195-mypy-annotations",
+ "repo": "knowledge-engine-web",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-web",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [
+  "knowledge_engine_web/graph_reader.py",
+  "knowledge_engine_web/retrieval.py"
+ ],
+ "patch_sha256": "98b861dfac0d9e9494d0189679ef0c8df0df1b77b527a2a5d54d6b487e5829e0",
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "6df49142410657a9cf20e72e9a89fa05b6914a72d2bf01783ba8345d5aa13d1d"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-web__repair-ke-web-195__7e4e4f"
+}

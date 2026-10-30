@@ -1,0 +1,1 @@
+Repair current PR review findings on this branch. Prevent passive observation from revealing exact composition without active scan evidence; reconcile authoritative status docs consistently. Add regression tests, run full preflight, commit and push same branch.

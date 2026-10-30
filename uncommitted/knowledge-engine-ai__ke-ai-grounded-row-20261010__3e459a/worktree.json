@@ -1,0 +1,2372 @@
+{
+ "path": "C:/Users/jerem/GitHub/ke-ai-grounded-row-20261010",
+ "head": "6b6c99a908a8bffacb04b48326d2e245405f2581",
+ "branch": "repair/research-report-grounded-row-citations-local-20261010",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 7,
+ "tracked_changes": [
+  "CHANGELOG.md",
+  "knowledge_engine_ai/copilot/research_report.py",
+  "tests/copilot/test_research_report.py"
+ ],
+ "patch_sha256": "8d6dc4d95a7fde9bfced4f7bf414ba513569baa6ebc62be2e6cc3f01d8e32877",
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "637d32ac06c7ff7a9282b6649087eb6d5dc60021fb811e6e9599ed3f3cfcf111"
+  ]
+ ],
+ "untracked_skipped": [
+  [
+   ".pytest-dowork-20261010/test_acquisition_plan_failure_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_acquisition_plan_not_attecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_acquisition_plan_requestecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_acquisition_plan_skipped_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_adapter_can_execute_everycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_adapter_executes_bounded_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_adapter_refuses_budget_thcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_adapter_refuses_provider_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_adapter_rejects_core_quercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_adapter_requires_explicitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_answer_version_and_superscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_blank_caller_session_id_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_blocked_new_version_leavecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_caller_supplied_session_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_citation_snowball_disablecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completed_new_version_supcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_acquires_groun0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_acquires_groun0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_acquires_grouncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_does_not_persicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_skips_acquisit0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_skips_acquisit0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_skips_acquisitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_completion_skips_cleanly_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_discovery_coverage_critercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_discovery_policy_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_discovery_policy_not_evalcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_discovery_policy_triggerscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_discovery_step_receives_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_discovery_triggered_convecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_discovery_triggered_with_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_duplicate_caller_session_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_exhausted_shared_executiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_extraction_duration_does_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_extraction_duration_does_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_extraction_duration_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_failed_primary_retrieval_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_failed_retrieval_workflowcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_federated_discovery_disabcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_federated_discovery_failu0/0f5cd696-faf3-4237-bd32-32b3525a0015.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_federated_discovery_failucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_full_run_populates_a_convcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_full_run_populates_a_finacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_full_run_produces_a_cleancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_full_run_shares_one_execucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_grounded_completion_requicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_grounded_extraction_failucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_grounded_reretrieval_replcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_hallucinated_citation_blocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_llm_failure_is_recorded_bcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_min_synthesis_seconds_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_min_synthesis_seconds_muscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_min_synthesis_seconds_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_min_synthesis_seconds_rescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_missed_qualifying_evidenccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_no_doi_seeds_skips_citaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_no_retrievable_evidence_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_no_retrievable_evidence_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_non_pmc_route_keeps_batchcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_omitted_session_id_still_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_one_invalid_pmc_candidatecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_pmc_isolation_respects_rocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_policy_accepts_conservaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_policy_rejects_acquisitiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_policy_rejects_an_invalidcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_policy_rejects_an_out_of_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_policy_rejects_negative_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_raises_when_prior_sessioncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_research_question_id_defa0/ledger/8f05c584-062b-4420-a1bc-795f5258c0c6.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_research_question_id_defacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_research_question_id_is_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_research_question_id_reaccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_research_question_id_usescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_session_id_is_generated_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_sufficient_coverage_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_thin_coverage_triggers_fecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-20261010/test_zero_evidence_with_discovcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_a_failed_step_is_still_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_acquisition_plan_failure_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_acquisition_plan_not_attecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_acquisition_plan_requestecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_acquisition_plan_skipped_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_adapter_can_execute_everycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_adapter_executes_bounded_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_adapter_refuses_budget_thcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_adapter_refuses_provider_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_adapter_rejects_core_quercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_adapter_requires_explicitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_answer_version_and_superscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_exits_nonzero_and_pri0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_exits_nonzero_and_pri0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_exits_nonzero_and_pricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_fails_for_a_missing_s0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_fails_for_a_missing_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_format_json_prints_va0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_format_json_prints_va0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_format_json_prints_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_prints_a_compact_summ0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_prints_a_compact_summ0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_prints_a_compact_summcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_rejects_an_invalid_fo0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_rejects_an_invalid_fo0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_rejects_an_invalid_focurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_reports_no_papers_fou0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_reports_no_papers_fou0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_reports_no_papers_foucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_shows_evidence_intell0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_shows_evidence_intell0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_shows_evidence_intellcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_json_inclu0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_json_inclu0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_json_inclucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_passes_the0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_passes_the0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_passes_thecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_prints_the0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_prints_the0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_prints_thecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_reads_the_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_reads_the_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_reads_the_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_requires_a0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_requires_a0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_synthesize_requires_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_without_synthesize_fl0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_without_synthesize_fl0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_ask_without_synthesize_flcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_binary_statistical_inputscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_blank_caller_session_id_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_blocked_new_version_leavecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cache_is_bounded_to_sixty0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cache_is_bounded_to_sixty0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cache_is_bounded_to_sixtycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_caller_supplied_session_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_citation_snowball_disablecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_citation_snowball_never_ucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_citation_snowball_raises_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_citation_snowball_runs_thcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evid0/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evid0/missing-facts.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evid0/out/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evid0/research-report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evid0/research-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evid0/runtime-identity.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evid0/worker-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_cli_writes_sanitized_evidcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completed_new_version_supcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_acquires_groun0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_acquires_groun0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_acquires_grouncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_does_not_persicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_skips_acquisit0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_skips_acquisit0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_skips_acquisitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_completion_skips_cleanly_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_fail0/data/corpora/glp1_weight_loss/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_fail0/data/corpora/glp1_weight_loss/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_fail0/data/corpora/mental_health_mdd_antidepressants/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_fail0/data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_fail0/data/corpora/oncology_nsclc_checkpoint_inhibitors/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_reso0/data/corpora/glp1_weight_loss/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_reso0/data/corpora/glp1_weight_loss/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_reso0/data/corpora/mental_health_mdd_antidepressants/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_reso0/data/corpora/mental_health_mdd_antidepressants/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_reso0/data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_reso0/data/corpora/oncology_nsclc_checkpoint_inhibitors/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_default_core_corpora_resocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_discovery_coverage_critercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_discovery_policy_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_discovery_policy_not_evalcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_discovery_policy_triggerscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_discovery_step_receives_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_discovery_triggered_convecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_discovery_triggered_with_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_duplicate_caller_session_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_enriched_evidence_report_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_content_change_i0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_content_change_i0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_content_change_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_intelligence_raicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_intelligence_retcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_intelligence_runcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_map_report_raisecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_map_report_runs_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_falls_baccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_never_usecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_raises_a_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_raises_oncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_resolves_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_runs_fromcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_runs_the_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_sanitizescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_report_uses_the_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_revision_is_cont0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_evidence_revision_is_contcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_execute_discovery_plan_focurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_exhausted_shared_executiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_external_discovery_still_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_external_discovery_still_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_external_discovery_still_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_extraction_duration_does_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_extraction_duration_does_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_extraction_duration_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_failed_fallback_keeps_lascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_failed_primary_retrieval_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_failed_retrieval_is_never0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_failed_retrieval_is_never0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_failed_retrieval_is_nevercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_failed_retrieval_workflowcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_coverage_reportcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discover_forwarcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discover_historcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discover_never_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discover_omits_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discover_raisescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discover_runs_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discovery_disabcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discovery_failu0/5ae5aab1-7688-49f4-a81c-9e130a4119de.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_federated_discovery_failucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_full_run_populates_a_convcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_full_run_populates_a_finacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_full_run_produces_a_cleancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_full_run_shares_one_execucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_general_question_acquire_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_general_question_acquisitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_git_clean_commit_allows_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_git_clean_commit_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_git_commit_uses_checkout_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_grounded_completion_requicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_grounded_extraction_failucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_grounded_reretrieval_replcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_hallucinated_citation_blocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_llm_failure_is_recorded_bcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_manual_discovery_preservecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_min_synthesis_seconds_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_min_synthesis_seconds_muscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_min_synthesis_seconds_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_min_synthesis_seconds_rescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_missed_qualifying_evidenccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_no_doi_seeds_skips_citaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_no_retrievable_evidence_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_no_retrievable_evidence_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_non_pmc_route_keeps_batchcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_omitted_session_id_still_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_one_invalid_pmc_candidatecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_opening_a_pre_migration_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_opening_a_pre_source_doiscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_opening_a_pre_versioning_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_pmc_isolation_respects_rocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_policy_accepts_conservaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_policy_rejects_acquisitiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_policy_rejects_an_invalidcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_policy_rejects_an_out_of_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_policy_rejects_negative_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_raises_unknown_session_ercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_raises_when_prior_sessioncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_rate_limited_provider_doecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_repeated_parallel_retriev0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_repeated_parallel_retriev0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_repeated_parallel_retrievcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_broaden_search_o0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_broaden_search_o0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_broaden_search_o1/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_broaden_search_o1/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_broaden_search_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_defaults_timeout0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_defaults_timeout0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_defaults_timeoutcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_format_json_incl0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_format_json_incl0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_format_json_incl1/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_format_json_incl1/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_format_json_inclcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_min_synthesis_se0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_min_synthesis_se0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_min_synthesis_securrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_no_narrative_pri0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_no_narrative_pri0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_no_narrative_pricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_passes_timeout_a0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_passes_timeout_a0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_passes_timeout_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_prints_narrative0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_prints_narrative0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_prints_narrativecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_question_id_defa0/ledger/ae4890d8-e899-4731-a81b-a5b7ed23054d.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_question_id_defacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_question_id_is_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_question_id_reaccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_question_id_usescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_reports_a_blocke0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_reports_a_blocke0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_reports_a_blockecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_requires_a_model0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_requires_a_model0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_requires_a_modelcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_session_broadenscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_without_broaden_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_without_broaden_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_research_without_broaden_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_retrieval_output_hash_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_parallel_retrieval_abcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_parallel_retrieval_cacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_parallel_retrieval_rucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_retrieval_baseline_bi0/data/corpora/glp1_weight_loss/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_retrieval_baseline_bi0/data/corpora/glp1_weight_loss/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_retrieval_baseline_bi0/data/corpora/mental_health_mdd_antidepressants/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_retrieval_baseline_bi0/data/corpora/mental_health_mdd_antidepressants/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_retrieval_baseline_bi0/data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_retrieval_baseline_bi0/data/corpora/oncology_nsclc_checkpoint_inhibitors/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_run_retrieval_baseline_bicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_runs_all_fixed_steps_in_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_runs_retrieval_step_only_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_answer_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_apply_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_flip_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_json_oucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_no_diffcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_qualifycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_rejectscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_reportscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_freshness_unknowncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_session_id_is_generated_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_skips_evidence_map_step_wcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_statistical_verify_includcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_statistical_verify_raisescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_statistical_verify_runs_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_sufficient_coverage_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_thin_coverage_triggers_fecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_workflow_can_stop_and_rescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-isolated-full-20261010/test_zero_evidence_with_discovcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_a_failed_step_is_still_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_acquisition_plan_failure_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_acquisition_plan_not_attecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_acquisition_plan_requestecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_acquisition_plan_skipped_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_adapter_can_execute_everycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_adapter_executes_bounded_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_adapter_refuses_budget_thcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_adapter_refuses_provider_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_adapter_rejects_core_quercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_adapter_requires_explicitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_answer_version_and_superscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_exits_nonzero_and_pri0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_exits_nonzero_and_pri0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_exits_nonzero_and_pricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_fails_for_a_missing_s0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_fails_for_a_missing_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_format_json_prints_va0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_format_json_prints_va0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_format_json_prints_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_prints_a_compact_summ0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_prints_a_compact_summ0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_prints_a_compact_summcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_rejects_an_invalid_fo0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_rejects_an_invalid_fo0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_rejects_an_invalid_focurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_reports_no_papers_fou0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_reports_no_papers_fou0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_reports_no_papers_foucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_shows_evidence_intell0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_shows_evidence_intell0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_shows_evidence_intellcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_json_inclu0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_json_inclu0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_json_inclucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_passes_the0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_passes_the0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_passes_thecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_prints_the0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_prints_the0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_prints_thecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_reads_the_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_reads_the_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_reads_the_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_requires_a0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_requires_a0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_synthesize_requires_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_without_synthesize_fl0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_without_synthesize_fl0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_ask_without_synthesize_flcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_binary_statistical_inputscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_blank_caller_session_id_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_blocked_new_version_leavecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cache_is_bounded_to_sixty0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cache_is_bounded_to_sixty0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cache_is_bounded_to_sixtycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_caller_supplied_session_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_citation_snowball_disablecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_citation_snowball_never_ucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_citation_snowball_raises_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_citation_snowball_runs_thcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evid0/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evid0/missing-facts.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evid0/out/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evid0/research-report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evid0/research-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evid0/runtime-identity.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evid0/worker-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_cli_writes_sanitized_evidcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completed_new_version_supcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_acquires_groun0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_acquires_groun0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_acquires_grouncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_does_not_persicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_skips_acquisit0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_skips_acquisit0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_skips_acquisitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_completion_skips_cleanly_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_fail0/data/corpora/glp1_weight_loss/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_fail0/data/corpora/glp1_weight_loss/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_fail0/data/corpora/mental_health_mdd_antidepressants/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_fail0/data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_fail0/data/corpora/oncology_nsclc_checkpoint_inhibitors/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_reso0/data/corpora/glp1_weight_loss/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_reso0/data/corpora/glp1_weight_loss/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_reso0/data/corpora/mental_health_mdd_antidepressants/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_reso0/data/corpora/mental_health_mdd_antidepressants/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_reso0/data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_reso0/data/corpora/oncology_nsclc_checkpoint_inhibitors/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_default_core_corpora_resocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_discovery_coverage_critercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_discovery_policy_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_discovery_policy_not_evalcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_discovery_policy_triggerscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_discovery_step_receives_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_discovery_triggered_convecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_discovery_triggered_with_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_duplicate_caller_session_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_enriched_evidence_report_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_content_change_i0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_content_change_i0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_content_change_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_intelligence_raicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_intelligence_retcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_intelligence_runcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_map_report_raisecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_map_report_runs_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_falls_baccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_never_usecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_raises_a_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_raises_oncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_resolves_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_runs_fromcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_runs_the_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_sanitizescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_report_uses_the_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_revision_is_cont0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_evidence_revision_is_contcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_execute_discovery_plan_focurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_exhausted_shared_executiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_external_discovery_still_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_external_discovery_still_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_external_discovery_still_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_extraction_duration_does_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_extraction_duration_does_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_extraction_duration_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_failed_fallback_keeps_lascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_failed_primary_retrieval_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_failed_retrieval_is_never0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_failed_retrieval_is_never0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_failed_retrieval_is_nevercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_failed_retrieval_workflowcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_coverage_reportcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discover_forwarcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discover_historcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discover_never_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discover_omits_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discover_raisescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discover_runs_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discovery_disabcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discovery_failu0/7dcb9deb-ca32-41d6-9711-3fe3b083a6dc.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_federated_discovery_failucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_full_run_populates_a_convcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_full_run_populates_a_finacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_full_run_produces_a_cleancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_full_run_shares_one_execucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_general_question_acquire_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_general_question_acquisitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_git_clean_commit_allows_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_git_clean_commit_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_git_commit_uses_checkout_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_grounded_completion_requicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_grounded_extraction_failucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_grounded_reretrieval_replcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_hallucinated_citation_blocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_llm_failure_is_recorded_bcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_manual_discovery_preservecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_min_synthesis_seconds_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_min_synthesis_seconds_muscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_min_synthesis_seconds_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_min_synthesis_seconds_rescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_missed_qualifying_evidenccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_no_doi_seeds_skips_citaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_no_retrievable_evidence_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_no_retrievable_evidence_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_non_pmc_route_keeps_batchcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_omitted_session_id_still_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_one_invalid_pmc_candidatecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_opening_a_pre_migration_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_opening_a_pre_source_doiscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_opening_a_pre_versioning_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_pmc_isolation_respects_rocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_policy_accepts_conservaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_policy_rejects_acquisitiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_policy_rejects_an_invalidcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_policy_rejects_an_out_of_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_policy_rejects_negative_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_raises_unknown_session_ercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_raises_when_prior_sessioncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_rate_limited_provider_doecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_repeated_parallel_retriev0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_repeated_parallel_retriev0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_repeated_parallel_retrievcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_broaden_search_o0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_broaden_search_o0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_broaden_search_o1/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_broaden_search_o1/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_broaden_search_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_defaults_timeout0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_defaults_timeout0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_defaults_timeoutcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_format_json_incl0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_format_json_incl0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_format_json_incl1/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_format_json_incl1/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_format_json_inclcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_min_synthesis_se0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_min_synthesis_se0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_min_synthesis_securrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_no_narrative_pri0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_no_narrative_pri0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_no_narrative_pricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_passes_timeout_a0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_passes_timeout_a0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_passes_timeout_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_prints_narrative0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_prints_narrative0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_prints_narrativecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_question_id_defa0/ledger/b63bbde4-420f-496c-a7af-bde9aef718d3.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_question_id_defacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_question_id_is_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_question_id_reaccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_question_id_usescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_reports_a_blocke0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_reports_a_blocke0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_reports_a_blockecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_requires_a_model0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_requires_a_model0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_requires_a_modelcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_session_broadenscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_without_broaden_0/evidence.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_without_broaden_0/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_research_without_broaden_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_retrieval_output_hash_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_parallel_retrieval_abcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_parallel_retrieval_cacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_parallel_retrieval_rucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_retrieval_baseline_bi0/data/corpora/glp1_weight_loss/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_retrieval_baseline_bi0/data/corpora/glp1_weight_loss/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_retrieval_baseline_bi0/data/corpora/mental_health_mdd_antidepressants/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_retrieval_baseline_bi0/data/corpora/mental_health_mdd_antidepressants/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_retrieval_baseline_bi0/data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_retrieval_baseline_bi0/data/corpora/oncology_nsclc_checkpoint_inhibitors/sources.csv",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_run_retrieval_baseline_bicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_runs_all_fixed_steps_in_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_runs_retrieval_step_only_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_answer_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_apply_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_flip_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_json_oucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_no_diffcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_qualifycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_rejectscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_reportscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_freshness_unknowncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_session_id_is_generated_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_skips_evidence_map_step_wcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_statistical_verify_includcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_statistical_verify_raisescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_statistical_verify_runs_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_sufficient_coverage_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_thin_coverage_triggers_fecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_workflow_can_stop_and_rescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight-isolated-20261010/test_zero_evidence_with_discovcurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__ke-ai-grounded-row-20261010__3e459a"
+}

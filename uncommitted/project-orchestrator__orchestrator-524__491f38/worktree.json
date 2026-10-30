@@ -1,0 +1,630 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/.repair-worktrees/orchestrator-524",
+ "head": "5ba96ed90ab44312ac7bf8f104acd7304e67c30d",
+ "branch": "feat/actor-revision-rollover",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [],
+ "untracked_copied": [],
+ "untracked_skipped": [
+  [
+   ".pytest-524-15312/test_existing_active_shape_req0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_existing_active_shape_req0/supervisor-reentry.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_existing_active_shape_req0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_existing_active_shape_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_machine_wide_fence_blocks0/machine/continuous-flow-supervisor.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_machine_wide_fence_blocks0/state-a/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_machine_wide_fence_blocks0/state-b/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_machine_wide_fence_blockscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_main_exits_cleanly_when_s0/state/supervisor-reentry.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_main_exits_cleanly_when_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_publication_blocked_gener0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_publication_blocked_gener0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_publication_blocked_gener1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_publication_blocked_gener1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_publication_blocked_gener2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_publication_blocked_gener2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_publication_blocked_genercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio0/supervisor-generation-fence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio1/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatio2/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_reclaim_stalled_generatiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_release_does_not_delete_n0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_release_does_not_delete_n0/supervisor-instance.lock.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_release_does_not_delete_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_revision_rollover_launche0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_revision_rollover_launche0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_revision_rollover_launchecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_revision_rollover_reuses_0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_revision_rollover_reuses_0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_revision_rollover_reuses_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_second_supervisor_instanc0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_second_supervisor_instanccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_stale_generation_handoff_0/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_stale_generation_handoff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_validator_rejects_large_n0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_validator_rejects_large_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_validator_rejects_source_0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_validator_rejects_source_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_rejects0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_rejects0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_rejects1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_rejects1/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_rejectscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_require0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_require0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-15312/test_verified_identity_requirecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_existing_active_shape_req0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_existing_active_shape_req0/supervisor-reentry.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_existing_active_shape_req0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_existing_active_shape_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_lifecycle_recovery_pass_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_publication_blocked_gener0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_publication_blocked_gener0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_publication_blocked_gener1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_publication_blocked_gener1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_publication_blocked_gener2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_publication_blocked_gener2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_publication_blocked_genercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio0/supervisor-generation-fence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio1/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatio2/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_reclaim_stalled_generatiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_revision_rollover_keeps_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_revision_rollover_launche0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_revision_rollover_launche0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_revision_rollover_launchecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_revision_rollover_reuses_0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_revision_rollover_reuses_0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_revision_rollover_reuses_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_stale_generation_handoff_0/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_stale_generation_handoff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_validator_rejects_large_n0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_validator_rejects_large_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_validator_rejects_source_0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_validator_rejects_source_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_rejects0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_rejects0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_rejects1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_rejects1/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_rejectscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_require0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_require0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-popen-22732/test_verified_identity_requirecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_existing_active_shape_req0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_existing_active_shape_req0/supervisor-reentry.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_existing_active_shape_req0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_existing_active_shape_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_lifecycle_recovery_pass_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_machine_wide_fence_blocks0/machine/continuous-flow-supervisor.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_machine_wide_fence_blocks0/state-a/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_machine_wide_fence_blocks0/state-b/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_machine_wide_fence_blockscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_main_exits_cleanly_when_s0/state/supervisor-reentry.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_main_exits_cleanly_when_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_publication_blocked_gener0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_publication_blocked_gener0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_publication_blocked_gener1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_publication_blocked_gener1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_publication_blocked_gener2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_publication_blocked_gener2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_publication_blocked_genercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio0/supervisor-generation-fence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio1/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatio2/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_reclaim_stalled_generatiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_recovery_budget_does_not_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_recovery_context_uses_shocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_release_does_not_delete_n0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_release_does_not_delete_n0/supervisor-instance.lock.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_release_does_not_delete_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_revision_rollover_launche0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_revision_rollover_launche0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_revision_rollover_launchecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_revision_rollover_reuses_0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_revision_rollover_reuses_0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_revision_rollover_reuses_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_second_supervisor_instanc0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_second_supervisor_instanccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_stale_generation_handoff_0/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_stale_generation_handoff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_validator_rejects_large_n0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_validator_rejects_large_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_validator_rejects_source_0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_validator_rejects_source_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_rejects0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_rejects0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_rejects1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_rejects1/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_rejectscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_require0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_require0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_verified_identity_requirecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-524-rebase-14736/test_worker_lifecycle_keeps_locurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__orchestrator-524__491f38"
+}

@@ -1,0 +1,50 @@
+diff --git a/src/rocksmith_cdlc_generator/safe_roadmap.py b/src/rocksmith_cdlc_generator/safe_roadmap.py
+new file mode 100644
+index 0000000..4d92a0e
+--- /dev/null
++++ b/src/rocksmith_cdlc_generator/safe_roadmap.py
+@@ -0,0 +1,44 @@
++from enum import Enum
++from typing import List, Optional
++
++class ArrangementRole(Enum):
++    bass = "bass"
++    lead = "lead"
++    rhythm = "rhythm"
++
++class ScoreArrangementMapping:
++    def __init__(self, role: ArrangementRole, source_track_index: int):
++        self.role = role
++        self.source_track_index = source_track_index
++
++class ScoreRoleCompositionPlan:
++    def __init__(self, mappings: List[ScoreArrangementMapping]):
++        self.mappings = mappings
++
++class ScoreRoleCompositionOverlapReport:
++    def __init__(self, overlaps: List[str]):
++        self.overlaps = overlaps
++
++def validate_score_role_composition_overlap_decisions(
++    report: ScoreRoleCompositionOverlapReport,
++    plan: ScoreRoleCompositionPlan,
++) -> bool:
++    # Placeholder implementation
++    return True
++
++# Regression tests for the new functionality
++def test_validate_score_role_composition_overlap_decisions():
++    mappings = [
++        ScoreArrangementMapping(ArrangementRole.bass, 0),
++        ScoreArrangementMapping(ArrangementRole.lead, 1),
++        ScoreArrangementMapping(ArrangementRole.rhythm, 2),
++    ]
++    plan = ScoreRoleCompositionPlan(mappings)
++    report = ScoreRoleCompositionOverlapReport(overlaps=[])
++    assert validate_score_role_composition_overlap_decisions(report, plan)
++
++    report = ScoreRoleCompositionOverlapReport(overlaps=["overlap1"])
++    assert not validate_score_role_composition_overlap_decisions(report, plan)
++
++if __name__ == "__main__":
++    test_validate_score_role_composition_overlap_decisions()

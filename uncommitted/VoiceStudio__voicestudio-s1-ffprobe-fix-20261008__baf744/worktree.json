@@ -1,0 +1,102 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/worktrees/voicestudio-s1-ffprobe-fix-20261008",
+ "head": "621b867e41aa64960525932e97dad869403040ad",
+ "branch": "repair/singing-s1-ffprobe-win-fixture-20261008",
+ "repo": "VoiceStudio",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\VoiceStudio",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [
+  "tests/backend/services/test_ffmpeg_utils.py",
+  "tests/backend/services/test_indextts_sidecar.py"
+ ],
+ "patch_sha256": "e085c31c915d8adc62c62290dd2b0e0487b19c85916da6e373ae0396be1d8c34",
+ "untracked_copied": [],
+ "untracked_skipped": [
+  [
+   ".pytest-dowork-ffprobe-20261010/test_binary_probe_rejects_unla0/ffprobe-corrupt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_binary_probe_rejects_unlacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_find_ffprobe_preserves_ff0/ffmpeg/bin/ffprobe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_find_ffprobe_preserves_ff1/ffmpeg/bin/ffprobe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_find_ffprobe_preserves_ff2/ffmpeg/bin/ffprobe.exe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_find_ffprobe_preserves_ff3/ffmpeg/bin/ffprobe.exe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_find_ffprobe_preserves_ffcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_env_var_w0/ffprobe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_env_var_wcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_falls_bac0/ffprobe-legacy",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_falls_baccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_omnivoice0/ffprobe-canonical",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_omnivoice0/ffprobe-legacy",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_omnivoicecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_prefers_o0/ffprobe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_prefers_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_rejects_n0/ffprobe-broken",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_rejects_n0/ffprobe-good",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_resolve_ffprobe_rejects_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_sibling_probe_rejects_non0/ffprobe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-dowork-ffprobe-20261010/test_sibling_probe_rejects_noncurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\VoiceStudio__voicestudio-s1-ffprobe-fix-20261008__baf744"
+}

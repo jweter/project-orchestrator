@@ -1,0 +1,27 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/project-orchestrator-telemetry",
+ "head": "eed25245d846f6169776af657399fb01e163bc22",
+ "branch": "telemetry/hourly-repo-status",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 12,
+ "tracked_changes": [
+  "telemetry/hourly-repo-status/2026-09-20T14-31-34-05-00.json",
+  "telemetry/hourly-repo-status/2026-09-20T19-31-0500.json",
+  "telemetry/hourly-repo-status/2026-09-20T2236-0500.json",
+  "telemetry/hourly-repo-status/2026-09-21T0639-0500.json",
+  "telemetry/hourly-repo-status/2026-09-21T2031-0500.json",
+  "telemetry/hourly-repo-status/2026-09-21T2347-0500.json",
+  "telemetry/hourly-repo-status/2026-09-22T1228-0500.json",
+  "telemetry/hourly-repo-status/2026-09-22T1240Z.json",
+  "telemetry/hourly-repo-status/2026-09-22T2335-0500.json",
+  "telemetry/hourly-repo-status/2026-09-23T0027-0500.json",
+  "telemetry/hourly-repo-status/2026-09-23T0232-0500.json",
+  "telemetry/hourly-repo-status/2026-09-23T0844-0500.json"
+ ],
+ "patch_sha256": "d8e0729a7dda432e22efb2c16e247efd07f923670844b1dcc31686660906bafb",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__project-orchestrator-telemetry__2680c0"
+}

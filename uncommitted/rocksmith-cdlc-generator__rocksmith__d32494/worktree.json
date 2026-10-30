@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/bursts/20260922-0955/rocksmith",
+ "head": "1494e829ef872160c05f72a1212d63fa8ddf1958",
+ "branch": "orchestrator/issue-612-private-structural-acceptance",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "41b1dda0eefed41b165bd9a67bee3831c85d37926b80cd5269723091364eec9b"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "83d3b041a080ffff8c909d493acf5167922e8d378030b16f0d8d6a598f90a6db"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__rocksmith__d32494"
+}

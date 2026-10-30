@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/GitHub/everward-low-spec-current-main",
+ "head": "005195ed2b523580fee94e6d1e18bae9420c0a86",
+ "branch": "repair/low-spec-cleanup-current-main",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "79c3dbceccad8bd52563567f7facace592e81a1da3f7633ddc68e1641de21ab5"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__everward-low-spec-current-main__960844"
+}

@@ -1,0 +1,17 @@
+{
+ "path": "C:/Users/jerem/GitHub/rocksmith-cdlc-generator-pr732-rebase",
+ "head": "09b7c0ac7cb94af2c34f517e8a2a2fec04f21196",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [
+  "docs/private-product-reality-runner-v1.md",
+  "src/rocksmith_cdlc_generator/human_only_debt.py",
+  "tests/test_human_only_debt.py"
+ ],
+ "patch_sha256": "c6ac331b8c9e7cbd60d7b91e0736f987ad6dd5f40a086d53a64a03a3b41ddf54",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__rocksmith-cdlc-generator-pr732-rebase__69895c"
+}

@@ -1,0 +1,20 @@
+{
+ "path": "C:/Users/jerem/GitHub/Project-Everward-pr325-rebase",
+ "head": "bb0e037a91a0eebeb490c1f9e94d7aa82262c28d",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 6,
+ "tracked_changes": [
+  "docs/UNATTENDED_VERIFICATION.md",
+  "docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md",
+  "tools/everward_unattended_worker.py",
+  "tools/publish_unattended_product_reality.ps1",
+  "tools/run_unattended_low_spec_startup.ps1",
+  "tools/test_unattended_low_spec_startup.py"
+ ],
+ "patch_sha256": "b95d08d9fe0d91af16b093fe1b9ed1dd8a288619e986d010cf5c0d69589d86ee",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__Project-Everward-pr325-rebase__6f35db"
+}

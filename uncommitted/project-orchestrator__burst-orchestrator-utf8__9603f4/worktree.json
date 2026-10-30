@@ -1,0 +1,187 @@
+{
+ "path": "C:/Users/jerem/GitHub/burst-orchestrator-utf8",
+ "head": "f02669f4f590817845e7f6f23e575a18d1d645a0",
+ "branch": "repair/claude-unattended-write-authority",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 4,
+ "tracked_changes": [
+  "scripts/continuous_flow_supervisor.py",
+  "tests/test_task_runner_affinity.py"
+ ],
+ "patch_sha256": "1ff5d5e5bb9a269a414cb197e855abef4502fb9538ef291090dcf0927dfb2b66",
+ "untracked_copied": [
+  [
+   "telemetry/hourly-repo-status/2026-10-05T13-30-13-05-00.json",
+   "d3fb37d4de56942d47d07553c1581d7ea225a38c0e534780081cba7c4576db88"
+  ]
+ ],
+ "untracked_skipped": [
+  [
+   ".pytest-affinity/test_affinity_can_outweigh_glo0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_affinity_can_outweigh_glocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_affinity_history_is_class0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_affinity_history_is_classcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_affinity_treats_completed0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_affinity_treats_completedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_ci_reconciliati0/dashboard-ci.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_ci_reconciliati0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_ci_reconciliaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_counts0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_counts0/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_countscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec0/planner-decisions/rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec0/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec1/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec1/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec2/async-gate-rotation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec2/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projec2/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_projeccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_writer0/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_dashboard_snapshot_writercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_no_op_is_successful_execu0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_no_op_is_successful_execucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_planner_decision_quality_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_planner_decision_quality_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_can_prefer_f0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_can_prefer_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_history_meas0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_history_meascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_ignores_reco0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_ignores_recocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_prefers_expl0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_productivity_prefers_explcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_task_exploration_bonus_de0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_task_exploration_bonus_decurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_task_outcome_priority_exp0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_task_outcome_priority_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_task_outcome_priority_pre0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-affinity/test_task_outcome_priority_precurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__burst-orchestrator-utf8__9603f4"
+}

@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/knowledge-engine-ai",
+ "head": "fad98775f1ca10e75ae3928a947ad17f3f792b6d",
+ "branch": "repair-ke-ai-174",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "25879e313dbf16ce315201580df9259dc8f5dc1a3486fb5f811cecfc3344e87d"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__knowledge-engine-ai__181ce8"
+}

@@ -1,0 +1,17 @@
+{
+ "path": "C:/Users/jerem/GitHub/knowledge-engine-ai-pr173-rebase",
+ "head": "b65c8c4c90fa0735aee61abc7cacd8d56a68be5a",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [
+  "docs/golden_research_case_benchmark.md",
+  "knowledge_engine_ai/monster_acceptance.py",
+  "tests/test_monster_acceptance.py"
+ ],
+ "patch_sha256": "0bad34a4bce394c7ef88ed5721ec3fb9ecf128d3b11fe7cea083168eb7f269c7",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__knowledge-engine-ai-pr173-rebase__f79778"
+}

@@ -1,0 +1,29 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_burst-rs",
+ "head": "3305ec85324691951f233bce774127b944eebcb7",
+ "branch": "orchestrator/burst-rs-20260923",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 4,
+ "tracked_changes": [
+  "src/rocksmith_cdlc_generator/safe_roadmap.py"
+ ],
+ "patch_sha256": "1cc2c5cba5fd970e9f1f8a53ed4d1b154b42061ed80efc5e9fdd5a0a24342dae",
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "3116dbf6b6dda9edd88fe27f1de978ee8b5a36d2577f0cc46ac3cf5fe0e6d386"
+  ],
+  [
+   ".aider.input.history",
+   "2236670c00d8d4d05ba0a833f55a2c87397bbe39b73ca98982f889fa8e1ad1c2"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "0313b76ebecfdd5bea1ccb4ff7773e5346fa8ddaffd8516fd839d7d393438087"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator___burst-rs__68cd48"
+}

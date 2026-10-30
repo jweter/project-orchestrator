@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/knowledge-engine-ai",
+ "head": "5abb89887486537da809a0a45fb7f34340a4bcc9",
+ "branch": "recovery/quarantine-20261010-monster-acceptance",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "20fc1ccc37b026ff481d1e98a84dd3194e92bb0d70dc1d5e9d0132e53b518632"
+  ],
+  [
+   ".aider.input.history",
+   "47f43c0648abf0b290d3a1974045d773826618a28f8202858af2aa907c0e18d5"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__knowledge-engine-ai__5938a0"
+}

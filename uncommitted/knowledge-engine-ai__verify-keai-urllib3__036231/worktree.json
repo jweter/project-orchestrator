@@ -1,0 +1,20 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ProjectOrchestrator/verify-keai-urllib3",
+ "head": "2dab454a68d703c1e65990cd0b031b33a8c80183",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [
+  "poetry.lock"
+ ],
+ "patch_sha256": "32321998eba3f2aa60402ff6ef4d03e2b47624366c708a7ea785d2de5827c360",
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "1b235cf22acdcd0f332f88af5161846b10ed5e32d1b33c84f00066b38260b743"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__verify-keai-urllib3__036231"
+}

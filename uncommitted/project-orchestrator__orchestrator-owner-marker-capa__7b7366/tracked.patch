@@ -1,0 +1,110 @@
+diff --git a/docs/CAPA_OWNER_MARKER_CONTRACT_20261010.md b/docs/CAPA_OWNER_MARKER_CONTRACT_20261010.md
+index a275d47..3eb1b59 100644
+--- a/docs/CAPA_OWNER_MARKER_CONTRACT_20261010.md
++++ b/docs/CAPA_OWNER_MARKER_CONTRACT_20261010.md
+@@ -36,7 +36,9 @@ The startup installer now uses the same read-only gate before launching,
+ and does not kill existing supervisors during installation. The persistent
+ launcher checks ownership before network guardian or supervisor startup
+ and again during takeover. Worker and fallback paths use the same strict
+-semantics.
++semantics. Neither queued mailbox FULL_POWER nor the full-power convenience
++script may remove or overwrite the marker; the latter requires a previously
++verified disabled marker from the deliberate owner handback.
+ 
+ ## Prevention and release gates
+ 
+diff --git a/scripts/fallback/Watch-GitHubMailbox.ps1 b/scripts/fallback/Watch-GitHubMailbox.ps1
+index d53a037..7858c66 100644
+--- a/scripts/fallback/Watch-GitHubMailbox.ps1
++++ b/scripts/fallback/Watch-GitHubMailbox.ps1
+@@ -280,7 +280,8 @@ while($true){
+             if(Test-HumanMode){
+               $result=@{status="REJECTED_USE_TAKE_THE_WHEEL";consume=$true;worker_count=@(Get-ActiveProductWorkers).Count}
+             } else {
+-              Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
++              # A queued mailbox command cannot alter the owner's marker.
++              # A verified disabled marker already proves local handback.
+               Set-WorkerTasksEnabled $true
+               $result=Invoke-SafeSupervisorKick
+             }
+diff --git a/scripts/start_full_power.ps1 b/scripts/start_full_power.ps1
+index d1cf227..ef938c9 100644
+--- a/scripts/start_full_power.ps1
++++ b/scripts/start_full_power.ps1
+@@ -3,7 +3,15 @@ param(
+ )
+ $ErrorActionPreference = "Stop"
+ $humanMode = Join-Path $StateRoot "human-mode.json"
+-Remove-Item -Force $humanMode -ErrorAction SilentlyContinue
++# Only the owner's deliberate TAKE THE WHEEL transition may disable the
++# marker. This convenience launcher must never remove or rewrite it.
++if (-not (Test-Path -LiteralPath $humanMode)) { throw "OWNER_CONTROL_UNVERIFIED" }
++try {
++  $owner = Get-Content -LiteralPath $humanMode -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
++} catch { throw "OWNER_CONTROL_UNVERIFIED" }
++if ($null -eq $owner -or $owner.enabled -isnot [bool] -or $owner.enabled) {
++  throw "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED"
++}
+ 
+ $tasks = @(
+   "ExponentialEngine-ContinuousFlow-Watchdog",
+diff --git a/tests/test_fallback_control_contract.py b/tests/test_fallback_control_contract.py
+index 66d17f3..a2b807a 100644
+--- a/tests/test_fallback_control_contract.py
++++ b/tests/test_fallback_control_contract.py
+@@ -80,7 +80,7 @@ def test_phone_control_records_progress_history_and_human_mode():
+     assert "Append-History" in text
+     assert '"HUMAN_MODE"' in text and '"FULL_POWER"' in text
+     assert 'Set-Content -Encoding UTF8 $humanMode' in text
+-    assert 'Remove-Item -Force $humanMode' in text
++    assert 'Remove-Item -Force $humanMode' not in text
+ 
+ 
+ def test_fallback_sync_rejects_unpushed_actor_commits_before_reset():
+diff --git a/tests/test_human_control_contract.py b/tests/test_human_control_contract.py
+index 3617a83..8b64a5f 100644
+--- a/tests/test_human_control_contract.py
++++ b/tests/test_human_control_contract.py
+@@ -47,14 +47,14 @@ def test_fallback_recovery_cannot_restart_supervisor_during_human_mode():
+     assert "Invoke-SafeSupervisorKick" in recovery
+ 
+ 
+-def test_human_mode_stops_workers_and_full_power_explicitly_removes_lock():
++def test_human_mode_stops_workers_and_mailbox_never_clears_owner_marker():
+     text = FALLBACK.read_text(encoding="utf-8")
+     human = text[text.index('"HUMAN_MODE" {'):text.index('"FULL_POWER" {')]
+     full = text[text.index('"FULL_POWER" {'):text.index('"REBOOT_WINDOWS" {')]
+     assert "Set-Content -Encoding UTF8 $humanMode" in human
+     assert "Set-WorkerTasksEnabled $false" in human
+     assert "Stop-AutonomousProcesses" in human
+-    assert "Remove-Item -Force $humanMode" in full
++    assert "Remove-Item -Force $humanMode" not in full
+     assert "Set-WorkerTasksEnabled $true" in full
+     assert "Invoke-SafeSupervisorKick" in full
+ 
+@@ -89,7 +89,8 @@ def test_mailbox_pauses_before_git_operations_and_denies_game_reboots():
+ def test_stale_mailbox_full_power_cannot_clear_owner_lock():
+     text = FALLBACK.read_text(encoding="utf-8")
+     full = text[text.index('"FULL_POWER" {'):text.index('"REBOOT_WINDOWS" {')]
+-    assert full.index("if(Test-HumanMode)") < full.index("Remove-Item -Force $humanMode")
++    assert "if(Test-HumanMode)" in full
++    assert "Remove-Item -Force $humanMode" not in full
+     assert "REJECTED_USE_TAKE_THE_WHEEL" in full
+ 
+ 
+diff --git a/tests/test_owner_marker_capa.py b/tests/test_owner_marker_capa.py
+index 91420fe..c71e482 100644
+--- a/tests/test_owner_marker_capa.py
++++ b/tests/test_owner_marker_capa.py
+@@ -55,3 +55,11 @@ def test_persistent_launcher_owner_veto_precedes_all_side_effects(tmp_path, monk
+     )
+     assert launcher.main() == 0
+     assert not (tmp_path / "persistent-supervisor-launch.json").exists()
++
++
++def test_full_power_script_requires_prior_take_the_wheel():
++    text = (ROOT / "scripts" / "start_full_power.ps1").read_text(encoding="utf-8")
++    assert 'OWNER_CONTROL_UNVERIFIED' in text
++    assert '$owner.enabled -isnot [bool]' in text
++    assert 'OWNER_CONTROL_ACTIVE_OR_UNVERIFIED' in text
++    assert 'Remove-Item -Force $humanMode' not in text

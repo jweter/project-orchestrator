@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/.worker-worktrees/knowledge-engine-worker-1/knowledge-engine-ai",
+ "head": "5c68687a10f1bcf2b60ac5e1ad20ea311b73e2ce",
+ "branch": "actor/autonomous-knowledge-engine-ai-20261001-234110",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "b9086fcf01db6d35fc9c55d01453ee8c5c7861373e1999b08917b29f302e01a5"
+  ],
+  [
+   ".aider.input.history",
+   "4426314abc3b5d66b75b4531fafce89bd2c7d83eee18c3d5b5f9acb69f909b51"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__knowledge-engine-ai__47928e"
+}

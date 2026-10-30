@@ -1,0 +1,34 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/knowledge-engine-core",
+ "head": "60aeb5cceb4a0a283d04eeacb30575a231d9e9d8",
+ "branch": "recovery/quarantine-20261010-grounded-extraction",
+ "repo": "knowledge-engine-core",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\knowledge-engine-core",
+ "exists": true,
+ "dirty_entries": 3,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "0e2ace25844ee2265b031084e35633a1acd0ba8558237814efcac881580d575d"
+  ],
+  [
+   ".aider.input.history",
+   "d19cb229a454efef5ca11fb0d631485234fbada1792a5665a4a2413cb10c7bbe"
+  ],
+  [
+   ".aider.tags.cache.v4/0f/27/70e4553f4619a63a644b6a56d00c.val",
+   "ce11a9aa91b7d2688f942768ae3ddd28ef07df757cb08ac5a8cd5c13caa87225"
+  ],
+  [
+   ".aider.tags.cache.v4/1a/51/dd92d8a238e7c67da2a81e442f74.val",
+   "e64b5b670a51c6930510667efc41968ee44e4a2a366514d96a04eb56f149d399"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "55301411963d2502b84b20dc73c5c6ca5ffea5d9a5e46b93b7ffbfe1689ca510"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-core__knowledge-engine-core__f5b8bb"
+}

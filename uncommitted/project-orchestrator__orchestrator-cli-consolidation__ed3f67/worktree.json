@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/GitHub/orchestrator-cli-consolidation",
+ "head": "616011f7896ad7fc85ba0c9428f0b4811cbecffe",
+ "branch": "refactor/canonical-cli-entrypoints",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [
+  "engineering/validate_control_surface.py",
+  "pyproject.toml"
+ ],
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__orchestrator-cli-consolidation__ed3f67"
+}

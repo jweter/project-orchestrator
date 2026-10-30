@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/GitHub/iron-god-activation-ancestry-gate-20261024",
+ "head": "8bebc9f42392f1ac06081efd64b8c19218c383fc",
+ "branch": "fix/iron-god-activation-ancestry-gate-20261024",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "engineering/validate_supervisor_architecture.py"
+ ],
+ "patch_sha256": "9106d9cc83fc31adc98b25aa238beedfd505a5bfced33c6d520eb76953ba2439",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__iron-god-activation-ancestry-gate-20261024__79c9fd"
+}

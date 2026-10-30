@@ -1,0 +1,21 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/knowledge-engine-core",
+ "head": "84729339c3e9604ce84724437655d8c52d8a159c",
+ "branch": "orchestrator/unattended-worker-posix-typing",
+ "repo": "knowledge-engine-core",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\knowledge-engine-core",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [
+  "data/corpora/glp1_weight_loss/evidence_records.jsonl"
+ ],
+ "patch_sha256": "b962729d6900469aeeee126eae933b736a3c9fab88f0af7e303f5719dfe1085e",
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "959fd73921491959644da23c51c32689214931edbf5a08dcaed75c129ef31eac"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-core__knowledge-engine-core__655cfc"
+}

@@ -1,0 +1,27 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_everward-low-spec-recovery",
+ "head": "7b4dfd7a01d14cece4cd67a2534c46003398d4e7",
+ "branch": "orchestrator/recover-low-spec-startup-evidence",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 8,
+ "tracked_changes": [
+  "docs/UNATTENDED_VERIFICATION.md",
+  "docs/UNATTENDED_WINDOWS_PRODUCT_REALITY.md",
+  "tools/everward_unattended_worker.py",
+  "tools/publish_unattended_product_reality.ps1",
+  "tools/test_unattended_product_reality_reporting.py",
+  "tools/test_unattended_product_reality_safety_regressions.py",
+  "tools/test_unattended_product_reality_worker.py"
+ ],
+ "patch_sha256": "2618d7f04908e38a22c104845bc45a9fd92b0fe02640996a59cd1133eb9c57e2",
+ "untracked_copied": [
+  [
+   "tools/run_unreal_lowspec_startup_evidence.ps1",
+   "2f0990fdc0175c84e4ec997d37a50a716a5f379b47f31c7e8f9113c49e2a211f"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward___everward-low-spec-recovery__cfc042"
+}

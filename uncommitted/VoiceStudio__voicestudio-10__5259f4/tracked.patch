@@ -1,0 +1,40 @@
+diff --git a/backend/services/singing_pitch.py b/backend/services/singing_pitch.py
+index 7b8d20b7..e421ab04 100644
+--- a/backend/services/singing_pitch.py
++++ b/backend/services/singing_pitch.py
+@@ -134,13 +134,27 @@ def extract_f0(
+         if energy <= 1e-12:
+             frames.append(F0Frame(time_seconds, None, False, 0.0))
+             continue
+-        corr = np.correlate(frame, frame, mode="full")[frame.size - 1 :]
+-        lag_slice = corr[min_lag : max_lag + 1]
+-        lag = min_lag + int(np.argmax(lag_slice))
+-        confidence = float(corr[lag] / corr[0]) if corr[0] > 0 else 0.0
++        normalized: list[float] = []
++        for lag in range(min_lag, max_lag + 1):
++            left = frame[:-lag]
++            right = frame[lag:]
++            denominator = math.sqrt(float(np.dot(left, left)) * float(np.dot(right, right)))
++            normalized.append(float(np.dot(left, right)) / denominator if denominator > 1e-12 else 0.0)
++
++        peaks: list[tuple[int, float]] = []
++        for index, score in enumerate(normalized):
++            before = normalized[index - 1] if index else -1.0
++            after = normalized[index + 1] if index + 1 < len(normalized) else -1.0
++            if score >= before and score >= after:
++                peaks.append((min_lag + index, score))
++        strongest = max((score for _, score in peaks), default=0.0)
++        comparable = [(lag, score) for lag, score in peaks if score >= max(voicing_threshold, strongest * 0.95)]
++        if not comparable:
++            frames.append(F0Frame(time_seconds, None, False, max(0.0, min(1.0, strongest))))
++            continue
++        # The shortest near-strongest periodic peak is the fundamental period.
++        # This avoids the zero-lag shoulder and longer subharmonic repeats.
++        lag, confidence = min(comparable, key=lambda item: item[0])
+         confidence = max(0.0, min(1.0, confidence))
+-        if confidence < voicing_threshold:
+-            frames.append(F0Frame(time_seconds, None, False, confidence))
+-        else:
+-            frames.append(F0Frame(time_seconds, sample_rate / lag, True, confidence))
++        frames.append(F0Frame(time_seconds, sample_rate / lag, True, confidence))
+     return F0Track(sample_rate, hop_samples, tuple(frames))

@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/flow-state/readiness-worktrees/c8ae0de7f3b245d2bcdf0437050579d4/knowledge-engine-core",
+ "head": "286625900aadca29526e033ac18d3e18eaef52d6",
+ "repo": "knowledge-engine-core",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\knowledge-engine-core",
+ "exists": true,
+ "dirty_entries": 8,
+ "tracked_changes": [
+  "data/corpora/glp1_weight_loss/binary_statistical_inputs.jsonl",
+  "data/corpora/glp1_weight_loss/evidence_records.jsonl",
+  "data/corpora/glp1_weight_loss/relationship_records.jsonl",
+  "data/corpora/glp1_weight_loss/statistical_inputs.jsonl",
+  "data/corpora/mental_health_mdd_antidepressants/evidence_records.jsonl",
+  "data/corpora/mental_health_mdd_antidepressants/relationship_records.jsonl",
+  "data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl",
+  "data/corpora/oncology_nsclc_checkpoint_inhibitors/relationship_records.jsonl"
+ ],
+ "patch_sha256": "333b400bc9d342bf9ec94f816e4f32518bc8a8ee81efedf10c7824068c908459",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-core__knowledge-engine-core__db890e"
+}

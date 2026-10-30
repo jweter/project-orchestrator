@@ -1,0 +1,30 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/bursts/20260922-0955/knowledge-engine-core",
+ "head": "124cd7fcb57b1c605db25fe32ac0045fead4c11c",
+ "branch": "orchestrator/issue-433-reretrieval-readiness",
+ "repo": "knowledge-engine-core",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\knowledge-engine-core",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".aider.chat.history.md",
+   "5f378d3ae98c8c8bf6a974ec8fa473fc7d44567b8e5aa61cad32bb8a2ed35261"
+  ],
+  [
+   ".aider.tags.cache.v4/15/0f/ff9beebf5308d90f9f21949ee78e.val",
+   "21c9a7bda4972acf6d4493dcb8821ce505b3d77c39717154c38d17731e1481c6"
+  ],
+  [
+   ".aider.tags.cache.v4/27/96/0438e711f51380dc759399300dbf.val",
+   "80954a3e25f2fa7ac8ac46fc8de977fbb3f01c688660adca3d99025858e4694e"
+  ],
+  [
+   ".aider.tags.cache.v4/cache.db",
+   "4045805a89d0d64c6bc382e1a6d9beca147e63071a740d0a3e1bbd182641d738"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-core__knowledge-engine-core__2a77fc"
+}

@@ -1,0 +1,106 @@
+b\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\main.py", line 377, in pytest_cmdline_main
+    return wrap_session(config, _main)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\main.py", line 365, in wrap_session
+    config.hook.pytest_sessionfinish(
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\pluggy\_hooks.py", line 512, in __call__
+    return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\pluggy\_manager.py", line 120, in _hookexec
+    return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\pluggy\_callers.py", line 167, in _multicall
+    raise exception
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\pluggy\_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\logging.py", line 888, in pytest_sessionfinish
+    return (yield)
+            ^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\pluggy\_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\terminal.py", line 961, in pytest_sessionfinish
+    result = yield
+             ^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\pluggy\_callers.py", line 139, in _multicall
+    teardown.throw(exception)
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\warnings.py", line 119, in pytest_sessionfinish
+    return (yield)
+            ^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\pluggy\_callers.py", line 121, in _multicall
+    res = hook_impl.function(*args)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\tmpdir.py", line 340, in pytest_sessionfinish
+    tmp_path_factory._exit_stack.close()
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 618, in close
+    self.__exit__(None, None, None)
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 610, in __exit__
+    raise exc_details[1]
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 595, in __exit__
+    if cb(*exc_details):
+       ^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\contextlib.py", line 478, in _exit_wrapper
+    callback(*args, **kwds)
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\pathlib.py", line 371, in cleanup_numbered_dir
+    cleanup_dead_symlinks(root)
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\_pytest\pathlib.py", line 356, in cleanup_dead_symlinks
+    if not left_dir.resolve().exists():
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 860, in exists
+    self.stat(follow_symlinks=follow_symlinks)
+  File "C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\pathlib.py", line 840, in stat
+    return os.stat(self, follow_symlinks=follow_symlinks)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [WinError 5] Access is denied: 'C:\\Users\\jerem\\AppData\\Local\\Temp\\pytest-of-jerem\\pytest-current'
+
+control_plane: PASS (0.047s)
+control_surface: PASS (0.079s)
+supervisor_architecture: PASS (0.063s)
+builder_architecture: PASS (0.078s)
+authority_tree: PASS (0.063s)
+portfolio_inventory: PASS (0.063s)
+autonomy_loop: PASS (0.062s)
+harness_context_audit: PASS (0.078s)
+harness_security: PASS (0.063s)
+agent_eval_suite: PASS (0.078s)
+agent_eval_runner_config: PASS (0.079s)
+specialist_lanes: PASS (0.047s)
+work_decomposition: PASS (0.047s)
+regression_prevention: PASS (0.156s)
+throughput_optimizer: PASS (0.141s)
+learning_memory: PASS (0.063s)
+learning_candidates: PASS (0.078s)
+repository_skills: PASS (0.062s)
+transient_memory: PASS (0.079s)
+compounding_timeseries: PASS (0.063s)
+tooling_capabilities: PASS (0.047s)
+n8n_policy: PASS (0.062s)
+compile: PASS (0.140s)
+tests: FAIL (49.109s)
+........................................................................ [  4%]
+........................................................................ [  8%]
+........................................................................ [ 12%]
+........................................................................ [ 16%]
+........................................................................ [ 20%]
+........................................................................ [ 24%]
+........................................................................ [ 28%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 40%]
+........................................................................ [ 44%]
+........................................................................ [ 48%]
+........................................................................ [ 52%]
+........................................................................ [ 56%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 68%]
+........................................................................ [ 72%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 84%]
+........................................................................ [ 88%]
+........................................................................ [ 92%]
+........................................................................ [ 96%]
+........................................................................ [100%]

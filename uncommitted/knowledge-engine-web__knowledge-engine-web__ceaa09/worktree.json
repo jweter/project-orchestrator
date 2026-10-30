@@ -1,0 +1,15 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/flow-state/readiness-worktrees/c8ae0de7f3b245d2bcdf0437050579d4/knowledge-engine-web",
+ "head": "e05f844ca56bc035b7b682526b7ce48b57d27266",
+ "repo": "knowledge-engine-web",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\knowledge-engine-web",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "data/evidence_records.jsonl"
+ ],
+ "patch_sha256": "a530721200bbaf5f7df42afe589ad4803c7ed68c50dcd8f66e5f76b40de7cb03",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-web__knowledge-engine-web__ceaa09"
+}

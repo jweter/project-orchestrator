@@ -1,0 +1,4 @@
+ docs/private-product-reality-runner-v1.md       |   4 ++++
+ src/rocksmith_cdlc_generator/human_only_debt.py | 150 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ tests/test_human_only_debt.py                   |  96 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 249 insertions(+), 1 deletion(-)

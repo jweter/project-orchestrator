@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/repos/knowledge-engine-ai",
+ "head": "4ad2d1de7901172b4f8a0244e0345a79081c18da",
+ "branch": "feature/report-provider-degradation",
+ "repo": "knowledge-engine-ai",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\repos\\knowledge-engine-ai",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "ddb0c33658e46679d02fd894b3b4c69e4d227ffc3879652c89316c09ba5f0649"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\knowledge-engine-ai__knowledge-engine-ai__29e269"
+}

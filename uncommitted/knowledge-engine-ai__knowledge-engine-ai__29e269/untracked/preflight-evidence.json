@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "repository": "jweter/knowledge-engine-ai",
+  "head_sha": "4ad2d1de7901172b4f8a0244e0345a79081c18da",
+  "mode": "FULL",
+  "generated_at": "2026-09-18T19:36:17.982418+00:00",
+  "status": "FAILED",
+  "checks": [
+    {
+      "id": "format",
+      "kind": "quality",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "lint",
+      "kind": "quality",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "orchestrator_ops",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "growth_engine",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "control_plane",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "execution_director",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "compounding_metrics",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "reinvestment_controller",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "regression_memory",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "types",
+      "kind": "quality",
+      "status": "FAIL",
+      "returncode": 1
+    }
+  ]
+}

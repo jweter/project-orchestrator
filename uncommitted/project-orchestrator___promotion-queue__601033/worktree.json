@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_promotion-queue",
+ "head": "695aba9bf6e8cd37574c79780dee679eb114f5a1",
+ "branch": "feat/durable-promotion-queue",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "task.txt",
+   "e87d9ccba51b7340645887ce2cf60f31f51c41379b011947a363f95f8d080848"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator___promotion-queue__601033"
+}

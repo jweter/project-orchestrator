@@ -1,0 +1,66 @@
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 35%]
+........................................................................ [ 39%]
+........................................................................ [ 42%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 62%]
+.....................................................................sss [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 85%]
+........................................................................ [ 88%]
+........................................................................ [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 98%]
+..........................................                               [100%]
+============================== warnings summary ===============================
+tests\test_track_trust_workspace_controls.py:109
+  C:\Users\jerem\GitHub\rocksmith-pr741-review-fixes\tests\test_track_trust_workspace_controls.py:109: SyntaxWarning: invalid escape sequence '\('
+    with pytest.raises(ValueError, match="3 event\(s\) have unresolved string/fret positions"):
+
+tests/test_bass_transcriber.py::test_librosa_pyin_tracks_synthetic_bass_pitch_and_timing
+  C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\audioread\rawread.py:16: DeprecationWarning: 'aifc' is deprecated and slated for removal in Python 3.13
+    import aifc
+
+tests/test_bass_transcriber.py::test_librosa_pyin_tracks_synthetic_bass_pitch_and_timing
+  C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\audioread\rawread.py:17: DeprecationWarning: 'audioop' is deprecated and slated for removal in Python 3.13
+    import audioop
+
+tests/test_bass_transcriber.py::test_librosa_pyin_tracks_synthetic_bass_pitch_and_timing
+  C:\Users\jerem\AppData\Local\Programs\Python\Python312\Lib\site-packages\audioread\rawread.py:19: DeprecationWarning: 'sunau' is deprecated and slated for removal in Python 3.13
+    import sunau
+
+tests/test_bass_transcriber.py::test_librosa_pyin_tracks_synthetic_bass_pitch_and_timing
+tests/test_bass_transcriber.py::test_chunked_transcription_reports_progress_and_assigns_each_onset_once
+  C:\Users\jerem\GitHub\rocksmith-pr741-review-fixes\src\rocksmith_cdlc_generator\librosa_transcription.py:187: UserWarning: With fmin=41.000, sr=44100 and frame_length=2048, less than two periods of fmin fit into the frame, which can cause inaccurate pitch detection. Consider increasing to fmin=43.066 or frame_length=2153.
+    f0, voiced_flag, voiced_prob = librosa.pyin(
+
+tests/test_score_measure_recognition.py: 17 warnings
+tests/test_score_measure_segmentation.py: 2 warnings
+tests/test_score_page_segmentation.py: 2 warnings
+  C:\Users\jerem\GitHub\rocksmith-pr741-review-fixes\src\rocksmith_cdlc_generator\score_page_segmentation.py:137: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    pixels = list(central.getdata())
+
+tests/test_score_measure_recognition.py: 17 warnings
+tests/test_score_measure_segmentation.py: 3 warnings
+  C:\Users\jerem\GitHub\rocksmith-pr741-review-fixes\src\rocksmith_cdlc_generator\score_measure_segmentation.py:162: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    pixels = list(tab.getdata())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2199 passed, 3 skipped, 47 warnings in 80.37s (0:01:20)

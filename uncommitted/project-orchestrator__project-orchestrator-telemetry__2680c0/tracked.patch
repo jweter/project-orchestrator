@@ -1,0 +1,365 @@
+diff --git a/telemetry/hourly-repo-status/2026-09-20T14-31-34-05-00.json b/telemetry/hourly-repo-status/2026-09-20T14-31-34-05-00.json
+deleted file mode 100644
+index 776db6d..0000000
+--- a/telemetry/hourly-repo-status/2026-09-20T14-31-34-05-00.json
++++ /dev/null
+@@ -1,39 +0,0 @@
+-{
+-  "captured_at": "2026-09-20T14:31:34-05:00",
+-  "mode": "EXECUTION_BURST",
+-  "eligible_product_projects": 3,
+-  "materially_advanced_product_projects": 3,
+-  "product_advancement_rate": "3/3",
+-  "knowledge_engine": {
+-    "state": "MERGED",
+-    "repository": "jweter/knowledge-engine-core",
+-    "pr": 509,
+-    "head": "44b5ff534891348d34ec6931efa921682e22534f",
+-    "merge_sha": "792faed4ed9557388b596467893600bb76e88791",
+-    "evidence": "7 exact-head PR workflows successful; mergeable; no review threads"
+-  },
+-  "rocksmith": {
+-    "state": "CI_PENDING",
+-    "repository": "jweter/rocksmith-cdlc-generator",
+-    "branch": "repair/strong-audio-evidence",
+-    "head": "3d78d93c616bc1244b7d0ca6145f5436633c10b8",
+-    "evidence": "sanitized strong-audio threshold diagnostics added; targeted 6 passed; canonical exact-head preflight GREEN; PR opened",
+-    "privacy": "no private audio or score payload committed",
+-    "pr": 719
+-  },
+-  "everward": {
+-    "state": "P1_REPAIR_PREFLIGHT_RUNNING",
+-    "repository": "jweter/Project-Everward",
+-    "branch": "repair/released-body-authority",
+-    "head": "6b09dc0",
+-    "pr": 305,
+-    "evidence": "post-merge Codex review found P1 body velocity not integrated and P2 velocity not persisted; bounded repair adds deterministic body motion, backward-compatible persistence, and targeted manipulator/save tests pass; full preflight dispatched",
+-    "product_reality": "not inferred",
+-    "merged_pr": 305,
+-    "merge_sha": "23ecfb85dc84696d6f417b4b9aba17b15b468343"
+-  },
+-  "control_plane": {
+-    "role": "control-plane-only",
+-    "throughput_floor": "met"
+-  }
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-20T19-31-0500.json b/telemetry/hourly-repo-status/2026-09-20T19-31-0500.json
+deleted file mode 100644
+index 1557e85..0000000
+--- a/telemetry/hourly-repo-status/2026-09-20T19-31-0500.json
++++ /dev/null
+@@ -1,13 +0,0 @@
+-{
+-  "timestamp_local": "2026-09-20T19:31:30-05:00",
+-  "mode": "execution_burst",
+-  "open_product_prs": 0,
+-  "eligible_product_projects": 3,
+-  "materially_advanced_product_projects": 3,
+-  "product_advancement_rate": "3/3",
+-  "knowledge_engine": {"action": "canonical preflight dispatched on Windows worker", "known_posix_typing_defect": "resolved_on_current_main_by_dynamic_posix_termination_boundary"},
+-  "rocksmith": {"action": "unattended private Product Reality worker dispatched from clean current clone", "issue": 612},
+-  "everward": {"action": "unattended Windows Product Reality worker dispatched from clean current clone", "issue": 243},
+-  "product_reality_claimed": false,
+-  "needs_jeremy": false
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-20T2236-0500.json b/telemetry/hourly-repo-status/2026-09-20T2236-0500.json
+deleted file mode 100644
+index 00891c1..0000000
+--- a/telemetry/hourly-repo-status/2026-09-20T2236-0500.json
++++ /dev/null
+@@ -1,20 +0,0 @@
+-{
+-  "observed_at": "2026-09-20T22:36:00-05:00",
+-  "open_product_prs": 0,
+-  "eligible_products": ["knowledge-engine", "rocksmith", "everward"],
+-  "execution": {
+-    "knowledge-engine": "exact-head Core canonical preflight dispatched on current main c3db635",
+-    "rocksmith": "unattended private Product Reality worker dispatched on current main",
+-    "everward": "stale 2-day UnrealEditor-Cmd orphan terminated; repository-native unattended Product Reality worker redispatched"
+-  },
+-  "control_plane": {
+-    "defect": "Windows green PR watcher decoded gh output with cp1252 and crashed on byte 0x8d",
+-    "repair_pr": 330,
+-    "repair_head": "636e7671c8929f1535ce6cf1a13d7998febe33ae",
+-    "targeted_tests": "22 passed",
+-    "live_watcher_smoke": "error_class null",
+-    "canonical_preflight": "GREEN"
+-  },
+-  "product_advancement_rate": "3/3 dispatched",
+-  "product_reality_verified": false
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-21T0639-0500.json b/telemetry/hourly-repo-status/2026-09-21T0639-0500.json
+deleted file mode 100644
+index f56752b..0000000
+--- a/telemetry/hourly-repo-status/2026-09-21T0639-0500.json
++++ /dev/null
+@@ -1,11 +0,0 @@
+-{
+-  "captured_at": "2026-09-21T06:39:00-05:00",
+-  "eligible_product_projects": 3,
+-  "materially_advanced_product_projects": 3,
+-  "product_advancement_rate": "3/3",
+-  "knowledge_engine": {"branch":"issue-433-provider-cache-reuse-status","head":"1035512","state":"PREFLIGHT_PENDING_EXACT_HEAD","change":"ProviderStatus cache_hit/reuse_hit metrics + regression coverage"},
+-  "rocksmith": {"pr":722,"head":"ffa31e78516f56178182f4c0f614794935656c5e","state":"REVIEW_BLOCKED","change":"current arrangement review task strip","blocker":"P2 direct event selection can leave strip stale"},
+-  "everward": {"pr":310,"head":"b0c3784","state":"PREFLIGHT_PENDING_AFTER_REPAIR","change":"unattended timeout process-tree cleanup","repair":"taskkill nonzero path now retries and fails closed"},
+-  "control_plane": {"note":"DoWork contract read from default branch; product execution prioritized over control-plane PR work"},
+-  "product_reality_debt": {"knowledge_engine":"none claimed","rocksmith":"private/subjective validation remains separate","everward":"headless Unreal Product Reality remains separate"}
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-21T2031-0500.json b/telemetry/hourly-repo-status/2026-09-21T2031-0500.json
+deleted file mode 100644
+index 310123c..0000000
+--- a/telemetry/hourly-repo-status/2026-09-21T2031-0500.json
++++ /dev/null
+@@ -1,22 +0,0 @@
+-﻿{
+-    "generated_at":  "2026-09-21T20:31:45-05:00",
+-    "knowledge_engine":  {
+-                             "state":  "PREFLIGHT_RUNNING",
+-                             "branch":  "repair/issue-433-ledger-cache-reuse",
+-                             "head":  "9672269a7137039b45b8e0d8d5e9a951e0d89778"
+-                         },
+-    "rocksmith":  {
+-                      "state":  "PRODUCT_REALITY_REVIEW_REQUIRED",
+-                      "head":  "d2469b78f4f1b06d78adb9fa276614b595793057",
+-                      "worker":  "fresh exact-checkout run; strong_audio remains 0"
+-                  },
+-    "everward":  {
+-                     "state":  "PRODUCT_REALITY_WORKER_RUNNING",
+-                     "origin_main":  "82a6361c1f7b52f3cf13e2ffd13b73eaf128168e",
+-                     "last_failure":  "headless Unreal smoke timeout after 900s"
+-                 },
+-    "eligible_product_projects":  3,
+-    "materially_advanced_product_projects":  3,
+-    "product_advancement_rate":  "3/3",
+-    "human_required":  false
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-21T2347-0500.json b/telemetry/hourly-repo-status/2026-09-21T2347-0500.json
+deleted file mode 100644
+index 8a1eb94..0000000
+--- a/telemetry/hourly-repo-status/2026-09-21T2347-0500.json
++++ /dev/null
+@@ -1,37 +0,0 @@
+-{
+-  "schema_version": 1,
+-  "observed_at": "2026-09-21T23:47:00-05:00",
+-  "product_advancement_rate": "3/3",
+-  "knowledge_engine": {
+-    "repository": "jweter/knowledge-engine-core",
+-    "branch": "orchestrator/issue-433-provider-concurrency",
+-    "head": "10967b29830b1cae29c0479c09742965e88daf0a",
+-    "pr": 520,
+-    "state": "CI_PENDING",
+-    "preflight": "GREEN",
+-    "summary": "bounded concurrent federated-provider fanout with deterministic aggregation"
+-  },
+-  "rocksmith": {
+-    "repository": "jweter/rocksmith-cdlc-generator",
+-    "branch": "repair/diagnosis-human-consistency",
+-    "head": "f2b2824be36cdb91a5d9f831223a0e495dd77094",
+-    "pr": 723,
+-    "state": "CI_PENDING",
+-    "preflight": "GREEN",
+-    "summary": "fail-closed validation for contradictory unattended human-escalation diagnosis"
+-  },
+-  "everward": {
+-    "repository": "jweter/Project-Everward",
+-    "branch": "repair/headless-smoke-deterministic-exit",
+-    "head": "3d9b927",
+-    "pr": null,
+-    "state": "PREFLIGHT_GREEN_PLATFORM_GATE_PENDING",
+-    "preflight": "GREEN",
+-    "summary": "headless smoke deterministic self-exit after evidence capture; Unreal build waits on competing Build.bat"
+-  },
+-  "control_plane": {
+-    "capability_graphs_restored": ["knowledge-engine-core", "knowledge-engine-web", "knowledge-engine-ai", "rocksmith-cdlc-generator"],
+-    "transient_builder_failure": "GitHub GraphQL API rate limit exceeded",
+-    "persistent_supervisor_defect": "WinError 5 replacing flow-state/supervisor.json"
+-  }
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-22T1228-0500.json b/telemetry/hourly-repo-status/2026-09-22T1228-0500.json
+deleted file mode 100644
+index bf5aa04..0000000
+--- a/telemetry/hourly-repo-status/2026-09-22T1228-0500.json
++++ /dev/null
+@@ -1,29 +0,0 @@
+-{
+-  "observed_at": "2026-09-22T12:28:31-05:00",
+-  "mode": "EXECUTION_BURST",
+-  "open_product_prs": {
+-    "knowledge-engine-core": 0,
+-    "knowledge-engine-web": 0,
+-    "knowledge-engine-ai": 0,
+-    "rocksmith-cdlc-generator": 0,
+-    "Project-Everward": 0
+-  },
+-  "automation_advancement": {
+-    "p1_liveness_repair_branch": "repair/worker-liveness",
+-    "p1_liveness_repair_head": "babc3a2",
+-    "supervisor_instances_after_repair": 1,
+-    "green_pr_watcher_instances_after_repair": 1,
+-    "orphan_green_pr_watchers_removed": 371,
+-    "supervisor_once_verification": "PASS",
+-    "supervisor_targeted_tests": "71 passed",
+-    "portfolio_worker_property_crash": "repaired locally; GraphQL rate limit remains transient"
+-  },
+-  "worker_state": {
+-    "productive_liveness": "PRODUCTIVE",
+-    "builder_status": "OWNERSHIP_HELD",
+-    "builder_reason": "EXECUTION_SLICE_ALREADY_OWNED:ABANDONED",
+-    "github_graphql_rate_limit": "EXCEEDED"
+-  },
+-  "product_advancement_rate": "UNKNOWN_PENDING_PRODUCT_MUTATION_EVIDENCE",
+-  "needs_jeremy": false
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-22T1240Z.json b/telemetry/hourly-repo-status/2026-09-22T1240Z.json
+deleted file mode 100644
+index f1ea825..0000000
+--- a/telemetry/hourly-repo-status/2026-09-22T1240Z.json
++++ /dev/null
+@@ -1,11 +0,0 @@
+-{
+-  "observed_at_utc": "2026-09-22T12:40:00Z",
+-  "eligible_product_projects": ["knowledge-engine", "rocksmith", "everward"],
+-  "materially_advanced_product_projects": ["knowledge-engine"],
+-  "product_advancement_rate": "1/3",
+-  "knowledge_engine": {"head": "124cd7fcb57b1c605db25fe32ac0045fead4c11c", "state": "CI_PENDING", "pr": 521, "preflight": "GREEN"},
+-  "rocksmith": {"head": "1494e829ef872160c05f72a1212d63fa8ddf1958", "state": "IMPLEMENTING_DISPATCHED", "slice": "private-structural-acceptance-v1"},
+-  "everward": {"head": "ec84438e5f648a30a25568d8041876182a5bbf55", "state": "IMPLEMENTING_DISPATCHED", "slice": "sanitized-diagnostic-companion-v1"},
+-  "worker_feedback": "no new deterministic FAIL/TEST_FAILURE/QUALITY_FAILURE/CODE_FAILURE found in sanitized outbox",
+-  "notes": "Zero open PRs triggered surge. Knowledge Engine exact-head preflight completed GREEN and PR 521 opened. Rocksmith and Everward autonomous lanes were re-dispatched; no Product Reality result inferred."
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-22T2335-0500.json b/telemetry/hourly-repo-status/2026-09-22T2335-0500.json
+deleted file mode 100644
+index d43c67a..0000000
+--- a/telemetry/hourly-repo-status/2026-09-22T2335-0500.json
++++ /dev/null
+@@ -1,34 +0,0 @@
+-{
+-  "observed_at": "2026-09-22T23:35:00-05:00",
+-  "eligible_product_projects": 3,
+-  "materially_advanced_product_projects": 3,
+-  "product_advancement_rate": "3/3",
+-  "knowledge_engine": {
+-    "state": "PRODUCT_REALITY_BENCHMARK_RUNNING",
+-    "repo": "jweter/knowledge-engine-ai",
+-    "head": "e8d58ea64c76b345f9d8d4d51db53523b07e705a",
+-    "action": "fresh-music-endurance research benchmark dispatched on Azathoth with local Core corpus and Ollama",
+-    "next_gate": "benchmark completion and sanitized evidence inspection"
+-  },
+-  "rocksmith": {
+-    "state": "CI_PENDING",
+-    "repo": "jweter/rocksmith-cdlc-generator",
+-    "branch": "orchestrator/eof-parity-matrix-contract",
+-    "head": "af4ae91238270f598ccaa3927f96dacf053eeeef",
+-    "pr": 727,
+-    "preflight": "GREEN",
+-    "capability_created": "EOF parity matrix governance regression contract",
+-    "next_gate": "fresh PR CI"
+-  },
+-  "everward": {
+-    "state": "PRODUCT_REALITY_PENDING",
+-    "repo": "jweter/Project-Everward",
+-    "head": "9484adb31de04d10d2b2af556ecbb1865cd006ef",
+-    "action": "low-spec Unreal launch with measured startup memory dispatched on Azathoth",
+-    "wait_reason": "existing Unreal Build.bat/build service owns build lane",
+-    "next_gate": "measured low-spec observation artifact"
+-  },
+-  "waiting_lanes_rotated_away_from": ["Everward Unreal build", "Knowledge Engine benchmark"],
+-  "reusable_capabilities_created_or_reused": ["EOF parity matrix governance regression test", "Knowledge Engine research benchmark harness", "Everward low-spec memory evidence harness"],
+-  "idle_eligible_lanes": 0
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-23T0027-0500.json b/telemetry/hourly-repo-status/2026-09-23T0027-0500.json
+deleted file mode 100644
+index 1f7aaa9..0000000
+--- a/telemetry/hourly-repo-status/2026-09-23T0027-0500.json
++++ /dev/null
+@@ -1,25 +0,0 @@
+-{
+-  "observed_at": "2026-09-23T00:27:06-05:00",
+-  "eligible_product_projects": 3,
+-  "materially_advanced_product_projects": 2,
+-  "product_advancement_rate": "2/3",
+-  "knowledge_engine": {
+-    "advancement": "exact-head preflight GREEN and PR #170 opened; fresh CI exposed a CI-only mypy dependency failure",
+-    "head": "418361dd0e6d7ccffcca713806d00a0c2abd73be",
+-    "next_gate": "bounded repair of click.testing import-not-found then fresh exact-head verification"
+-  },
+-  "rocksmith": {
+-    "advancement": "issue #612 stale-build Product Reality slice reserved, but implementation agent failed authentication before mutation",
+-    "base": "3305ec85324691951f233bce774127b944eebcb7",
+-    "next_gate": "retry implementation with authenticated worker",
+-    "materially_advanced": false
+-  },
+-  "everward": {
+-    "advancement": "real LowSpec MeasureMemory Product Reality run dispatched on exact main",
+-    "head": "9484adb31de04d10d2b2af556ecbb1865cd006ef",
+-    "next_gate": "existing Unreal build completes, then measured evidence collection"
+-  },
+-  "waiting_lanes_rotated_away_from": ["Everward Unreal build", "Rocksmith transient Claude OAuth"],
+-  "reusable_capabilities_created_or_reused": ["Knowledge Engine canonical preflight", "Everward low-spec memory harness"],
+-  "product_reality_fabricated": false
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-23T0232-0500.json b/telemetry/hourly-repo-status/2026-09-23T0232-0500.json
+deleted file mode 100644
+index 95cd999..0000000
+--- a/telemetry/hourly-repo-status/2026-09-23T0232-0500.json
++++ /dev/null
+@@ -1,26 +0,0 @@
+-{
+-  "captured_at": "2026-09-23T02:32:51-05:00",
+-  "eligible_product_projects": 3,
+-  "materially_advanced_product_projects": 3,
+-  "product_advancement_rate": "3/3",
+-  "knowledge_engine": {
+-    "action": "repaired CI-only mypy dependency on PR 170, exact-head preflight green, fresh CI green, merged",
+-    "head": "f6479837cd9ad752369c3e1b730b1d79bf12336b",
+-    "merge": "5c68687a10f1bcf2b60ac5e1ad20ea311b73e2ce"
+-  },
+-  "rocksmith": {
+-    "action": "reserved next #612 deterministic GUI/package smoke lane",
+-    "branch": "orchestrator/private-reality-gui-smoke",
+-    "state": "IMPLEMENTING_DISPATCH_FAILED_TRANSIENT",
+-    "detail": "local codex executable not on PATH; branch safely reserved from current main"
+-  },
+-  "everward": {
+-    "action": "dispatched real low-spec measured-memory Product Reality harness",
+-    "head": "9484adb31de04d10d2b2af556ecbb1865cd006ef",
+-    "state": "ASYNC_BUILD_WAIT",
+-    "detail": "Build.bat already owned by another Unreal build; harness waiting"
+-  },
+-  "waiting_lanes_rotated_away_from": ["Everward Unreal build"],
+-  "reusable_capabilities_created_or_reused": ["Knowledge Engine strict typing regression/preflight", "Everward measured-memory harness"],
+-  "needs_jeremy": []
+-}
+diff --git a/telemetry/hourly-repo-status/2026-09-23T0844-0500.json b/telemetry/hourly-repo-status/2026-09-23T0844-0500.json
+deleted file mode 100644
+index 8dc8675..0000000
+--- a/telemetry/hourly-repo-status/2026-09-23T0844-0500.json
++++ /dev/null
+@@ -1,26 +0,0 @@
+-﻿{
+-    "timestamp":  "2026-09-23T08:44:00-05:00",
+-    "eligible_product_projects":  [
+-                                      "knowledge-engine",
+-                                      "rocksmith",
+-                                      "everward"
+-                                  ],
+-    "materially_advanced_product_projects":  [
+-                                                 "knowledge-engine",
+-                                                 "rocksmith",
+-                                                 "everward"
+-                                             ],
+-    "product_advancement_rate":  "3/3",
+-    "knowledge_engine":  "ACTIVE: grant 7dbda7d8-c427-4176-adfb-3fa90c8733df federated-provider-concurrency-v1",
+-    "rocksmith":  "ACTIVE: grant 8abf20bc-25c0-4632-9864-bc84fd694fdc private-structural-acceptance-v1",
+-    "everward":  "ACTIVE: grant 76af8563-006a-44ee-8899-d47b2e1a4551 sanitized-diagnostic-companion-v1",
+-    "control_plane":  "PR #359 merged/deployed c3328ea; PR #360 merged/deployed d83e868; existing artifact-only quarantines released",
+-    "reusable_capabilities_created_or_reused":  [
+-                                                    "builder-artifact-only recovery predicate",
+-                                                    "fresh Ollama lease publication race regression"
+-                                                ],
+-    "waiting_lanes_rotated_away_from":  [
+-                                            "PR #360 preflight/CI"
+-                                        ],
+-    "needs_jeremy":  false
+-}

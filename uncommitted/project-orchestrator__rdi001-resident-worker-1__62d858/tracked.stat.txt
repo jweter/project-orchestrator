@@ -1,0 +1,7 @@
+ engineering/preflight.py                                            | 12 +++++++-----
+ src/project_orchestrator/iron_god_conflict_aware_scheduling.py      | 67 ++++++++++++++++++++++++++++++++-----------------------------------
+ src/project_orchestrator/iron_god_migration_readiness.py            | 14 +++++++++++++-
+ src/project_orchestrator/iron_god_recovery_reconstruction_report.py | 28 +++++++++++++++++++++++++---
+ tests/test_iron_god_recovery_reconstruction_report.py               |  6 +++++-
+ tests/test_preflight_environment_contract.py                        |  8 ++++++--
+ 6 files changed, 88 insertions(+), 47 deletions(-)

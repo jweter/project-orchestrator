@@ -1,0 +1,95 @@
+diff --git a/DoWork.txt b/DoWork.txt
+index 781e831..c6242b1 100644
+--- a/DoWork.txt
++++ b/DoWork.txt
+@@ -1,5 +1,5 @@
+-IRON GOD EXCLUSIVE PRIORITY OVERRIDE (2026-10-12)
+-Owner-approved: All NEW development slices target project-orchestrator / Iron God until roadmap Definition of Done is evidenced. No new product-repo feature slices. Preserve in-flight work and all safety/owner gates. See engineering/IRON_GOD_PRIORITY_DIRECTIVE.md. This override supersedes four-product round-robin requirements below until owner release.
++PORTFOLIO DEVELOPMENT PRIORITY — OWNER RELEASE (2026-10-18)
++The owner has REVOKED the 2026-10-12 Iron God-only development priority. Resume safe, dependency-ready development across all registered/authorized product repositories (Knowledge Engine Core/Web/AI, Rocksmith, Everward, VoiceStudio) alongside project-orchestrator, with starvation protection. Use the authoritative repository registry and current roadmaps; reconcile active ownership and leases before dispatch. This is a scheduling-policy change ONLY: owner-control, per-repository rights, quality/Product Reality gates, and separate candidate-execution authorization remain unchanged. The historical directive in engineering/IRON_GOD_PRIORITY_DIRECTIVE.md is superseded. Do not assume an unattended agent-launch interface has been authorized or proven.
+ 
+ PROJECT ORCHESTRATOR — AUTHORITATIVE OPERATING CONTRACT
+ 
+diff --git a/docs/ROADMAP.md b/docs/ROADMAP.md
+index 705dc23..5caa85a 100644
+--- a/docs/ROADMAP.md
++++ b/docs/ROADMAP.md
+@@ -112,6 +112,18 @@ Its explicit successor is **Project Helix — Durable Execution, Evidence, and L
+ 
+ The handoff artifact is Iron Foreman's final controlled recovery evidence bundle, which becomes Helix Phase 0's reference reconstruction fixture. This keeps reliability before intelligence: **recover correctly first, then remember, measure, learn, and improve.**
+ 
++### Multi-surface evidence and memory — extension roadmap
++
++Detailed plan: [IRON_GOD_MULTISURFACE_MEMORY_ROADMAP.md](IRON_GOD_MULTISURFACE_MEMORY_ROADMAP.md).
++
++- [ ] Establish a truthful deployment and productive-worker baseline before activating new memory infrastructure.
++- [ ] Inventory and reuse existing Iron Memory, SQLite ledgers, capability graphs, repository skills, and knowledge retrieval.
++- [ ] Extend typed evidence, read-only KB/DB/Graph/Skills/Memory retrieval, and source-linked event projections in accordance with Helix.
++- [ ] Prove failure diagnosis and bounded retry prevention on a real historical VoiceStudio episode; measure improvement against baseline.
++- [ ] Expand to all owner-authorized repositories after controlled validation, respecting repository authority, verified evidence and recovery gates.
++
++This is an **advisory architecture roadmap**, not a change to runtime execution or owner-control permissions. Iron Foreman and Helix prerequisites remain in force; productive product engineering continues to take priority.
++
+ ## After v1
+ 
+ Freeze governance-layer expansion unless measured evidence identifies a bottleneck. Direct most engineering capacity into product roadmap work and use the orchestrator to measure, learn, and improve the loop.
+diff --git a/src/project_orchestrator/iron_god_repository_fairness.py b/src/project_orchestrator/iron_god_repository_fairness.py
+index 161f5eb..a47fbb2 100644
+--- a/src/project_orchestrator/iron_god_repository_fairness.py
++++ b/src/project_orchestrator/iron_god_repository_fairness.py
+@@ -39,6 +39,8 @@ class RepositoryAllocation:
+ def allocate_capacity_fairly(
+     available_slots: int,
+     demands: tuple[RepositoryDemand, ...],
++    *,
++    last_served_repository: str | None = None,
+ ) -> tuple[RepositoryAllocation, ...]:
+     """Allocate `available_slots` across `demands` via round-robin.
+ 
+diff --git a/src/project_orchestrator/iron_god_rocksmith_explanation_trace.py b/src/project_orchestrator/iron_god_rocksmith_explanation_trace.py
+index 76298e1..ad4ff8e 100644
+--- a/src/project_orchestrator/iron_god_rocksmith_explanation_trace.py
++++ b/src/project_orchestrator/iron_god_rocksmith_explanation_trace.py
+@@ -29,6 +29,7 @@ RECOMMENDED = "RECOMMENDED"
+ REJECTED_OWNED = "REJECTED_OWNED"
+ REJECTED_DEPENDENCY_BLOCKED = "REJECTED_DEPENDENCY_BLOCKED"
+ REJECTED_RESOURCE_INCOMPATIBLE = "REJECTED_RESOURCE_INCOMPATIBLE"
++REJECTED_SCHEDULING_UNVERIFIED = "REJECTED_SCHEDULING_UNVERIFIED"
+ 
+ 
+ @dataclass(frozen=True)
+diff --git a/src/project_orchestrator/iron_god_runner_manifest_enforcement.py b/src/project_orchestrator/iron_god_runner_manifest_enforcement.py
+index 967784b..6e424c5 100644
+--- a/src/project_orchestrator/iron_god_runner_manifest_enforcement.py
++++ b/src/project_orchestrator/iron_god_runner_manifest_enforcement.py
+@@ -46,7 +46,9 @@ def enforce_runner_manifest(
+     missing = tuple(sorted(declared - executed))
+     unexpected = tuple(sorted(executed - declared))
+ 
+-    if missing or unexpected:
++    duplicate_declared = len(declared) != len(spec.runner_requirements)
++    duplicate_executed = len(executed) != len(executed_runner_tags)
++    if missing or unexpected or duplicate_declared or duplicate_executed:
+         return RunnerEnforcementDecision(
+             status=VIOLATION,
+             declared_runner_requirements=spec.runner_requirements,
+diff --git a/tests/test_iron_god_runner_manifest_enforcement.py b/tests/test_iron_god_runner_manifest_enforcement.py
+index b3335f2..c7a415a 100644
+--- a/tests/test_iron_god_runner_manifest_enforcement.py
++++ b/tests/test_iron_god_runner_manifest_enforcement.py
+@@ -81,3 +81,15 @@ def test_subset_executed_is_violation_not_conforms():
+     )
+     assert result.status == VIOLATION
+     assert result.missing_tags == ("gpu",)
++
++
++def test_duplicate_reported_runner_tags_are_violation():
++    result = enforce_runner_manifest(_spec(), ("claude", "claude"))
++    assert result.status == VIOLATION
++
++
++def test_duplicate_declared_runner_tags_are_violation():
++    result = enforce_runner_manifest(
++        _spec(runner_requirements=("claude", "claude")), ("claude",)
++    )
++    assert result.status == VIOLATION

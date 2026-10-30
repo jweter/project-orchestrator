@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/GitHub/everward-capability-authority",
+ "head": "766974ef4acc33c8d7bb4c33cb2c1a013df6dac7",
+ "branch": "fix/authorize-capability-graph",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "fefbb8e1f2f30291e0590256e0df640278db48997836cad0a59dc5c1dd86bcbf"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__everward-capability-authority__c96132"
+}

@@ -1,0 +1,31 @@
+{
+ "path": "C:/Users/jerem/GitHub/orchestrator-product-lane-utilization",
+ "head": "fdb9ea7c5da89123caffb9e7c5dfd2190697efe2",
+ "branch": "feat/product-lane-utilization",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 4,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".preflight-final2.err",
+   "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6"
+  ],
+  [
+   ".preflight-final2.out",
+   "db5aa788cbb6f275870e031959b76f9a0b326ef9c52340b9d73c59668c843b12"
+  ]
+ ],
+ "untracked_skipped": [
+  [
+   ".pytest-diag.done",
+   "build/test cache"
+  ],
+  [
+   ".pytest-diag.out",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__orchestrator-product-lane-utilization__2b9c3d"
+}

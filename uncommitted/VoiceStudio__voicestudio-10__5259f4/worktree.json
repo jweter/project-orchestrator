@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/.repair-worktrees/voicestudio-10",
+ "head": "c487410e7a6b928ebba9b939f65a764733e112af",
+ "branch": "orchestrator/singing-s3-current-main",
+ "repo": "VoiceStudio",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\VoiceStudio",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "backend/services/singing_pitch.py"
+ ],
+ "patch_sha256": "450e20de7ef3e06b693edd94d9797575956704d5f849a6362ead9d3ccb6c5127",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\VoiceStudio__voicestudio-10__5259f4"
+}

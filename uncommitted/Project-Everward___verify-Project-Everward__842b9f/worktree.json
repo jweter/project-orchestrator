@@ -1,0 +1,17 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_verify-Project-Everward",
+ "head": "8960b166b75a5dd1da28ff6bc8c2735694075e02",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "1215250c7a78badad92c7cdbeada7503772a12e05f1e9ed709e0013a3c2a6e9f"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward___verify-Project-Everward__842b9f"
+}

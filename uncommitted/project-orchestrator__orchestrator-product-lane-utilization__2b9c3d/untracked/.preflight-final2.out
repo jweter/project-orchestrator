@@ -1,0 +1,64 @@
+control_plane: PASS (1.031s)
+control_surface: PASS (1.203s)
+supervisor_architecture: PASS (1.156s)
+builder_architecture: PASS (0.766s)
+authority_tree: PASS (0.797s)
+portfolio_inventory: PASS (0.984s)
+autonomy_loop: PASS (0.985s)
+harness_context_audit: PASS (0.750s)
+harness_security: PASS (0.985s)
+agent_eval_suite: PASS (0.797s)
+agent_eval_runner_config: PASS (0.875s)
+specialist_lanes: PASS (0.797s)
+work_decomposition: PASS (1.078s)
+regression_prevention: PASS (0.953s)
+throughput_optimizer: PASS (0.812s)
+learning_memory: PASS (0.735s)
+learning_candidates: PASS (0.906s)
+repository_skills: PASS (0.719s)
+transient_memory: PASS (0.781s)
+compounding_timeseries: PASS (0.937s)
+tooling_capabilities: PASS (0.703s)
+n8n_policy: PASS (0.750s)
+compile: PASS (0.938s)
+tests: FAIL (52.219s)
+........................................................................ [  4%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 18%]
+........................................................................ [ 22%]
+........................................................................ [ 27%]
+........................................................................ [ 31%]
+........................................................................ [ 36%]
+........................................................................ [ 40%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 54%]
+........................................................................ [ 58%]
+........................................................................ [ 63%]
+........................................................................ [ 67%]
+........................................................................ [ 72%]
+........................................................................ [ 76%]
+........................................................................ [ 81%]
+..................................................F..................... [ 86%]
+........................................................................ [ 90%]
+........................................................................ [ 95%]
+........................................................................ [ 99%]
+......                                                                   [100%]
+================================== FAILURES ===================================
+_ test_builder_uses_shared_lifecycle_primitives_and_supervisor_does_not_reown_them _
+
+    def test_builder_uses_shared_lifecycle_primitives_and_supervisor_does_not_reown_them():
+        assert builder.mutate_grant_lifecycle is lifecycle.mutate_grant_lifecycle
+        assert builder._acquire_lifecycle_lock is lifecycle.acquire_lifecycle_lock
+        assert builder._release_lifecycle_lock is lifecycle.release_lifecycle_lock
+        assert not hasattr(supervisor, "mutate_grant_lifecycle")
+>       assert not hasattr(supervisor, "_acquire_lifecycle_lock")
+E       AssertionError: assert not True
+E        +  where True = hasattr(supervisor, '_acquire_lifecycle_lock')
+
+tests\test_shared_lifecycle_primitives.py:17: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_shared_lifecycle_primitives.py::test_builder_uses_shared_lifecycle_primitives_and_supervisor_does_not_reown_them
+1 failed, 1589 passed in 50.64s
+

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "repository": "jweter/knowledge-engine-core",
+  "head_sha": "84729339c3e9604ce84724437655d8c52d8a159c",
+  "mode": "FULL",
+  "generated_at": "2026-09-23T03:55:17.174275+00:00",
+  "status": "GREEN",
+  "checks": [
+    {
+      "id": "quality_preflight",
+      "kind": "quality",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "growth_engine",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "golden",
+      "kind": "golden",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "execution_director",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "compounding_metrics",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    },
+    {
+      "id": "reinvestment_controller",
+      "kind": "governance",
+      "status": "PASS",
+      "returncode": 0
+    }
+  ]
+}

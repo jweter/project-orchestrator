@@ -1,0 +1,1962 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_burst-rocksmith-roadmap",
+ "head": "82aa33591f355ce0c6d1b5c2a95343731547b348",
+ "branch": "feat/roadmap-next",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 4,
+ "tracked_changes": [
+  "preflight-evidence.json"
+ ],
+ "patch_sha256": "c7210531d0399c119e383fcf57e00f8b99ea35f70db864771a006e2c80ddc0bb",
+ "untracked_copied": [
+  [
+   "hourly-repair.txt",
+   "83af6efefbe01fce247ec7cbbc61e90b97f26acf8da9681757a5aa946ad290b5"
+  ],
+  [
+   "worker-task.txt",
+   "9b88c132208f84b7a85bdf4cef090aab0e31bb66b876d1af193dcb70659e61bf"
+  ]
+ ],
+ "untracked_skipped": [
+  [
+   ".pytest-preflight/test_ambiguous_hammer_pulloff_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_ambiguous_hammer_pulloff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_arrangement_bends_propert0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_arrangement_bends_propertcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_requires_0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_requires_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_requires_0/project/sources/imported/page1-bass-612015df8ed1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_requires_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_succeeds_0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_succeeds_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_succeeds_0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_authoring_input_succeeds_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bass_export_adds_count_an0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bass_export_adds_count_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bass_export_uses_eof_nogu0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bass_export_uses_eof_nogucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bend_curve_with_point_vib0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bend_curve_with_point_vibcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bend_with_curve_data_expo0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bend_with_curve_data_expocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bend_without_curve_data_s0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_bend_without_curve_data_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/imported/composition/lead-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/imported/composition/lead-track2-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/imported/composition/lead-track4-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_consumes_a_current_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/charts/rhythm_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/charts/rhythm_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_c0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_fails_closed_when_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_ignores_a_stale_or_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_printed_notation_ba0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_printed_notation_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_printed_notation_ba0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_printed_notation_ba1/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_printed_notation_ba1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_printed_notation_ba1/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_printed_notation_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_report_finds_no_ove0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_report_finds_no_ovecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_report_finds_the_sy0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_report_finds_the_sy0/project/sources/registered/synthetic.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_report_finds_the_sycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_report_flags_a_same0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_report_flags_a_samecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compo0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_build_succeeds_when_compocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/charts/rhythm_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/charts/rhythm_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_fr0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_builds_lead_and_rhythm_frcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_capo_does_not_offset_indi0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_capo_does_not_offset_indicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_capo_tag_reflects_arrange0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_capo_tag_reflects_arrangecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_capo_zero_matches_prior_h0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_capo_zero_matches_prior_hcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/imported/composition/lead-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/imported/composition/lead-track2-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/imported/composition/lead-track4-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stale0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_composed_draft_goes_stalecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_end_phrase_falls_back_to_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_end_phrase_falls_back_to_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_export_is_blocked_when_va0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_export_is_blocked_when_vacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_gp_import_recovers_from_l0/bom-corrupted.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_gp_import_recovers_from_lcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_hammer_on_and_pull_off_ex0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_hammer_on_and_pull_off_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no0/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no0/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no0/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no1/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no1/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no1/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no1/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no1/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no2/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no2/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no2/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no2/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no2/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no2/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no3/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no3/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no3/project/sources/imported/page1-bass-612015df8ed1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/project/printed_notation/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/project/printed_notation/click_alignment_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/project/printed_notation/sustain_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/project/references/official-tab/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_no4/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_import_project_printed_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_legato_slide_with_link_ne0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_legato_slide_with_link_necurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_link_next_without_exporta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_link_next_without_exportacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_pinch_harmonic_gets_disti0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_pinch_harmonic_gets_disticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/review/arrangement_edit_history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/review/reviewed_positions.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_in0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_position_review_change_incurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_project_without_promoted_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_p0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuild_fails_closed_if_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalid0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rebuilding_guitar_invalidcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_register_printed_notation0/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_register_printed_notation0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_register_printed_notation0/project/references/official-tab/manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_register_printed_notation1/page1.png",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_register_printed_notation1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_register_printed_notationcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_rejects_a_directory_that_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/imported/composition/lead-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/imported/composition/lead-track2-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/imported/composition/lead-track4-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/imported/composition/rhythm-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/imported/composition/rhythm-track3-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/imported/composition/rhythm-track5-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoring1/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_guitar_authoringcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/review/arrangement_edit_history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/review/reviewed_positions.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitc0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_reviewed_position_is_pitccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_section_fallback_falls_ba0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_section_fallback_falls_bacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/charts/rhythm_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/charts/rhythm_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/review/arrangement_edit_history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/review/reviewed_positions.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/imported/composition/rhythm-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/imported/composition/rhythm-track3-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/imported/composition/rhythm-track5-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/review/arrangement_edit_history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/review/reviewed_positions.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/imported/composition/lead-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/imported/composition/lead-track2-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/imported/composition/lead-track4-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_con1/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_concurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_fai0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_faicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/review/arrangement_edit_history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/review/reviewed_positions.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_set_reviewed_position_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejec1/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shared_guitar_draft_rejeccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shift_slide_without_link_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_shift_slide_without_link_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_slap_pluck_and_fret_hand_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_slap_pluck_and_fret_hand_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_slide_with_resolved_targe0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_slide_with_resolved_targecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_slide_without_resolved_ta0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_slide_without_resolved_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_stale_promoted_timing_fai0/analysis/reviewed_score_timing.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_stale_promoted_timing_faicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_par0/project/analysis/bass_raw.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_par0/project/analysis/tempo_map.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_par0/project/charts/bass_mapped.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_par0/project/eof/README.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_par0/project/eof/arr_bass_RS2.xml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_par0/project/eof/export_manifest.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_par0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_valid_project_exports_parcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_0/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_1/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_2/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/imported/composition/lead-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/imported/composition/lead-track2-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/imported/composition/lead-track4-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_3/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/analysis/alignment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/analysis/shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/analysis/source_timing_qualification.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/charts/lead_shared_timeline.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/charts/lead_source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/review/score_role_composition.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/review/score_role_composition_fanout.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/imported/composition/lead-composed-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/imported/composition/lead-track2-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/imported/composition/lead-track4-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/imported/score-bass.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/imported/score-fanout-eaa5208d6d05.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/imported/score-lead.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/imported/score-rhythm.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/score/.source.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/score/original/song.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_4/song/sources/score/source.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_workspace_status_reports_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_write_report_persists_it_0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_write_report_persists_it_0/project/review/eof_note_gap_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_write_report_persists_it_1/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_write_report_persists_it_1/project/review/eof_note_endpoint_resnap_report.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_write_report_persists_it_1/project/sources/registered/synthetic.gp5",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_write_report_persists_it_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_xml_input_round_trips_fro0/page1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_xml_input_round_trips_fro0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_xml_input_round_trips_fro0/project/sources/imported/page1-bass-7fda9dd03145.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_xml_input_round_trips_frocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_xml_matches_core_rocksmit0/project/project.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-preflight/test_xml_matches_core_rocksmitcurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator___burst-rocksmith-roadmap__e70302"
+}

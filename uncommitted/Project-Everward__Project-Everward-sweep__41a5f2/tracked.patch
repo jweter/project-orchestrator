@@ -1,0 +1,52 @@
+diff --git a/src/simulation/include/everward/simulation/software_policy.hpp b/src/simulation/include/everward/simulation/software_policy.hpp
+index 8a7efb5..ff5d9ba 100644
+--- a/src/simulation/include/everward/simulation/software_policy.hpp
++++ b/src/simulation/include/everward/simulation/software_policy.hpp
+@@ -99,7 +99,10 @@ public:
+         const Vector3d start_position = core_.snapshot().position_m;
+         core_.advance_wall_ticks(wall_ticks);
+         const double elapsed_seconds = static_cast<double>(wall_ticks) / static_cast<double>(SimulationClock::TicksPerSecond);
++        std::vector<Vector3d> body_start_positions;
++        body_start_positions.reserve(static_bodies_.size());
+         for (StaticSphereBody& body : static_bodies_) {
++            body_start_positions.push_back(body.center_m);
+             body.center_m = contact_add(body.center_m, contact_scale(body.velocity_mps, elapsed_seconds));
+         }
+         // Captured after integration (so it reflects this tick's gravity/
+@@ -107,7 +110,7 @@ public:
+         // body that turns out not to be the true earliest contact. See
+         // resolve_planetary_surface_contact's comment for why this matters.
+         const Vector3d integrated_velocity = core_.snapshot().velocity_mps;
+-        resolve_static_contacts(start_position);
++        resolve_static_contacts(start_position, body_start_positions);
+         resolve_planetary_surface_contact(start_position, integrated_velocity);
+         evaluate_policy();
+         reveal_full_confidence_target_classifications();
+@@ -397,7 +400,7 @@ private:
+         return true;
+     }
+ 
+-    void resolve_static_contacts(Vector3d start_position) {
++    void resolve_static_contacts(Vector3d start_position, const std::vector<Vector3d>& body_start_positions) {
+         if (static_bodies_.empty()) {
+             return;
+         }
+@@ -409,10 +412,16 @@ private:
+         ContactCandidate earliest;
+         earliest.sample_hit.fraction = std::numeric_limits<double>::infinity();
+ 
+-        for (const StaticSphereBody& body : static_bodies_) {
++        for (std::size_t body_index = 0; body_index < static_bodies_.size(); ++body_index) {
++            const StaticSphereBody& body = static_bodies_[body_index];
++            StaticSphereBody sweep_body = body;
++            sweep_body.center_m = body_start_positions[body_index];
++            const Vector3d body_displacement = contact_add(body.center_m, contact_scale(sweep_body.center_m, -1.0));
++            const Vector3d relative_end = contact_add(integrated_end, contact_scale(body_displacement, -1.0));
+             ContactCandidate candidate;
+-            if (sweep_probe_against_body(start_position, integrated_end, attitude, body, candidate) &&
++            if (sweep_probe_against_body(start_position, relative_end, attitude, sweep_body, candidate) &&
+                 candidate.sample_hit.fraction < earliest.sample_hit.fraction) {
++                candidate.body = &body;
+                 earliest = candidate;
+             }
+         }

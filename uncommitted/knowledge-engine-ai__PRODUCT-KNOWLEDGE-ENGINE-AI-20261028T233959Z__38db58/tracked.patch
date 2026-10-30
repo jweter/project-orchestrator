@@ -1,0 +1,28 @@
+diff --git a/knowledge_engine_ai/remove_html_tags.py b/knowledge_engine_ai/remove_html_tags.py
+index 577be21..856ce6a 100644
+--- a/knowledge_engine_ai/remove_html_tags.py
++++ b/knowledge_engine_ai/remove_html_tags.py
+@@ -1,4 +1,4 @@
+-import re
++from html.parser import HTMLParser
+ 
+ 
+ def remove_html_tags(text: str) -> str:
+@@ -14,5 +14,15 @@ def remove_html_tags(text: str) -> str:
+     if not text:
+         return ""
+ 
+-    clean = re.compile("<.*?>")
+-    return re.sub(clean, "", text)
++    class TextCollector(HTMLParser):
++        def __init__(self):
++            super().__init__()
++            self.text = []
++
++        def handle_data(self, data):
++            self.text.append(data)
++
++    collector = TextCollector()
++    collector.feed(text)
++    collector.close()
++    return "".join(collector.text)

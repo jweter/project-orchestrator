@@ -1,0 +1,18 @@
+{
+ "path": "C:/Users/jerem/GitHub/everward-emergency-verify-20261010",
+ "head": "ca5600a514fdda8f65483df0497a5dc5649bd130",
+ "branch": "verify/issue-228-emergency-minimum-20261010",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "22598a94076956d00630d0239207d6b5c67eb20378cdf5d7631da85c39aea211"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward__everward-emergency-verify-20261010__6ac67e"
+}

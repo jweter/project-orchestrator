@@ -1,0 +1,16 @@
+{
+ "path": "C:/Users/jerem/GitHub/rocksmith-quarantine-recovery",
+ "head": "a7302e1278d4d8c9de9b0c72f62b4ddbd130fa43",
+ "branch": "recovery/human-only-debt-promote-20261010",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\AppData\\Local\\ExponentialEngine\\workspaces\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "src/rocksmith_cdlc_generator/human_only_debt.py"
+ ],
+ "patch_sha256": "b1fece4a9d1498510e50c594ccfb0e5f80bd213cce95550021e140f6ff3d312d",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator__rocksmith-quarantine-recovery__793e3d"
+}

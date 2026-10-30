@@ -1,0 +1,30 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_burst-everward-roadmap",
+ "head": "0622ad10dec16011aff910a9b0ca4ae0872eb2f4",
+ "branch": "feat/phase2-roadmap-next",
+ "repo": "Project-Everward",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\Project-Everward",
+ "exists": true,
+ "dirty_entries": 4,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   "preflight-evidence.json",
+   "edd893858372d392101680a5102a5309f4e2e3418d59ff708a10c19279a298c2"
+  ],
+  [
+   "repair-task.txt",
+   "428e924e452a320aa19e1ed80ec7ffaaa7028170231768be653cba41a963a8c2"
+  ],
+  [
+   "repair332.txt",
+   "fb32ee12e920770f1eede2dbb26ee088ac752a540becb9c18711440f461adddb"
+  ],
+  [
+   "worker-task.txt",
+   "dcaafa9c5bc63f97b225bd901e0d87c876aedc95bcbef0ccc399f9e14d249c7f"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\Project-Everward___burst-everward-roadmap__590103"
+}

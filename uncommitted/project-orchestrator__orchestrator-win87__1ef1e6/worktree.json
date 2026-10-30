@@ -1,0 +1,198 @@
+{
+ "path": "C:/Users/jerem/AppData/Local/ExponentialEngine/workspaces/.repair-worktrees/orchestrator-win87",
+ "head": "3a80dd6fa6ead7407a964a31a76449933d69ced4",
+ "branch": "fix/windows-invalid-pid-liveness",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [],
+ "untracked_skipped": [
+  [
+   ".pytest-win87-22464/test_early_stage_aider_artifac0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_early_stage_aider_artifac0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_early_stage_aider_artifac0/ws/r/.aider.chat.history.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_early_stage_aider_artifaccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_early_stage_dirty_work_is0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_early_stage_dirty_work_is0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_early_stage_dirty_work_iscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_existing_preserved_aider_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_existing_preserved_aider_0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_existing_preserved_aider_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_failed_product_recertific0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_failed_product_recertific0/hands-off-expected-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_failed_product_recertificcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_pending_recovery_does_not0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_pending_recovery_does_not0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_pending_recovery_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_pending_recovery_requeues0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_pending_recovery_requeues0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_pending_recovery_requeuescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_preserved_quarantine_rech0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_preserved_quarantine_rech0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_preserved_quarantine_rechcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_preser0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_preser0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_presercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_releas0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_releas0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_releas1/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_releas1/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_releascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_restor0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_restor0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantine_recheck_restorcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantined_grants_expose0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_quarantined_grants_exposecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_reconcile_abandoned_claim0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_reconcile_abandoned_claim0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_reconcile_abandoned_claim1/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_reconcile_abandoned_claim1/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_reconcile_abandoned_claimcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_recovery_queue_uses_bound0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_recovery_queue_uses_bound0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_recovery_queue_uses_boundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_unknown_worker_liveness_i0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_unknown_worker_liveness_i0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-win87-22464/test_unknown_worker_liveness_icurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__orchestrator-win87__1ef1e6"
+}

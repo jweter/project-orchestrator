@@ -1,0 +1,22 @@
+{
+ "path": "C:/Users/jerem/GitHub/orchestrator-voicestudio-onboarding",
+ "head": "a02daea447c52631fa55c5d3b127ab845f97666d",
+ "branch": "feat/voicestudio-product-onboarding",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 2,
+ "tracked_changes": [],
+ "untracked_copied": [
+  [
+   ".voice-orch-preflight.err",
+   "7eb70257593da06f682a3ddda54a9d260d4fc514f645237f5ca74b08f8da61a6"
+  ],
+  [
+   ".voice-orch-preflight.out",
+   "112766ffa36beb123fe797e2e85773e7fcf7d2da4bffda9f7a28d4361852054c"
+  ]
+ ],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator__orchestrator-voicestudio-onboarding__1720fd"
+}

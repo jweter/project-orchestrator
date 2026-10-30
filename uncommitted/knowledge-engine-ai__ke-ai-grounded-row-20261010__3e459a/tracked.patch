@@ -1,0 +1,96 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 991bb23..0530997 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -7,6 +7,13 @@ and uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+ 
+ ## [Unreleased]
+ 
++### Fixed
++
++- Research Report conclusion text and certainty rationales now require a row-local
++  evidence citation whenever the row declares supporting or counter-evidence;
++  unavailable rows with no evidence remain valid. Regression coverage proves
++  that uncited grounded conclusions fail closed (issue #129).
++
+ ### Added
+ 
+ - **BT-4: wire `ke-ai research`'s own production caller into the synthesis
+diff --git a/knowledge_engine_ai/copilot/research_report.py b/knowledge_engine_ai/copilot/research_report.py
+index f2e051f..340dfeb 100644
+--- a/knowledge_engine_ai/copilot/research_report.py
++++ b/knowledge_engine_ai/copilot/research_report.py
+@@ -476,12 +476,14 @@ def _parse_conclusion_rows(
+                     item["conclusion"],
+                     f"conclusion_rows[{index}].conclusion",
+                     row_evidence_ids,
++                    require_citation=bool(row_evidence_ids),
+                 ),
+                 certainty=certainty,
+                 certainty_rationale=_validated_citation_text(
+                     item["certainty_rationale"],
+                     f"conclusion_rows[{index}].certainty_rationale",
+                     row_evidence_ids,
++                    require_citation=bool(row_evidence_ids),
+                 ),
+                 supporting_evidence_ids=supporting,
+                 contradicting_or_null_evidence_ids=counter,
+@@ -541,9 +543,13 @@ def _validated_citation_text(
+     value: object,
+     field_name: str,
+     allowed_evidence_ids: frozenset[str],
++    *,
++    require_citation: bool = False,
+ ) -> str:
+     text = _required_string(value, field_name)
+     cited_ids = frozenset(_EVIDENCE_CITATION.findall(text))
++    if require_citation and not cited_ids:
++        raise ResearchReportError(f"{field_name} requires an evidence citation.")
+     unknown = cited_ids - allowed_evidence_ids
+     if unknown:
+         raise ResearchReportError(
+diff --git a/tests/copilot/test_research_report.py b/tests/copilot/test_research_report.py
+index 5b5a9d1..609b34c 100644
+--- a/tests/copilot/test_research_report.py
++++ b/tests/copilot/test_research_report.py
+@@ -330,6 +330,40 @@ def test_parse_rejects_unknown_narrative_citation() -> None:
+         )
+ 
+ 
++@pytest.mark.parametrize("field_name", ["conclusion", "certainty_rationale"])
++def test_parse_rejects_uncited_grounded_conclusion_text(field_name: str) -> None:
++    payload = _payload()
++    rows = payload["conclusion_rows"]
++    assert isinstance(rows, list)
++    row = rows[0]
++    assert isinstance(row, dict)
++    row[field_name] = "The trial establishes an acute blood-pressure increase."
++
++    with pytest.raises(ResearchReportError, match="requires an evidence citation"):
++        parse_research_report_proposal(
++            payload,
++            known_evidence_ids=frozenset({"ev-positive", "ev-null"}),
++        )
++
++
++def test_parse_allows_unavailable_row_without_evidence_or_citation() -> None:
++    payload = _payload()
++    rows = payload["conclusion_rows"]
++    assert isinstance(rows, list)
++    row = rows[0]
++    assert isinstance(row, dict)
++    row["certainty"] = "unavailable"
++    row["supporting_evidence_ids"] = []
++    row["conclusion"] = "No grounded conclusion is available."
++    row["certainty_rationale"] = "The evidence record is insufficient."
++
++    proposal = parse_research_report_proposal(
++        payload,
++        known_evidence_ids=frozenset({"ev-positive", "ev-null"}),
++    )
++    assert proposal.conclusion_rows[0].certainty is ReportCertainty.UNAVAILABLE
++
++
+ def test_parse_rejects_omitted_required_counter_evidence() -> None:
+     payload = _payload()
+     rows = payload["conclusion_rows"]

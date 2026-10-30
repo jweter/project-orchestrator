@@ -1,0 +1,9 @@
+ data/corpora/glp1_weight_loss/binary_statistical_inputs.jsonl                |    1 -
+ data/corpora/glp1_weight_loss/evidence_records.jsonl                         |  157 ------------
+ data/corpora/glp1_weight_loss/relationship_records.jsonl                     |   36 ---
+ data/corpora/glp1_weight_loss/statistical_inputs.jsonl                       |    2 -
+ data/corpora/mental_health_mdd_antidepressants/evidence_records.jsonl        |  135 ----------
+ data/corpora/mental_health_mdd_antidepressants/relationship_records.jsonl    |    7 -
+ data/corpora/oncology_nsclc_checkpoint_inhibitors/evidence_records.jsonl     | 1532 ------------------------------------------------------------------------------------------------------------------
+ data/corpora/oncology_nsclc_checkpoint_inhibitors/relationship_records.jsonl |    9 -
+ 8 files changed, 1879 deletions(-)

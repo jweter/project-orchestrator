@@ -1,0 +1,15 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_verify-rocksmith-cdlc-generator",
+ "head": "51d92ce44df89d27db12c30f0d3c5d677b831f05",
+ "repo": "rocksmith-cdlc-generator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\rocksmith-cdlc-generator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [
+  "preflight-evidence.json"
+ ],
+ "patch_sha256": "f49b487b86f0cf392fc550539f70946d8896445e44d2b05ecefd03666c3e90d0",
+ "untracked_copied": [],
+ "untracked_skipped": [],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\rocksmith-cdlc-generator___verify-rocksmith-cdlc-generator__86918d"
+}

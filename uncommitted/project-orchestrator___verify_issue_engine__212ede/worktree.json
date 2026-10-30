@@ -1,0 +1,7573 @@
+{
+ "path": "C:/Users/jerem/Documents/GitHub/_verify_issue_engine",
+ "head": "f0ac121c7c6758039c18de944e79507c713541fe",
+ "repo": "project-orchestrator",
+ "source": "C:\\Users\\jerem\\Documents\\GitHub\\project-orchestrator",
+ "exists": true,
+ "dirty_entries": 1,
+ "tracked_changes": [],
+ "untracked_copied": [],
+ "untracked_skipped": [
+  [
+   ".pytest-tmp/FallbackControl/progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_abandoned_grant_with_acti0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_abandoned_grant_with_acticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_activation_product_set_dr0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_activation_product_set_dr0/state/activation-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_activation_product_set_dr0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_activation_product_set_dr0/state/hands-off-live-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_activation_product_set_drcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_grant_clears_idle_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_grant_clears_idle_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_grant_clears_idle_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_grant_clears_idle_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_recovered_grant_st0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_recovered_grant_stcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_recovery_generatio0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_recovery_generatiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_worker_is_activity0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_active_worker_is_activitycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_adaptive_runner_accounts_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_adaptive_runner_prefers_v0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_adaptive_runner_prefers_vcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_adaptive_runner_routes_ar0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_adaptive_runner_routes_arcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_adaptive_runner_uses_statcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_persi0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_persi0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_persi0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_persicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_refus0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_refus0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_refus0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_advance_grant_stage_refuscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_affinity_can_outweigh_glo0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_affinity_can_outweigh_glocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_affinity_history_is_class0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_affinity_history_is_classcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_aged_same_process_lock_is0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_aged_same_process_lock_iscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_alignment_allows_clear_pu0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_alignment_allows_clear_pucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_alignment_reports_precise0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_alignment_reports_precisecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_eligible_products_rec0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_eligible_products_rec0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_eligible_products_rec0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_eligible_products_reccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_four_independent_prod0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_four_independent_prodcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_required_slices_compl0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_required_slices_compl0/slice-completion-evidence/o__r__s1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_required_slices_compl0/slice-completion-evidence/o__r__s2.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_required_slices_complcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_six_repositories_get_0/pending/231f760d38b51f779898664a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_six_repositories_get_0/pending/583a7ff3243d8de273244359.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_six_repositories_get_0/pending/899a26d1aeecaf16e9d2ffe5.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_six_repositories_get_0/pending/8e56ab4643c44e13924b9d6b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_six_repositories_get_0/pending/ced138c3841c3218e07f28b1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_six_repositories_get_0/pending/e9ba81f5f55c5ff20f388698.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_all_six_repositories_get_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ambiguous_lifecycle_ident0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ambiguous_lifecycle_identcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_append_only_ledgers_are_i0/events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_append_only_ledgers_are_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_applied_repair_requires_i0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_applied_repair_requires_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_async_gate_rotates_to_dif0/async-gate-rotation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_async_gate_rotates_to_difcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_can_use_longe0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_can_use_longecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_fails_closed_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_fails_closed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_never_rewrite0/authority.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_never_rewritecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_retries_windo0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_retries_windocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_uses_windows_0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_uses_windows_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_windows_repla0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_json_windows_replacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_supervisor_state0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_supervisor_statecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_uses_unique_temp_f0/persistent-supervisor-launch.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_uses_unique_temp_f0/persistent-supervisor-launch.json.tmp",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_atomic_uses_unique_temp_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_authority_overlap_is_red_0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_authority_overlap_is_red_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_authority_revocation_killcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_binding_rejects_evidence_0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_binding_rejects_evidence_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_binding_rejects_other_gra0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_binding_rejects_other_gracurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_blocked_owned_and_other_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_blocked_product_does_not_0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_blocked_product_does_not_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_blocked_product_does_not_0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_blocked_product_does_not_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_bound_evidence_approves_e0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_bound_evidence_approves_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_bridge_failure_is_visible0/q/state/bridge-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_bridge_failure_is_visiblecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_bridge_requires_actor_owncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_bridge_writes_healthy_hea0/q/state/bridge-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_bridge_writes_healthy_heacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_rejects_grant_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_requires_bound0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_requires_boundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_retains_runner0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_retains_runner0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_retains_runner0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_retains_runner0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_retains_runner0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_retains_runnercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_uses_bounded_p0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_uses_bounded_p0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_uses_bounded_p0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_uses_bounded_p0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_uses_bounded_p0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_build_once_uses_bounded_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_finaliz0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_finaliz0/hands-off-execution-grants/grant-1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_finaliz0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_finaliz0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_finalizcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_persist0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_persist0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exception_persistcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_clai0/hands-off-execution-grants/g1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_clai0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_clai0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_clai1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_clai1/hands-off-execution-grants/g1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_clai1/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_clai1/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_exit_without_claicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_health_accepts_us0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_health_accepts_uscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_health_detects_se0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_health_detects_securrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_health_rejects_st0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_health_rejects_stcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_builder_run_uses_runtime_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_candidate_head_completion0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_candidate_head_completioncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_canonical_dirty_workspacecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_canonical_human_control_m0/LocalAppData/ExponentialEngine/flow-state/human-mode.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_canonical_human_control_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_capacity_deferral_alone_y0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_capacity_deferral_alone_ycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_capacity_deferral_is_not_0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_capacity_deferral_is_not_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_chain_anchor_is_stable_fo0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_chain_anchor_is_stable_fo0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_chain_anchor_is_stable_focurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_checkout_retries_once_aftcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_execution_grant_rec0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_execution_grant_rec0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_execution_grant_rec0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_execution_grant_reccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_fails_closed_withou0/hands-off-execution-grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_fails_closed_withoucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_job_is_atomic0/a.job.json.running",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_job_is_atomiccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_concrete_w0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_concrete_w0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_concrete_w0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_concrete_wcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_exact_slic0/hands-off-execution-grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_exact_slic0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_exact_slic0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claim_persists_exact_sliccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claimed_same_slice_blocks0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claimed_same_slice_blockscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_classify_orphan_branch_decurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_classify_orphan_branch_wicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claude_adapter_uses_nonincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claude_result_updates_mea0/c/f248a376c3e5a23620d1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_claude_result_updates_meacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_evaluate_auto_retains0/experiments.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_evaluate_auto_retains0/metrics.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_evaluate_auto_retains0/retained.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_evaluate_auto_retainscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_retain_path_can_feed_0/applicability.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_retain_path_can_feed_0/experiments.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_retain_path_can_feed_0/retained.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_retain_path_can_feed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_scheduler_report_pass0/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cli_scheduler_report_passcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_closed_decision_dispatche0/claude/d67e0c1f5ecfba519270.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_closed_decision_dispatchecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_commit_preserved_work_advcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_commit_preserved_work_rejcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_committed_journal_history0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_committed_journal_history0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_committed_journal_historycurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_committed_journal_with_ta0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_committed_journal_with_ta0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_committed_journal_with_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_compiles_declared_graph_a0/state/capability-authority-compilation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_compiles_declared_graph_a0/state/capability-graphs/o__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_compiles_declared_graph_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_compiles_only_explicit_au0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_compiles_only_explicit_aucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_compiles_only_repository_0/direction-expansions/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_compiles_only_repository_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_live_evidence_pa0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_live_evidence_pa0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_live_evidence_pa0/continuation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_live_evidence_pa0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_live_evidence_pa0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_live_evidence_pacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_record_compare_r0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_record_compare_r0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_complete_record_compare_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_completed_job_does_not_re0/q/inbox/j1.job.json.done",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_completed_job_does_not_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_concurrent_first_lock_ini0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_concurrent_first_lock_inicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_concurrent_grant_mutation0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_concurrent_grant_mutation0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_concurrent_grant_mutationcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_conflicting_evidence_fail0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_conflicting_evidence_fail0/slice-completion-evidence/o__r__s1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_conflicting_evidence_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_conflicting_second_finali0/events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_conflicting_second_finali0/snapshots.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_conflicting_second_finalicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_consumed_recovery_capabilcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_context_budget_overage_is0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_context_budget_overage_iscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_commit_journ0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_commit_journ0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_commit_journcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_history_bind0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_history_bind0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_history_bindcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_request_repl0/frontier-replenishment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_continuation_request_replcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_contract_products_discove0/hands-off.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_contract_products_discovecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_contract_products_fails_c0/hands-off.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_contract_products_fails_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_control_endpoint_requirescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_metadata_cannot_m0/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_metadata_cannot_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_state_fails_close0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_state_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_state_is_quaranti0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_state_is_quaranti0/leases.json.quarantine-1791345185-aa5e635d",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_state_is_quaranti0/leases.json.recovery.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_corrupt_state_is_quaranticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_create_only_handoff_round0/vault/.protection",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_create_only_handoff_round0/vault/mem_20260916140000_f55fd4cdbc81.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_create_only_handoff_roundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cross_burst_evidence_cann0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cross_burst_evidence_cann0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cross_burst_evidence_cann0/continuation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cross_burst_evidence_cann0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cross_burst_evidence_cann0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cross_burst_evidence_canncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_current_lifecycle_heartbe0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_current_lifecycle_heartbecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cycle_persists_liveness_t0/telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_cycle_persists_liveness_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_daily_hygiene_is_bounded_0/local/ExponentialEngine/queue/state/steward-hygiene.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_daily_hygiene_is_bounded_0/local/PortfolioIdleWorker/logs/keep.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_daily_hygiene_is_bounded_0/local/PortfolioIdleWorker/logs/recent.log",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_daily_hygiene_is_bounded_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_ci_reconciliati0/dashboard-ci.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_ci_reconciliati0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_ci_reconciliaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_server_serves_s0/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_server_serves_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_counts0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_counts0/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_countscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec0/planner-decisions/rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec0/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec1/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec1/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec2/async-gate-rotation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec2/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec2/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec3/kpi-events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projec3/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_projeccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_writer0/telemetry/foundry-dashboard.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dashboard_snapshot_writercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_builder_state_is_rec0/state/worker-state/rocksmith-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_builder_state_is_reccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_recovery_generation_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_recovery_generation_0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_recovery_generation_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_recovery_reclaims_at0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_recovery_reclaims_at0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_recovery_reclaims_atcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_stale_recovery_gener0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_stale_recovery_gener0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dead_stale_recovery_genercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_decision_learning_hint_is0/decision-learning.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_decision_learning_hint_iscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_declared_graph_must_be_aucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_declared_untrusted_handle0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_declared_untrusted_handlecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_diff_anomaly_blocks_largecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_different_slice_in_same_r0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_different_slice_in_same_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_outbox_is_proje0/direction-requests/a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_outbox_is_proje0/direction-requests/b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_outbox_is_projecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_outbox_renders_0/direction-requests/owner__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_outbox_renders_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_request_can_sel0/frontier-replenishment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_request_can_selcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_direction_source_must_be_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dirty_disposable_worker_r0/workspaces/.worker-recovery/everward-worker-1/Project-Everward/20261007T035227944622Z-untracked/new.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dirty_disposable_worker_r0/workspaces/.worker-recovery/everward-worker-1/Project-Everward/20261007T035227944622Z.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dirty_disposable_worker_r0/workspaces/.worker-recovery/everward-worker-1/Project-Everward/20261007T035227944622Z.patch",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dirty_disposable_worker_r0/workspaces/.worker-worktrees/everward-worker-1/Project-Everward/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dirty_disposable_worker_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dirty_policy_cannot_grant0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dirty_policy_cannot_grantcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_disjoint_allowed_paths_do0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_disjoint_allowed_paths_docurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_assigns_distinct0/capability-graphs/jweter__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_assigns_distinct0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_assigns_distinct0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_assigns_distinct0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_assigns_distinct0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_assigns_distinct0/planner-decisions/rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_assigns_distinctcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_capacity_is_driv0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_capacity_is_driv0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_capacity_is_driv0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_capacity_is_driv0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_capacity_is_drivcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_decision_reason_0/state/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_decision_reason_0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_decision_reason_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_does_not_probe_r0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_does_not_probe_r0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_does_not_probe_r0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_does_not_probe_r0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_does_not_probe_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_if_warranted_rec0/d608473d07e92f2708ca.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_if_warranted_reccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_refreshes_runner0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_refreshes_runner0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_refreshes_runner0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_refreshes_runner0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_refreshes_runner0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_refreshes_runnercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_uses_secret_with0/0a3d1f793d578cf8c0c2.json",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_dispatch_uses_secret_withcurrent",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_distinct_wakes_cannot_be_0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_distinct_wakes_cannot_be_0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_distinct_wakes_cannot_be_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_document_cannot_be_rewrit0/.protection",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_document_cannot_be_rewrit0/mem_20260916140003_3178c2133f39.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_document_cannot_be_rewritcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_always_on_conte0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_always_on_conte0/CLAUDE.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_always_on_contecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_create_is_rejec0/.protection",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_create_is_rejec0/mem_20260916140000_3157d168d950.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_create_is_rejeccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_worker_fails_cl0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_duplicate_worker_fails_clcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_durable_lease_survives_po0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_durable_lease_survives_pocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_durable_runner_occupancy_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_durable_runner_occupancy_2/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_durable_runner_occupancy_3/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_durable_runner_occupancy_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_builder_return_over0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_builder_return_over0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_builder_return_overcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_aider_artifac0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_aider_artifac0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_aider_artifac0/ws/r/.aider.chat.history.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_aider_artifaccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_clean_base_is0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_clean_base_is0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_clean_base_iscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_dirty_work_is0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_dirty_work_is0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_early_stage_dirty_work_iscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_eligible_without_active_gcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_emit_state_writes_structu0/state/actor-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_emit_state_writes_structucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_empty_execution_grant_selcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_empty_ledgers_are_unknowncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_environment_reference_in_0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_environment_reference_in_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_even_disabled_payload_req0/human-mode.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_even_disabled_payload_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_event_then_finalize_persi0/events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_event_then_finalize_persi0/snapshots.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_event_then_finalize_persicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_evolution_authorized_retu0/state/activation-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_evolution_authorized_retu0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_evolution_authorized_retu0/state/hands-off-live-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_evolution_authorized_retucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_head_preflight_rejecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_head_preflight_runscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_merge_emits_durable0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_merge_emits_durable0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_merge_emits_durable0/slice-completion-evidence/o__r__slice-2.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_merge_emits_durablecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_recovery_commit_reccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_repo_head_returns_s0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_exact_repo_head_returns_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execute_non_executable_plcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execute_safe_repair_requicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_executes_deterministic_po0/pyproject.toml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_executes_deterministic_pocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_c0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_c0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_c0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_e0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_e0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_e0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_e1/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_e1/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_e1/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_accepts_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/control/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/capability-graphs/jweter__example.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/hands-off-execution-grants/cc9a80ba-9020-4e83-bb04-a9eb38b8a3a6.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_contains_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clo0/control/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clo0/state/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clo0/state/direction-requests/jweter__example.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clo0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clo0/state/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clo0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clo0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_fails_clocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_is_single0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_is_single0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_is_single0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_is_single0/lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_is_single0/lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_is_singlecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_a0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_a0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_a0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_c0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_c0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_c0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_i0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_i0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_i0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_p0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_p0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_p0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_u0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_u0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_u0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_grant_rejects_ucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_target_rotates_0/state/capability-graphs/jweter__a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_target_rotates_0/state/capability-graphs/jweter__b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_target_rotates_0/state/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_target_rotates_0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_target_rotates_0/state/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_execution_target_rotates_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_active_shape_req0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_active_shape_req0/supervisor-reentry.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_active_shape_req0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_active_shape_reqcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_capability_cannocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_invalid_authorit0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_invalid_authorit1/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_invalid_authorit2/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_invalid_authorit3/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_invalid_authoritcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_preserved_aider_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_preserved_aider_0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_existing_preserved_aider_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_explicit_tracked_authorit0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_explicit_tracked_authoritcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_nonproductive_noop0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_nonproductive_noop0/direction-requests/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_nonproductive_noop0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_nonproductive_noop0/slice-exhaustion-evidence/o__r__slice-v1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_nonproductive_noopcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_preflight_gets_no_0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_preflight_gets_no_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_product_recertific0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_product_recertific0/hands-off-expected-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_product_recertificcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_reconciliation_doe0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_reconciliation_doe0/kpi-events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failed_reconciliation_doecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failure_holds_lane0/done/job1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failure_holds_lane0/results/job1.result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failure_holds_lane_for_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failure_holds_lanecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failure_lessons_compound_0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_failure_lessons_compound_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fast_gate_executes_fail_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fault_fixture_must_prove_0/artifacts/matrix-invalid/blocked/restore-guard/fault-red-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fault_fixture_must_prove_0/artifacts/matrix-invalid/matrix-summary.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fault_fixture_must_prove_0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fault_fixture_must_prove_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_pr0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_pr0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_pr0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_prcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re0/hands-off-execution-grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re1/hands-off-execution-grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re1/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re1/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re2/hands-off-execution-grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re2/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_re2/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_finish_grant_lifecycle_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_four_product_convergence_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_four_product_convergence_0/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_four_product_convergence_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_free_credit_can_make_one_0/governor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_free_credit_can_make_one_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fresh_claim_with_dead_wor0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fresh_claim_with_dead_wor0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fresh_claim_with_dead_worcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fresh_claim_with_unknown_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fresh_claim_with_unknown_0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_fresh_claim_with_unknown_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_full_power_absence_leavescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_full_power_control_uses_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_generation_change_resets_0/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_generation_change_resets_0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_generation_change_resets_0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_generation_change_resets_0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_generation_change_resets_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_generic_verification_usescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_gh_json_uses_foundry_run_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_busy_writes_worker_0/worker-state/rocksmith-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_busy_writes_worker_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_issuance_is_single_0/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_issuance_is_single_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_native_selection_necurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_persists_runner_and0/control/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_persists_runner_and0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_persists_runner_and0/state/hands-off-execution-grants/0c14f11a-7c7a-40e9-96e3-5c43ed171b17.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_persists_runner_and0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_persists_runner_and0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_persists_runner_andcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_grant_repo_universe_is_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_green_pr_watcher_singleto0/green-pr-watcher.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_green_pr_watcher_singletocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_green_read_only_audit_for0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_green_read_only_audit_forcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_singleton_is_ato0/network-guardian.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_singleton_is_atocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_watches_without_0/iron-foreman-guardian.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_watches_without_0/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_watches_without_0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_watches_without_0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_watches_without_0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_guardian_watches_without_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_hash_chain_links_consecut0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_hash_chain_links_consecut0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_hash_chain_links_consecutcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_hash_chain_survives_bound0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_hash_chain_survives_bound0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_hash_chain_survives_boundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_head_advance_removes_stal0/state/capability-authority-compilation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_head_advance_removes_stalcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_head_change_resets_idle_s0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_head_change_resets_idle_s0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_head_change_resets_idle_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_head_drift_revokes_slice_0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_head_drift_revokes_slice_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_health_fails_when_run_has0/events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_health_fails_when_run_hascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_heartbeat_grant_renews_cl0/hands-off-execution-grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_heartbeat_grant_renews_cl0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_heartbeat_grant_renews_cl0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_heartbeat_grant_renews_clcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_heartbeat_requires_curren0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_heartbeat_requires_currencurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_history_ignores_nontermin0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_history_ignores_nontermincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_history_is_bounded_but_to0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_history_is_bounded_but_to0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_history_is_bounded_but_tocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_boundary_never_enqucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_evidence_never_queucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_absent_allows_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_blocks_recover0/human-mode.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_blocks_recover0/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_blocks_recover0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_blocks_recover0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_blocks_recover0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_blocks_recovercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_control_bypasscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_marker_presenc0/human-mode.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_marker_presenccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_suppresses_rec0/human-mode.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_suppresses_rec0/network-recovery.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_human_mode_suppresses_reccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_eligible_lane_reques0/continuation-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_eligible_lane_reques0/liveness-reacquire.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_eligible_lane_requescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_does_not_sta0/state/actor-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_does_not_stacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_runs_repeate0/state/actor-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_runs_repeate0/state/steward-hygiene.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_runs_repeatecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_stops_on_bri0/state/actor-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_stops_on_bri0/state/steward-hygiene.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_stops_on_bricurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_uses_bounded0/state/actor-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_uses_bounded0/state/steward-hygiene.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_idle_session_uses_boundedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_incomplete_slice_authorit0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_incomplete_slice_authoritcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_incomplete_slice_emits_sp0/capability-graphs/owner__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_incomplete_slice_emits_sp0/direction-requests/owner__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_incomplete_slice_emits_spcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_incremental_evidence_recocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_independent_reviewer_appr0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_independent_reviewer_apprcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_independent_reviewer_reje0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_independent_reviewer_reje1/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_independent_reviewer_rejecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_independent_reviewer_requ0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_independent_reviewer_requcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ingest_scores_role_adhere0/57471040ecd08620afff.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ingest_scores_role_adherecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_instance_lock_assigns_dis0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_instance_lock_assigns_discurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_accepts_terminal_c0/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_accepts_terminal_c1/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_accepts_terminal_c2/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_accepts_terminal_c3/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_accepts_terminal_c4/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_accepts_terminal_c5/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_accepts_terminal_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_keeps_empty_conclu0/evidence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_keeps_empty_conclucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_intake_rejects_ci_failurecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_ancestry_fails_cl0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_ancestry_fails_clcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_candidate_fails_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_generation_timest0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_generation_timest0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_generation_timestcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma1/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma1/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma2/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma2/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma3/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma3/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma4/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma4/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma5/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma5/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma6/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_ma6/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_history_cannot_macurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_local_job_fails_c0/q/pending/j1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_invalid_local_job_fails_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issuance_rechecks_recover0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issuance_rechecks_recover0/state/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issuance_rechecks_recover0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issuance_rechecks_recover0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issuance_rechecks_recover0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issuance_rechecks_recovercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issued_repo_blocks_parall0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issued_repo_blocks_parallcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issued_reservation_transi0/hands-off-execution-grants/g1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issued_reservation_transi0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issued_reservation_transi0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_issued_reservation_transicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ke_native_adapter_maps_ex0/queue/state/ke-1/native-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ke_native_adapter_maps_ex0/queue/state/ke-1/request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ke_native_adapter_maps_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ke_native_adapter_rejects0/queue/state/ke-2/native-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ke_native_adapter_rejects0/queue/state/ke-2/request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ke_native_adapter_rejectscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_kernel_lock_recovers_aftecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_knowledge_engine_subrepos0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_knowledge_engine_subrepos0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_knowledge_engine_subrepos0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_knowledge_engine_subreposcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_kpi_events_are_canonical_0/kpi-events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_kpi_events_are_canonical_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_laptop_actor_runtime_is_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_laptop_result_reconciles_0/q/x.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_laptop_result_reconciles_0/r/x.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_laptop_result_reconciles_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_large_untracked_file_fail0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_large_untracked_file_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ledger_round_trip_jsonl0/jev.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ledger_round_trip_jsonlcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_numeric_rotation_s0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_numeric_rotation_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_resumed_burst_recocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_stale_claim_withou0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_stale_claim_withou0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_stale_claim_withoucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_v1_history_migrate0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_v1_history_migrate0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_v1_history_migratecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_v1_state_can_resum0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_legacy_v1_state_can_resumcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_lifecycle_mutation_uses_e0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_lifecycle_mutation_uses_e0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_lifecycle_mutation_uses_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_lifecycle_recovery_pass_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_linear_reconciliation_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_literal_secret_like_mcp_v0/AGENTS.md",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_literal_secret_like_mcp_vcurrent",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_live_builder_state_is_pre0/state/worker-state/everward-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_builder_state_is_precurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_disabled_does_not_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_lock_is_not_stolen0/leases.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_lock_is_not_stolencurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_or_recent_recovery_g0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_or_recent_recovery_g0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_or_recent_recovery_gcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_prefers_slice0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_prefers_slice0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_prefers_slice0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_prefers_slicecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_starvation_ro0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_starvation_ro0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_starvation_ro0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_policy_starvation_rocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_queue_is_idempotent0/p/5a478e94c155530880115f57.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_queue_is_idempotentcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_recovery_generation_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_recovery_generation_0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_recovery_generation_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_task_becomes_runner_0/pending/5a478e94c155530880115f57.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_task_becomes_runner_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_worker_resets_unknow0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_worker_resets_unknow0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_live_worker_resets_unknowcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_load_execution_slice_reco0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_load_execution_slice_reco0/continuation-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_load_execution_slice_reco0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_load_execution_slice_reco0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_load_execution_slice_reco0/product-completion-evidence/o__r__acceptance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_load_execution_slice_reco0/product-completion-evidence/o__r__product-reality.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_load_execution_slice_recocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_local_pending_is_promoted0/q/inbox/j1.job.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_local_pending_is_promotedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_local_queue_is_idempotent0/q/slice-1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_local_queue_is_idempotentcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_local_selection_enters_du0/queue/cmake-1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_local_selection_enters_ducurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_locked_issuance_honors_re0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_locked_issuance_honors_re0/state/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_locked_issuance_honors_re0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_locked_issuance_honors_re0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_locked_issuance_honors_re0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_locked_issuance_honors_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_loop_contains_iteration_e0/s/self-driving-state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_loop_contains_iteration_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_machine_wide_fence_blocks0/machine/continuous-flow-supervisor.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_machine_wide_fence_blocks0/state-a/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_machine_wide_fence_blocks0/state-b/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_machine_wide_fence_blockscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_exits_cleanly_when_s0/state/supervisor-reentry.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_exits_cleanly_when_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_fails_closed_when_hecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_finalizes_interruptecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_writes_activation_st0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_writes_activation_st0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_writes_activation_st0/state/activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_main_writes_activation_stcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_maintenance_marker_blocks0/local/ExponentialEngine/steward/maintenance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_maintenance_marker_blocks0/state/actor-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_maintenance_marker_blockscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_document_makes_0/.protection",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_document_makes_0/broken.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_document_makes_0/mem_20260916140002_238555911441.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_document_makes_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_existing_journa0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_existing_journacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_lease_fails_clo0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_lease_fails_clocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_manifest_fails_0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_manifest_fails_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_marker_still_bl0/human-mode.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_marker_still_blcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_requirement_is_0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_requirement_is_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_1/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_2/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_3/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_4/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_5/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_6/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_7/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_malformed_v2_burst_state_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_manifest_cannot_authorize0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_manifest_cannot_authorizecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_manual_human_mode_marker_0/human-mode.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_manual_human_mode_marker_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_materially_changed_slice_0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_materially_changed_slice_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_materially_changed_slice_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_measurement_layer_records0/cf00784de0148e90df98.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_measurement_layer_recordscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_is_consumed_e0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_is_consumed_e0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_is_consumed_e0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_is_consumed_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_reconciles_im0/continuation-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_reconciles_im0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_reconciles_im0/kpi-events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_event_reconciles_imcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_must_match_exact_pr0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_must_match_exact_prcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_reconciles_slice_an0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_reconciles_slice_an0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_reconciles_slice_an0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_reconciles_slice_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_watcher_advancement0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_watcher_advancement0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_watcher_advancement0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_watcher_advancementcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_watcher_does_not_ad0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_merge_watcher_does_not_adcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida1/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida1/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida2/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida2/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida3/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalida3/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_metadata_rewrite_invalidacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_capability_graph_0/direction-requests/owner__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_capability_graph_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_file_is_offlinecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_laptop_result_rem0/q/x.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_laptop_result_remcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_or_insufficient_a0/continuation-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_or_insufficient_a0/frontier-replenishment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_or_insufficient_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_path_authority_fa0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_path_authority_facurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_physical_supervis0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_physical_supervis0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_physical_supervis0/continuation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_physical_supervis0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_physical_supervis0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_physical_superviscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_prior_repository_0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_prior_repository_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_product_fails_clo0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_product_fails_clo0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_product_fails_clo0/continuation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_product_fails_clo0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_product_fails_clo0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_product_fails_clocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_real_selection_docurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repo_head_fails_c0/p/2523563a6c158b1b615800fd.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repo_head_fails_c0/p/35116adb605ec326d61c2a1e.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repo_head_fails_c0/p/51eec924469347620a46e4bc.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repo_head_fails_c0/p/a2ea17baa4a4f3a8e5009c06.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repo_head_fails_c0/p/ca0afb97cf61eaebcf7981cb.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repo_head_fails_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repository_author0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_repository_authorcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_required_evidence0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_required_evidencecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_required_manager_0/package-lock.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_required_manager_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_required_surface_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_tool_fails_before0/pyproject.toml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_tool_fails_beforecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_verification_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_voicestudio_works0/orchestrator/engineering/portfolio.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_voicestudio_works0/state/portfolio-workspace-provisioning.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_voicestudio_workscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_workspace_is_prov0/managed/knowledge-engine-core/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_missing_workspace_is_provcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_mixed_complete_and_direct0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_mixed_complete_and_direct0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_mixed_complete_and_directcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/control/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/capability-graphs/jweter__b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/direction-requests/jweter__a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/hands-off-execution-grants/f41bbf4f-a0c5-4b78-8977-9990bb8ad8da.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_multi_repository_product_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_native_runtime_executes_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_native_runtime_preserves_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_burst_records_currentcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_burst_requires_no_takcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_exact_merge_identity_0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_exact_merge_identity_0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_exact_merge_identity_0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_exact_merge_identity_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_logical_burst_resets_0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_logical_burst_resets_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_merge_event_advances_0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_merge_event_advances_0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_merge_event_advances_0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_new_merge_event_advances_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_authorized_work_is_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_dispatch_callback_mean0/jev.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_dispatch_callback_meancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_manifest_never_inventscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_op_finishes_as_nonprod0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_op_finishes_as_nonprodcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_op_is_successful_execu0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_op_is_successful_execucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_progress_with_eligible0/t",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_progress_with_eligiblecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_requests_does_not_comp0/frontier-replenishment.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_requests_does_not_compcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_work_does_not_emit_dir0/capability-graphs/o__done.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_work_does_not_emit_dir0/continuation-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_work_does_not_emit_dircurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_work_is_not_reported_h0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_work_is_not_reported_hcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_no_work_with_authorized_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_non_async_state_does_not_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_non_safe_handoff_cannot_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_nonproductive_second_pass0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_nonproductive_second_pass0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_nonproductive_second_passcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_noop_is_successful_conser0/d369d531b9c8eb69a4f4.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_noop_is_successful_consercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_noop_outcomes_are_failure0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_noop_outcomes_are_failurecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_normal_backoff_is_a_new_w0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_normal_backoff_is_a_new_wcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_not_ready_becomes_p1_befo0/s/portfolio-readiness.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_not_ready_becomes_p1_befo0/s/self-driving-state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_not_ready_becomes_p1_befocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_null_head_completion_is_n0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_null_head_completion_is_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_ignore0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_ignore0/state/hands-off-live-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_ignorecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_reads_0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_reads_0/state/hands-off-live-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_reads_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_refres0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_refres0/state/hands-off-live-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_observe_live_heads_refrescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ollama_lock_does_not_steacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_one_noop_does_not_exhaust0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_one_noop_does_not_exhaust0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_one_noop_does_not_exhaustcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_one_of_multiple_verified_0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_one_of_multiple_verified_0/slice-completion-evidence/o__r__s1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_one_of_multiple_verified_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_only_current_usability_gacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_optional_atomic_json_repo0/productive-liveness.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_optional_atomic_json_repo1/productive-liveness.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_optional_atomic_json_repocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_overlapping_allowed_paths0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_overlapping_allowed_pathscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_owned_product_rotates_to_0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_owned_product_rotates_to_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_owned_product_rotates_to_0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_owned_product_rotates_to_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_owned_slice_writes_worker0/worker-state/everward-worker-1/builder-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_owned_slice_writes_worker0/worker-state/everward-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_owned_slice_writes_workercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_held_is_not_rep0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_held_is_not_repcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_quarantine_rese0/capability-graphs/jweter__a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_quarantine_rese0/capability-graphs/jweter__b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_quarantine_rese0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_quarantine_rese0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_quarantine_rese0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_quarantine_rese0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ownership_quarantine_resecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_assigns0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_assigns0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_assigns0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_assignscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_preserv0/direction-requests/jweter__Project-Everward.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_preserv0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_preserv0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_preserv0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_preserv0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_preserv0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_preservcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records0/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records1/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records1/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records1/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_records1/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_dispatch_recordscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_harvest_reads_ea0/parallel-worker-results.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_harvest_reads_ea0/worker-state/everward-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_harvest_reads_ea0/worker-state/rocksmith-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_harvest_reads_eacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_harvest_rejects_0/parallel-worker-results.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_harvest_rejects_0/worker-state/rocksmith-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_harvest_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_worker_failure_i0/parallel-worker-results.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_parallel_worker_failure_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_partial_capability_progre0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_partial_capability_progre0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_partial_capability_progre0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_partial_capability_progrecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_partial_product_pass_retu0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_partial_product_pass_retucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pass_is_processed_once_an0/done/job1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pass_is_processed_once_an0/results/job1.result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pass_is_processed_once_ancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pass_releases_lane_and_di0/q/next.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pass_releases_lane_and_dicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_payload_contract_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_execution_blocks_0/c/973eaa993ebe857072a9.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_execution_blocks_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_does_not0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_does_not0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_queue_re0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_queue_re0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_queue_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_requeues0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_requeues0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_recovery_requeuescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_result_does_not_r0/decisions.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pending_result_does_not_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persisted_change_accepts_0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persisted_change_accepts_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persisted_change_does_not0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persisted_change_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persisted_change_rejects_0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persisted_change_rejects_1/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persisted_change_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persistent_runner_repeats0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persistent_runner_repeats0/t.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_persistent_runner_repeatscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pid_reuse_lock_fingerprin0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pid_reuse_lock_fingerprincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pinned_npx_is_allowedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grant_rejects_sta0/control/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grant_rejects_sta0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grant_rejects_sta0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grant_rejects_stacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grants_for_disjoi0/control/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grants_for_disjoi0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grants_for_disjoi0/state/hands-off-execution-grants/671d1938-8767-4abb-8350-8d10c10a94e1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grants_for_disjoi0/state/hands-off-execution-grants/fa736218-1153-4b00-a157-15131527fbc2.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grants_for_disjoi0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grants_for_disjoi0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planned_grants_for_disjoicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planner_decision_quality_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_planner_decision_quality_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_poetry_repo_gets_locked_i0/pyproject.toml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_poetry_repo_gets_locked_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pr_creation_failure_prese0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pr_creation_failure_prese0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pr_creation_failure_presecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pre_anchor_v3_history_mig0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pre_anchor_v3_history_mig0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pre_anchor_v3_history_migcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pre_v5_or_missing_identit0/old.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_pre_v5_or_missing_identitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_reche0/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_reche0/supervisor-generation-fence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_reche0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_reche0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_reche0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_rechecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_rejec0/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_rejec0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_rejec0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_rejec0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepare_reclamation_rejeccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepared_with_matching_hi0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepared_with_matching_hi0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepared_with_matching_hicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepared_without_history_0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepared_without_history_0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prepared_without_history_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_evidence_hashes0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_evidence_hashescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_missing_repo_do0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_missing_repo_do0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_missing_repo_docurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_quarantine_rech0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_quarantine_rech0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_quarantine_rechcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_recovery_reject0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_recovery_reject0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_recovery_rejectcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_validation_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_validation_pref0/engineering/preflight.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_validation_pref0/scripts/preflight.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_validation_prefcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_evidence_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_quarantine0/capability-graphs/jweter__a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_quarantine0/capability-graphs/jweter__b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_quarantine0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_quarantine0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_quarantine0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_quarantine0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_preserved_work_quarantinecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prior_failure_experience_0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_prior_failure_experience_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_activation_isolatcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep0/state/hands-off-execution-grants/g-live.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep0/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep0/state/worker-state/voicestudio-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep1/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep1/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep1/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep2/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep2/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accep2/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_accepcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_flags0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_flags0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_flags0/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_flagscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec0/state/hands-off-execution-grants/g-live.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec0/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec0/state/worker-state/voicestudio-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec1/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec1/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec1/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec2/state/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec2/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejec2/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_rejeccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_resol0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_resol0/state/product-convergence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_convergence_resolcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_filter_excludes_u0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_filter_excludes_ucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_recertification_p0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_recertification_p0/hands-off-expected-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_product_recertification_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_production_route_is_idemp0/pending/732ea9acf34076dc5a324f8e.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_production_route_is_idempcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productive_attempt_breaks0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productive_attempt_breaks0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productive_attempt_breakscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productive_builder_state_0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productive_builder_state_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productive_flow_does_not_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_can_prefer_f0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_can_prefer_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_history_meas0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_history_meascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_ignores_reco0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_ignores_recocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_prefers_expl0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_productivity_prefers_explcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_progress_resets_stall_cou0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_progress_resets_stall_cou0/t.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_progress_resets_stall_coucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_promote_verified_repairs_0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_promote_verified_repairs_0/autonomous-repair-capabilities.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_promote_verified_repairs_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_provenance_guard_rejects_0/project_orchestrator/__init__.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_provenance_guard_rejects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publication_blocked_gener0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publication_blocked_gener0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publication_blocked_gener1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publication_blocked_gener1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publication_blocked_gener2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publication_blocked_gener2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publication_blocked_genercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publish_direction_outbox_0/direction-outbox.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_publish_direction_outbox_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_push_failure_preserves_ve0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_push_failure_preserves_ve0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_push_failure_preserves_vecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_does_n0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_does_n0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_does_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_preser0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_preser0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_presercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_releas0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_releas0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_releas1/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_releas1/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_releascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_restor0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_restor0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_recheck_restorcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_report_never_e0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantine_report_never_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantined_grants_expose0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantined_grants_exposecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantined_same_slice_re0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_quarantined_same_slice_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_query_all_memory_reads_re0/index.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_query_all_memory_reads_re0/memory.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_query_all_memory_reads_re0/memory.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_query_all_memory_reads_re0/repos/jweter__VoiceStudio.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_query_all_memory_reads_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_queue_is_idempotent0/pr-943537869539eea2.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_queue_is_idempotentcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_queues_dispatchable_job_a0/pr-943537869539eea2.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_queues_dispatchable_job_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_readiness_passes_with_pat0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_readiness_passes_with_patcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_loop_projects_paral0/s/autonomous-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_loop_projects_paral0/s/portfolio-readiness.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_loop_projects_paral0/s/self-driving-state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_loop_projects_paral0/s/watchdog.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_loop_projects_paralcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_portfolio_enters_sc0/s/autonomous-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_portfolio_enters_sc0/s/portfolio-readiness.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_portfolio_enters_sc0/s/self-driving-state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_portfolio_enters_sc0/s/watchdog.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_portfolio_enters_sccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_slice_clears_stale_0/capability-graphs/owner__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_slice_clears_stale_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_allows_t0/capability-graphs/jweter__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_allows_t0/planner-decisions/rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_allows_tcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_persists0/capability-graphs/jweter__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_persists0/direction-requests/jweter__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_persists0/planner-decisions/rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_persistscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_ready_au0/capability-graphs/jweter__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_ready_au0/planner-decisions/rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_ready_aucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_surfaces0/direction-requests/jweter__repo.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_surfaces0/planner-decisions/rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_ready_task_batch_surfacescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reboot_latch_blocks_repea0/network-reboot-cooldown.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reboot_latch_blocks_repea0/network-recovery.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reboot_latch_blocks_repeacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reboot_latch_clears_only_0/network-recovery.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reboot_latch_clears_only_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_active_grant_is_ac0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_active_grant_is_accurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_checkout_lock_is_p0/index.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_checkout_lock_is_pcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_completed_grant_pr0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_completed_grant_prcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_generation_does_no0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_generation_does_no0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_generation_does_nocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_interrupted_immedi0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recent_interrupted_immedicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_passes_0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_passes_0/state/hands-off-recertify-rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_passes_0/state/recertify-rocksmith-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_passes_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_runs_ta0/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_runs_ta0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_runs_ta0/state/hands-off-expected-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_runs_ta0/state/hands-off-recertify-rocksmith.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_runs_ta0/state/recertify-rocksmith-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_product_runs_tacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_unknown_product0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recertify_unknown_productcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio0/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio0/supervisor-generation-fence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio1/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio1/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio2/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatio2/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reclaim_stalled_generatiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recomputed_old_record_has0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recomputed_old_record_has0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recomputed_old_record_hascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_abandoned_claim0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_abandoned_claim0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_abandoned_claim1/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_abandoned_claim1/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_abandoned_claim2/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_abandoned_claim2/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_abandoned_claimcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_consumed_recovecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_consumed_stagedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_fails_closed_wh0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_fails_closed_wh0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reconcile_fails_closed_whcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_record_attempt_uses_exist0/kpi-events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_record_attempt_uses_existcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_record_verified_lesson_cl0/lesson.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_record_verified_lesson_clcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_records_cross_repository_0/async-gate-rotation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_records_cross_repository_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_interrupted_job0/a.job.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_interrupted_jobcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_stale_grant_claim0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_stale_grant_claim0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_stale_grant_claim1/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_stale_grant_claim1/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_stale_grant_claim2/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_stale_grant_claim2/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recover_stale_grant_claimcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_batch_is_bounded0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_batch_is_bounded0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_batch_is_boundedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_budget_does_not_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_capability_is_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_capability_rejeccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_cas_commits_when0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_cas_commits_when0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_cas_commits_whencurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_cas_preserves_co0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_cas_preserves_co0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_cas_preserves_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_context_uses_shocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_fails_closed_on_0/a.job.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_fails_closed_on_0/a.job.json.running",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_fails_closed_on_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_defer0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_defer0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_defercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_is_si0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_is_si0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_is_sicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_refus0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_refus0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_generation_refuscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_mutation_uses_sh0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_mutation_uses_sh0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_mutation_uses_shcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_queue_uses_bound0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_queue_uses_bound0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_queue_uses_boundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_rate_limit_block0/iron-foreman-last-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_rate_limit_blockcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_refuses_to_displ0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_recovery_refuses_to_displcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_base_before_publicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_decision_learning0/decision-learning.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_decision_learningcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_readiness_fails_c0/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_readiness_fails_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_readiness_uses_co0/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_readiness_uses_co0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_readiness_uses_co0/state/hands-off-expected-heads.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_readiness_uses_co0/state/readiness-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refresh_readiness_uses_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refuses_prose_roadmap_as_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_refuses_to_infer_graph_frcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_release_detects_metadata_0/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_release_detects_metadata_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_release_does_not_delete_n0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_release_does_not_delete_n0/supervisor-instance.lock.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_release_does_not_delete_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_release_reloads_authorita0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_release_reloads_authoritacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_remote_transport_and_writ0/.github/workflows/ci.yml",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_remote_transport_and_writcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_capability_identit0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_capability_identit0/autonomous-repair-capabilities.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_capability_identitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_iteration_derived_0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_iteration_derived_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_prompt_does_not_re0/autonomous-repair-capabilities.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_prompt_does_not_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_prompt_reuses_matc0/autonomous-repair-capabilities.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repair_prompt_reuses_matccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_cycle_is_idempot0/jev.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_cycle_is_idempotcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_identical_event_0/events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_identical_event_0/snapshots.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_identical_event_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_noop_exhausts_ex0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_noop_exhausts_ex0/direction-requests/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_noop_exhausts_ex0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_noop_exhausts_ex0/slice-exhaustion-evidence/o__r__slice-v1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_noop_exhausts_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_same_repository_0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_same_repository_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_unknown_generati0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_unknown_generati0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repeated_unknown_generaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repository_id_normalizes_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repository_id_rejects_noncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repository_identity_keeps0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repository_identity_keepscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repository_mismatch_failscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repository_mismatch_revok0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_repository_mismatch_revokcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_request_rejects_empty_argcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reservation_releases_afte0/capability-graphs/jweter__a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reservation_releases_afte0/capability-graphs/jweter__b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reservation_releases_afte0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reservation_releases_afte0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reservation_releases_afte0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reservation_releases_afte0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_reservation_releases_aftecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resource_fence_revocation0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resource_fence_revocationcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resource_heartbeat_renews0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resource_heartbeat_renewscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_restart_identity_collisiocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_restart_recovers_pid_reus0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_restart_recovers_pid_reuscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_restart_recovers_stale_le0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_restart_recovers_stale_lecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_restart_takeover_proof_licurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_result_order_does_not_cre0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_result_order_does_not_cre0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_result_order_does_not_cre0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_result_order_does_not_crecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_orphan_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_preserves_logical_0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_preserves_logical_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_pushed_orphan_doescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_pushed_orphan_recocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_pushed_orphan_requcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_unpushed_orphan_ve0/engineering/preflight.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_resume_unpushed_orphan_vecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revalidate_preserved_workcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_review_gate_cli_outputs_m0/review.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_review_gate_cli_outputs_mcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revision_rollover_keeps_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revision_rollover_launche0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revision_rollover_launche0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revision_rollover_launchecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revision_rollover_reuses_0/state/supervisor-revision-successor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revision_rollover_reuses_0/state/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_revision_rollover_reuses_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_roadmap_exhaustion_is_exp0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_roadmap_exhaustion_is_exp0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_roadmap_exhaustion_is_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_role_drift_fails_measurem0/10e3a294cae21657dda6.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_role_drift_fails_measuremcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_rotation_history_is_bound0/async-gate-rotation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_rotation_history_is_boundcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_aider_serializes_locacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_aider_uses_argument_vcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_passes_and_re0/state/builder-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_passes_and_re0/state/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_passes_and_re0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_passes_and_re0/state/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_passes_and_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_records_all_c0/builder-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_records_all_c0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_records_all_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_refuses_dispa0/state/builder-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_refuses_dispacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_replaces_stal0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_replaces_stal0/state/hands-off-execution-grants/g.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_replaces_stal0/state/worker-state/everward-worker-1/builder-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_replaces_stal0/state/worker-state/everward-worker-1/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_replaces_stalcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_retries_trans0/state/builder-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_retries_trans0/state/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_retries_trans0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_retries_trans0/state/hands-off-execution-grants/g.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_retries_transcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_waits_through0/state/builder-last-output.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_waits_through0/state/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_waits_through0/state/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_waits_through0/state/hands-off-execution-grants/g.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_builder_waits_throughcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_snapshot_is_append_on0/snapshots.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_run_snapshot_is_append_oncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_executes_exact_bas0/queue/inbox/abc.job.json.done",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_executes_exact_bas0/queue/outbox/abc.result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_executes_exact_bas0/work/Project-Everward/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_executes_exact_bascurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_fails_closed_on_di0/queue/inbox/dirty.job.json.done",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_fails_closed_on_di0/queue/outbox/dirty.result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_fails_closed_on_di0/work/Project-Everward/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_fails_closed_on_dicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determinis0/artifacts/matrix-fail/matrix-summary.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determinis0/artifacts/matrix-fail/no-repair/restore-guard/agent.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determinis0/artifacts/matrix-fail/no-repair/restore-guard/attempt.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determinis0/artifacts/matrix-fail/no-repair/restore-guard/fault-red-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determinis0/artifacts/matrix-fail/no-repair/restore-guard/runner-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determinis0/artifacts/matrix-fail/no-repair/restore-guard/verification-1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determinis0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_records_determiniscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/artifacts/matrix-pass/matrix-summary.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/artifacts/matrix-pass/repair/restore-guard/agent.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/artifacts/matrix-pass/repair/restore-guard/attempt.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/artifacts/matrix-pass/repair/restore-guard/fault-red-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/artifacts/matrix-pass/repair/restore-guard/runner-result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/artifacts/matrix-pass/repair/restore-guard/verification-1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_ex0/repo/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runner_uses_disposable_excurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_capture_is_idempo0/decisions.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_capture_is_idempocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_cycle_remains_non0/decisions.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_cycle_remains_noncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_fence_uses_grante0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_fence_uses_grante0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_fence_uses_grante0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_fence_uses_grantecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_provenance_does_n0/UnrealEditor.exe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_provenance_does_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_reconciliation_pe0/decisions.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_runtime_reconciliation_pecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_burst_identity_prove0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_burst_identity_prove0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_burst_identity_provecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_exact_merge_is_idemp0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_exact_merge_is_idemp0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_exact_merge_is_idemp0/slice-completion-evidence/o__r__slice-2.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_exact_merge_is_idempcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_merge_is_consumed_on0/green-pr-watcher-consumed.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_merge_is_consumed_on0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_merge_is_consumed_on0/merge-feedback-last.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_merge_is_consumed_oncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_repository_is_not_fa0/async-gate-rotation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_same_repository_is_not_facurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_second_consecutive_stall_0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_second_consecutive_stall_0/t.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_second_consecutive_stall_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_second_supervisor_can_obs0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_second_supervisor_can_obscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_second_supervisor_instanc0/supervisor-instance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_second_supervisor_instanccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_secret_like_content_is_re0/.protection",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_secret_like_content_is_recurrent",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_select_repo_respects_authcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_select_repo_returns_none_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_select_repo_rotates_and_scurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selected_local_task_becom0/pending/732ea9acf34076dc5a324f8e.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selected_local_task_becomcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selector_reports_all_comp0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selector_reports_all_comp0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selector_reports_all_compcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selector_skips_completed_0/decision-learning-hint.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selector_skips_completed_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selector_skips_completed_0/execution-target-cursor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_selector_skips_completed_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_semantic_gate_accepts_sou0/src/feature.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_semantic_gate_accepts_sou0/tests/test_feature.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_semantic_gate_accepts_soucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_semantic_gate_rejects_orp0/feature.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_semantic_gate_rejects_orpcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_semantic_gate_rejects_pla0/path/to/filename.js",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_semantic_gate_rejects_placurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_setup_never_imports_when_0/n8n/.env.example",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_setup_never_imports_when_0/scripts/setup-n8n.ps1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_setup_never_imports_when_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_setup_reports_import_fail0/n8n/.env.example",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_setup_reports_import_fail0/scripts/setup-n8n.ps1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_setup_reports_import_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_setup_waits_for_server_re0/n8n/.env.example",
+   "secret-like name"
+  ],
+  [
+   ".pytest-tmp/test_setup_waits_for_server_re0/scripts/setup-n8n.ps1",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_setup_waits_for_server_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_shared_lifecycle_mutation0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_shared_lifecycle_mutation0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_shared_lifecycle_mutationcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_shell_mcp_and_literal_seccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_instance_lock_is_ecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_pass_cannot_certif0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_pass_cannot_certif0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_pass_cannot_certif0/continuation-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_pass_cannot_certif0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_pass_cannot_certif0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_pass_cannot_certifcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_wake_can_prove_two0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_wake_can_prove_two0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_single_wake_can_prove_twocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_slice_prompt_cannot_invitcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_snapshot_ledger_rejects_d0/snapshots.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_snapshot_ledger_rejects_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_specific_surface_pattern_0/.claude/skills/test/SKILL.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_specific_surface_pattern_0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_specific_surface_pattern_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_aware_recovery_hand0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_aware_recovery_hand0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_aware_recovery_handcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_aware_recovery_reje0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_aware_recovery_reje0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_aware_recovery_rejecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_update_preserves_ot0/hands-off-execution-grants/a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_update_preserves_ot0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_update_preserves_ot0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stage_update_preserves_otcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_staged_commit_capability_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_staged_recovery_replacemecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_active_grant_is_not0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_active_grant_is_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_active_lane_request0/continuation-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_active_lane_request0/liveness-reacquire.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_active_lane_requestcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_checkout_lock_removcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_checkout_lock_with_0/index.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_checkout_lock_with_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_is_abandoned_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_is_abandoned_0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_is_abandoned_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_with_live_wor0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_with_live_wor0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_with_live_worcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_with_unknown_0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_with_unknown_0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claim_with_unknown_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claimed_grant_does_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claimed_grant_does_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claimed_grant_does_0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_claimed_grant_does_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_final_evidence_stil0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_final_evidence_stil0/direction-requests/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_final_evidence_stil0/product-completion-evidence/o__r__acceptance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_final_evidence_stilcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_cannot_r0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_cannot_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_handoff_0/supervisor-takeover-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_handoff_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_1/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_2/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_2/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_2/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_generation_reclaim_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_head_fails_closed0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_head_fails_closedcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_interrupted_burst_f0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_interrupted_burst_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_issue_recovery_cann0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_issue_recovery_cann0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_issue_recovery_canncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_issued_dead_owner_i0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_issued_dead_owner_i0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_issued_dead_owner_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_lock_from_dead_owne0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_lock_from_dead_ownecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_lock_reclaim_retrie0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_lock_reclaim_retriecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_worker_cannot_heart0/grant.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_worker_cannot_heart0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_worker_cannot_heart0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stale_worker_cannot_heartcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stall_requires_bounded_co0/iron-foreman-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stall_requires_bounded_co0/supervisor-generation-heartbeat.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stall_requires_bounded_co0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stall_requires_bounded_co0/supervisor-progress.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stall_requires_bounded_cocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stops_on_provisioning_fai0/package-lock.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_stops_on_provisioning_faicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_store_round_trip_and_repl0/experiments.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_store_round_trip_and_replcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_summary_counts_real_actor0/actor.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_summary_counts_real_actorcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_superseded_worker_cannot_0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_superseded_worker_cannot_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervised_runtime_drainscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervised_runtime_heartbcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervised_runtime_routescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervised_runtime_termincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_does_not_recov0/runtime-leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_does_not_recovcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_publication_locurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_self_heals_cor0/runtime-leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_self_heals_cor0/runtime-leases.json.quarantine-1791345187-fd35fc03",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_self_heals_cor0/runtime-leases.json.recovery.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_self_heals_corcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_treats_transpo0/builder.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_supervisor_treats_transpocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_surge_advances_all_three_0/q/ev.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_surge_advances_all_three_0/q/ke.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_surge_advances_all_three_0/q/rs.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_surge_advances_all_three_0/telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_surge_advances_all_three_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_sync_materializes_json_tx0/index.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_sync_materializes_json_tx0/memory.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_sync_materializes_json_tx0/memory.txt",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_sync_materializes_json_txcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_tampered_retained_record_0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_tampered_retained_record_0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_tampered_retained_record_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_target_routing_is_a_filte0/.protection",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_target_routing_is_a_filte0/mem_20260916140001_829ddf04c3a0.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_target_routing_is_a_filtecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_task_exploration_bonus_de0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_task_exploration_bonus_decurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_task_outcome_priority_exp0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_task_outcome_priority_expcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_task_outcome_priority_pre0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_task_outcome_priority_precurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_team_projection_respects_0/s/autonomous-telemetry.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_team_projection_respects_0/s/portfolio-readiness.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_team_projection_respects_0/s/self-driving-state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_team_projection_respects_0/s/watchdog.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_team_projection_respects_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_terminal_no_work_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_terminal_old_grant_does_n0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_terminal_old_grant_does_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_three_aider_workers_can_f0/dispatch-blocks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_three_aider_workers_can_f0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_three_aider_workers_can_f0/local-verification-queue.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_three_aider_workers_can_f0/parallel-worker-pool.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_three_aider_workers_can_fcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transient_lifecycle_permi0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transient_lifecycle_permicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_pending_recover0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_pending_recovercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_recovery_reject0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_recovery_reject0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_recovery_rejectcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_recovery_uses_r0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_recovery_uses_r0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_transport_recovery_uses_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_truncated_or_stale_metada0/grant-issuance.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_truncated_or_stale_metadacurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_identical_authorized_0/dispatch-decision.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_identical_authorized_0/eligible-idle-streaks.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_identical_authorized_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_knowledge_engine_repo0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_knowledge_engine_repocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_pools_cannot_double_a0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_pools_cannot_double_acurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_repositories_in_same_0/autonomous-burst-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_two_repositories_in_same_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unattended_cycle_records_0/jev.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unattended_cycle_records_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unique_grant_requires_iss0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unique_grant_requires_iss0/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unique_grant_requires_iss0/hands-off-execution-grants/g.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unique_grant_requires_iss0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unique_grant_requires_isscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_or_unavailable_frcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_product_filter_fa0/contract.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_product_filter_facurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_recovery_generati0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_recovery_generati0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_recovery_generaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_repository_cannot0/portfolio-product-advancement-proof.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_repository_cannotcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_routine_fails_clocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_runner_fails_closcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_runtime_fails_clo0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_runtime_fails_clocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_state_fails_close0/actor.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_state_fails_closecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_worker_liveness_i0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_worker_liveness_i0/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unknown_worker_liveness_icurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unmapped_result_is_retain0/done/job1.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unmapped_result_is_retain0/results/job1.result.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unmapped_result_is_retaincurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unmounted_repository_is_u0/AGENTS.md",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unmounted_repository_is_ucurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unpinned_npx_is_blocking_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unproven_merge_identity_b0/green-pr-watcher.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unproven_merge_identity_b0/merge-feedback-blocked.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unproven_merge_identity_bcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreadable_lifecycle_fail0/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreadable_lifecycle_failcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreadable_recovery_recei0/iron-foreman-last-recovery.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreadable_recovery_receicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreal_discovery_does_notcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreal_discovery_finds_ep0/Epic Games/UE_5.8/Engine/Binaries/Win64/UnrealEditor.exe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreal_discovery_finds_epcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreal_discovery_prefers_0/UnrealEditor.exe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreal_discovery_prefers_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreal_provenance_binds_r0/UnrealEditor.exe",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unreal_provenance_binds_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_untracked_content_change_0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_untracked_content_change_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_untracked_symlink_hashes_0/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_untracked_symlink_hashes_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_unverified_generation_cancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_update_actor_checkout_tracurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_update_rejects_non_exact_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_with_matching_0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_with_matching_0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_with_matching_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author1/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author1/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author2/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author2/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author3/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_author3/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v2_history_without_authorcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v5_grant_execution_identi0/g.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_v5_grant_execution_identicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_valid_history_advances_mo0/continuation-pass-history.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_valid_history_advances_mo0/continuation-pass-journal.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_valid_history_advances_mocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_valid_state_is_not_quaran0/leases.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_valid_state_is_not_quarancurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_valid_v2_state_resumes0/continuation-current-burst.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_valid_v2_state_resumescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validate_preserved_work_d0/engineering/preflight.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validate_preserved_work_dcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validate_preserved_work_r0/engineering/preflight.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validate_preserved_work_rcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_build_o0/builder.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_build_ocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_large_n0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_large_ncurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_promoti0/builder.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_promoticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_source_0/supervisor.py",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_validator_rejects_source_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_completion_emits0/capability-graphs/o__r.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_completion_emits0/continuation-request.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_completion_emits0/product-completion-evidence/o__r__acceptance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_completion_emits0/product-completion-evidence/o__r__product-reality.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_completion_emitscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_rejects0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_rejects0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_rejects1/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_rejects1/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_rejectscurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_require0/supervisor-process-instance.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_require0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_identity_requirecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_preflight_credit0/state.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_preflight_creditcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_repair_attributi0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_repair_attributicurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_repair_does_not_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_stalled_generati0/supervisor-generation-fence.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verified_stalled_generaticurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verify_durable_pr_distingcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verify_durable_pr_fails_ccurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_verify_durable_pr_open_recurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_watcher_kpi_events_measur0/kpi-events.jsonl",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_watcher_kpi_events_measurcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_1176_0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_1176_0/supervisor.json.tmp",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_1176_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_1177_0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_1177_0/supervisor.json.tmp",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_1177_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_succe0/supervisor.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_windows_replacefile_succecurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_worker_handoff_cli_emits_0/handoff.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_worker_handoff_cli_emits_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_worker_lifecycle_keeps_locurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_worker_prompt_receives_pr0/autonomous-failure-lessons.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_worker_prompt_receives_prcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_worker_workspace_retries_current",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_worker_workspace_uses_isocurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_workspace_origin_mismatch0/knowledge-engine-core/",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_workspace_origin_mismatchcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_evidence_can_pin_stcurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_execution_grant_res0/orchestrator/engineering/hands-off-evolution.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_execution_grant_res0/state/hands-off-activation.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_execution_grant_res0/state/hands-off-execution-grants/b951977b-dac9-4a72-a7a8-b90da372e41c.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_execution_grant_res0/state/hands-off-grant-lifecycle.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_execution_grant_res0/state/hands-off-grant-lifecycle.json.lock",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_execution_grant_rescurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_store_is_byte_deter0/a.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_store_is_byte_deter0/b.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_store_is_byte_detercurrent",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_store_round_trips0/store.json",
+   "build/test cache"
+  ],
+  [
+   ".pytest-tmp/test_write_store_round_tripscurrent",
+   "build/test cache"
+  ]
+ ],
+ "snapshot": "C:\\Users\\jerem\\Documents\\IronGod-Reports\\preservation-20261030-r2\\uncommitted\\project-orchestrator___verify_issue_engine__212ede"
+}
