@@ -642,6 +642,67 @@ def run_builder_for_product(
     )
 
 
+def worker_exception_diagnostic(error: BaseException) -> dict[str, str]:
+    """Return actionable, allowlisted evidence without leaking exception text.
+
+    Runner failures may contain credentials, local paths or private task
+    context. Only static reason codes and known source locations enter shared
+    telemetry. Classification never grants an execution retry.
+    """
+    message = str(error).strip()
+    lowered = message.lower()
+    denial_fragments = (
+        "blocked by openai's safety checks",
+        "blocked by safety checks",
+        "[security weaken]",
+        "[create unsafe agents]",
+        "tool call was blocked",
+    )
+    known_authority_codes = {
+        "EXECUTION_GRANT_REQUIRED",
+        "EXECUTION_GRANT_IDENTITY_REQUIRED",
+        "CANDIDATE_EXECUTION_NOT_AUTHORIZED",
+        "OWNER_CONTROL_UNVERIFIED",
+    }
+    known_precondition_codes = {
+        "PLANNED_SLICE_IDENTITY_MISMATCH",
+        "PLANNED_SLICE_HEAD_STALE",
+        "NO_READY_EXECUTION_SLICE",
+        "GRANT_ISSUANCE_BUSY",
+    }
+    if any(fragment in lowered for fragment in denial_fragments):
+        category, code = "PLATFORM_DENIAL", "PLATFORM_SAFETY_DENIED"
+    elif message in known_authority_codes:
+        category, code = "AUTHORIZATION_DENIED", message
+    elif message.startswith("EXECUTION_SLICE_ALREADY_OWNED:"):
+        category, code = "OWNERSHIP_BLOCKED", "EXECUTION_SLICE_ALREADY_OWNED"
+    elif message in known_precondition_codes:
+        category, code = "PRECONDITION_FAILED", message
+    elif isinstance(error, (PermissionError, FileNotFoundError, TimeoutError, OSError)):
+        category, code = "ENVIRONMENT_FAILURE", type(error).__name__
+    elif isinstance(error, (AssertionError, ValueError, TypeError)):
+        category, code = "CODE_FAILURE", type(error).__name__
+    else:
+        category, code = "UNCLASSIFIED", "UNCLASSIFIED_EXCEPTION"
+
+    result = {"failure_class": category, "failure_code": code}
+    allowed_sites = {
+        "supervisor_runtime.py",
+        "continuous_flow_supervisor.py",
+        "grant_issuance.py",
+        "laptop_actor_runner.py",
+        "autonomous_slice_builder.py",
+        "parallel_worker_pool.py",
+    }
+    tb = error.__traceback__
+    while tb is not None:
+        basename = Path(tb.tb_frame.f_code.co_filename).name
+        if basename in allowed_sites and 0 < tb.tb_lineno < 1000000:
+            result["failure_site"] = f"{basename}:{tb.tb_lineno}"
+        tb = tb.tb_next
+    return result
+
+
 def harvest_parallel_builders(
     pool: ParallelWorkerPool,
     state_root: Path,
@@ -660,6 +721,7 @@ def harvest_parallel_builders(
                     and str(result).isascii() and str(result).isidentifier()
                     and str(result).isupper() else "UNCLASSIFIED"
                 ),
+                **worker_exception_diagnostic(result),
             }
         else:
             returncode, invocation_id = result
@@ -802,6 +864,7 @@ def run_lifecycle_recovery_pass(
     state_root: Path, workspace_root: Path, *,
     recover_generations_fn: Callable, recover_claims_fn: Callable,
     pending_fn: Callable, preserved_fn: Callable, quarantined_fn: Callable,
+    terminalize_fn: Callable | None = None,
 ) -> dict:
     """Defer persistent Windows lifecycle contention without losing atomic authority."""
     with recovery_lifecycle_write_budget():
@@ -814,11 +877,12 @@ def run_lifecycle_recovery_pass(
                 "queue": pending_fn(state_root, abandoned),
                 "preserved": preserved_fn(workspace_root, state_root),
                 "quarantine_rechecks": quarantined_fn(state_root),
+                "terminalized_quarantines": terminalize_fn(state_root) if terminalize_fn else {},
             }
         except PermissionError:
             return {
                 "publication_blocked": True, "released": [], "abandoned": [],
-                "queue": [], "preserved": {}, "quarantine_rechecks": {},
+                "queue": [], "preserved": {}, "quarantine_rechecks": {}, "terminalized_quarantines": {},
             }
 
 

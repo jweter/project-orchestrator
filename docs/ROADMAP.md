@@ -1,5 +1,10 @@
 # Roadmap
 
+## Owner-approved portfolio direction (2026-10-25)
+
+Iron God is a first-class hourly development workstream alongside product repositories. Isolated manual development while the supervisor is paused is permitted only through independently authorized interfaces and nonconflicting workspaces; it does not grant autonomous execution. Investigate all recorded Canon S2 failures without weakening safety tests. Product objectives and bounded slices are recorded in `docs/OWNER_APPROVED_ROADMAP_2026-10-25.md`. Reconcile newer authoritative local work before accepting or merging.
+
+
 ## v1 — Portfolio brain
 
 - [x] Canonical three-project / five-repository inventory
@@ -111,6 +116,18 @@ Its explicit successor is **Project Helix — Durable Execution, Evidence, and L
 - temporal knowledge only if evidence shows it is needed.
 
 The handoff artifact is Iron Foreman's final controlled recovery evidence bundle, which becomes Helix Phase 0's reference reconstruction fixture. This keeps reliability before intelligence: **recover correctly first, then remember, measure, learn, and improve.**
+
+### Multi-surface evidence and memory — extension roadmap
+
+Detailed plan: [IRON_GOD_MULTISURFACE_MEMORY_ROADMAP.md](IRON_GOD_MULTISURFACE_MEMORY_ROADMAP.md).
+
+- [ ] Establish a truthful deployment and productive-worker baseline before activating new memory infrastructure.
+- [ ] Inventory and reuse existing Iron Memory, SQLite ledgers, capability graphs, repository skills, and knowledge retrieval.
+- [ ] Extend typed evidence, read-only KB/DB/Graph/Skills/Memory retrieval, and source-linked event projections in accordance with Helix.
+- [ ] Prove failure diagnosis and bounded retry prevention on a real historical VoiceStudio episode; measure improvement against baseline.
+- [ ] Expand to all owner-authorized repositories after controlled validation, respecting repository authority, verified evidence and recovery gates.
+
+This is an **advisory architecture roadmap**, not a change to runtime execution or owner-control permissions. Iron Foreman and Helix prerequisites remain in force; productive product engineering continues to take priority.
 
 ## After v1
 
