@@ -65,6 +65,27 @@ def test_job_attach_failure_aborts_and_kills_its_own_new_process(monkeypatch, tm
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object contract")
+def test_authority_denial_before_resume_does_not_run_child(tmp_path):
+    marker = tmp_path / "revoked-before-resume.txt"
+    code = (
+        "import pathlib,time;"
+        f"pathlib.Path({str(marker)!r}).write_text('started');"
+        "time.sleep(1)"
+    )
+
+    def denied():
+        raise RuntimeError("revoked")
+
+    with pytest.raises(RuntimeError, match="EXECUTION_AUTHORITY_REVOKED"):
+        NativeWindowsRuntime().execute_supervised(
+            RuntimeRequest((sys.executable, "-c", code), tmp_path),
+            denied,
+            interval=.05,
+        )
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object contract")
 @pytest.mark.parametrize("n", range(5))
 def test_repeated_revocation_cannot_leave_child_alive(n, tmp_path):
     marker = tmp_path / f"orphan-{n}.txt"
