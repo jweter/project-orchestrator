@@ -13,8 +13,15 @@ single-worker model lease and calibration gate as the commissioning lane:
 
   dispatch -> worker (self-planned slice, change gates, canonical preflight)
   -> supervisor re-check of the exact head -> ACCEPTED_LOCAL (local ref)
-  -> push branch + pull request -> every CI check green -> squash merge
+  -> push branch + pull request -> every CI check green
+  -> merge-readiness gate (exact verified head, settled review, no unresolved
+     finding, green_pr_merger's mergeable/checks rules) -> squash merge
   -> VERIFIED Iron Memory lesson + working-memory note.
+
+A review finding sends the pull request through a bounded repair: a directed
+worker edit of the slice's module on the PR head, the same supervisor
+re-check, a fast-forward push to the same pull request, fresh CI and review,
+then resolution of the repaired conversations and the gate again.
 
 A failed, cancelled, timed-out or unreported CI run leaves the pull request
 open and the turn BLOCKED; nothing is ever force-pushed or merged around CI.
@@ -36,6 +43,7 @@ from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
 from . import iron_god_development_memory as development_memory
+from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_working_memory as working_memory
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -66,6 +74,8 @@ from .worker_transport import (
 POLICY_KEY = "portfolio_rotation"
 ACTIVE_STATES = {"DISPATCHED", "IMPLEMENTING"}
 PUBLICATION_OPEN = {"PUBLISH_PENDING", "AWAITING_CI"}
+REPAIR_STATES = {"REPAIR_PENDING", "REPAIRING"}  # a pull request waiting for, or under, a review repair
+MAX_REVIEW_REPAIRS = 2  # bounded: a finding the local model cannot fix in two directed attempts goes to the owner
 SOURCE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx", ".cpp", ".h", ".hpp", ".cs")
 ENVELOPE_EXCLUDED_ROOTS = {"docs", "engineering", ".github", "data", "assets", "build", "dist", "node_modules"}
 ALWAYS_FORBIDDEN = ["AGENTS.md", "DoWork.txt", "CLAUDE.md", "LICENSE", "SECURITY.md", "engineering/", ".github/",
@@ -392,6 +402,39 @@ def record_product_memory(release_repo: Path, packet: dict[str, Any], *, pr: dic
 class GitHub:
     """The only outward-facing operations of the lane: push, open, inspect and merge one pull request."""
 
+    PR_FIELDS = ("number,headRefOid,baseRefName,state,isDraft,mergeStateStatus,reviewDecision,"
+                 "statusCheckRollup,createdAt,author")
+
+    def __init__(self, release_repo: Path | None = None) -> None:
+        self.release_repo = release_repo
+        self._merger: Any = None
+
+    @property
+    def merger(self) -> Any:
+        """The portfolio's established review gate (scripts/green_pr_merger.py of the running release)."""
+        if self._merger is None:
+            self._merger = readiness.load_merger(self.release_repo or Path(__file__).resolve().parents[2])
+        return self._merger
+
+    def pull_request(self, repo: str, number: int) -> dict[str, Any]:
+        return dict(self.merger.gh_json(["pr", "view", str(number), "--repo", repo, "--json", self.PR_FIELDS]))
+
+    def review_threads(self, repo: str, number: int) -> list[dict[str, Any]]:
+        return list(self.merger.review_threads(repo, number))
+
+    def review_settled(self, repo: str, number: int, head: str, created_at: str) -> bool:
+        return bool(self.merger.review_settled(repo, number, head, created_at))
+
+    def age_seconds(self, created_at: str) -> float:
+        return float(self.merger._age_seconds(created_at))
+
+    def resolve_thread(self, thread_id: str) -> None:
+        query = "mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}"
+        done = subprocess.run(["gh", "api", "graphql", "-f", f"query={query}", "-f", f"t={thread_id}"],
+                              capture_output=True, text=True, check=False, timeout=300)
+        if done.returncode != 0:
+            raise RuntimeError("THREAD_RESOLVE_FAILED: " + done.stderr[-300:])
+
     def push(self, clone: Path, branch: str, head: str) -> None:
         pushed = _git(clone, "push", "origin", f"{head}:refs/heads/{branch}", timeout=1800)
         if pushed.returncode != 0:
@@ -456,6 +499,54 @@ def _save_publications(lane: ProductLane, items: dict[str, Any]) -> None:
     atomic_json(lane.publications_path, {"schema_version": 1, "items": items})
 
 
+def _verified(lane: ProductLane, verifier: str, head: str) -> bool:
+    """The lane's own supervisor re-check accepted exactly ``head`` (the slice's acceptance evidence)."""
+    report = lane._json(lane.reports / f"{verifier}-verification.json", {})
+    return report.get("passed") is True and report.get("head_sha") == head
+
+
+def merge_readiness(lane: ProductLane, github: Any, packet_id: str, item: dict[str, Any]) -> readiness.Readiness:
+    """Gather the live pull-request facts and ask the merge-readiness gate (see iron_god_merge_readiness)."""
+    repo, number, head = item["repository"], int(item["pr"]["number"]), item["head_sha"]
+    pr = github.pull_request(repo, number)
+    current = str(pr.get("headRefOid") or "")
+    settled = current == head and github.review_settled(repo, number, current, str(pr.get("createdAt")))
+    return readiness.assess(
+        pr, github.review_threads(repo, number), verified_head=head,
+        verification_ok=_verified(lane, str(item.get("verified_by") or packet_id), head), settled=settled,
+        age_seconds=github.age_seconds(str(pr.get("createdAt"))),
+        repaired_thread_ids={str(t) for t in item.get("repaired_threads", [])}, merger=github.merger)
+
+
+def _request_review_repair(lane: ProductLane, packet_id: str, item: dict[str, Any],
+                           gate: readiness.Readiness) -> None:
+    """Record the findings against the PR, commit, file and slice; queue a bounded repair or block."""
+    repo = item["repository"]
+    attempts = int(item.get("repair_attempts", 0))
+    plan = lane._json(lane.handbacks / f"{packet_id}.json", {}).get("plan") or {}
+    module, test = plan.get("module_path"), plan.get("test_path")
+    slice_id = (lane._json(lane.packets / f"{packet_id}.json", {}).get("slice") or {}).get("id")
+    record = {"packet_id": packet_id, "pr": item["pr"], "head_sha": item["head_sha"], "slice": slice_id,
+              "module_path": module, "findings": gate.findings, "recorded_at_utc": _now()}
+    atomic_json(lane.reports / f"{packet_id}-review-findings-{attempts + 1}.json", record)
+    out_of_scope = sorted({str(f.get("path")) for f in gate.findings if f.get("path") != module})
+    if attempts >= MAX_REVIEW_REPAIRS:
+        reason = f"REVIEW_REPAIR_EXHAUSTED after {attempts} attempt(s)"
+    elif not module or out_of_scope:
+        reason = "REVIEW_FINDING_OUT_OF_REPAIR_SCOPE: " + ", ".join(out_of_scope or ["(no planned module)"])
+    else:
+        item.update(state="REPAIR_PENDING", findings=gate.findings, repair_module=module, repair_test=test)
+        working_memory.record(lane.state_root, repo, "REVIEW_FINDINGS_RECORDED", packet_id=packet_id,
+                              detail=f"{len(gate.findings)} finding(s) on {module}; repair queued",
+                              pr={**item["pr"], "state": "REPAIR_PENDING"})
+        return
+    item.update(state="BLOCKED", reason=reason[:300], findings=gate.findings)
+    _record_slice_outcome(lane, packet_id, "PR_BLOCKED")
+    working_memory.record(lane.state_root, repo, "REVIEW_REPAIR_BLOCKED", packet_id=packet_id, outcome="BLOCKED",
+                          blocker=f"{reason[:200]} on pull request #{item['pr']['number']}",
+                          pr={**item["pr"], "state": "OPEN_BLOCKED"})
+
+
 def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHub, memory_root: Path | None,
                          now: Callable[[], float] = time.time, merge: str = "auto") -> list[dict[str, Any]]:
     """Move every open publication one step: push+PR, then CI, then squash merge (authority already checked).
@@ -469,7 +560,13 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
             continue
         repo = item["repository"]
         try:
-            if item["state"] == "PUBLISH_PENDING":
+            if item["state"] == "PUBLISH_PENDING" and item.get("pr"):
+                # A verified review repair: fast-forward the same pull request (never forced), then fresh CI.
+                github.push(lane.clone(repo), item["branch"], item["head_sha"])
+                item.update(state="AWAITING_CI", published_at=now())
+                working_memory.record(lane.state_root, repo, "REVIEW_REPAIR_PUSHED", packet_id=packet_id,
+                                      pr={**item["pr"], "state": "AWAITING_CI"})
+            elif item["state"] == "PUBLISH_PENDING":
                 github.push(lane.clone(repo), item["branch"], item["head_sha"])
                 pr = github.open_pr(repo, item["branch"], item["title"], item["body"])
                 item.update(state="AWAITING_CI", pr=pr, published_at=now())
@@ -484,14 +581,37 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
                                           outcome="CI_GREEN_AWAITING_OWNER",
                                           pr={**item["pr"], "state": "CI_GREEN_AWAITING_OWNER"})
                 elif verdict == "PASS":
-                    merged_sha = github.merge(repo, item["pr"]["number"], item["head_sha"])
-                    item.update(state="MERGED", merged_sha=merged_sha, merged_at_utc=_now())
-                    packet = json.loads((lane.packets / f"{packet_id}.json").read_text(encoding="utf-8"))
-                    record_product_memory(release_repo, packet, note=item.get("note", ""), memory_root=memory_root,
-                                          pr={**item["pr"], "merged_sha": merged_sha})
-                    working_memory.record(lane.state_root, repo, "MERGED", packet_id=packet_id, outcome="MERGED",
-                                          pr={**item["pr"], "state": "MERGED"})
-                    _record_slice_outcome(lane, packet_id, "MERGED")
+                    gate = merge_readiness(lane, github, packet_id, item)
+                    item["readiness"] = {"status": gate.status, "reason": gate.reason, "at_utc": _now()}
+                    if gate.status == readiness.MERGE:
+                        merged_sha = github.merge(repo, item["pr"]["number"], item["head_sha"])
+                        item.update(state="MERGED", merged_sha=merged_sha, merged_at_utc=_now())
+                        packet = json.loads((lane.packets / f"{packet_id}.json").read_text(encoding="utf-8"))
+                        record_product_memory(release_repo, packet, note=item.get("note", ""),
+                                              memory_root=memory_root, pr={**item["pr"], "merged_sha": merged_sha})
+                        working_memory.record(lane.state_root, repo, "MERGED", packet_id=packet_id,
+                                              outcome="MERGED", pr={**item["pr"], "state": "MERGED"})
+                        _record_slice_outcome(lane, packet_id, "MERGED")
+                    elif gate.status == readiness.REPAIR:
+                        _request_review_repair(lane, packet_id, item, gate)
+                    elif gate.status == readiness.RESOLVE:
+                        for row in gate.findings:
+                            github.resolve_thread(str(row["thread_id"]))
+                        item.setdefault("resolved_threads", []).extend(row["thread_id"] for row in gate.findings)
+                        working_memory.record(lane.state_root, repo, "REVIEW_THREADS_RESOLVED", packet_id=packet_id,
+                                              detail=f"{len(gate.findings)} repaired finding(s) resolved",
+                                              pr={**item["pr"], "state": "AWAITING_MERGE_STATE"})
+                    elif gate.status == readiness.WAIT and now() - item["published_at"] <= CI_TOTAL_SECONDS:
+                        pass  # review still settling or GitHub still computing mergeability
+                    else:
+                        reason = ("MERGE_READINESS_TIMEOUT: " + gate.reason if gate.status == readiness.WAIT
+                                  else gate.reason)
+                        item.update(state="BLOCKED", reason=reason)
+                        _record_slice_outcome(lane, packet_id, "PR_BLOCKED")
+                        working_memory.record(lane.state_root, repo, "MERGE_READINESS_BLOCKED", packet_id=packet_id,
+                                              outcome="BLOCKED",
+                                              blocker=f"{reason} on pull request #{item['pr']['number']}",
+                                              pr={**item["pr"], "state": "OPEN_BLOCKED"})
                 elif verdict != "WAIT":
                     item.update(state="BLOCKED", reason=verdict)
                     _record_slice_outcome(lane, packet_id, "PR_BLOCKED")
@@ -549,6 +669,17 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
             _git(lane.clone(repo), "update-ref", ref, head)
             current = accept_locally(current, packet_id, accepted_ref=ref, accepted_sha=head,
                                      evidence_ref=f"local://iron-god-products/{packet_id}/verification")
+        if passed and packet.get("repair"):
+            # The repaired head replaces the pull request's verified head; its findings are now repaired.
+            items = lane.publications()["items"]
+            pub = items[packet["repair"]["publication"]]
+            pub.update(state="PUBLISH_PENDING", head_sha=head, verified_by=packet_id,
+                       repaired_threads=sorted({*pub.get("repaired_threads", []),
+                                                *(str(f["thread_id"]) for f in packet["repair"]["findings"])}))
+            pub.pop("findings", None)
+            _save_publications(lane, items)
+            outcome["status"] = "REPAIR_ACCEPTED"
+        elif passed:
             items = lane.publications()["items"]
             item = packet.get("slice")
             roadmap = (f"Backlog item: {item['id']} ({item['title']})\nRoadmap: {item['roadmap_ref']}\n"
@@ -578,6 +709,18 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
             outcome["status"] = "BLOCKED"
     else:
         outcome["status"] = current["packets"][packet_id]["state"]
+    if packet.get("repair") and outcome["status"] != "REPAIR_ACCEPTED":
+        # Bounded: another directed attempt while the budget lasts, then the pull request is blocked
+        # with the findings and the failed attempts on record (never the same unbounded retry).
+        items = lane.publications()["items"]
+        pub = items[packet["repair"]["publication"]]
+        if int(pub.get("repair_attempts", 0)) < MAX_REVIEW_REPAIRS:
+            pub.update(state="REPAIR_PENDING")
+        else:
+            pub.update(state="BLOCKED", reason=f"REVIEW_REPAIR_EXHAUSTED: last attempt {handback['status']}: "
+                                               f"{str(handback.get('summary', ''))[:200]}")
+            _record_slice_outcome(lane, packet["repair"]["publication"], "PR_BLOCKED")
+        _save_publications(lane, items)
     lane.save(current, ledger)
     lane.active_path.unlink(missing_ok=True)
     if packet.get("slice"):
@@ -666,7 +809,7 @@ def advance_product_lane(
                                   "worktree_preserved": active.get("worktree")})
         return _report(lane, {"status": "WAITING_FOR_OWNER_AUTHORITY", "reasons": reasons})
     merge = "review" if config.get("merge") == "review" else "auto"
-    published = advance_publications(lane, release_repo, github=github or GitHub(), memory_root=memory_root,
+    published = advance_publications(lane, release_repo, github=github or GitHub(release_repo), memory_root=memory_root,
                                      merge=merge)
     if active:
         if alive(active["worker"]):
@@ -684,12 +827,36 @@ def advance_product_lane(
         {"capability_level": int(config.get("capability_level", 3))})
     if refused:
         return _report(lane, {"status": "WAITING_FOR_CALIBRATION", "reason": refused})
+    publications = lane.publications()["items"]
+    pending_repair = next(((pid, item) for pid, item in sorted(publications.items())
+                           if item["state"] == "REPAIR_PENDING"), None)
+    if pending_repair is not None:  # finishing an open pull request comes before starting new work
+        pid, item = pending_repair
+        admission = resources()
+        if not admission.get("admitted"):
+            return _report(lane, {"status": "WAITING_FOR_RESOURCES", "repository": item["repository"],
+                                  "admission": admission})
+        try:
+            lease = pool.acquire(WORKER_LEASE_RUNTIME, WORKER_LEASE_ID, owner_pid=os.getpid())
+        except Exception as exc:  # Never share the local model.
+            return _report(lane, {"status": "WAITING_FOR_RUNTIME_LEASE", "repository": item["repository"],
+                                  "detail": f"{type(exc).__name__}: {str(exc)[:200]}"})
+        try:
+            result = dispatch_repair(lane, release_repo, ledger, pid, publications, release_sha=release_sha,
+                                     spawn=spawn, owned_paths=owned_paths, lease_id=lease.lease_id)
+        except BaseException:
+            pool.release(WORKER_LEASE_ID, lease.lease_id)
+            raise
+        if result["status"] != "DISPATCHED":
+            pool.release(WORKER_LEASE_ID, lease.lease_id)
+        return result
     repos = product_repositories(release_repo, config)
-    busy = {item["repository"] for item in lane.publications()["items"].values() if item["state"] in PUBLICATION_OPEN}
+    busy = {item["repository"] for item in publications.values()
+            if item["state"] in PUBLICATION_OPEN | REPAIR_STATES}
     # A repository whose own preflight fails on unchanged main cannot judge a slice; it waits
     # until an owner-held readiness check (product trial --preflight-only) passes again.
-    readiness = lane._json(lane.root / "readiness.json", {"repositories": {}}).get("repositories", {})
-    busy |= {repo for repo, row in readiness.items() if row.get("ready") is False}
+    repo_readiness = lane._json(lane.root / "readiness.json", {"repositories": {}}).get("repositories", {})
+    busy |= {repo for repo, row in repo_readiness.items() if row.get("ready") is False}
     items: dict[str, dict[str, Any]] = {}
     if config.get("planning") == "backlog":  # roadmap-driven: only approved slices, never self-invented ones
         approved, _rejected = backlog.load_backlog(release_repo)
@@ -785,6 +952,72 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
     return _report(lane, {"status": "DISPATCHED", "packet_id": packet_id, "repository": repo, "base_sha": base,
                           "worker_pid": worker["pid"], "scope": roots,
                           "backlog_item": item["id"] if item is not None else None})
+
+
+def dispatch_repair(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], publication_id: str,
+                    publications: dict[str, Any], *, release_sha: str, spawn: Callable[..., dict[str, Any]],
+                    owned_paths: Callable[[str], list[str]], lease_id: str) -> dict[str, Any]:
+    """Dispatch one bounded review repair: a directed edit of the slice's module on the exact PR head."""
+    item = publications[publication_id]
+    repo, head = item["repository"], item["head_sha"]
+    clone = lane.clone(repo)
+    attempt = int(item.get("repair_attempts", 0)) + 1
+    repair_id = f"{publication_id}-R{attempt}"
+    branch = f"{item['branch']}-repair-{attempt}"
+    worktree = lane.worktrees / repair_id
+
+    def block(reason: str) -> dict[str, Any]:
+        item.update(state="BLOCKED", reason=reason[:300], repair_attempts=attempt)
+        _save_publications(lane, publications)
+        _record_slice_outcome(lane, publication_id, "PR_BLOCKED")
+        working_memory.record(lane.state_root, repo, "REVIEW_REPAIR_BLOCKED", packet_id=publication_id,
+                              outcome="BLOCKED", blocker=reason[:200])
+        return _report(lane, {"status": "REVIEW_REPAIR_NOT_DISPATCHED", "packet_id": publication_id,
+                              "reason": reason[:300]})
+
+    if _git(clone, "cat-file", "-e", f"{head}^{{commit}}").returncode != 0:
+        _git(clone, "fetch", "-q", "origin", item["branch"])
+        if _git(clone, "cat-file", "-e", f"{head}^{{commit}}").returncode != 0:
+            return block("REPAIR_HEAD_UNAVAILABLE")
+    added = _git(clone, "worktree", "add", "-b", branch, str(worktree), head)
+    if added.returncode != 0:
+        return block("REPAIR_WORKTREE_PROVISION_FAILED: " + added.stderr[-200:])
+    original = json.loads((lane.packets / f"{publication_id}.json").read_text(encoding="utf-8"))
+    module, test = item["repair_module"], item["repair_test"]
+    avoid = [p for p in owned_paths(repo) if p not in {module, test}]
+    packet = build_product_packet(repo, packet_id=repair_id, base=head, worktree=worktree, branch=branch,
+                                  roots=original["paths"], avoid=avoid, memory_text="", project=original["project"])
+    objective = (f"Repair the code-review findings on pull request #{item['pr']['number']} by editing only "
+                 f"{module}; the slice's tests in {test} stay unchanged and must keep passing.")
+    packet["task"] = objective
+    packet["planning"].update(
+        objective=objective,
+        acceptance_criteria=[f"only {module} changes", f"the slice's tests in {test} pass unchanged",
+                             "the builder change gates pass", "the canonical preflight passes at the exact head",
+                             "fresh CI passes and review settles with no unresolved finding before merge"],
+        handoff_instructions="Address the recorded review findings in the module only, run the canonical preflight, "
+                             "and hand back exact evidence.")
+    packet["repair"] = {"publication": publication_id, "attempt": attempt, "pr": item["pr"], "module_path": module,
+                        "test_path": test, "findings": item.get("findings", []), "slice": original.get("slice")}
+    updated = dispatch_canonical_slice(ledger, packet, transport="local_idle_worker")
+    lane.save(updated, ledger)
+    packet_path = lane.packets / f"{repair_id}.json"
+    handback_path = lane.handbacks / f"{repair_id}.json"
+    atomic_json(packet_path, packet)
+    handback_path.unlink(missing_ok=True)
+    worker = spawn(release_repo, packet_path, handback_path, release_sha=release_sha,
+                   log_path=lane.reports / f"{repair_id}-worker.log")
+    atomic_json(lane.active_path, {"packet_id": repair_id, "repository": repo, "worker": worker,
+                                   "worktree": str(worktree), "dispatched_at_utc": _now(), "base_sha": head,
+                                   "lease_id": lease_id, "repair_of": publication_id})
+    item.update(state="REPAIRING", repair_attempts=attempt, repair_packet=repair_id)
+    _save_publications(lane, publications)
+    working_memory.record(lane.state_root, repo, "REVIEW_REPAIR_DISPATCHED", packet_id=repair_id,
+                          detail=f"attempt {attempt} for pull request #{item['pr']['number']}",
+                          active={"packet_id": repair_id, "repository": repo, "worker_pid": worker["pid"],
+                                  "started_at_utc": _now()})
+    return _report(lane, {"status": "DISPATCHED", "packet_id": repair_id, "repository": repo, "base_sha": head,
+                          "worker_pid": worker["pid"], "repair_of": publication_id})
 
 
 def _release(pool: RuntimeLeasePool, active: dict[str, Any]) -> None:

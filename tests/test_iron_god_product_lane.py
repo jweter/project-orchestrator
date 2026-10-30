@@ -14,6 +14,7 @@ import pytest
 
 from project_orchestrator import iron_god_backlog as backlog_mod
 from project_orchestrator import iron_god_development_memory as devmem
+from project_orchestrator import iron_god_merge_readiness as readiness
 from project_orchestrator import iron_god_product_lane as pl
 from project_orchestrator import iron_god_product_metrics as metrics
 from project_orchestrator import iron_god_working_memory as wm
@@ -61,25 +62,66 @@ def remote(tmp: Path, name: str) -> Path:
 
 
 class FakeGitHub:
-    def __init__(self, buckets=("pass",)):
+    """A pull request as GitHub reports it: head = last push, unresolved threads block the mergeable state."""
+
+    CONCLUSION = {"pass": "SUCCESS", "skipping": "SKIPPED", "fail": "FAILURE", "cancel": "CANCELLED"}
+
+    def __init__(self, buckets=("pass",), threads=(), merge_state="CLEAN", fail_merge=False, settled=True):
         self.buckets = list(buckets)
-        self.pushed, self.opened, self.merged = [], [], []
+        self.threads = [dict(t) for t in threads]
+        self.merge_state, self.fail_merge, self.settled = merge_state, fail_merge, settled
+        self.pushed, self.opened, self.merged, self.resolved = [], [], [], []
+        self.heads, self.branches = {}, {}
+        self.merger = readiness.load_merger(ROOT)  # the real, shipped green_pr_merger rules
 
     def push(self, clone, branch, head):
-        git(clone, "push", "-q", "origin", f"{head}:refs/heads/{branch}")
+        git(clone, "push", "-q", "origin", f"{head}:refs/heads/{branch}")  # fast-forward only, like production
         self.pushed.append((branch, head))
+        self.heads[branch] = head
 
     def open_pr(self, repo, branch, title, body):
         self.opened.append({"repo": repo, "branch": branch, "title": title, "body": body})
         number = len(self.opened)
+        self.branches[number] = branch
         return {"url": f"https://github.com/{repo}/pull/{number}", "number": number}
 
     def checks(self, repo, number):
         return [{"name": f"ci-{i}", "state": b.upper(), "bucket": b} for i, b in enumerate(self.buckets)]
 
+    def pull_request(self, repo, number):
+        unresolved = any(not t["resolved"] for t in self.threads)
+        return {"number": number, "headRefOid": self.heads[self.branches[number]], "baseRefName": "main",
+                "state": "OPEN", "isDraft": False, "reviewDecision": None,
+                "mergeStateStatus": "BLOCKED" if unresolved else self.merge_state,
+                "statusCheckRollup": [{"status": "COMPLETED" if b in self.CONCLUSION else "IN_PROGRESS",
+                                       "conclusion": self.CONCLUSION.get(b, "")} for b in self.buckets],
+                "createdAt": "2020-01-01T00:00:00Z", "author": {"login": "jweter"}}
+
+    def review_threads(self, repo, number):
+        return [dict(t) for t in self.threads]
+
+    def review_settled(self, repo, number, head, created_at):
+        return self.settled
+
+    def age_seconds(self, created_at):
+        return 9999.0
+
+    def resolve_thread(self, thread_id):
+        self.resolved.append(thread_id)
+        for t in self.threads:
+            if t["id"] == thread_id:
+                t["resolved"] = True
+
     def merge(self, repo, number, head):
+        if self.fail_merge:
+            raise RuntimeError("MERGE_FAILED: GraphQL: Base branch was modified")
         self.merged.append((repo, number, head))
         return "f" * 40
+
+
+def review_thread(thread_id, head, body="P1 incorrect result for negative input", path="pkg/extra.py"):
+    return {"id": thread_id, "resolved": False, "path": path, "line": 3,
+            "comments": [{"body": body, "commit": head}]}
 
 
 @pytest.fixture
@@ -1121,3 +1163,188 @@ def test_an_approved_level_2_item_needs_a_complete_direction():
     assert backlog_mod.item_problems(item) == []
     del item["direct"]["test_source"]
     assert "APPROVED_ITEM_WITHOUT_DIRECTION" in backlog_mod.item_problems(item)
+
+
+# Merge readiness and automatic review repair (owner decision 2026-10-30: automatic merging is a required
+# capability, but only through the established review requirements).
+
+REPAIRED_MODULE = ('def add_two(value: int) -> int:\n    """Return value plus two (negative input reviewed)."""\n'
+                   '    return value + 2\n')
+
+
+def build_then_repair_agent(worktree, message, files, check):
+    """Builds the slice, and on a review repair edits only the module named by the findings."""
+    check()
+    assert files == ["pkg/extra.py"]
+    if "Code review of pull request" in message:
+        assert "Fix only pkg/extra.py" in message and "P1 incorrect result" in message
+        (worktree / "pkg" / "extra.py").write_text(REPAIRED_MODULE, encoding="utf-8")
+    else:
+        good_agent(worktree, message, files, check)
+
+
+def published(env, runner, github):
+    """dispatch -> accepted -> pull request opened; returns (publication id, item, PR head)."""
+    assert step(env, runner, github)["status"] == "DISPATCHED"
+    assert step(env, runner, github)["status"] == "ACCEPTED_LOCAL"
+    step(env, runner, github, allow=False)
+    (packet_id, item), = pl.ProductLane(env.state).publications()["items"].items()
+    return packet_id, item, item["head_sha"]
+
+
+def only_item(env):
+    return next(iter(pl.ProductLane(env.state).publications()["items"].values()))
+
+
+def test_a_green_pull_request_with_an_unresolved_blocking_finding_never_merges(env):
+    runner, github = Runner(), FakeGitHub(("pass",))
+    packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head)]
+    step(env, runner, github, allow=False)
+    item = only_item(env)
+    assert github.merged == [] and item["state"] == "REPAIR_PENDING"
+    assert item["findings"][0]["thread_id"] == "T1" and item["findings"][0]["blocking"] is True
+    record = json.loads((pl.ProductLane(env.state).reports / f"{packet_id}-review-findings-1.json").read_text())
+    assert record["head_sha"] == head and record["module_path"] == "pkg/extra.py"
+    assert record["pr"]["number"] == 1 and record["findings"][0]["path"] == "pkg/extra.py"
+
+
+def test_incomplete_required_ci_never_merges(env):
+    runner, github = Runner(), FakeGitHub(("pass", "pending"))
+    published(env, runner, github)
+    step(env, runner, github, allow=False)
+    assert github.merged == [] and only_item(env)["state"] == "AWAITING_CI"
+    merger = readiness.load_merger(ROOT)
+    pr = {"headRefOid": "h", "baseRefName": "main", "state": "OPEN", "mergeStateStatus": "CLEAN",
+          "author": {"login": "jweter"}, "statusCheckRollup": [{"status": "IN_PROGRESS", "conclusion": ""}]}
+    gate = readiness.assess(pr, [], verified_head="h", verification_ok=True, settled=True, age_seconds=9999,
+                            repaired_thread_ids=set(), merger=merger)
+    assert (gate.status, gate.reason) == (readiness.WAIT, "CHECKS_PENDING")
+
+
+def test_a_new_unverified_commit_invalidates_the_verification(env):
+    runner, github = Runner(), FakeGitHub(("pass",))
+    _packet_id, item, _head = published(env, runner, github)
+    github.heads[item["branch"]] = "e" * 40  # someone else pushed to the pull request after Iron God verified it
+    step(env, runner, github, allow=False)
+    blocked = only_item(env)
+    assert github.merged == [] and blocked["state"] == "BLOCKED" and blocked["reason"] == "STALE_VERIFIED_HEAD"
+
+
+def test_review_has_to_settle_and_github_has_to_report_mergeable_before_merging(env):
+    runner, github = Runner(), FakeGitHub(("pass",), settled=False, merge_state="UNKNOWN")
+    published(env, runner, github)
+    step(env, runner, github, allow=False)
+    assert github.merged == [] and only_item(env)["readiness"]["reason"] == "REVIEW_SETTLE_WINDOW"
+    github.settled = True
+    step(env, runner, github, allow=False)
+    assert github.merged == [] and only_item(env)["readiness"]["reason"] == "MERGE_STATE_UNKNOWN"
+    github.merge_state = "CLEAN"
+    step(env, runner, github, allow=False)
+    assert len(github.merged) == 1
+
+
+def test_a_properly_verified_pull_request_merges_automatically(env):
+    runner, github = Runner(), FakeGitHub(("pass",))
+    _packet_id, _item, head = published(env, runner, github)
+    step(env, runner, github, allow=False)
+    item = only_item(env)
+    assert github.merged == [(item["repository"], 1, head)] and item["state"] == "MERGED"
+    assert item["readiness"]["status"] == readiness.MERGE
+
+
+def test_a_repaired_pull_request_is_reverified_and_then_merges(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans, agent=build_then_repair_agent), FakeGitHub(("pass",))
+    packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head)]
+    step(env, runner, github, allow=False)  # gate: finding on the current head -> repair queued
+    assert only_item(env)["state"] == "REPAIR_PENDING"
+    repair = step(env, runner, github)  # the bounded repair is dispatched before any new work
+    assert repair["status"] == "DISPATCHED" and repair["repair_of"] == packet_id and repair["base_sha"] == head
+    assert step(env, runner, github)["status"] == "REPAIR_ACCEPTED"
+    repaired = only_item(env)
+    assert repaired["state"] == "PUBLISH_PENDING" and repaired["head_sha"] != head
+    assert repaired["verified_by"] == f"{packet_id}-R1" and repaired["repaired_threads"] == ["T1"]
+    step(env, runner, github, allow=False)  # fast-forward push to the same pull request; fresh CI
+    assert len(github.opened) == 1 and github.pushed[-1] == (repaired["branch"], repaired["head_sha"])
+    git(env.remotes[REPOS[1]], "merge-base", "--is-ancestor", head, repaired["head_sha"])  # raises if not FF
+    step(env, runner, github, allow=False)  # verified, settled, finding-free head: repaired thread resolved
+    assert github.resolved == ["T1"] and github.merged == []
+    step(env, runner, github, allow=False)  # GitHub now reports CLEAN -> merge of the repaired head
+    assert github.merged == [(REPOS[1], 1, repaired["head_sha"])] and only_item(env)["state"] == "MERGED"
+    assert backlog_mod.load_state(pl.ProductLane(env.state).root)["items"]["RS-1"]["outcome"] == "MERGED"
+    assert runner.spawned == 2
+
+
+def test_an_unrepairable_finding_is_bounded_and_blocks_with_its_evidence(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+
+    def repair_changes_nothing(worktree, message, files, check):
+        if "Code review of pull request" not in message:
+            good_agent(worktree, message, files, check)
+
+    runner, github = Runner(plan=never_plans, agent=repair_changes_nothing), FakeGitHub(("pass",))
+    _packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head)]
+    step(env, runner, github, allow=False)
+    for _attempt in range(pl.MAX_REVIEW_REPAIRS):
+        assert step(env, runner, github)["status"] == "DISPATCHED"
+        assert step(env, runner, github)["status"] != "REPAIR_ACCEPTED"
+    item = only_item(env)
+    assert item["state"] == "BLOCKED" and item["reason"].startswith("REVIEW_REPAIR_EXHAUSTED")
+    assert "REVIEW_REPAIR_PRODUCED_NO_CHANGE" in item["reason"] and github.merged == []
+    assert backlog_mod.load_state(pl.ProductLane(env.state).root)["items"]["RS-1"]["outcome"] == "PR_BLOCKED"
+    assert step(env, runner, github)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"
+    assert runner.spawned == 1 + pl.MAX_REVIEW_REPAIRS  # never an unbounded loop
+
+
+def test_a_finding_outside_the_slice_module_is_not_repaired_blindly(env):
+    runner, github = Runner(), FakeGitHub(("pass",))
+    _packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head, path="tests/test_extra.py")]
+    step(env, runner, github, allow=False)
+    item = only_item(env)
+    assert item["state"] == "BLOCKED" and item["reason"].startswith("REVIEW_FINDING_OUT_OF_REPAIR_SCOPE")
+    assert runner.spawned == 1 and github.merged == []
+
+
+def test_a_merge_failure_is_recorded_without_corrupting_the_backlog(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans), FakeGitHub(("pass",), fail_merge=True)
+    published(env, runner, github)
+    step(env, runner, github, allow=False)
+    item = only_item(env)
+    assert item["state"] == "BLOCKED" and "MERGE_FAILED" in item["reason"]
+    state = backlog_mod.load_state(pl.ProductLane(env.state).root)  # still loads: not corrupted
+    assert state["items"]["RS-1"]["outcome"] == "PR_BLOCKED"
+    assert wm.load(env.state)["repositories"][REPOS[1]]["blockers"]
+
+
+def test_a_successful_merge_is_recorded_as_a_completed_delivery(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans), FakeGitHub(("pass",))
+    published(env, runner, github)
+    step(env, runner, github, allow=False)
+    assert only_item(env)["state"] == "MERGED" and only_item(env)["merged_sha"] == "f" * 40
+    assert backlog_mod.load_state(pl.ProductLane(env.state).root)["items"]["RS-1"]["outcome"] == "MERGED"
+    lesson = load_shared_memory(env.memory)["entries"][-1]
+    assert lesson["evidence_state"] == "VERIFIED" and lesson["repository"] == REPOS[1]
+    assert wm.load(env.state)["repositories"][REPOS[1]]["last_outcome"] == "MERGED"
+
+def test_a_reviewer_reopening_a_repaired_finding_on_the_new_head_gets_another_repair_not_a_resolve(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans, agent=build_then_repair_agent), FakeGitHub(("pass",))
+    _packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head)]
+    step(env, runner, github, allow=False)
+    step(env, runner, github)
+    assert step(env, runner, github)["status"] == "REPAIR_ACCEPTED"
+    step(env, runner, github, allow=False)  # repaired head pushed to the same pull request
+    repaired_head = only_item(env)["head_sha"]
+    github.threads[0]["comments"].append({"body": "P1 still incorrect for negative input", "commit": repaired_head})
+    step(env, runner, github, allow=False)
+    item = only_item(env)
+    assert github.resolved == [] and github.merged == []  # never resolved over a live current-head finding
+    assert item["state"] == "REPAIR_PENDING" and item["readiness"]["reason"] == "REVIEW_FINDINGS_ON_CURRENT_HEAD"
+

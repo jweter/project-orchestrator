@@ -104,7 +104,8 @@ def classify(status: str, summary: str, directed: dict[str, Any]) -> str:
 
 def record_attempt(lane_root: Path, packet: dict[str, Any], handback: dict[str, Any], outcome: str) -> str:
     """One attempt's observed facts (idempotent per packet); returns its failure class."""
-    item = packet.get("slice") or {}
+    # a review repair is recorded against the slice whose pull request it repairs
+    item = packet.get("slice") or (packet.get("repair") or {}).get("slice") or {}
     plan = handback.get("plan") or {}
     directed = handback.get("directed") or {}
     failure_class = classify(str(handback.get("status", "")), str(handback.get("summary", "")), directed)
