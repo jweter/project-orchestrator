@@ -227,6 +227,20 @@ def test_unsafe_control_directory_acl_fails_closed(root):
     assert oc.evaluate(root, now=T0).reasons == ("CONTROL_DIRECTORY_ACL_UNSAFE",)
 
 
+def test_enrollment_strips_preexisting_explicit_aces(tmp_path):
+    """Regression: hosted Windows runners leave Administrators/OWNER RIGHTS ACEs that
+    `icacls /inheritance:r` converts to explicit ones. Enrollment must remove every ACE
+    except the owner and SYSTEM, so the strict check passes only on a truly private directory."""
+    control = tmp_path / "control"
+    control.mkdir()
+    subprocess.run(["icacls", str(control), "/grant", "*S-1-5-32-545:(OI)(CI)R", "/Q"], check=True, capture_output=True)
+    subprocess.run(["icacls", str(control), "/grant", "*S-1-3-4:(OI)(CI)F", "/Q"], check=True, capture_output=True)
+    oc.enroll_owner(control)
+    sids = {sid for _type, _flags, sid in oc.directory_acl(control)}
+    assert sids == {oc.current_user_sid(), "S-1-5-18"}
+    assert oc._acl_is_restricted(control, oc.current_user_sid())
+
+
 def test_replaced_key_invalidates_previous_commands(root):
     take(root)
     (root / oc.KEY_FILE).write_bytes(oc._dpapi(b"k" * 32, protect=True))

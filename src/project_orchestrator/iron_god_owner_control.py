@@ -387,6 +387,17 @@ def _restrict_acl(root: Path, owner_sid: str) -> None:
          f"*{owner_sid}:(OI)(CI)F", f"*{_SYSTEM_SID}:(OI)(CI)F", "/Q"],
         capture_output=True, text=True, check=True, timeout=30,
     )
+    # /inheritance:r keeps explicit ACEs, and on some hosts converts inherited
+    # ones (e.g. Administrators, OWNER RIGHTS) into explicit ones. Remove every
+    # other trustee so only the owner and SYSTEM remain; _acl_is_restricted
+    # still verifies the result and fails closed on anything it cannot read.
+    others = sorted({sid for _type, _flags, sid in directory_acl(root)
+                     if sid and sid not in {owner_sid, _SYSTEM_SID}})
+    if others:
+        subprocess.run(
+            ["icacls", str(root), "/remove", *(f"*{sid}" for sid in others), "/Q"],
+            capture_output=True, text=True, check=True, timeout=30,
+        )
 
 
 def directory_acl(root: Path) -> list[tuple[int, int, str]]:
