@@ -585,7 +585,19 @@ def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], activ
         result = (outcome["status"] if outcome["status"] == "ACCEPTED_LOCAL" else "SUPERVISOR_RECHECK_FAILED"
                   if handback["status"] == "PASS" else summary[:200] if summary.startswith(backlog.EXTERNAL)
                   else f"{handback['status']}: {summary}"[:200])
-        backlog.record_item(lane.root, packet["slice"]["id"], packet_id=packet_id, outcome=result)
+        failed_source_fingerprint = None
+        if handback["status"] == "FAIL" and handback.get("changed_paths"):
+            # Only record source bytes when the worktree is still available.
+            # This is passive evidence, not a new execution or dispatch gate.
+            from .iron_god_failed_source import read_candidate_sources, source_fingerprint
+
+            try:
+                candidate_files = read_candidate_sources(Path(packet["worktree"]), handback["changed_paths"])
+                failed_source_fingerprint = source_fingerprint(candidate_files)
+            except (OSError, ValueError, TypeError, KeyError):
+                pass
+        backlog.record_item(lane.root, packet["slice"]["id"], packet_id=packet_id, outcome=result,
+                            failed_source_fingerprint=failed_source_fingerprint)
     try:  # observed facts for planners; a memory failure never affects the lane
         recorded = result if packet.get("slice") else str(outcome["status"])
         development_memory.record_attempt(lane.root, packet, handback, recorded)

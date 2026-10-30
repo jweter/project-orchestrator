@@ -178,17 +178,41 @@ def load_state(lane_root: Path) -> dict[str, Any]:
     return state
 
 
-def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) -> dict[str, Any]:
+def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
+                          failed_source_fingerprint: str | None = None) -> dict[str, Any]:
     """One attempt's outcome; MERGED marks the item done for dependency and dispatch purposes."""
     state = load_state(lane_root)
     row = state.setdefault("items", {}).setdefault(item_id, {"attempts": 0, "packets": []})
     # Accepted outcomes are terminal: late worker reports or scheduling blocks
-    # cannot undo a completed item or consume a fresh attempt.
+    # cannot undo a completed item, consume a fresh attempt, or contaminate
+    # failed-source evidence. A conflicting late report is flagged once.
     if row.get("outcome") == "MERGED" or str(row.get("outcome", "")).startswith(EXTERNAL):
+        if outcome != row.get("outcome") and not row.get("terminal_outcome_conflict"):
+            row["terminal_outcome_conflict"] = True
+            atomic_json(state_path(lane_root), state)
         return row
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
         row["attempts"] = len(row["packets"])
+    if failed_source_fingerprint and outcome.startswith("FAIL"):
+        # Packet identity matters: replaying the same failed packet is not a
+        # second failure. This is passive evidence, never a retry-budget reset.
+        by_packet = row.setdefault("failed_source_by_packet", {})
+        previous_for_packet = by_packet.get(packet_id)
+        if (
+            previous_for_packet is not None
+            and previous_for_packet != failed_source_fingerprint
+        ):
+            row["failed_source_conflict"] = True
+        else:
+            by_packet[packet_id] = failed_source_fingerprint
+        unique = row.setdefault("failed_source_fingerprints", [])
+        if (
+            previous_for_packet in {None, failed_source_fingerprint}
+            and failed_source_fingerprint not in unique
+        ):
+            unique.append(failed_source_fingerprint)
+        row["repeated_failed_source"] = len(set(by_packet.values())) < len(by_packet)
     row.update(outcome=outcome, updated_at_utc=_now())
     if outcome == "MERGED":
         row["merged_at_utc"] = _now()
@@ -196,11 +220,13 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
     return row
 
 
-def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str) -> dict[str, Any]:
+def record_item(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
+                failed_source_fingerprint: str | None = None) -> dict[str, Any]:
     """Serialize each backlog outcome read/modify/write across processes."""
     lock = acquire_lifecycle_lock(state_path(lane_root))
     try:
-        return _record_item_unlocked(lane_root, item_id, packet_id=packet_id, outcome=outcome)
+        return _record_item_unlocked(lane_root, item_id, packet_id=packet_id, outcome=outcome,
+                                     failed_source_fingerprint=failed_source_fingerprint)
     finally:
         release_lifecycle_lock(lock)
 
@@ -264,10 +290,22 @@ def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
     done = {item["id"] for item in items if is_done(item, state)}
     for item in items:
         row = state.get("items", {}).get(item["id"], {})
+        packet_fingerprints = row.get("failed_source_by_packet", {})
+        fingerprints = (
+            [
+                fingerprint
+                for fingerprint in packet_fingerprints.values()
+                if isinstance(fingerprint, str)
+            ]
+            if isinstance(packet_fingerprints, dict)
+            else []
+        )
+        has_repeated_source = len(fingerprints) != len(set(fingerprints))
         if (item["repository"] == repo and item["status"] == "approved" and item["level"] <= max_level
                 and item.get("assignee") == AGENT_ID and not conflicts(item, items)
                 and item["level"] in BUILDABLE_LEVELS and item["id"] not in done
                 and row.get("attempts", 0) < MAX_ITEM_ATTEMPTS
+                and not has_repeated_source
                 # a directed slice that the model failed is not retried: it needs decomposition (an
                 # interrupted or environment-failed attempt is not a model failure)
                 and not (item.get("direct") and row.get("attempts", 0) >= DIRECT_ATTEMPTS

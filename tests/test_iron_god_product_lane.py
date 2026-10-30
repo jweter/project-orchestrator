@@ -763,7 +763,16 @@ def test_backlog_mode_builds_only_approved_items_exactly_as_written_and_links_th
 def test_a_backlog_item_waits_for_its_dependencies_and_stops_after_its_attempts(env):
     backlog_env(env, [backlog_item("A", REPOS[2], status="proposed"),
                       backlog_item("B", REPOS[2], depends_on=["A"]), backlog_item("C", REPOS[1])])
-    runner = Runner(plan=never_plans, preflight_ok=False)
+    # Distinct failed implementations must still consume the original bounded
+    # retry budget; identical failures are covered by the separate early-stop
+    # regression in test_iron_god_failed_source.py.
+    attempts = iter(range(backlog_mod.MAX_ITEM_ATTEMPTS))
+
+    def distinct_failed_agent(worktree, message, files, check):
+        good_agent(worktree, message, files, check,
+                   source=GOOD_MODULE + f"\n# failed-variant-{next(attempts)}\n")
+
+    runner = Runner(agent=distinct_failed_agent, plan=never_plans, preflight_ok=False)
     for _ in range(backlog_mod.MAX_ITEM_ATTEMPTS):
         assert step(env, runner)["backlog_item"] == "C"  # B waits for A, which is not approved
         step(env, runner)  # harvest the failed attempt
