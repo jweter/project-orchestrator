@@ -866,11 +866,17 @@ REVIEW_FINDING_CHARS = 1200
 def review_repair_message(repair: dict[str, Any]) -> str:
     """The recorded review findings, bounded, for one edit of the slice's module only."""
     module, test = repair["module_path"], repair["test_path"]
+    def clean(text: Any) -> str:
+        return " ".join(re.sub(r"<[^>]*>|!\[[^\]]*\]\([^)]*\)", "", str(text)).split())[:REVIEW_FINDING_CHARS]
+
     findings = []
     for row in repair.get("findings") or []:
-        body = re.sub(r"<[^>]*>|!\[[^\]]*\]\([^)]*\)", "", str(row.get("body", "")))
-        body = " ".join(body.split())[:REVIEW_FINDING_CHARS]
-        findings.append(f"- {row.get('path')}:{row.get('line') or '?'}: {body}")
+        # every comment of the conversation, each bounded, so a current-head follow-up is never cut off
+        comments = row.get("comments") or [{"body": row.get("body", ""), "on_current_head": False}]
+        lines = [f"- {row.get('path')}:{row.get('line') or '?'}: {clean(comments[0].get('body', ''))}"]
+        lines += [f"  follow-up{' on the current head' if c.get('on_current_head') else ''}: {clean(c.get('body', ''))}"
+                  for c in comments[1:]]
+        findings.extend(lines)
     return (f"Code review of pull request #{(repair.get('pr') or {}).get('number')} found problems in {module}. "
             f"Fix only {module}. Its tests in {test} are correct and must not change; keep them passing and keep "
             "the repository's type checker and linter clean. Address every finding:\n" + "\n".join(findings))

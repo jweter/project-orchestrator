@@ -1265,7 +1265,7 @@ def test_a_repaired_pull_request_is_reverified_and_then_merges(env):
     assert step(env, runner, github)["status"] == "REPAIR_ACCEPTED"
     repaired = only_item(env)
     assert repaired["state"] == "PUBLISH_PENDING" and repaired["head_sha"] != head
-    assert repaired["verified_by"] == f"{packet_id}-R1" and repaired["repaired_threads"] == ["T1"]
+    assert repaired["verified_by"].startswith(f"{packet_id}-R1-") and repaired["repaired_threads"] == ["T1"]
     step(env, runner, github, allow=False)  # fast-forward push to the same pull request; fresh CI
     assert len(github.opened) == 1 and github.pushed[-1] == (repaired["branch"], repaired["head_sha"])
     git(env.remotes[REPOS[1]], "merge-base", "--is-ancestor", head, repaired["head_sha"])  # raises if not FF
@@ -1348,3 +1348,59 @@ def test_a_reviewer_reopening_a_repaired_finding_on_the_new_head_gets_another_re
     assert github.resolved == [] and github.merged == []  # never resolved over a live current-head finding
     assert item["state"] == "REPAIR_PENDING" and item["readiness"]["reason"] == "REVIEW_FINDINGS_ON_CURRENT_HEAD"
 
+
+
+def test_owner_takeover_during_a_repair_requeues_it_without_spending_an_attempt(env):
+    """PR #588 review: a cancelled repair must not strand the pull request in REPAIRING."""
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans, agent=build_then_repair_agent), FakeGitHub(("pass",))
+    _packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head)]
+    step(env, runner, github, allow=False)
+    assert step(env, runner, github)["status"] == "DISPATCHED"
+    assert only_item(env)["state"] == "REPAIRING"
+    assert step(env, runner, github, decision=DENY)["status"] == "WORKER_STOPPED_AUTHORITY_REVOKED"
+    item = only_item(env)
+    assert item["state"] == "REPAIR_PENDING" and item["repair_attempts"] == 0
+    again = step(env, runner, github)  # authority back: the repair runs again, the repository is not stranded
+    assert again["status"] == "DISPATCHED" and again["repair_of"] == _packet_id
+    assert step(env, runner, github)["status"] == "REPAIR_ACCEPTED"
+
+
+def test_a_repair_whose_worker_vanished_is_reconciled_not_stranded(env):
+    runner, github = Runner(), FakeGitHub(("pass",))
+    packet_id, _item, _head = published(env, runner, github)
+    lane = pl.ProductLane(env.state)
+    items = lane.publications()["items"]
+    items[packet_id].update(state="REPAIRING", repair_attempts=1, repair_module="pkg/extra.py",  # crashed mid-repair
+                            repair_test="tests/test_extra.py", findings=[{"thread_id": "T1", "path": "pkg/extra.py"}])
+    pl._save_publications(lane, items)
+    step(env, runner, github)
+    assert only_item(env)["state"] in {"REPAIR_PENDING", "REPAIRING"}  # requeued (then possibly re-dispatched)
+
+
+def test_a_reviewer_follow_up_on_the_current_head_reaches_the_repair_worker(env):
+    """PR #588 review: the repair input must carry the current-head follow-up, not only the first comment."""
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    messages = []
+
+    def recording_agent(worktree, message, files, check):
+        messages.append(message)
+        build_then_repair_agent(worktree, message, files, check)
+
+    runner, github = Runner(plan=never_plans, agent=recording_agent), FakeGitHub(("pass",))
+    _packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head)]
+    step(env, runner, github, allow=False)
+    step(env, runner, github)
+    assert step(env, runner, github)["status"] == "REPAIR_ACCEPTED"
+    step(env, runner, github, allow=False)
+    repaired_head = only_item(env)["head_sha"]
+    github.threads[0]["comments"].append({"body": "Still wrong: -2 must return 0, see the boundary case",
+                                          "commit": repaired_head})
+    step(env, runner, github, allow=False)
+    finding = only_item(env)["findings"][0]
+    assert [c["on_current_head"] for c in finding["comments"]] == [False, True]
+    step(env, runner, github)  # second repair dispatched
+    assert "Still wrong: -2 must return 0" in messages[-1] and "on the current head" in messages[-1]
+    assert "P1 incorrect result" in messages[-1]

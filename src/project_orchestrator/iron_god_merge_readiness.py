@@ -58,13 +58,27 @@ def load_merger(release_repo: Path) -> ModuleType:
     return module
 
 
+FINDING_COMMENTS = 6
+FINDING_COMMENT_CHARS = 1500
+
+
 def finding(thread: dict[str, Any], head_sha: str, merger: ModuleType) -> dict[str, Any]:
+    """One review conversation as repair input: every comment with its commit, not just the first one.
+
+    A reviewer's follow-up on the current head ("still wrong because ...") is exactly what the next
+    repair must address, so the original finding and the latest follow-ups are all kept, in order.
+    """
     comments = thread.get("comments") or []
+    kept = comments if len(comments) <= FINDING_COMMENTS else [comments[0], *comments[-(FINDING_COMMENTS - 1):]]
+    rows = [{"commit": str(c.get("commit") or ""), "on_current_head": c.get("commit") == head_sha,
+             "body": str(c.get("body", ""))[:FINDING_COMMENT_CHARS]} for c in kept]
     return {"thread_id": thread.get("id"), "path": thread.get("path"), "line": thread.get("line"),
             "commit": next((c.get("commit") for c in comments if c.get("commit")), ""),
             "on_current_head": any(c.get("commit") == head_sha for c in comments),
             "blocking": bool(merger.blocking_threads([thread], head_sha)),
-            "body": (comments[0].get("body", "") if comments else "")[:4000]}
+            "comments": rows,
+            "body": "\n".join(("" if i == 0 else f"Follow-up on {r['commit'][:7]}: ") + r["body"]
+                              for i, r in enumerate(rows))}
 
 
 def assess(pr: dict[str, Any], threads: list[dict[str, Any]], *, verified_head: str, verification_ok: bool,

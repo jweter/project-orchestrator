@@ -803,6 +803,14 @@ def advance_product_lane(
                 lane.save(transition_packet(ledger, active["packet_id"], state="CANCELLED",
                                             evidence_ref="owner-controller:" + ",".join(reasons)[:200]), ledger)
             lane.active_path.unlink(missing_ok=True)
+            if active.get("repair_of"):
+                # The owner taking control is not a failed repair: the publication waits for the next
+                # authorized pass with its attempt refunded, instead of being stranded in REPAIRING.
+                items = lane.publications()["items"]
+                pub = items.get(active["repair_of"])
+                if pub is not None and pub.get("state") == "REPAIRING":
+                    pub.update(state="REPAIR_PENDING", repair_attempts=max(0, int(pub.get("repair_attempts", 1)) - 1))
+                    _save_publications(lane, items)
             working_memory.record(state_root, active["repository"], "WORKER_STOPPED_AUTHORITY_REVOKED",
                                   packet_id=active["packet_id"], outcome="CANCELLED", active=None)
             return _report(lane, {"status": "WORKER_STOPPED_AUTHORITY_REVOKED", "packet_id": active["packet_id"],
@@ -828,6 +836,16 @@ def advance_product_lane(
     if refused:
         return _report(lane, {"status": "WAITING_FOR_CALIBRATION", "reason": refused})
     publications = lane.publications()["items"]
+    stranded = [pid for pid, item in publications.items() if item["state"] == "REPAIRING"]
+    for pid in stranded:  # no worker is active, so a REPAIRING publication lost its repair (e.g. a crash)
+        item = publications[pid]
+        if int(item.get("repair_attempts", 0)) < MAX_REVIEW_REPAIRS:
+            item.update(state="REPAIR_PENDING")
+        else:
+            item.update(state="BLOCKED", reason="REVIEW_REPAIR_EXHAUSTED: last repair worker ended without a handback")
+            _record_slice_outcome(lane, pid, "PR_BLOCKED")
+    if stranded:
+        _save_publications(lane, publications)
     pending_repair = next(((pid, item) for pid, item in sorted(publications.items())
                            if item["state"] == "REPAIR_PENDING"), None)
     if pending_repair is not None:  # finishing an open pull request comes before starting new work
@@ -962,8 +980,9 @@ def dispatch_repair(lane: ProductLane, release_repo: Path, ledger: dict[str, Any
     repo, head = item["repository"], item["head_sha"]
     clone = lane.clone(repo)
     attempt = int(item.get("repair_attempts", 0)) + 1
-    repair_id = f"{publication_id}-R{attempt}"
-    branch = f"{item['branch']}-repair-{attempt}"
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")  # unique: a cancelled repair keeps its worktree
+    repair_id = f"{publication_id}-R{attempt}-{stamp}"
+    branch = f"{item['branch']}-repair-{attempt}-{stamp.lower()}"
     worktree = lane.worktrees / repair_id
 
     def block(reason: str) -> dict[str, Any]:
@@ -975,6 +994,9 @@ def dispatch_repair(lane: ProductLane, release_repo: Path, ledger: dict[str, Any
         return _report(lane, {"status": "REVIEW_REPAIR_NOT_DISPATCHED", "packet_id": publication_id,
                               "reason": reason[:300]})
 
+    module, test = item.get("repair_module"), item.get("repair_test")
+    if not module or not test or not item.get("findings"):
+        return block("REPAIR_RECORD_INCOMPLETE")
     if _git(clone, "cat-file", "-e", f"{head}^{{commit}}").returncode != 0:
         _git(clone, "fetch", "-q", "origin", item["branch"])
         if _git(clone, "cat-file", "-e", f"{head}^{{commit}}").returncode != 0:
@@ -983,7 +1005,6 @@ def dispatch_repair(lane: ProductLane, release_repo: Path, ledger: dict[str, Any
     if added.returncode != 0:
         return block("REPAIR_WORKTREE_PROVISION_FAILED: " + added.stderr[-200:])
     original = json.loads((lane.packets / f"{publication_id}.json").read_text(encoding="utf-8"))
-    module, test = item["repair_module"], item["repair_test"]
     avoid = [p for p in owned_paths(repo) if p not in {module, test}]
     packet = build_product_packet(repo, packet_id=repair_id, base=head, worktree=worktree, branch=branch,
                                   roots=original["paths"], avoid=avoid, memory_text="", project=original["project"])
