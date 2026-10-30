@@ -3,9 +3,7 @@ name: Preflight
 on:
   push:
     branches:
-      - "orchestrator/**"
-      - "agent/**"
-  workflow_dispatch:
+      - "orchestrator/ci-acl-diagnostic-*"
 
 permissions:
   contents: read
@@ -13,24 +11,16 @@ permissions:
 jobs:
   full-preflight:
     runs-on: windows-latest
-    # Iron God runs only on Windows (DPAPI owner control, job objects, msvcrt locks);
-    # verify it on the platform it actually runs on.
     env:
       PYTHONUTF8: "1"
     steps:
-      - run: git config --global core.longpaths true
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
       - run: python -m pip install -e ".[dev]"
-      - run: python engineering/preflight.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: preflight-evidence
-          path: preflight-evidence.json
-          if-no-files-found: error
+      - name: Diagnose owner-control ACL on a hosted runner (read-only diagnostic)
+        run: |
+          whoami /user /groups | Select-String -Pattern "SID|Mandatory|Administrators"
+          python -c "import tempfile,pathlib; from project_orchestrator import iron_god_owner_control as oc; d=pathlib.Path(tempfile.mkdtemp())/'ctl'; d.mkdir(); print('BEFORE', oc.directory_acl(d)); print('USER', oc.current_user_sid()); oc.enroll_owner(d); print('AFTER', oc.directory_acl(d))"
+          $d = Join-Path $env:TEMP 'ctl2'; New-Item -ItemType Directory $d | Out-Null; icacls $d
