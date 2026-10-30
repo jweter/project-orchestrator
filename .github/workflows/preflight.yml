@@ -19,6 +19,17 @@ jobs:
       PYTHONUTF8: "1"
     steps:
       - run: git config --global core.longpaths true
+      - name: Put test temp on the runner drive with the most free space
+        # The storage-pressure allocation gate (35 GiB) runs for real in the proofs.
+        shell: pwsh
+        run: |
+          $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free }
+          $drives | Format-Table Name, @{n='FreeGiB'; e={[math]::Round($_.Free / 1GB, 1)}}
+          $best = $drives | Sort-Object Free -Descending | Select-Object -First 1
+          $t = Join-Path $best.Root 't'
+          New-Item -ItemType Directory -Force $t | Out-Null
+          "TEMP=$t" >> $env:GITHUB_ENV
+          "TMP=$t" >> $env:GITHUB_ENV
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
