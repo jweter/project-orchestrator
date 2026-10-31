@@ -83,6 +83,15 @@ class NativeWindowsRuntime:
                 try:
                     if job is not None:
                         job.attach(process)
+                        # Authority may have been revoked while the child was
+                        # created. Re-check before it executes a single
+                        # instruction; a revoked launch is never resumed.
+                        try:
+                            authority_check()
+                        except Exception as exc:
+                            job.close()
+                            self._terminate_tree(process)
+                            raise RuntimeError("EXECUTION_AUTHORITY_REVOKED") from exc
                         resume_suspended_process(process)
                 except ProcessJobError as exc:
                     # A never-resumed process cannot have created descendants.
@@ -110,6 +119,15 @@ class NativeWindowsRuntime:
                         raise subprocess.TimeoutExpired(request.argv,float(request.timeout_seconds))
                     time.sleep(interval)
                 process.wait()
+                # A fast-exiting root proves neither that its job-owned
+                # descendants finished nor that authority persisted. Re-check
+                # before returning any apparently successful result.
+                try:
+                    authority_check()
+                except Exception as exc:
+                    if job is not None:
+                        job.close()
+                    raise RuntimeError("EXECUTION_AUTHORITY_REVOKED") from exc
                 stdout_file.seek(0); stderr_file.seek(0)
                 return RuntimeResult(
                     self.runtime_id,process.returncode,stdout_file.read(),stderr_file.read()
