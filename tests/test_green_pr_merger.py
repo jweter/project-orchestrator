@@ -113,3 +113,37 @@ def test_review_thread_resolution_unavailable_fails_closed(monkeypatch):
     monkeypatch.setattr(merger,"gh_json",lambda args:{"data":{"repository":{"pullRequest":{}}}})
     with pytest.raises(RuntimeError,match="resolution state unavailable"):
         merger.blocking_review_findings("o/r",1,"head")
+
+
+def test_review_reader_refuses_incomplete_graphql_pages(monkeypatch):
+    """A GitHub GraphQL first:100 cap must not hide a blocking review."""
+    import pytest
+    import scripts.green_pr_merger as merger
+
+    thread={"isResolved":False,"path":"src/safety.py","comments":{
+        "nodes":[{"body":"P1 authorization regression","commit":{"oid":"head"}}]}}
+    def check(review_nodes, *, review_more=False, comment_more=False):
+        review={"nodes":review_nodes,"pageInfo":{"hasNextPage":review_more}}
+        if comment_more:
+            review_nodes[0]["comments"]["pageInfo"]={"hasNextPage":True}
+        monkeypatch.setattr(merger,"gh_json",lambda _args:{
+            "data":{"repository":{"pullRequest":{"reviewThreads":review}}}})
+        with pytest.raises(RuntimeError,match="REVIEW_(THREADS|COMMENTS)_INCOMPLETE"):
+            merger.review_threads("o/r",1)
+
+    check([thread.copy()],review_more=True)
+    check([thread.copy() for _ in range(100)])
+    check([thread.copy()],comment_more=True)
+    large={"isResolved":False,"comments":{"nodes":[{"body":"P1","commit":{"oid":"head"}}] * 100}}
+    check([large])
+
+
+def test_review_reader_rejects_malformed_comment_payload(monkeypatch):
+    import pytest
+    import scripts.green_pr_merger as merger
+
+    monkeypatch.setattr(merger,"gh_json",lambda _args:{
+        "data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[
+            {"isResolved":False,"comments":{}}]}}}}})
+    with pytest.raises(RuntimeError,match="REVIEW_COMMENTS_INCOMPLETE"):
+        merger.review_threads("o/r",1)
