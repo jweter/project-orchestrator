@@ -83,14 +83,6 @@ class NativeWindowsRuntime:
                 try:
                     if job is not None:
                         job.attach(process)
-                        try:
-                            authority_check()
-                        except Exception as exc:
-                            job.close()
-                            if process.poll() is None:
-                                process.kill()
-                            process.wait()
-                            raise RuntimeError("EXECUTION_AUTHORITY_REVOKED") from exc
                         resume_suspended_process(process)
                 except ProcessJobError as exc:
                     # A never-resumed process cannot have created descendants.
@@ -118,10 +110,6 @@ class NativeWindowsRuntime:
                         raise subprocess.TimeoutExpired(request.argv,float(request.timeout_seconds))
                     time.sleep(interval)
                 process.wait()
-                try:
-                    authority_check()
-                except Exception as exc:
-                    raise RuntimeError("EXECUTION_AUTHORITY_REVOKED") from exc
                 stdout_file.seek(0); stderr_file.seek(0)
                 return RuntimeResult(
                     self.runtime_id,process.returncode,stdout_file.read(),stderr_file.read()
