@@ -32,6 +32,10 @@ def _stamp(raw: object) -> datetime | None:
         return None
 
 
+def _within(moment: datetime | None, started: datetime | None, current: datetime) -> bool:
+    return moment is not None and started is not None and started <= moment <= current
+
+
 def assess_delivery_throughput(
     state_root: Path,
     authorized_products: list[str],
@@ -70,12 +74,11 @@ def assess_delivery_throughput(
         finished = _stamp(
             record.get("execution_finished_at") or record.get("finished_at")
         )
-        if finished is None or started is None or not started <= finished <= current:
-            continue
         base = record.get("exact_head")
         head = record.get("head_sha")
         if (
-            isinstance(base, str)
+            _within(finished, started, current)
+            and isinstance(base, str)
             and isinstance(head, str)
             and len(base) == len(head) == 40
             and head != base
@@ -83,6 +86,15 @@ def assess_delivery_throughput(
             candidate_count += 1
         quality = record.get("outcome_quality")
         if not isinstance(quality, str) or quality not in _DELIVERED:
+            continue
+        # A delivery counts when it was verified, not when its worker finished: a merge verified after a
+        # supervisor restart is this run's delivery. Older records without the stamp keep the finish time.
+        verified_at = _stamp(
+            record.get("product_reality_verified_at")
+            if quality == "PRODUCT_REALITY_VERIFIED"
+            else None
+        ) or _stamp(record.get("merged_verified_at")) or finished
+        if not _within(verified_at, started, current):
             continue
         verified_count += 1
         merged_count += 1

@@ -70,6 +70,17 @@ def test_local_human_mode_keeps_control_plane_and_dashboard_alive():
     assert "foundry_dashboard_server.py" not in text
 
 
+def test_local_human_mode_reports_success_only_when_the_owner_controller_confirms_it():
+    """PR #586 review: a swallowed bridge failure let this script claim a human handoff it never recorded."""
+    text = Path("scripts/enter_human_mode.ps1").read_text(encoding="utf-8")
+    assert "catch {}" not in text
+    check = text.index('-ceq "OWNER_CONTROL_ACTIVE"')
+    failure = text.index("HUMAN MODE NOT CONFIRMED")
+    success = text.index("HUMAN MODE ACTIVE - autonomous development stopped.")
+    assert check < failure < success and "exit 3" in text[failure:success]
+    assert text.index("Stop-Process") < check  # the workers are stopped whatever the controller says
+
+
 def test_remote_recovery_and_deploy_have_owner_veto_before_side_effects():
     text = FALLBACK.read_text(encoding="utf-8")
     remote = text[text.index("function Invoke-RemoteControlRestart"):text.index("function Invoke-ControlPlaneRecovery")]

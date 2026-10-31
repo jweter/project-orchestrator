@@ -47,7 +47,9 @@ def triage_quarantines(
             timestamp_unknown += 1
             continue
         age = (current - date).total_seconds()
-        if 0 <= age <= recent_seconds:
+        if age < 0:  # a future timestamp is skewed or corrupt evidence, not proof of an old grant
+            timestamp_unknown += 1
+        elif age <= recent_seconds:
             recent += 1
         else:
             old += 1
