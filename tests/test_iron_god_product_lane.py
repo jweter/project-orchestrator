@@ -1404,3 +1404,36 @@ def test_a_reviewer_follow_up_on_the_current_head_reaches_the_repair_worker(env)
     step(env, runner, github)  # second repair dispatched
     assert "Still wrong: -2 must return 0" in messages[-1] and "on the current head" in messages[-1]
     assert "P1 incorrect result" in messages[-1]
+
+
+def test_reviewer_followup_arriving_just_before_thread_resolution_is_not_silenced(env):
+    """A new current-head review between snapshots must cause repair, not auto-resolution."""
+    class LateReviewer(FakeGitHub):
+        def __init__(self):
+            super().__init__(("pass",))
+            self.thread_reads = 0
+
+        def review_threads(self, repo, number):
+            self.thread_reads += 1
+            if self.thread_reads == 2:
+                head = self.heads[self.branches[number]]
+                self.threads[0]["comments"].append({
+                    "body": "P1: current-head correction arrived after readiness snapshot",
+                    "commit": head,
+                })
+            return super().review_threads(repo, number)
+
+    runner, github = Runner(), LateReviewer()
+    packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", "b" * 40)]
+    lane = pl.ProductLane(env.state)
+    items = lane.publications()["items"]
+    items[packet_id]["repaired_threads"] = ["T1"]
+    pl._save_publications(lane, items)
+
+    step(env, runner, github, allow=False)
+    item = only_item(env)
+    assert item["state"] == "REPAIR_PENDING"
+    assert item["readiness"]["reason"] == "REVIEW_FINDINGS_ON_CURRENT_HEAD"
+    assert item["findings"][0]["comments"][-1]["commit"] == head
+    assert github.resolved == [] and github.merged == []

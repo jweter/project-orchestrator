@@ -596,12 +596,24 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
                     elif gate.status == readiness.REPAIR:
                         _request_review_repair(lane, packet_id, item, gate)
                     elif gate.status == readiness.RESOLVE:
-                        for row in gate.findings:
-                            github.resolve_thread(str(row["thread_id"]))
-                        item.setdefault("resolved_threads", []).extend(row["thread_id"] for row in gate.findings)
-                        working_memory.record(lane.state_root, repo, "REVIEW_THREADS_RESOLVED", packet_id=packet_id,
-                                              detail=f"{len(gate.findings)} repaired finding(s) resolved",
-                                              pr={**item["pr"], "state": "AWAITING_MERGE_STATE"})
+                        # New review feedback can arrive after the first snapshot, before a resolution.
+                        # Read the current head and comments again immediately before mutating threads.
+                        # Never clear a thread whose latest review now demands another repair.
+                        fresh = merge_readiness(lane, github, packet_id, item)
+                        item["readiness"] = {"status": fresh.status, "reason": fresh.reason, "at_utc": _now()}
+                        expected_threads = {str(row["thread_id"]) for row in gate.findings}
+                        fresh_threads = {str(row["thread_id"]) for row in fresh.findings}
+                        if fresh.status == readiness.REPAIR:
+                            _request_review_repair(lane, packet_id, item, fresh)
+                        elif fresh.status != readiness.RESOLVE or fresh_threads != expected_threads:
+                            raise RuntimeError("REVIEW_RESOLUTION_STATE_CHANGED: fresh review evidence required")
+                        else:
+                            for row in fresh.findings:
+                                github.resolve_thread(str(row["thread_id"]))
+                            item.setdefault("resolved_threads", []).extend(row["thread_id"] for row in fresh.findings)
+                            working_memory.record(lane.state_root, repo, "REVIEW_THREADS_RESOLVED", packet_id=packet_id,
+                                                  detail=f"{len(fresh.findings)} repaired finding(s) resolved",
+                                                  pr={**item["pr"], "state": "AWAITING_MERGE_STATE"})
                     elif gate.status == readiness.WAIT and now() - item["published_at"] <= CI_TOTAL_SECONDS:
                         pass  # review still settling or GitHub still computing mergeability
                     else:
