@@ -56,7 +56,7 @@ def test_draft_requires_refetch_before_merge(monkeypatch):
 
 def test_review_usage_limit_is_blocking_evidence(monkeypatch):
     import scripts.green_pr_merger as merger
-    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":False,"comments":{"nodes":[{"body":"You have reached your Codex usage limits for code reviews.","commit":{"oid":"head"}}]}}]}}}}}
+    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":False},"nodes":[{"isResolved":False,"comments":{"pageInfo":{"hasNextPage":False},"nodes":[{"body":"You have reached your Codex usage limits for code reviews.","commit":{"oid":"head"}}]}}]}}}}}
     monkeypatch.setattr(merger,"gh_json",lambda args:payload)
     assert merger.blocking_review_findings("o/r",1,"head") is True
 
@@ -95,14 +95,14 @@ def test_pr_failure_does_not_block_next_pr(monkeypatch):
 
 def test_resolved_blocking_review_thread_does_not_block(monkeypatch):
     import scripts.green_pr_merger as merger
-    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":True,"comments":{"nodes":[{"body":"P1 blocking regression","commit":{"oid":"head"}}]}}]}}}}}
+    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":False},"nodes":[{"isResolved":True,"comments":{"pageInfo":{"hasNextPage":False},"nodes":[{"body":"P1 blocking regression","commit":{"oid":"head"}}]}}]}}}}}
     monkeypatch.setattr(merger,"gh_json",lambda args:payload)
     assert merger.blocking_review_findings("o/r",1,"head") is False
 
 
 def test_unresolved_blocking_review_thread_blocks(monkeypatch):
     import scripts.green_pr_merger as merger
-    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":False,"comments":{"nodes":[{"body":"P1 blocking regression","commit":{"oid":"head"}}]}}]}}}}}
+    payload={"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":False},"nodes":[{"isResolved":False,"comments":{"pageInfo":{"hasNextPage":False},"nodes":[{"body":"P1 blocking regression","commit":{"oid":"head"}}]}}]}}}}}
     monkeypatch.setattr(merger,"gh_json",lambda args:payload)
     assert merger.blocking_review_findings("o/r",1,"head") is True
 
@@ -134,7 +134,7 @@ def test_review_reader_refuses_incomplete_graphql_pages(monkeypatch):
     check([thread.copy()],review_more=True)
     check([thread.copy() for _ in range(100)])
     check([thread.copy()],comment_more=True)
-    large={"isResolved":False,"comments":{"nodes":[{"body":"P1","commit":{"oid":"head"}}] * 100}}
+    large={"isResolved":False,"comments":{"pageInfo":{"hasNextPage":False},"nodes":[{"body":"P1","commit":{"oid":"head"}}] * 100}}
     check([large])
 
 
@@ -143,7 +143,41 @@ def test_review_reader_rejects_malformed_comment_payload(monkeypatch):
     import scripts.green_pr_merger as merger
 
     monkeypatch.setattr(merger,"gh_json",lambda _args:{
-        "data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[
+        "data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":False},"nodes":[
             {"isResolved":False,"comments":{}}]}}}}})
     with pytest.raises(RuntimeError,match="REVIEW_COMMENTS_INCOMPLETE"):
         merger.review_threads("o/r",1)
+
+
+def test_review_reader_rejects_missing_or_invalid_pagination_metadata(monkeypatch):
+    """Missing pageInfo is not proof that all review findings were delivered."""
+    import pytest
+    import scripts.green_pr_merger as merger
+
+    comment={"body":"P1 must not merge", "commit":{"oid":"current-head"}}
+    thread={"isResolved":False,"comments":{"nodes":[comment],
+                                            "pageInfo":{"hasNextPage":False}}}
+    payloads=[
+        {"nodes":[]},
+        {"pageInfo":{},"nodes":[]},
+        {"pageInfo":{"hasNextPage":None},"nodes":[]},
+        {"pageInfo":{"hasNextPage":"false"},"nodes":[]},
+        {"pageInfo":{"hasNextPage":False},"nodes":[
+            {"isResolved":False,"comments":{"nodes":[comment]}}]},
+        {"pageInfo":{"hasNextPage":False},"nodes":[
+            {"isResolved":False,"comments":{"pageInfo":{},"nodes":[comment]}}]},
+        {"pageInfo":{"hasNextPage":False},"nodes":[
+            {"isResolved":False,"comments":{"pageInfo":{"hasNextPage":"false"},
+                                             "nodes":[comment]}}]},
+    ]
+    for review_data in payloads:
+        monkeypatch.setattr(merger,"gh_json",lambda _args,data=review_data:{
+            "data":{"repository":{"pullRequest":{"reviewThreads":data}}}})
+        with pytest.raises(RuntimeError,match="REVIEW_(THREADS|COMMENTS)_INCOMPLETE"):
+            merger.review_threads("o/r",1)
+
+    # A genuinely complete empty review page remains valid (not a missing response).
+    monkeypatch.setattr(merger,"gh_json",lambda _args:{
+        "data":{"repository":{"pullRequest":{"reviewThreads":{
+            "pageInfo":{"hasNextPage":False},"nodes":[]}}}}})
+    assert merger.review_threads("o/r",1)==[]

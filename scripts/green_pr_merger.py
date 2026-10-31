@@ -97,17 +97,21 @@ def review_threads(repo:str, number:int)->list[dict[str,Any]]:
     # Fail closed on unknown/truncated pages rather than silently treating
     # review findings on a subsequent page as absent.
     review_data=((((payload.get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {})
-    page=(review_data.get("pageInfo") or {})
-    if page.get("hasNextPage") is True or len(threads)>=100:
+    page=review_data.get("pageInfo")
+    if not isinstance(page,dict) or type(page.get("hasNextPage")) is not bool:
+        raise RuntimeError("REVIEW_THREADS_INCOMPLETE: pagination metadata unavailable")
+    if page["hasNextPage"] or len(threads)>=100:
         raise RuntimeError("REVIEW_THREADS_INCOMPLETE: pagination required")
     if any(not isinstance(t,dict) for t in threads):
         raise RuntimeError("REVIEW_THREAD_INVALID: incomplete GitHub review evidence")
     for thread in threads:
         comments=thread.get("comments") or {}
         nodes=comments.get("nodes")
-        if (not isinstance(nodes,list) or
-                (comments.get("pageInfo") or {}).get("hasNextPage") is True or
-                len(nodes)>=100 or any(not isinstance(c,dict) for c in nodes)):
+        comment_page=comments.get("pageInfo")
+        if (not isinstance(nodes,list) or not isinstance(comment_page,dict) or
+                type(comment_page.get("hasNextPage")) is not bool or
+                comment_page["hasNextPage"] or len(nodes)>=100 or
+                any(not isinstance(c,dict) for c in nodes)):
             raise RuntimeError("REVIEW_COMMENTS_INCOMPLETE: pagination required")
     return [{"id":str(t.get("id") or ""),"resolved":t.get("isResolved") is True,"path":t.get("path"),"line":t.get("line"),
              "comments":[{"body":str(c.get("body","")),"commit":str(((c.get("commit") or {}).get("oid")) or "")}
