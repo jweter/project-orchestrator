@@ -653,6 +653,16 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
 def harvest(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], active: dict[str, Any], *,
             gates: Callable[[Path, str, list[str]], str | None]) -> dict[str, Any]:
     packet_id = active["packet_id"]
+    record = ledger["packets"].get(packet_id)
+    if record is None or record["state"] not in ACTIVE_STATES:
+        # 2026-10-31 audit: a pass that saved the harvested ledger but stopped before removing active.json
+        # (a crash or reboot) must not re-harvest it; record_worker_result refuses a settled packet, so the
+        # lane raised on every later pass and never dispatched again.
+        lane.active_path.unlink(missing_ok=True)
+        working_memory.record(lane.state_root, active["repository"], "HARVEST_ALREADY_RECORDED",
+                              packet_id=packet_id, active=None)
+        return _report(lane, {"status": "HARVEST_ALREADY_RECORDED", "packet_id": packet_id,
+                              "state": record["state"] if record else None})
     packet = json.loads((lane.packets / f"{packet_id}.json").read_text(encoding="utf-8"))
     repo = packet["repository"]
     try:
@@ -851,6 +861,16 @@ def advance_product_lane(
         result = harvest(lane, release_repo, ledger, active, gates=gates or default_gates(release_repo))
         _release(pool, active)
         return result
+    orphaned = sorted(pid for pid, record in ledger["packets"].items() if record["state"] in ACTIVE_STATES)
+    if orphaned:
+        # 2026-10-31 audit: a pass that recorded DISPATCHED but stopped before active.json named the worker
+        # left the packet active with nothing able to harvest it. With no active turn it can never finish.
+        settled = ledger
+        for pid in orphaned:
+            settled = transition_packet(settled, pid, state="CANCELLED",
+                                        evidence_ref="product-lane:ORPHANED_DISPATCH_NO_ACTIVE_RECORD")
+        lane.save(settled, ledger)
+        ledger = settled
     if not allow_dispatch:
         return _report(lane, {"status": "WAITING_FOR_COMMISSIONING_LANE", "publications": published})
     refused = (capability or (lambda s: capability_gate(load_profile(state_root), s)))(

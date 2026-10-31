@@ -32,6 +32,7 @@ def handback(status, summary, **directed):
     ("FAIL", "SLICE_TESTS_FAILED", {"test_failure": "E   assert 1 == 2"}, "SLICE_TESTS_FAILED"),
     ("FAIL", "SLICE_TESTS_FAILED", {"test_failure": "a.py:3:101: E501 Line too long"}, "STATIC_LINE_LENGTH"),
     ("PASS", "ok", {}, "PASSED"),
+    ("FAIL", "canonical preflight failed", {}, "PREFLIGHT_FAILED"),
     ("ENVIRONMENT_FAILURE", "DIRECTED_WORKER_ERROR: OSError", {}, "ENVIRONMENT"),
 ])
 def test_failures_are_classified_from_the_workers_own_result(status, summary, directed, expected):

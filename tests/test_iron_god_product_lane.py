@@ -1462,3 +1462,38 @@ def test_current_head_review_added_between_merge_readiness_and_merge_queues_repa
     assert item["state"] == "REPAIR_PENDING"
     assert item["readiness"]["reason"] == "REVIEW_FINDINGS_ON_CURRENT_HEAD"
     assert item["findings"][0]["thread_id"] == "T-LATE"
+
+
+def test_a_harvest_interrupted_after_the_ledger_save_is_finished_on_the_next_pass(env):
+    # A crash between the ledger save and removing active.json left a harvested turn "active": every
+    # later pass re-harvested it, record_worker_result refused the settled packet, and the lane wedged.
+    runner = Runner()
+    dispatched = step(env, runner)
+    lane = pl.ProductLane(env.state)
+    active = lane.active_path.read_text(encoding="utf-8")
+    assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
+    lane.active_path.write_text(active, encoding="utf-8")  # the interrupted unlink
+    before = lane.ledger()
+    result = step(env, runner, allow=False)
+    assert result["status"] == "HARVEST_ALREADY_RECORDED" and result["packet_id"] == dispatched["packet_id"]
+    assert lane.active() is None and lane.ledger() == before  # nothing re-recorded
+    assert len(lane.publications()["items"]) == 1
+    assert env.pool.running(pl.WORKER_LEASE_RUNTIME) == 0
+
+
+def test_a_dispatch_interrupted_before_active_json_is_cancelled_not_left_dispatched(env):
+    # A crash after the ledger recorded DISPATCHED but before active.json named the worker left the
+    # packet DISPATCHED forever: no pass could harvest it, and it never reached a terminal state.
+    runner = Runner()
+    dispatched = step(env, runner)
+    lane = pl.ProductLane(env.state)
+    lease_id = json.loads(lane.active_path.read_text(encoding="utf-8"))["lease_id"]
+    lane.active_path.unlink()
+    env.pool.release(pl.WORKER_LEASE_ID, lease_id)  # the crashed supervisor's lease, reclaimed as a dead owner's
+    result = step(env, runner, allow=False)
+    record = lane.ledger()["packets"][dispatched["packet_id"]]
+    assert record["state"] == "CANCELLED", result
+    last = lane.ledger()["events"][-1]
+    assert last["packet_id"] == dispatched["packet_id"] and last["state_after"] == "CANCELLED"
+    assert last["evidence_ref"] == "product-lane:ORPHANED_DISPATCH_NO_ACTIVE_RECORD"
+    assert step(env, runner)["status"] == "DISPATCHED"  # the rotation continues

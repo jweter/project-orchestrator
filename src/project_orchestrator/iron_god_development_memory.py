@@ -97,6 +97,9 @@ def classify(status: str, summary: str, directed: dict[str, Any]) -> str:
         if ": error:" in failure:
             return "STATIC_MYPY"
         return "SLICE_TESTS_FAILED"
+    if "canonical preflight failed" in text:
+        # The slice's own tests passed but the repository's whole preflight did not (KEC-9/10, 2026-10-29).
+        return "PREFLIGHT_FAILED"
     if status == "ENVIRONMENT_FAILURE":
         return "ENVIRONMENT"
     return "OTHER"
