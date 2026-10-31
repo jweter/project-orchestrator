@@ -739,6 +739,19 @@ def execute_product_packet(
         if not authority():
             raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
 
+    repair = packet.get("repair")
+    if repair:  # a bounded review repair of an open pull request's module, on its exact head
+        try:
+            return execute_review_repair(packet, repair, worktree, base, handback, finish, authority=authority,
+                                         check=check, run_agent=run_agent, gates=gates, preflight=preflight,
+                                         format_files=format_files)
+        except RuntimeError as exc:
+            if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
+                return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_REVIEW_REPAIR")
+            return finish("ENVIRONMENT_FAILURE", f"REVIEW_REPAIR_FAILED_TO_RUN: {str(exc)[:300]}")
+        except Exception as exc:  # the handback is always written
+            return finish("ENVIRONMENT_FAILURE", f"REVIEW_REPAIR_FAILED_TO_RUN: {type(exc).__name__}")
+
     direct = (packet.get("slice") or {}).get("direct")
     if direct:  # an approved Level 2 slice: a directed edit of named units in one existing module
         try:
@@ -844,6 +857,69 @@ def execute_product_packet(
     return commit_and_verify(packet, worktree, base, changed, [module, test],
                              f"iron-god: add {slice_plan['function_name']} ({packet['packet_id']})", quick, handback,
                              finish, authority=authority, check=check, gates=gates, preflight=preflight,
+                             format_files=format_files)
+
+
+REVIEW_FINDING_CHARS = 1200
+
+
+def review_repair_message(repair: dict[str, Any]) -> str:
+    """The recorded review findings, bounded, for one edit of the slice's module only."""
+    module, test = repair["module_path"], repair["test_path"]
+    def clean(text: Any) -> str:
+        return " ".join(re.sub(r"<[^>]*>|!\[[^\]]*\]\([^)]*\)", "", str(text)).split())[:REVIEW_FINDING_CHARS]
+
+    findings = []
+    for row in repair.get("findings") or []:
+        # every comment of the conversation, each bounded, so a current-head follow-up is never cut off
+        comments = row.get("comments") or [{"body": row.get("body", ""), "on_current_head": False}]
+        lines = [f"- {row.get('path')}:{row.get('line') or '?'}: {clean(comments[0].get('body', ''))}"]
+        lines += [f"  follow-up{' on the current head' if c.get('on_current_head') else ''}: {clean(c.get('body', ''))}"
+                  for c in comments[1:]]
+        findings.extend(lines)
+    return (f"Code review of pull request #{(repair.get('pr') or {}).get('number')} found problems in {module}. "
+            f"Fix only {module}. Its tests in {test} are correct and must not change; keep them passing and keep "
+            "the repository's type checker and linter clean. Address every finding:\n" + "\n".join(findings))
+
+
+def execute_review_repair(packet: dict[str, Any], repair: dict[str, Any], worktree: Path, base: str,
+                          handback: dict[str, Any], finish: Callable[[str, str], dict[str, Any]], *,
+                          authority: Callable[[], bool], check: Callable[[], None],
+                          run_agent: Callable[[Path, str, list[str], Callable[[], None]], Any],
+                          gates: Callable[[Path, str, list[str]], str | None],
+                          preflight: Callable[[Path, Callable[[], None], int], dict[str, Any]],
+                          format_files: Callable[[Path, list[str], Callable[[], None]], str]) -> dict[str, Any]:
+    """One directed review repair: only the slice's module changes, its tests stay byte-identical and pass,
+    then the same commit, change gates and canonical preflight as any other turn. Never retried in a loop:
+    the lane bounds the attempts and records each one."""
+    module, test = str(repair.get("module_path") or ""), str(repair.get("test_path") or "")
+    if (not module.endswith(".py") or module.startswith("tests/") or not _under(module, packet["paths"])
+            or _under(module, packet["planning"]["forbidden_paths"]) or not test.startswith("tests/")):
+        return finish("FAIL", f"REVIEW_REPAIR_MODULE_INVALID: {module[:120]}")
+    if not (worktree / module).is_file() or not (worktree / test).is_file():
+        return finish("FAIL", "REVIEW_REPAIR_FILES_MISSING")
+    if not repair.get("findings"):
+        return finish("FAIL", "REVIEW_REPAIR_HAS_NO_FINDINGS")
+    test_bytes = (worktree / test).read_bytes()
+    handback["plan"] = {"mode": "review_repair", "module_path": module, "test_path": test,
+                        "objective": packet["task"], "findings": len(repair["findings"])}
+    run_agent(worktree, review_repair_message(repair), [module], check)
+    handback["transcript_tail"] = transcript_tail(worktree)
+    for artifact in worktree.glob(".aider*"):
+        remove_tree(artifact) if artifact.is_dir() else artifact.unlink()
+    changed = changed_paths(worktree)
+    handback["changed_paths"] = changed
+    if (worktree / test).read_bytes() != test_bytes or set(changed) - {module}:
+        return finish("REVIEW_REQUIRED", "REVIEW_REPAIR_CHANGED_MORE_THAN_THE_MODULE: " + ", ".join(sorted(changed)))
+    if module not in changed:
+        return finish("FAIL", "REVIEW_REPAIR_PRODUCED_NO_CHANGE")
+    quick = slice_checks(worktree, module, test, check)
+    handback["verification"] = [quick]
+    if not quick["ok"]:
+        return finish("FAIL", "REVIEW_REPAIR_TESTS_FAILED")
+    return commit_and_verify(packet, worktree, base, [module], [module],
+                             f"iron-god: repair review findings in {module} ({packet['packet_id']})", quick,
+                             handback, finish, authority=authority, check=check, gates=gates, preflight=preflight,
                              format_files=format_files)
 
 

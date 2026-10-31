@@ -85,23 +85,47 @@ def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
             latest=max(latest,datetime.fromisoformat(str(stamp).replace("Z","+00:00")))
     return (datetime.now(UTC)-latest).total_seconds() >= REVIEW_SETTLE_SECONDS
 
-def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
+def review_threads(repo:str, number:int)->list[dict[str,Any]]:
+    """Every review thread as {id, resolved, path, line, comments:[{body, commit}]}; fails closed if unavailable."""
     owner,name=repo.split("/",1)
-    query="""query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved comments(first:100){nodes{body commit{oid}}}}}}}}"""
+    query="""query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved path line comments(first:100){pageInfo{hasNextPage} nodes{body commit{oid}}}}}}}}"""
     payload=gh_json(["api","graphql","-f",f"query={query}","-F",f"owner={owner}","-F",f"name={name}","-F",f"number={number}"])
     threads=((((payload.get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {}).get("nodes")
     if not isinstance(threads,list):
         raise RuntimeError("review thread resolution state unavailable")
+    # GraphQL's first:100 is a cap, not a complete review inventory.
+    # Fail closed on unknown/truncated pages rather than silently treating
+    # review findings on a subsequent page as absent.
+    review_data=((((payload.get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {})
+    page=review_data.get("pageInfo")
+    if not isinstance(page,dict) or type(page.get("hasNextPage")) is not bool:
+        raise RuntimeError("REVIEW_THREADS_INCOMPLETE: pagination metadata unavailable")
+    if page["hasNextPage"] or len(threads)>=100:
+        raise RuntimeError("REVIEW_THREADS_INCOMPLETE: pagination required")
+    if any(not isinstance(t,dict) for t in threads):
+        raise RuntimeError("REVIEW_THREAD_INVALID: incomplete GitHub review evidence")
     for thread in threads:
-        if thread.get("isResolved") is True:
-            continue
-        comments=((thread.get("comments") or {}).get("nodes") or [])
-        for comment in comments:
-            body=str(comment.get("body",""))
-            commit=str(((comment.get("commit") or {}).get("oid")) or "")
-            if commit == head_sha and BLOCKING_RE.search(body):
-                return True
-    return False
+        comments=thread.get("comments") or {}
+        nodes=comments.get("nodes")
+        comment_page=comments.get("pageInfo")
+        if (not isinstance(nodes,list) or not isinstance(comment_page,dict) or
+                type(comment_page.get("hasNextPage")) is not bool or
+                comment_page["hasNextPage"] or len(nodes)>=100 or
+                any(not isinstance(c,dict) for c in nodes)):
+            raise RuntimeError("REVIEW_COMMENTS_INCOMPLETE: pagination required")
+    return [{"id":str(t.get("id") or ""),"resolved":t.get("isResolved") is True,"path":t.get("path"),"line":t.get("line"),
+             "comments":[{"body":str(c.get("body","")),"commit":str(((c.get("commit") or {}).get("oid")) or "")}
+                         for c in (t["comments"]["nodes"])]}
+            for t in threads]
+
+def blocking_threads(threads:list[dict[str,Any]], head_sha:str)->list[dict[str,Any]]:
+    """Unresolved threads with a blocking finding commented on the exact current head."""
+    return [t for t in threads if not t["resolved"] and any(
+        c["commit"]==head_sha and BLOCKING_RE.search(c["body"]) for c in t["comments"])]
+
+def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
+    return bool(blocking_threads(review_threads(repo,number),head_sha))
+
 def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     head=str(pr.get("headRefOid") or "")
     findings=blocking_review_findings(repo,int(pr["number"]),head)
