@@ -417,17 +417,12 @@ class GitHub:
             return []  # "no checks reported" prints text, not JSON
 
     def merge(self, repo: str, number: int, head: str) -> str:
-        merged = subprocess.run(["gh", "pr", "merge", str(number), "--repo", repo, "--squash", "--delete-branch",
-                                 "--match-head-commit", head], capture_output=True, text=True, check=False,
-                                timeout=600)
-        if merged.returncode != 0:
-            raise RuntimeError("MERGE_FAILED: " + merged.stderr[-300:])
-        view = subprocess.run(["gh", "pr", "view", str(number), "--repo", repo, "--json", "mergeCommit,state"],
-                              capture_output=True, text=True, check=False, timeout=300)
-        data = json.loads(view.stdout or "{}")
-        if data.get("state") != "MERGED":
-            raise RuntimeError("MERGE_UNCONFIRMED")
-        return (data.get("mergeCommit") or {}).get("oid", "")
+        # IG-R1 transition guard: this recovery release has no independent
+        # current-head review-thread / settled-review validation. Passing CI
+        # alone must never allow a product PR to merge. PR #588 introduces
+        # the verified readiness gate before restoring this operation.
+        raise RuntimeError("AUTOMATIC_REVIEW_GATE_UNAVAILABLE: merge blocked until "
+                           "the current-head review-readiness gate is installed")
 
 
 def ci_verdict(checks: list[dict[str, Any]], *, published_at: float, now: float) -> str:

@@ -1121,3 +1121,13 @@ def test_an_approved_level_2_item_needs_a_complete_direction():
     assert backlog_mod.item_problems(item) == []
     del item["direct"]["test_source"]
     assert "APPROVED_ITEM_WITHOUT_DIRECTION" in backlog_mod.item_problems(item)
+
+
+def test_production_merge_client_requires_review_gate_before_squash(monkeypatch):
+    """IG-R1 fail-closed: green CI alone cannot send gh pr merge."""
+    def forbidden_command(*_args, **_kwargs):
+        pytest.fail("the unreviewed production merge command must never run")
+
+    monkeypatch.setattr(pl.subprocess, "run", forbidden_command)
+    with pytest.raises(RuntimeError, match="AUTOMATIC_REVIEW_GATE_UNAVAILABLE"):
+        pl.GitHub().merge(REPOS[0], 7, "a" * 40)
