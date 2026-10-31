@@ -585,14 +585,23 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
                     gate = merge_readiness(lane, github, packet_id, item)
                     item["readiness"] = {"status": gate.status, "reason": gate.reason, "at_utc": _now()}
                     if gate.status == readiness.MERGE:
-                        merged_sha = github.merge(repo, item["pr"]["number"], item["head_sha"])
-                        item.update(state="MERGED", merged_sha=merged_sha, merged_at_utc=_now())
-                        packet = json.loads((lane.packets / f"{packet_id}.json").read_text(encoding="utf-8"))
-                        record_product_memory(release_repo, packet, note=item.get("note", ""),
-                                              memory_root=memory_root, pr={**item["pr"], "merged_sha": merged_sha})
-                        working_memory.record(lane.state_root, repo, "MERGED", packet_id=packet_id,
-                                              outcome="MERGED", pr={**item["pr"], "state": "MERGED"})
-                        _record_slice_outcome(lane, packet_id, "MERGED")
+                        # Review findings and the PR head can change after the first gate.
+                        # Refresh immediately before executing the irreversible merge.
+                        fresh = merge_readiness(lane, github, packet_id, item)
+                        item["readiness"] = {"status": fresh.status, "reason": fresh.reason, "at_utc": _now()}
+                        if fresh.status == readiness.REPAIR:
+                            _request_review_repair(lane, packet_id, item, fresh)
+                        elif fresh.status != readiness.MERGE:
+                            raise RuntimeError("MERGE_READINESS_CHANGED: " + fresh.reason)
+                        else:
+                            merged_sha = github.merge(repo, item["pr"]["number"], item["head_sha"])
+                            item.update(state="MERGED", merged_sha=merged_sha, merged_at_utc=_now())
+                            packet = json.loads((lane.packets / f"{packet_id}.json").read_text(encoding="utf-8"))
+                            record_product_memory(release_repo, packet, note=item.get("note", ""),
+                                                  memory_root=memory_root, pr={**item["pr"], "merged_sha": merged_sha})
+                            working_memory.record(lane.state_root, repo, "MERGED", packet_id=packet_id,
+                                                  outcome="MERGED", pr={**item["pr"], "state": "MERGED"})
+                            _record_slice_outcome(lane, packet_id, "MERGED")
                     elif gate.status == readiness.REPAIR:
                         _request_review_repair(lane, packet_id, item, gate)
                     elif gate.status == readiness.RESOLVE:

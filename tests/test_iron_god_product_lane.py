@@ -1437,3 +1437,28 @@ def test_reviewer_followup_arriving_just_before_thread_resolution_is_not_silence
     assert item["readiness"]["reason"] == "REVIEW_FINDINGS_ON_CURRENT_HEAD"
     assert item["findings"][0]["comments"][-1]["commit"] == head
     assert github.resolved == [] and github.merged == []
+
+
+def test_current_head_review_added_between_merge_readiness_and_merge_queues_repair(env):
+    """A late blocking comment cannot be bypassed by an earlier CLEAN PR snapshot."""
+    class LateReviewer(FakeGitHub):
+        def __init__(self):
+            super().__init__(("pass",))
+            self.thread_reads = 0
+
+        def review_threads(self, repo, number):
+            self.thread_reads += 1
+            if self.thread_reads == 2:
+                head = self.heads[self.branches[number]]
+                self.threads.append(review_thread("T-LATE", head))
+            return super().review_threads(repo, number)
+
+    runner, github = Runner(), LateReviewer()
+    published(env, runner, github)
+    step(env, runner, github, allow=False)
+    item = only_item(env)
+    assert github.thread_reads == 2
+    assert github.merged == [] and github.resolved == []
+    assert item["state"] == "REPAIR_PENDING"
+    assert item["readiness"]["reason"] == "REVIEW_FINDINGS_ON_CURRENT_HEAD"
+    assert item["findings"][0]["thread_id"] == "T-LATE"
