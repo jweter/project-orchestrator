@@ -207,3 +207,154 @@ During the hourly closed loop:
 No stage is skipped merely to create throughput.
 
 Related: #51, #54, `docs/EVOLUTION_ENGINE.md`.
+
+
+## Canon candidate: supervisor-planned single-run slices and worker escalation (October 25, 2026)
+
+The owner-directed normal engineering interaction is **OBSERVE -> PLAN -> ISSUE -> WORK ->
+ASK/ANSWER (only when needed) -> HAND BACK -> INDEPENDENT VERIFY -> ACCEPT/REPLAN**.
+This section describes a source-implemented candidate protocol. It is NOT an installed
+runtime authorization change and does not itself activate the supervisor.
+
+Before issuing each single-run worker slice, the supervisor must:
+
+1. Read the repository's **current** exact-head status, existing claims/leases,
+   authoritative product vision, roadmap, architecture, AGENTS.md, and control plane.
+   Record references to what was checked; a file path alone cannot prove freshness.
+2. Reconcile completed/accepted slices and prerequisites. Select only the smallest
+   dependency-ready unit expected to fit one run, without inventing product direction.
+3. Supply a complete task brief and acceptance criteria, a verified source head,
+   permitted and forbidden file scopes, expected artifacts, native verification
+   instructions, a bounded run budget (1–120 minutes), and escalation instructions.
+4. Confirm exclusive ownership, exact-head state, current owner/controller authority,
+   resources, and repository policy through the existing admission mechanism. Only
+   then may the real supervisor issue or execute a grant. The plan is NOT a grant.
+
+The candidate pure-data interface in `project_orchestrator.worker_transport`
+is `validate_canonical_slice_plan` and `dispatch_canonical_slice`. The existing
+transport ledger retains the packet and original immutable planning data.
+Legacy packet compatibility remains during migration; real issuance must be
+wired to the canonical path and verified before declaring adoption complete.
+
+**When a worker encounters an obstacle**, it must not silently improvise, broaden
+scope or represent an uncertain result as passed. It reports its worker identity,
+question ID, sanitized issue summary, evidence reference and exact dispatched base
+using `request_supervisor_guidance`. That packet becomes
+`WAITING_FOR_SUPERVISOR` and cannot submit a PASS or arbitrarily change state.
+Independent product lanes remain free to make progress.
+
+The supervisor analyzes the evidence against the original plan and responds
+through `respond_to_supervisor_question` with exactly one of:
+
+- `CONTINUE_WITHIN_SCOPE`: a bounded clarification; **does not extend** authority
+- `REPLAN_REQUIRED`: stop the old slice; build a new independently admitted plan
+- `PARK_SLICE`: preserve evidence/work and wait for an external prerequisite
+
+Workers poll `read_supervisor_response` and continue only under original
+execution authorization and current owner/controller checks. This messaging does
+not start a process, override a lease, extend allowed paths, confer Product Reality
+authority, approve a merge, or modify owner-control state. A supervisor answer
+is an advisory instruction, never an execution grant.
+
+The source candidate keeps question/answer events and historical exchanges in
+the **existing worker transport ledger**, not a competing queue or database.
+Repeated identical pending questions are idempotent; stale bases, duplicate
+question IDs, unsafe/secret-like payloads, unauthorized state transitions,
+and attempted premature completion are rejected.
+
+The worker's final handback must identify changed source/test files, its exact
+candidate head, native test evidence, unresolved constraints and meaningful
+learning candidates. Independent verification and central acceptance remain
+separate; no self-approved merge, speculative successful result or inferred
+Product Reality is permitted.
+
+**Adoption gate:** precise source tests, relevant existing supervisor tests,
+native exact-head full preflight, separate owner/authority/lease integration,
+and real runtime proof of a question -> answer -> resumed, verified candidate.
+Until that gate passes, this is a tested source contract, NOT proof the live
+supervisor or any Claude worker consumes it.
+
+
+## Canon S1 — ledger integrity hardening (source candidate, October 25, 2026)
+
+Independent review confirmed the original transport's v1 JSON event ledger could
+silently deduplicate repeated events, lose packet state on re-dispatch, accept
+tampered projections and overwrite concurrent writers. The S1 repair introduces
+a **schema v2** envelope for this *existing* worker-transport ledger:
+
+- monotonically sequenced event history, with prior-event hash references;
+- a deterministic corruption checksum covering the entire snapshot (not a
+  cryptographic signature or proof of who wrote it);
+- last-event state consistency and strict disallowance of merge/Product Reality
+  authority inside worker packets;
+- deep-copying validated snapshots, preserving prior in-memory records;
+- a kernel-locked, atomic/fsync'd compare-and-swap write using the existing
+  grant-lifecycle locking and state-I/O primitives;
+- safe duplicate issue/retry behavior that never resets a completed packet;
+- explicit revision/append-only conflict failures on concurrent stale writers.
+
+Legacy unaudited v1 ledgers must not be silently accepted as trustworthy v2
+records. They require a separately reviewed, verified migration strategy if a
+real existing v1 file is discovered. These v2 checks detect ordinary corruption
+and concurrent modification; an attacker who can rewrite the entire file and
+its checksums can still forge a ledger. **Independent authorization, worker
+identity, source provenance and verifier clearance are separate gates.**
+
+This S1 source fix does NOT repair the remaining review findings about legal
+state transitions, independently verified handbacks, path scope,
+cryptographic identity, lease/attempt limits or supervisor integration. It
+does not grant autonomy, create a new dispatch queue, start workers,
+modify Windows schedules, or authorize local runtime activation.
+
+
+## Canon S2 — Verified-state boundaries (source candidate, October 25, 2026)
+
+The **source-only** worker transport now distinguishes a worker-reported PASS
+from an independently verified, promotion-eligible result:
+
+`DISPATCHED -> [IMPLEMENTING] -> HANDED_BACK -> PREFLIGHT_UNVERIFIED`
+
+A worker's PASS advances only to `HANDED_BACK` with
+`independent_verification=NOT_VERIFIED`, a bound candidate SHA, and the
+worker's evidence reference. A PASS against the unchanged dispatch base is
+rejected as zero-code progress. A worker FAIL becomes `BLOCKED`; genuine
+environmental inability becomes `PARKED`. A delayed failure after a
+handback cannot arbitrarily demote or replace an already reported result.
+
+The **generic** `transition_packet` API is deliberately unable to issue
+`PREFLIGHT_GREEN`, `PR_OPEN`, `CI_PENDING`, `GREEN`,
+`PROMOTION_READY`, `MERGED` or `LEARNING_EXTRACTED`. These states
+require independent verifier, CI, review and promotion contracts in later
+slices. Marking `PREFLIGHT_UNVERIFIED` starts verification; it does NOT
+mark a native test green.
+
+Legal metadata edges are explicit and narrow:
+- `DISPATCHED -> IMPLEMENTING | CANCELLED`
+- `IMPLEMENTING -> CANCELLED` (worker result is a separate operation)
+- `HANDED_BACK -> PREFLIGHT_UNVERIFIED | RECONCILE_REQUIRED | CANCELLED`
+- `PREFLIGHT_UNVERIFIED -> BLOCKED | RECONCILE_REQUIRED | CANCELLED`
+- `BLOCKED | PARKED -> RECONCILE_REQUIRED | CANCELLED`
+- `RECONCILE_REQUIRED -> CANCELLED`
+- `WAITING_FOR_SUPERVISOR` only via a question, with an answer returning
+  to the previously active state or moving to a non-running blocked state.
+
+A **data-only**, explicitly evidenced `retry_packet` permits only a
+bounded failure/environment retry, matching the same base, no supervisor
+question and a preliminary maximum of three attempts. It retains past
+worker results, revision history and event provenance. No worker is launched;
+a real retry still requires independently authenticated owner approval,
+an active supervisor, live ownership/lease and exact-head validation.
+Review-required and Product-Reality parked packets cannot auto-retry.
+
+The existing v2 ledger validator now replays every event through the legal
+state graph and rejects resealed illegal event types or self-promoted worker
+results. This is **structural integrity, not authenticated authorship**.
+No cryptographic signature, verified worker identity, trusted lease, or
+independent full preflight is asserted by this source candidate.
+
+**Remaining mandatory gates:** S3 plan/path/secret security; S4 worker
+identity/lease and answer replay; S5 admission; S6 typed handback and
+independent verification authority; S7/S8 verified memory lifecycle;
+S9 portfolio scope; S10 live supervisor adoption and real runtime proof.
+Do not merge into the running engine or infer accepted product code on the
+strength of these source-level tests alone.

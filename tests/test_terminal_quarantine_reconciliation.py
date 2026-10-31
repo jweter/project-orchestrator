@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from project_orchestrator import recovery_manager
 from project_orchestrator.recovery_manager import terminalize_abandoned_preclaim_quarantines
 from project_orchestrator.grant_issuance import conflicting_nonterminal_grant
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 
 def _write(path, grants):
@@ -16,6 +17,8 @@ def _conflicts(_left, _right):
 
 
 def test_preclaim_abandoned_quarantine_becomes_non_owning(tmp_path):
+    # Terminalization requires live, acknowledged owner authority.
+    grant_owner_authority(tmp_path)
     lifecycle = tmp_path / "hands-off-grant-lifecycle.json"
     _write(lifecycle, {"g": {
         "state": "ABANDONED",
@@ -38,6 +41,8 @@ def test_preclaim_abandoned_quarantine_becomes_non_owning(tmp_path):
 
 
 def test_preserved_dirty_quarantine_stays_owning(tmp_path):
+    # Terminalization requires live, acknowledged owner authority.
+    grant_owner_authority(tmp_path)
     lifecycle = tmp_path / "hands-off-grant-lifecycle.json"
     _write(lifecycle, {"g": {
         "state": "ABANDONED",
@@ -58,6 +63,8 @@ def test_preserved_dirty_quarantine_stays_owning(tmp_path):
 
 
 def test_ambiguous_preclaim_with_branch_is_not_released(tmp_path):
+    # Terminalization requires live, acknowledged owner authority.
+    grant_owner_authority(tmp_path)
     lifecycle = tmp_path / "hands-off-grant-lifecycle.json"
     _write(lifecycle, {"g": {
         "state": "ABANDONED",
@@ -93,6 +100,8 @@ def _preserved_record(diff_text: str):
 
 
 def test_durable_remote_preservation_releases_old_ownership(tmp_path, monkeypatch):
+    # Terminalization requires live, acknowledged owner authority.
+    grant_owner_authority(tmp_path)
     lifecycle = tmp_path / "hands-off-grant-lifecycle.json"
     diff_text = "diff --git a/file.py b/file.py\n+preserved\n"
     _write(lifecycle, {"g": _preserved_record(diff_text)})
@@ -135,6 +144,8 @@ def test_durable_remote_preservation_releases_old_ownership(tmp_path, monkeypatc
 
 
 def test_bad_preservation_proof_is_atomic_and_keeps_quarantine(tmp_path, monkeypatch):
+    # Terminalization requires live, acknowledged owner authority.
+    grant_owner_authority(tmp_path)
     lifecycle = tmp_path / "hands-off-grant-lifecycle.json"
     diff_text = "diff --git a/file.py b/file.py\n+preserved\n"
     grants = {
@@ -183,6 +194,22 @@ def test_owner_control_active_suppresses_terminalization(tmp_path):
         "authorized_repositories": ["o/r"],
         "execution_slice": {"repository": "o/r", "slice_id": "s"},
     }})
-    (tmp_path / "human-mode.json").write_text('{"enabled": true}\n', encoding="utf-8")
+    grant_owner_authority(tmp_path)
+    revoke_owner_authority(tmp_path)  # owner pressed Give Me Control
+    assert terminalize_abandoned_preclaim_quarantines(tmp_path) == {}
+    assert json.loads(lifecycle.read_text())["grants"]["g"]["recovery_state"] == "QUARANTINED"
+
+
+def test_absent_owner_controller_fails_closed(tmp_path):
+    lifecycle = tmp_path / "hands-off-grant-lifecycle.json"
+    _write(lifecycle, {"g": {
+        "state": "ABANDONED",
+        "recovery_state": "QUARANTINED",
+        "result_status": "BUILDER_EXITED_WITHOUT_CLAIM:1",
+        "authorized_repositories": ["o/r"],
+        "execution_slice": {"repository": "o/r", "slice_id": "s"},
+    }})
+    # The retired marker grants nothing; with no controller state nothing is released.
+    (tmp_path / "human-mode.json").write_text('{"enabled": false}\n', encoding="utf-8")
     assert terminalize_abandoned_preclaim_quarantines(tmp_path) == {}
     assert json.loads(lifecycle.read_text())["grants"]["g"]["recovery_state"] == "QUARANTINED"

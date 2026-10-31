@@ -36,6 +36,7 @@ from test_local_dispatch_outcome_reconciliation import (
     put_outcome,
     worker_store,
 )
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 AUTHORIZED_BY = "jeremyweter@gmail.com"
 
@@ -467,7 +468,7 @@ def test_case_f_active_unique_index_rejects_a_second_simultaneous_active_row(
 def test_case_g_owner_veto_before_recovery_blocks_it(demo):
     claim = reserve_to_invocation_reserved(demo)
     build_store(demo)
-    (demo[1] / "human-mode.json").write_text('{"enabled":true}', encoding="utf-8")
+    revoke_owner_authority(demo[1])
     with pytest.raises(DispatchFenceError, match="OWNER_CONTROL_VETO"):
         recover(demo, claim)
     assert inspect_claims(store(demo))[0]["state"] == "INVOCATION_RESERVED"
@@ -476,7 +477,7 @@ def test_case_g_owner_veto_before_recovery_blocks_it(demo):
 def test_case_g_owner_veto_blocks_evidence_free_identity_checks_too(demo):
     claim = reserve_to_invocation_reserved(demo)
     build_store(demo)
-    (demo[1] / "human-mode.json").write_text('{"enabled":true}', encoding="utf-8")
+    revoke_owner_authority(demo[1])
     with pytest.raises(DispatchFenceError, match="OWNER_CONTROL_VETO"):
         recover(demo, claim, authorized_by="", reason="")
 

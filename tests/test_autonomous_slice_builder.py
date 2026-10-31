@@ -1,6 +1,13 @@
 ﻿from pathlib import Path
 import pytest
 from scripts import autonomous_slice_builder as b
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 def test_protected_governance_paths_blocked():
     assert b.protected_change(["DoWork.txt"])=="DoWork.txt"
@@ -349,7 +356,7 @@ def test_finish_grant_lifecycle_records_failure(tmp_path):
     assert record["state"]=="FAILED"
     assert record["result_status"]=="PREFLIGHT_FAILED"
 
-def test_heartbeat_grant_renews_claim(tmp_path):
+def test_heartbeat_grant_renews_claim(tmp_path, monkeypatch):
     import json, threading
     import scripts.autonomous_slice_builder as builder
     grant=tmp_path/"hands-off-execution-grant.json"
@@ -362,17 +369,37 @@ def test_heartbeat_grant_renews_claim(tmp_path):
     thread=threading.Thread(target=builder.heartbeat_grant,args=(grant,stop,0.01))
     thread.start()
     import time
+    # Deterministically exercise a transient Windows sharing denial on the
+    # polling reader only; the actual heartbeat writer retains full authority.
+    original_read=type(lifecycle).read_text
+    injected={"remaining":1}
+    def read_with_transient_sharing_denial(path,*args,**kwargs):
+        if path == lifecycle and threading.current_thread() is threading.main_thread() and injected["remaining"]:
+            injected["remaining"]-=1
+            raise PermissionError(13,"synthetic transient Windows sharing denial",str(path))
+        return original_read(path,*args,**kwargs)
+    monkeypatch.setattr(type(lifecycle),"read_text",read_with_transient_sharing_denial)
     deadline=time.monotonic()+1.0
     renewed=False
-    while time.monotonic()<deadline:
-        record=json.loads(lifecycle.read_text())["grants"]["g1"]
-        if record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00":
-            renewed=True
-            break
-        time.sleep(0.01)
-    stop.set()
-    thread.join(timeout=1)
+    try:
+        while time.monotonic()<deadline:
+            try:
+                record=json.loads(lifecycle.read_text())["grants"]["g1"]
+            except PermissionError:
+                # Windows can briefly deny a test reader during an atomic
+                # heartbeat replace. Keep the same strict one-second bound:
+                # persistent unreadability still fails this regression.
+                time.sleep(0.01)
+                continue
+            if record["last_heartbeat_at"]!="2026-01-01T00:00:00+00:00":
+                renewed=True
+                break
+            time.sleep(0.01)
+    finally:
+        stop.set()
+        thread.join(timeout=1)
     assert renewed
+    assert injected["remaining"] == 0
     assert not thread.is_alive()
 
 def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
@@ -389,6 +416,9 @@ def test_claim_execution_grant_records_exact_repository_sha(tmp_path):
 
 def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeypatch):
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -405,6 +435,9 @@ def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeyp
 def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -428,6 +461,9 @@ def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, mo
 def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -457,6 +493,9 @@ def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, mon
 def test_build_once_retains_runner_output_when_success_makes_no_changes(tmp_path, monkeypatch):
     import json
     import scripts.autonomous_slice_builder as builder
+    # Test only: simulate an authorized owner state to reach downstream logic.
+    # Live consent enforcement remains unchanged and is tested separately.
+    monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
     monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
@@ -765,7 +804,7 @@ def test_atomic_json_fails_closed_after_windows_rename_denied(tmp_path,monkeypat
 
 def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    (tmp_path/"human-mode.json").write_text('{"enabled":true}',encoding="utf-8")
+    revoke_owner_authority(tmp_path)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
@@ -773,7 +812,7 @@ def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch)
 
 def test_disabled_owner_marker_allows_builder_to_reach_idle_gate(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    (tmp_path/"human-mode.json").write_text('{"enabled":false}',encoding="utf-8")
+    grant_owner_authority(tmp_path)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]=="USER_ACTIVE"
@@ -781,9 +820,10 @@ def test_disabled_owner_marker_allows_builder_to_reach_idle_gate(tmp_path, monke
     assert "manual_human_mode" not in result
 
 
-def test_malformed_owner_marker_fails_closed_before_idle_probe(tmp_path, monkeypatch):
+def test_tampered_owner_controller_fails_closed_before_idle_probe(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    (tmp_path/"human-mode.json").write_text("{partial",encoding="utf-8")
+    grant_owner_authority(tmp_path)
+    tamper_owner_authority(tmp_path)
     monkeypatch.setattr(
         b,"windows_idle_seconds",
         lambda: (_ for _ in ()).throw(AssertionError("idle probe must not run")),
@@ -797,7 +837,7 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
     worker=flow/"worker-state"/"everward-worker-1"
     worker.mkdir(parents=True)
     state=worker/"builder.json"
-    (flow/"human-mode.json").write_text('{"enabled":true}',encoding="utf-8")
+    revoke_owner_authority(flow)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
     assert b.build_once(tmp_path/"workspaces",state,dry_run=True)=={
         "status":"USER_ACTIVE","manual_human_mode":True
@@ -806,6 +846,8 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
 
 def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
+    # Test only: owner released, so the normal idle gate is what is under test.
+    monkeypatch.setattr(b,"owner_control_status",lambda _root:b.AUTHORIZED)
     monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]=="USER_ACTIVE"
@@ -872,3 +914,49 @@ def test_finish_grant_lifecycle_preserves_transport_pending_for_recovery(tmp_pat
         assert record["recovery_state"]=="PENDING"
         assert record["failure_class"]=="PROMOTION_TRANSPORT_PENDING"
         assert record["result_status"]==status
+
+
+@pytest.mark.parametrize("owner_status", ["OWNER_CONTROL_ACTIVE", "OWNER_CONTROL_UNVERIFIED"])
+def test_injected_owner_veto_precedes_grant_checkout_and_worker_dispatch(tmp_path, monkeypatch, owner_status):
+    """Test-only owner-state injection cannot disable the production early veto.
+
+    Downstream-grant tests inject deterministic owner-state responses at
+    the IO seam. This test covers both veto statuses: active and
+    unverified, preventing idle probing, checkout, selection or execution.
+    """
+    import scripts.autonomous_slice_builder as builder
+
+    probes = []
+
+    def forbidden(name):
+        def call(*_args, **_kwargs):
+            probes.append(name)
+            raise AssertionError("owner veto must prevent " + name)
+        return call
+
+    monkeypatch.setattr(builder, "owner_control_status", lambda _root: owner_status)
+    monkeypatch.setattr(builder, "windows_idle_seconds", forbidden("idle probe"))
+    monkeypatch.setattr(builder, "select_repo", forbidden("repository selection"))
+    monkeypatch.setattr(builder, "ensure_workspace", forbidden("worktree mutation"))
+    monkeypatch.setattr(builder, "run", forbidden("git execution"))
+    monkeypatch.setattr(builder, "run_builder", forbidden("worker execution"))
+    result = builder.build_once(
+        tmp_path / "workspaces",
+        tmp_path / "builder-state.json",
+        eligible_repos={"jweter/rocksmith-cdlc-generator": "a" * 40},
+        execution_grant=tmp_path / "grant.json",
+    )
+    assert result == {"status": "USER_ACTIVE", "manual_human_mode": True}
+    assert probes == []
+    assert not (tmp_path / "builder-state.json").exists()
+    assert not (tmp_path / "grant.json").exists()
+
+
+def test_aider_output_is_utf8_when_captured_on_windows(monkeypatch):
+    # Regression: captured stdout defaulted to cp1252 on Windows and aider's
+    # rich console crashed (UnicodeEncodeError on U+2588) printing lint output.
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    monkeypatch.delenv("PYTHONUTF8", raising=False)
+    _argv, env = b.aider_invocation("objective", ["a.py"])
+    assert env["PYTHONIOENCODING"] == "utf-8"
+    assert env["PYTHONUTF8"] == "1"

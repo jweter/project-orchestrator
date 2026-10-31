@@ -30,6 +30,7 @@ from project_orchestrator.local_dispatch_event_claim import (
 )
 from project_orchestrator.local_first_state import LocalFirstState
 from project_orchestrator.local_git_refs import LocalGitRefs
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 REPO_IDENTIFIER = "test-proof-owner/test-proof-repo"
 
@@ -162,7 +163,7 @@ def test_claim_lifecycle_distinguishes_claimed_from_leased_from_executed(tmp_pat
     base_sha = _git(repo, "rev-parse", "HEAD")
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(flow)
     (flow / "iron-god-exclusive.json").write_text(
         '{"enabled": true, "target_product": "iron-god"}', encoding="utf-8"
     )
@@ -248,7 +249,7 @@ def test_transition_rejects_any_state_outside_the_fixed_three(tmp_path):
     base_sha = _git(repo, "rev-parse", "HEAD")
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(flow)
     (flow / "iron-god-exclusive.json").write_text(
         '{"enabled": true, "target_product": "iron-god"}', encoding="utf-8"
     )
@@ -325,7 +326,7 @@ def test_retrying_the_same_claim_is_fenced_regardless_of_its_current_state(tmp_p
     base_sha = _git(repo, "rev-parse", "HEAD")
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(flow)
     (flow / "iron-god-exclusive.json").write_text(
         '{"enabled": true, "target_product": "iron-god"}', encoding="utf-8"
     )

@@ -1,0 +1,1133 @@
+"""Portfolio rotation: round-robin product turns, PR -> CI green -> merge, shared working memory."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import random
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from project_orchestrator import iron_god_backlog as backlog_mod
+from project_orchestrator import iron_god_development_memory as devmem
+from project_orchestrator import iron_god_product_lane as pl
+from project_orchestrator import iron_god_product_metrics as metrics
+from project_orchestrator import iron_god_working_memory as wm
+from project_orchestrator import supervisor_runtime
+from project_orchestrator.runtime_leases import DEFAULT_RUNTIME_CAPACITIES, RuntimeLeasePool
+from project_orchestrator.shared_memory import load_shared_memory
+
+pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows engine")
+
+ROOT = Path(__file__).resolve().parents[1]
+POLICY = json.loads((ROOT / "engineering" / "iron-god-commissioning.json").read_text(encoding="utf-8"))
+SPEC = importlib.util.spec_from_file_location("product_worker_under_test", ROOT / "scripts" / "iron_god_product_worker.py")
+WORKER = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(WORKER)
+# Real portfolio product repositories (Canon checks project membership); local bare repos stand in for GitHub.
+REPOS = ["jweter/Project-Everward", "jweter/VoiceStudio", "jweter/rocksmith-cdlc-generator"]
+PERMIT = SimpleNamespace(permitted=True, reasons=())
+DENY = SimpleNamespace(permitted=False, reasons=("OWNER_CONTROL_ACTIVE",))
+
+
+def git(cwd: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+def remote(tmp: Path, name: str) -> Path:
+    """A bare 'GitHub' repository with a main branch shaped like a portfolio product."""
+    src = tmp / "seed" / name
+    (src / "pkg").mkdir(parents=True)
+    (src / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (src / "pkg" / "core.py").write_text("def one():\n    return 1\n", encoding="utf-8")
+    (src / "tests").mkdir()
+    (src / "tests" / "test_core.py").write_text("from pkg.core import one\n\n\ndef test_one():\n    assert one() == 1\n",
+                                                encoding="utf-8")
+    (src / "engineering").mkdir()
+    (src / "engineering" / "preflight.py").write_text("print('ok')\n", encoding="utf-8")
+    (src / "AGENTS.md").write_text(f"# {name}\nRoadmap: add small helpers.\n", encoding="utf-8")
+    git(tmp, "init", "-q", "-b", "main", str(src))
+    git(src, "config", "user.email", "o@example.com")
+    git(src, "config", "user.name", "Owner")
+    git(src, "add", ".")
+    git(src, "commit", "-q", "-m", "product")
+    bare = tmp / "github" / f"{name}.git"
+    git(tmp, "clone", "-q", "--bare", str(src), str(bare))
+    return bare
+
+
+class FakeGitHub:
+    def __init__(self, buckets=("pass",)):
+        self.buckets = list(buckets)
+        self.pushed, self.opened, self.merged = [], [], []
+
+    def push(self, clone, branch, head):
+        git(clone, "push", "-q", "origin", f"{head}:refs/heads/{branch}")
+        self.pushed.append((branch, head))
+
+    def open_pr(self, repo, branch, title, body):
+        self.opened.append({"repo": repo, "branch": branch, "title": title, "body": body})
+        number = len(self.opened)
+        return {"url": f"https://github.com/{repo}/pull/{number}", "number": number}
+
+    def checks(self, repo, number):
+        return [{"name": f"ci-{i}", "state": b.upper(), "bucket": b} for i, b in enumerate(self.buckets)]
+
+    def merge(self, repo, number, head):
+        self.merged.append((repo, number, head))
+        return "f" * 40
+
+
+@pytest.fixture
+def env(tmp_path):
+    release = tmp_path / "release"
+    (release / "engineering").mkdir(parents=True)
+    # Real product project ids: Canon only accepts handbacks for portfolio product projects.
+    ids = dict(zip(REPOS, ("everward", "voicestudio", "rocksmith")))
+    projects = [{"id": ids.get(r, "iron-god"), "repositories": [{"name": r}]}
+                for r in [*REPOS, "jweter/project-orchestrator"]]
+    (release / "engineering" / "portfolio.json").write_text(json.dumps({"projects": projects}), encoding="utf-8")
+    remotes = {r: remote(tmp_path, r.split("/")[1]) for r in REPOS}
+    state = tmp_path / "ExponentialEngine" / "flow-state"
+    pool = RuntimeLeasePool(DEFAULT_RUNTIME_CAPACITIES, tmp_path / "runtime-leases.json")
+
+    def sync(lane, repo):
+        clone = lane.clone(repo)
+        if not (clone / ".git").exists():
+            clone.parent.mkdir(parents=True, exist_ok=True)
+            git(tmp_path, "clone", "-q", str(remotes[repo]), str(clone))
+        git(clone, "fetch", "-q", "--prune", "origin", "main")
+        return clone, git(clone, "rev-parse", "origin/main")
+
+    # The self-planning path stays covered; backlog tests opt into the real policy's roadmap planning.
+    policy = {**POLICY, "portfolio_rotation": {**POLICY["portfolio_rotation"], "planning": "self"}}
+    return SimpleNamespace(release=release, state=state, pool=pool, sync=sync, remotes=remotes, tmp=tmp_path,
+                           memory=tmp_path / "shared-memory", policy=policy)
+
+
+GOOD_PLAN = {
+    "function_name": "add_two", "signature": "def add_two(value: int) -> int:",
+    "module_path": "pkg/extra.py", "objective": "Return the given integer plus two.",
+    "examples": [{"call": "add_two(1)", "why": "1 + 2", "expected": 3},
+                 {"call": "add_two(0)", "why": "0 + 2", "expected": 2},
+                 {"call": "add_two(-2)", "why": "-2 + 2", "expected": 0}],
+    "note": "Added pkg.extra.add_two; next: a subtract helper.",
+}
+GOOD_MODULE = 'def add_two(value: int) -> int:\n    """Return value plus two."""\n    return value + 2\n'
+
+
+def good_plan(worktree, packet, check, feedback=""):
+    check()
+    return dict(GOOD_PLAN)
+
+
+def good_agent(worktree, message, files, check, source=GOOD_MODULE):
+    check()
+    assert files == ["pkg/extra.py"]  # the build prompt or the one repair prompt: only the module, never the tests
+    assert "Create or edit ONLY these files: pkg/extra.py" in message or "Fix only pkg/extra.py" in message
+    assert (worktree / "tests" / "test_extra.py").is_file()  # the worker wrote the tests before the build
+    (worktree / "pkg" / "extra.py").write_text(source, encoding="utf-8")
+
+
+class Runner:
+    def __init__(self, agent=good_agent, preflight_ok=True, gate=None, plan=good_plan,
+                 rederive=lambda packet, plan, call: WORKER.NO_OPINION, generate=None):
+        self.agent, self.preflight_ok, self.gate, self.plan = agent, preflight_ok, gate, plan
+        self.rederive, self.generate = rederive, generate
+        self.spawned = 0
+
+    def spawn(self, release_repo, packet_path, handback_path, *, release_sha, log_path):
+        self.spawned += 1
+        packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
+        handback = WORKER.execute_product_packet(
+            packet, authority=lambda: True, plan=self.plan, run_agent=self.agent, gates=lambda *_a: self.gate,
+            rederive=self.rederive, format_files=lambda *_a: "none", generate=self.generate,
+            preflight=lambda *_a: {"command": "python engineering/preflight.py", "returncode": 0 if self.preflight_ok
+                                   else 1, "ok": self.preflight_ok, "output_tail": ""})
+        WORKER._write(Path(handback_path), handback)
+        return {"pid": 1, "process_start_fingerprint": "windows:1", "host": "fake"}
+
+
+def step(env, runner, github=None, *, decision=PERMIT, allow=True, owned=lambda repo: [], seed=7, **kw):
+    return pl.advance_product_lane(
+        env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=allow,
+        decide=lambda: decision, spawn=runner.spawn, alive=lambda _w: False, stop=lambda _w: None,
+        resources=lambda: {"admitted": True}, lease_pool=env.pool, capability=lambda _s: None,
+        github=github or FakeGitHub(), sync=env.sync, owned_paths=owned, gates=lambda *_a: None,
+        memory_root=env.memory, rng=random.Random(seed), policy=env.policy, **kw)
+
+
+def test_rotation_picks_randomly_first_then_round_robin_and_never_starves_a_repo(env):
+    lane = pl.ProductLane(env.state)
+    first = pl.next_repository(lane, REPOS, set(), random.Random(1))
+    order = lane.rotation()["order"]
+    assert sorted(order) == REPOS and first in REPOS
+    picks = []
+    for _ in range(6):
+        repo = pl.next_repository(lane, REPOS, set(), random.Random(99))
+        pl._advance_cursor(lane, repo, "p")
+        picks.append(repo)
+    assert picks[:3] == [order[(order.index(picks[0]) + i) % 3] for i in range(3)]
+    assert picks[3:] == picks[:3]  # strict rotation: every repository gets every third turn
+    busy = {picks[0]}
+    assert pl.next_repository(lane, REPOS, busy, random.Random(5)) != picks[0]
+
+
+def test_rotation_keeps_its_order_when_repositories_are_added_or_removed(env):
+    lane = pl.ProductLane(env.state)
+    pl._advance_cursor(lane, pl.next_repository(lane, REPOS, set(), random.Random(3)), "p")
+    before = lane.rotation()["order"]
+    pl.next_repository(lane, [*REPOS, "jweter/knowledge-engine-ai"], set(), random.Random(3))
+    after = lane.rotation()["order"]
+    assert [r for r in after if r != "jweter/knowledge-engine-ai"] == before and "jweter/knowledge-engine-ai" in after
+    pl.next_repository(lane, REPOS[:2], set(), random.Random(3))
+    assert set(lane.rotation()["order"]) == set(REPOS[:2])
+
+
+def test_full_turn_publishes_by_pull_request_and_merges_only_after_ci_is_green(env):
+    runner, github = Runner(), FakeGitHub(("pass", "pass", "skipping"))
+    dispatched = step(env, runner, github)
+    assert dispatched["status"] == "DISPATCHED" and dispatched["scope"] == ["pkg/", "tests/"]
+    repo = dispatched["repository"]
+    assert dispatched["base_sha"] == git(env.remotes[repo], "rev-parse", "main")  # GitHub's current main
+    accepted = step(env, runner, github)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    assert github.pushed == [] and github.merged == []  # nothing outward before the next authorized pass
+    step(env, runner, github, allow=False)  # publish: push + PR
+    assert len(github.opened) == 1 and github.merged == []
+    assert "add_two" in github.opened[0]["title"] and "tests/test_extra.py" in github.opened[0]["body"]
+    pushed_branch, head = github.pushed[0]
+    assert git(env.remotes[repo], "rev-parse", f"refs/heads/{pushed_branch}") == head
+    step(env, runner, github, allow=False)  # CI green -> squash merge
+    assert github.merged == [(repo, 1, head)]
+    items = pl.ProductLane(env.state).publications()["items"]
+    assert [i["state"] for i in items.values()] == ["MERGED"]
+    lessons = load_shared_memory(env.memory)["entries"]
+    assert len(lessons) == 1 and lessons[0]["evidence_state"] == "VERIFIED" and lessons[0]["repository"] == repo
+    board = wm.load(env.state)
+    assert board["repositories"][repo]["last_outcome"] == "MERGED" and board["active"] is None
+    assert "Added pkg.extra.add_two" in board["repositories"][repo]["notes"][-1]["note"]
+
+
+@pytest.mark.parametrize("buckets", [("pass", "fail"), ("cancel",)])
+def test_failed_ci_blocks_the_turn_and_never_merges(env, buckets):
+    runner, github = Runner(), FakeGitHub(buckets)
+    step(env, runner, github)
+    step(env, runner, github)
+    step(env, runner, github, allow=False)
+    step(env, runner, github, allow=False)
+    item = next(iter(pl.ProductLane(env.state).publications()["items"].values()))
+    assert item["state"] == "BLOCKED" and item["reason"] == "BLOCKED_CI_FAILED"
+    assert github.merged == []
+    assert wm.load(env.state)["repositories"][item["repository"]]["blockers"]
+
+
+def test_ci_verdict_requires_reported_green_checks():
+    assert pl.ci_verdict([], published_at=0, now=60) == "WAIT"
+    assert pl.ci_verdict([], published_at=0, now=pl.CI_APPEAR_SECONDS + 1) == "BLOCKED_NO_CI_REPORTED"
+    assert pl.ci_verdict([{"bucket": "pending"}], published_at=0, now=60) == "WAIT"
+    assert pl.ci_verdict([{"bucket": "pending"}], published_at=0, now=pl.CI_TOTAL_SECONDS + 1) == "BLOCKED_CI_TIMEOUT"
+    assert pl.ci_verdict([{"bucket": "skipping"}], published_at=0, now=60) == "BLOCKED_NO_CI_REPORTED"
+    assert pl.ci_verdict([{"bucket": "pass"}, {"bucket": "fail"}], published_at=0, now=60) == "BLOCKED_CI_FAILED"
+    assert pl.ci_verdict([{"bucket": "pass"}, {"bucket": "skipping"}], published_at=0, now=60) == "PASS"
+
+
+def test_nothing_is_dispatched_pushed_or_merged_while_the_owner_holds_control(env):
+    runner, github = Runner(), FakeGitHub()
+    step(env, runner, github)
+    step(env, runner, github)  # accepted, publication pending
+    assert step(env, runner, github, decision=DENY)["status"] == "WAITING_FOR_OWNER_AUTHORITY"
+    assert github.pushed == [] and github.opened == [] and runner.spawned == 1
+
+
+def test_revocation_stops_the_active_product_worker(env):
+    stopped = []
+    pl.advance_product_lane(
+        env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=True, decide=lambda: PERMIT,
+        spawn=lambda *a, **k: {"pid": 9, "process_start_fingerprint": "windows:9", "host": "x"},
+        alive=lambda _w: True, stop=stopped.append, resources=lambda: {"admitted": True}, lease_pool=env.pool,
+        capability=lambda _s: None, github=FakeGitHub(), sync=env.sync, owned_paths=lambda r: [],
+        gates=lambda *_a: None, memory_root=env.memory, rng=random.Random(1), policy=env.policy)
+    result = pl.advance_product_lane(
+        env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=True, decide=lambda: DENY,
+        alive=lambda _w: True, stop=stopped.append, lease_pool=env.pool, policy=env.policy)
+    assert result["status"] == "WORKER_STOPPED_AUTHORITY_REVOKED" and stopped[0]["pid"] == 9
+    assert wm.load(env.state)["active"] is None
+
+
+def test_stray_output_is_discarded_and_only_the_planned_files_are_committed(env):
+    def sprawl(worktree, message, files, check):
+        good_agent(worktree, message, files, check)
+        (worktree / "AGENTS.md").write_text("rewritten", encoding="utf-8")
+        (worktree / "First, we need to install the required libraries").write_text("junk", encoding="utf-8")
+    runner = Runner(agent=sprawl)
+    dispatched = step(env, runner)
+    accepted = step(env, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    clone = pl.ProductLane(env.state).clone(dispatched["repository"])
+    files = git(clone, "diff", "--name-only", dispatched["base_sha"], accepted["head_sha"]).splitlines()
+    assert sorted(files) == ["pkg/extra.py", "tests/test_extra.py"]
+
+
+def test_a_plan_touching_a_file_under_review_is_refused_before_any_code(env):
+    runner = Runner()
+    step(env, runner, owned=lambda repo: ["pkg/extra.py"])
+    rejected = step(env, runner)
+    assert rejected["worker_status"] == "FAIL" and "PLAN_PATH_FORBIDDEN_OR_UNDER_REVIEW" in rejected["worker_summary"]
+
+
+WRONG_MODULE = "def add_two(value):\n    return value\n"
+
+
+def test_code_still_failing_its_generated_tests_after_one_repair_fails_fast(env):
+    calls = []
+
+    def stubborn(worktree, message, files, check):
+        calls.append(message)
+        if len(calls) == 1:
+            good_agent(worktree, message, files, check, source=WRONG_MODULE)
+        else:
+            (worktree / "pkg" / "extra.py").write_text(WRONG_MODULE, encoding="utf-8")
+    runner = Runner(agent=stubborn)
+    step(env, runner)
+    result = step(env, runner)
+    assert result["worker_status"] == "FAIL" and result["worker_summary"] == "SLICE_TESTS_FAILED"
+    assert len(calls) == 2 and "assert add_two(1) == 3" in calls[1]  # the repair saw the failing assertion
+
+
+def test_one_repair_round_fixes_code_that_misses_its_examples(env):
+    calls = []
+
+    def learns(worktree, message, files, check):
+        calls.append(files)
+        source = WRONG_MODULE if len(calls) == 1 else GOOD_MODULE
+        if len(calls) == 1:
+            good_agent(worktree, message, files, check, source=source)
+        else:
+            (worktree / "pkg" / "extra.py").write_text(source, encoding="utf-8")
+    runner = Runner(agent=learns)
+    step(env, runner)
+    assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
+    assert calls == [["pkg/extra.py"], ["pkg/extra.py"]]  # the repair may touch only the module
+
+
+def test_a_repair_that_edits_the_generated_tests_gets_them_restored_and_still_has_to_pass(env):
+    calls = []
+
+    def cheats(worktree, message, files, check):
+        calls.append(1)
+        if len(calls) == 1:
+            good_agent(worktree, message, files, check, source=WRONG_MODULE)
+        else:
+            (worktree / "tests" / "test_extra.py").write_text("def test_nothing():\n    pass\n", encoding="utf-8")
+    runner = Runner(agent=cheats)
+    step(env, runner)
+    result = step(env, runner)
+    assert result["worker_status"] == "FAIL" and result["worker_summary"] == "SLICE_TESTS_FAILED"
+
+
+def test_stray_files_from_the_repair_round_are_discarded_too(env):
+    calls = []
+
+    def strays(worktree, message, files, check):
+        calls.append(1)
+        if len(calls) == 1:
+            good_agent(worktree, message, files, check, source=WRONG_MODULE)
+        else:
+            (worktree / "pkg" / "extra.py").write_text(GOOD_MODULE, encoding="utf-8")
+            (worktree / "notes.md").write_text("junk", encoding="utf-8")
+    runner = Runner(agent=strays)
+    step(env, runner)
+    assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
+
+
+def test_non_stdlib_imports_are_refused(env):
+    runner = Runner(agent=lambda w, m, f, c: good_agent(w, m, f, c, source="import numpy\n\n\n" + GOOD_MODULE))
+    step(env, runner)
+    result = step(env, runner)
+    assert result["worker_status"] == "FAIL" and "STDLIB_GATE: NON_STDLIB_IMPORT: numpy" in result["worker_summary"]
+
+
+def test_failing_preflight_or_change_gates_never_publish(env):
+    github = FakeGitHub()
+    for runner in (Runner(preflight_ok=False), Runner(gate="source_change_without_regression_test")):
+        step(env, runner, github)
+        result = step(env, runner, github)
+        assert result["status"] != "ACCEPTED_LOCAL"
+    step(env, Runner(), github, allow=False)
+    assert github.pushed == []
+
+
+def test_a_repository_awaiting_ci_is_skipped_so_its_next_turn_starts_from_the_merged_main(env):
+    github = FakeGitHub(("pending",))
+    runner = Runner()
+    first = step(env, runner, github)["repository"]
+    step(env, runner, github)  # accepted
+    second = step(env, runner, github)  # publishes first; dispatches the next repository
+    assert second["status"] == "DISPATCHED" and second["repository"] != first
+
+
+def test_dispatch_waits_for_commissioning_and_for_calibration(env):
+    runner = Runner()
+    assert step(env, runner, allow=False)["status"] == "WAITING_FOR_COMMISSIONING_LANE"
+    result = pl.advance_product_lane(
+        env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=True, decide=lambda: PERMIT,
+        spawn=runner.spawn, alive=lambda _w: False, stop=lambda _w: None, resources=lambda: {"admitted": True},
+        lease_pool=env.pool, capability=lambda _s: "CALIBRATION_REQUIRED", github=FakeGitHub(), sync=env.sync,
+        owned_paths=lambda r: [], gates=lambda *_a: None, memory_root=env.memory, policy=env.policy)
+    assert result["status"] == "WAITING_FOR_CALIBRATION" and runner.spawned == 0
+
+
+def plan_for(env):
+    runner = Runner()
+    step(env, runner)
+    packet = json.loads(next(pl.ProductLane(env.state).packets.glob("*.json")).read_text(encoding="utf-8"))
+    return packet, Path(packet["worktree"])
+
+
+def test_build_prompt_is_the_lean_commissioning_prompt_naming_only_the_planned_module(env):
+    packet, worktree = plan_for(env)
+    plan = WORKER.validate_plan(dict(GOOD_PLAN), worktree, packet["base_sha"], packet)
+    message = WORKER.build_message(packet, plan)
+    assert "Create or edit ONLY these files: pkg/extra.py" in message and "tests/" not in message.split("files:")[1]
+    assert "add_two(1) returns 3" in message and len(message) < 2500
+
+
+def test_the_worker_writes_the_tests_from_the_plans_exact_examples(env):
+    packet, worktree = plan_for(env)
+    plan = WORKER.validate_plan(dict(GOOD_PLAN), worktree, packet["base_sha"], packet)
+    assert plan["test_path"] == "tests/test_extra.py" and plan["import_path"] == "pkg.extra"
+    source = WORKER.render_tests(plan)
+    assert source.startswith("from pkg.extra import add_two\n")
+    assert "    assert add_two(-2) == 0\n" in source and source.count("def test_add_two_example_") == 3
+    assert WORKER.import_path("src/rocksmith_cdlc_generator/tempo.py") == "rocksmith_cdlc_generator.tempo"
+    flags = WORKER.render_tests({**plan, "examples": [{"call": "add_two(0)", "expected": "True"},
+                                                      {"call": "add_two(1)", "expected": "None"}]})
+    assert "assert add_two(0) is True\n" in flags and "assert add_two(1) is None\n" in flags  # E712/E711
+
+
+@pytest.mark.parametrize(("change", "reason"), [
+    ({"module_path": "pkg/core.py", "function_name": "core", "signature": "def core(value: int) -> int:"},
+     "PLAN_WOULD_EDIT_EXISTING_FILE"),  # even the function-named fallback module exists
+    ({"module_path": "extra.py"}, "PLAN_PATH_INVALID"),
+    ({"module_path": "tests/extra.py"}, "PLAN_PATH_OUTSIDE_ENVELOPE"),
+    ({"module_path": "pkg/../evil.py"}, "PLAN_PATH_INVALID"),
+    ({"module_path": "pkg/review.py"}, "PLAN_PATH_FORBIDDEN_OR_UNDER_REVIEW"),
+    ({"module_path": "nopkg/x.py"}, "PLAN_PATH_OUTSIDE_ENVELOPE"),
+    ({"function_name": "import"}, "PLAN_FUNCTION_NAME_INVALID"),
+    ({"signature": "def other(x):"}, "PLAN_SIGNATURE_INVALID"),
+    ({"objective": "short"}, "PLAN_SPEC_INCOMPLETE"),
+    ({"examples": GOOD_PLAN["examples"][:2]}, "PLAN_EXAMPLES_INSUFFICIENT"),
+    ({"examples": [{"call": "other(1)", "why": "w", "expected": 1}] * 3}, "PLAN_EXAMPLES_INSUFFICIENT"),
+    ({"examples": [{"call": "add_two(x)", "why": "w", "expected": 1}] * 3}, "PLAN_EXAMPLES_INSUFFICIENT"),
+    ({"examples": [{"call": "add_two(__import__('os'))", "why": "w", "expected": 1}] * 3},
+     "PLAN_EXAMPLES_INSUFFICIENT"),
+    ({"examples": [{"call": "add_two(1)", "expected": 3}] * 3}, "PLAN_EXAMPLES_INSUFFICIENT"),  # no reasoning
+    ({"examples": [{"call": "add_two(b'x')", "why": "w", "expected": 3}] * 3}, "PLAN_EXAMPLES_INSUFFICIENT"),
+    ({"examples": [{"call": "add_two(1)", "why": "w", "expected": "b'x'"}] * 3}, "PLAN_EXAMPLES_INSUFFICIENT"),
+    ({"examples": [{"call": "add_two(1, tolerance=0.5)", "why": "w", "expected": 3}] * 3},
+     "PLAN_EXAMPLE_DOES_NOT_MATCH_SIGNATURE"),
+    ({"examples": [{"call": "add_two(1, 2)", "why": "w", "expected": 3}] * 3}, "PLAN_EXAMPLE_DOES_NOT_MATCH_SIGNATURE"),
+    ({"examples": [{"call": "add_two()", "why": "w", "expected": 3}] * 3}, "PLAN_EXAMPLE_DOES_NOT_MATCH_SIGNATURE"),
+    ({"signature": "def add_two(value: int -> int:"}, "PLAN_SIGNATURE_INVALID"),
+])
+def test_unusable_plans_are_rejected_before_any_code(env, change, reason):
+    runner = Runner(plan=lambda *_a: {**GOOD_PLAN, **change})
+    step(env, runner, owned=lambda repo: ["pkg/review.py"])
+    result = step(env, runner)
+    assert result["worker_status"] == "FAIL" and reason in result["worker_summary"]
+
+
+def test_a_malformed_model_reply_is_a_failed_plan_not_a_crash(env):
+    def broken(*_a):
+        raise ValueError("Expecting value: line 1")
+    runner = Runner(plan=broken)
+    step(env, runner)
+    assert "PLAN_REJECTED" in step(env, runner)["worker_summary"]
+
+
+def test_working_memory_is_bounded_and_merges_clear_blockers(env):
+    for i in range(12):
+        wm.record(env.state, "jweter/alpha", "TURN", packet_id=f"P{i}", note="x" * 2000, blocker="broke")
+    row = wm.load(env.state)["repositories"]["jweter/alpha"]
+    assert len(row["notes"]) == wm.MAX_NOTES_PER_REPO and len(row["notes"][-1]["note"]) == wm.MAX_NOTE_CHARS
+    assert row["blockers"]
+    wm.record(env.state, "jweter/alpha", "MERGED", outcome="MERGED")
+    assert wm.load(env.state)["repositories"]["jweter/alpha"]["blockers"] == []
+    assert len(wm.excerpt(env.state, "jweter/alpha")) <= 1500
+
+
+def test_real_policy_opens_every_product_repository_but_not_the_engine_itself():
+    config = pl.rotation_config(POLICY)
+    assert config and config["exclude"] == ["jweter/project-orchestrator"]
+    repos = pl.product_repositories(ROOT, config)
+    assert "jweter/project-orchestrator" not in repos and len(repos) >= 6
+
+
+def test_supervisor_runs_product_rotation_only_when_commissioning_is_idle(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(pl, "advance_product_lane", lambda *a, **k: calls.append(k["allow_dispatch"]) or {})
+    for status, allowed in (("IDLE_NO_READY_SLICE", True), ("IMPLEMENTING", False)):
+        monkeypatch.setattr("project_orchestrator.iron_god_canon_lane.advance_commissioning_lane",
+                            lambda *a, _s=status, **k: {"status": _s})
+        supervisor_runtime.commissioning_products(tmp_path, ROOT, [], supervisor={}, release_sha="a" * 40)
+    assert calls == [True, False]
+
+
+def test_a_rejected_plan_gets_one_repair_with_the_exact_reason(env):
+    seen = []
+
+    def planner(worktree, packet, check, feedback=""):
+        seen.append(feedback)
+        return {**GOOD_PLAN, "examples": GOOD_PLAN["examples"][:1]} if not feedback else dict(GOOD_PLAN)
+    runner = Runner(plan=planner)
+    step(env, runner)
+    assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
+    assert seen[0] == "" and "PLAN_EXAMPLES_INSUFFICIENT: 1 usable" in seen[1] and len(seen) == 2
+
+
+def test_a_module_written_under_its_bare_name_is_moved_into_the_planned_path(env):
+    def misplaced(worktree, message, files, check):
+        check()
+        (worktree / "pkg" / "extra.py").write_text("", encoding="utf-8")  # aider opened the planned path empty
+        (worktree / "extra.py").write_text(GOOD_MODULE, encoding="utf-8")  # but wrote the code under the bare name
+    runner = Runner(agent=misplaced)
+    dispatched = step(env, runner)
+    accepted = step(env, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    clone = pl.ProductLane(env.state).clone(dispatched["repository"])
+    assert "return value + 2" in git(clone, "show", f"{accepted['head_sha']}:pkg/extra.py")
+    assert git(clone, "diff", "--name-only", dispatched["base_sha"], accepted["head_sha"]).splitlines() == [
+        "pkg/extra.py", "tests/test_extra.py"]
+
+
+def test_a_repository_failing_its_own_base_preflight_is_skipped_by_the_rotation(env):
+    lane = pl.ProductLane(env.state)
+    lane.root.mkdir(parents=True, exist_ok=True)
+    not_ready = {r: {"ready": False} for r in REPOS[:2]}
+    (lane.root / "readiness.json").write_text(json.dumps({"repositories": not_ready}), encoding="utf-8")
+    assert step(env, Runner())["repository"] == REPOS[2]  # only the ready repository gets a turn
+
+
+LOCK = """
+[[package]]
+name = "ruff"
+version = "0.17.1"
+groups = ["dev"]
+
+[[package]]
+name = "torch"
+version = "2.14.1+cpu"
+groups = ["main"]
+
+[package.source]
+type = "legacy"
+url = "https://download.pytorch.org/whl/cpu"
+reference = "pytorch-cpu"
+
+[[package]]
+name = "uvloop"
+version = "0.21.0"
+groups = ["main"]
+markers = "sys_platform != 'win32'"
+
+[[package]]
+name = "localpkg"
+version = "1.0"
+groups = ["main"]
+
+[package.source]
+type = "directory"
+url = "../localpkg"
+
+[[package]]
+name = "knowledge-engine-ai"
+version = "0.1.0"
+groups = ["main"]
+
+[package.source]
+type = "git"
+url = "https://github.com/jweter/knowledge-engine-ai.git"
+reference = "2eee4cc"
+resolved_reference = "2eee4cc9ba76f99e669d2e52669e84d8b5199a41"
+"""
+
+
+def test_poetry_lock_pins_keep_exact_versions_and_their_indexes_for_this_platform(tmp_path):
+    lock = tmp_path / "poetry.lock"
+    lock.write_text(LOCK, encoding="utf-8")
+    pins = WORKER.poetry_lock_pins(lock)
+    assert pins == ["--extra-index-url https://download.pytorch.org/whl/cpu",
+                    "knowledge-engine-ai @ git+https://github.com/jweter/knowledge-engine-ai.git"
+                    "@2eee4cc9ba76f99e669d2e52669e84d8b5199a41", "ruff==0.17.1", "torch==2.14.1+cpu"]
+
+
+def test_repository_environment_is_reused_until_the_lockfile_changes(env):
+    lane = pl.ProductLane(env.state)
+    clone, base = env.sync(lane, REPOS[0])
+    worktree = env.tmp / "envwt"
+    git(clone, "worktree", "add", "-q", "--detach", str(worktree), base)
+    assert WORKER.repository_environment(worktree, lambda: None)["kind"] == "system"  # no lockfile: system Python
+    (worktree / "poetry.lock").write_text(LOCK, encoding="utf-8")
+    envdir = clone.parent / ".envs" / clone.name
+    (envdir / "Scripts").mkdir(parents=True)
+    (envdir / "Scripts" / "python.exe").write_text("", encoding="utf-8")
+    import hashlib
+    digest = hashlib.sha256(WORKER.ENV_RECIPE.encode() + (worktree / "poetry.lock").read_bytes()).hexdigest()
+    (envdir / ".iron-god-env.json").write_text(json.dumps({"lock_sha256": digest}), encoding="utf-8")
+    reused = WORKER.repository_environment(worktree, lambda: None)
+    assert reused["status"] == "REUSED" and reused["overrides"]["POETRY_VIRTUALENVS_CREATE"] == "false"
+    assert reused["overrides"]["VIRTUAL_ENV"] == str(envdir)
+
+
+def test_a_plan_reusing_an_existing_module_name_gets_a_new_module_named_after_its_function(env):
+    packet, worktree = plan_for(env)
+    plan = WORKER.validate_plan({**GOOD_PLAN, "module_path": "pkg/core.py"}, worktree, packet["base_sha"], packet)
+    assert plan["module_path"] == "pkg/add_two.py" and plan["test_path"] == "tests/test_add_two.py"
+
+
+def test_the_brief_offers_only_real_python_packages():
+    listed = ["pkg/__init__.py", "pkg/core.py", "prototypes/tool/run.py", "tests/__init__.py", "src/app/__init__.py"]
+    assert WORKER.python_packages(listed, ["pkg/", "prototypes/", "src/", "tests/"]) == ["pkg/", "src/app/"]
+
+
+def test_a_repository_without_a_python_package_is_recorded_not_eligible(env, monkeypatch):
+    monkeypatch.setattr(pl, "python_packages", lambda clone, base, roots: [])
+    runner = Runner()
+    result = step(env, runner)
+    assert result["status"] == "NOT_ELIGIBLE_NO_PYTHON_PACKAGE" and runner.spawned == 0
+    readiness = json.loads((pl.ProductLane(env.state).root / "readiness.json").read_text(encoding="utf-8"))
+    row = readiness["repositories"][result["repository"]]
+    assert row["ready"] is False and row["reason"] == "NO_PYTHON_PACKAGE"
+
+
+SLIPPED_PLAN = {**GOOD_PLAN, "examples": [*GOOD_PLAN["examples"][:2],
+                                          {"call": "add_two(-2)", "why": "slip", "expected": 1}]}
+
+
+def test_a_planner_slip_is_corrected_only_when_an_independent_derivation_agrees_with_the_code(env):
+    runner = Runner(plan=lambda *_a: dict(SLIPPED_PLAN), rederive=lambda packet, plan, call: 0)
+    dispatched = step(env, runner)
+    accepted = step(env, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    clone = pl.ProductLane(env.state).clone(dispatched["repository"])
+    assert "assert add_two(-2) == 0" in git(clone, "show", f"{accepted['head_sha']}:tests/test_extra.py")
+    github = FakeGitHub()
+    step(env, runner, github, allow=False)
+    assert "add_two(-2) returns 0 (plan said 1)" in github.opened[0]["body"]
+
+
+@pytest.mark.parametrize("fresh", [1, WORKER.NO_OPINION, 5])
+def test_no_correction_without_agreement_between_code_and_a_fresh_derivation(env, fresh):
+    runner = Runner(plan=lambda *_a: dict(SLIPPED_PLAN), rederive=lambda packet, plan, call: fresh)
+    step(env, runner)
+    result = step(env, runner)
+    assert result["worker_status"] == "FAIL" and result["worker_summary"] == "SLICE_TESTS_FAILED"
+
+
+def test_no_correction_when_the_code_disagrees_with_most_examples(env):
+    runner = Runner(agent=lambda w, m, f, c: good_agent(w, m, f, c, source=WRONG_MODULE),
+                    rederive=lambda packet, plan, call: eval(call.replace("add_two", "int")))
+    step(env, runner)
+    assert step(env, runner)["worker_summary"] == "SLICE_TESTS_FAILED"
+
+
+def test_review_mode_leaves_a_green_pull_request_for_the_owner(env):
+    github = FakeGitHub()
+    review = {**env.policy, "portfolio_rotation": {**env.policy["portfolio_rotation"], "merge": "review"}}
+    env.policy = review
+    runner = Runner()
+    first = step(env, runner, github)["repository"]
+    step(env, runner, github)
+    step(env, runner, github, allow=False)  # push + PR
+    step(env, runner, github, allow=False)  # CI green -> waits for the owner
+    item = next(iter(pl.ProductLane(env.state).publications()["items"].values()))
+    assert item["state"] == "AWAITING_OWNER_REVIEW" and github.merged == []
+    assert wm.load(env.state)["repositories"][first]["last_outcome"] == "CI_GREEN_AWAITING_OWNER"
+    assert step(env, runner, github)["status"] == "DISPATCHED"  # the rotation keeps going meanwhile
+
+
+def test_real_policy_records_the_owners_merge_decision():
+    assert pl.rotation_config(POLICY)["merge"] in {"auto", "review"}
+
+
+def test_failed_attempts_are_remembered_so_the_next_planner_chooses_something_different(env):
+    briefs = []
+
+    def failing_plan(worktree, packet, check, feedback=""):
+        briefs.append(packet["working_memory"])
+        return dict(GOOD_PLAN)
+    runner = Runner(plan=failing_plan, preflight_ok=False)
+    repo = step(env, runner)["repository"]
+    step(env, runner)
+    board = wm.load(env.state)["repositories"][repo]
+    assert board["attempts"][-1]["attempt"] == "add_two in pkg/extra.py"
+    assert "already attempted (choose something different): add_two in pkg/extra.py" in wm.excerpt(env.state, repo)
+
+
+def test_a_plan_repeating_an_already_attempted_function_is_sent_back_for_a_different_one(env):
+    repo = REPOS[0]
+    for r in REPOS:  # whichever repository the rotation picks has already tried add_two
+        wm.record(env.state, r, "TURN_FAIL", outcome="FAIL", attempt="add_two in pkg/extra.py")
+    seen = []
+
+    def repeats_first(worktree, packet, check, feedback=""):
+        seen.append(feedback)
+        if not feedback:
+            return dict(GOOD_PLAN)  # add_two again
+        return {**GOOD_PLAN, "function_name": "add_three", "signature": "def add_three(value: int) -> int:",
+                "examples": [{"call": "add_three(1)", "why": "1+3", "expected": 4},
+                             {"call": "add_three(0)", "why": "0+3", "expected": 3},
+                             {"call": "add_three(-3)", "why": "-3+3", "expected": 0}]}
+    runner = Runner(plan=repeats_first, agent=lambda w, m, f, c: (w / f[0]).write_text(
+        'def add_three(value: int) -> int:\n    """Add three."""\n    return value + 3\n', encoding="utf-8"))
+    step(env, runner)
+    assert step(env, runner)["status"] == "ACCEPTED_LOCAL"
+    assert "PLAN_ALREADY_ATTEMPTED: add_two" in seen[1] and repo in REPOS
+
+
+def test_planning_prompt_explicitly_excludes_previous_attempts() -> None:
+    packet = {"repository": "jweter/knowledge-engine-core", "attempted_functions": [
+        "normalize_text", "clean_text", "normalize_text"]}
+    prompt = WORKER.planning_prompt(packet, "ROADMAP BRIEF")
+    assert "never propose these" in prompt
+    assert "clean_text, normalize_text" in prompt
+    assert "rejects all 2 attempted names" in prompt
+    assert prompt.index("clean_text") < prompt.index("ROADMAP BRIEF")
+
+
+def test_planning_prompt_bounds_large_exclusion_list_without_weakening_validation() -> None:
+    packet = {"repository": "jweter/knowledge-engine-ai", "attempted_functions": [
+        f"attempt_{i:03d}" for i in range(75)]}
+    prompt = WORKER.planning_prompt(packet, "ROADMAP BRIEF")
+    assert "attempt_000" in prompt
+    assert "attempt_049" in prompt
+    assert "attempt_050" not in prompt
+    assert "rejects all 75 attempted names" in prompt
+    assert "(none)" in WORKER.planning_prompt({"repository": "jweter/VoiceStudio"}, "BRIEF")
+    assert "rejects all 0 attempted names" in WORKER.planning_prompt(
+        {"repository": "jweter/VoiceStudio", "attempted_functions": None}, "BRIEF")
+
+
+# Roadmap-driven backlog (2026-10-27): only approved, consumer-linked slices are built, exactly as written.
+
+def backlog_item(item_id, repo, *, status="approved", level=1, build=True, depends_on=(), assignee="iron-god"):
+    item = {"id": item_id, "repository": repo, "title": f"{item_id} title", "roadmap_ref": "docs/ROADMAP.md slice 1",
+            "addresses": "a roadmap gap", "why": "it unblocks the workflow", "consumer": "the export workflow step",
+            "objective": "Add add_two to pkg/extra.py for the export workflow.", "interfaces": ["pkg/core.py"],
+            "depends_on": list(depends_on), "acceptance_criteria": ["examples hold"], "tests": ["tests/test_extra.py"],
+            "level": level, "complexity": "low", "verification": "preflight", "definition_of_done": "merged",
+            "status": status, "assignee": assignee}
+    if build:
+        item["build"] = {k: GOOD_PLAN[k] for k in ("module_path", "function_name", "signature", "objective",
+                                                   "examples", "note")}
+    return item
+
+
+def backlog_env(env, items):
+    path = env.release / backlog_mod.BACKLOG_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"items": items}), encoding="utf-8")
+    env.policy = {**POLICY, "portfolio_rotation": {**POLICY["portfolio_rotation"], "planning": "backlog",
+                                                   "development_level": 1}}
+    return env
+
+
+def never_plans(worktree, packet, check, feedback=""):
+    raise AssertionError("an approved backlog slice must never be re-planned by the model")
+
+
+def test_backlog_mode_builds_only_approved_items_exactly_as_written_and_links_the_pr_to_the_roadmap(env):
+    backlog_env(env, [backlog_item("P-1", REPOS[0], status="proposed"),
+                      backlog_item("L2-1", REPOS[2], level=2, build=False),  # beyond the measured level
+                      backlog_item("RS-1", REPOS[1])])  # shortest name: Windows path limits in pytest's tmp
+    runner, github = Runner(plan=never_plans), FakeGitHub(("pass",))
+    dispatched = step(env, runner, github)
+    assert dispatched["status"] == "DISPATCHED" and dispatched["repository"] == REPOS[1], dispatched.get("detail")
+    assert dispatched["backlog_item"] == "RS-1"
+    assert step(env, runner, github)["status"] == "ACCEPTED_LOCAL"
+    step(env, runner, github, allow=False)  # push + PR
+    pr = github.opened[0]
+    assert pr["title"].startswith("Iron God [RS-1]") and "Consumer: the export workflow step" in pr["body"]
+    assert "Roadmap: docs/ROADMAP.md slice 1" in pr["body"]
+    step(env, runner, github, allow=False)  # CI green -> merge
+    assert backlog_mod.load_state(pl.ProductLane(env.state).root)["items"]["RS-1"]["outcome"] == "MERGED"
+    assert step(env, runner, github)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"  # never invents work
+    assert runner.spawned == 1
+
+
+def test_a_backlog_item_waits_for_its_dependencies_and_stops_after_its_attempts(env):
+    backlog_env(env, [backlog_item("A", REPOS[2], status="proposed"),
+                      backlog_item("B", REPOS[2], depends_on=["A"]), backlog_item("C", REPOS[1])])
+    # Distinct failed implementations must still consume the original bounded
+    # retry budget; identical failures are covered by the separate early-stop
+    # regression in test_iron_god_failed_source.py.
+    attempts = iter(range(backlog_mod.MAX_ITEM_ATTEMPTS))
+
+    def distinct_failed_agent(worktree, message, files, check):
+        good_agent(worktree, message, files, check,
+                   source=GOOD_MODULE + f"\n# failed-variant-{next(attempts)}\n")
+
+    runner = Runner(agent=distinct_failed_agent, plan=never_plans, preflight_ok=False)
+    for _ in range(backlog_mod.MAX_ITEM_ATTEMPTS):
+        assert step(env, runner)["backlog_item"] == "C"  # B waits for A, which is not approved
+        step(env, runner)  # harvest the failed attempt
+    assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"
+    state = backlog_mod.load_state(pl.ProductLane(env.state).root)["items"]["C"]
+    assert state["attempts"] == backlog_mod.MAX_ITEM_ATTEMPTS and state["outcome"].startswith("FAIL")
+
+
+@pytest.mark.parametrize(("change", "problem"), [
+    ({"consumer": "tbd"}, "CONSUMER_UNIDENTIFIED"),
+    ({"build": None}, "APPROVED_ITEM_WITHOUT_BUILD_SPEC"),
+    ({"objective": "x" * 1200}, "TEXT_OVER_CANON_BOUND"),
+    ({"level": 7}, "LEVEL_INVALID"),
+    ({"level": True}, "LEVEL_INVALID"),  # bool is an int subclass, never a build level
+    ({"status": "maybe"}, "STATUS_INVALID"),
+])
+def test_malformed_backlog_items_are_never_dispatched(change, problem):
+    assert problem in backlog_mod.item_problems({**backlog_item("X", REPOS[0]), **change})
+
+
+def test_duplicate_backlog_id_rejects_all_occurrences_even_if_first_is_valid(env):
+    first = backlog_item("RS-DUP", REPOS[1])
+    second = backlog_item("RS-DUP", REPOS[2])
+    backlog_env(env, [first, second])
+    items, rejected = backlog_mod.load_backlog(env.release)
+    assert items == []  # ambiguous ids must never enter the dispatchable pool
+    assert "DUPLICATE_ID" in rejected["RS-DUP"]
+
+
+def test_real_backlog_covers_every_product_repository_and_is_well_formed():
+    items, rejected = backlog_mod.load_backlog(ROOT)
+    assert rejected == {}
+    repos = {item["repository"] for item in items}
+    assert all(sum(1 for i in items if i["repository"] == r) >= 5 for r in repos) and len(repos) == 6
+    assert pl.rotation_config(POLICY)["planning"] == "backlog"
+    assert pl.rotation_config(POLICY)["development_level"] == 2  # the owner-approved directed Level 2 pilot
+    for item in items:  # every approved Level 2 item is a directed edit, never a self-planned change
+        if item["status"] == "approved" and item["level"] == 2:
+            assert item["direct"]["test_source"] and len(item["direct"]["targets"]) <= 2
+    by_id = {item["id"]: item for item in items}
+    assert all(item["assignee"] for item in items if item["status"] == "approved")
+    for item in items:  # a retired slice names its successor and keeps its failure evidence
+        if item.get("superseded_by"):
+            successor = by_id[item["superseded_by"]]
+            assert item["status"] == "retired" and successor["supersedes"] == item["id"]
+            assert item["retirement"]["packet_id"] and item["retirement"]["outcome"]
+        completion = item.get("completion") or {}
+        if completion.get("kind") == "COMPLETED_EXTERNALLY":  # done only with verified merge evidence
+            assert item["status"] == "done" and completion["pull_request"] and completion["verification"]
+            assert len(completion["merge_commit"]) == 40
+    everward =[i for i in items if i["repository"] == "jweter/Project-Everward"]
+    assert all(i["level"] not in backlog_mod.BUILDABLE_LEVELS or i["status"] != "approved" for i in everward)
+
+
+def test_metrics_count_a_merged_helper_as_progress_only_when_something_uses_it(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans), FakeGitHub(("pass",))
+    for allow in (True, True, False, False):
+        step(env, runner, github, allow=allow)
+    report = metrics.compute(env.state, env.release)
+    assert report["merged_pull_requests"] == 1 and report["backlog"]["roadmap_items_completed"] == 1
+    assert report["backlog"]["used_by_product"] == 0  # a level-1 helper whose consumer has not merged yet
+    assert report["unlinked_merges_not_counted_as_progress"] == 0
+
+
+def test_lint_failures_reach_the_bounded_repair_as_exact_lines(env, monkeypatch):
+    monkeypatch.setattr(WORKER, "quick_test", lambda *_a, **_k: {"ok": True, "command": "pytest", "output_tail": ""})
+    monkeypatch.setattr(WORKER, "type_check", lambda *_a: None)
+    monkeypatch.setattr(WORKER, "lint_check", lambda *_a: {
+        "ok": False, "command": "python -m ruff check", "returncode": 1,
+        "output_tail": "pkg/extra.py:3:101: E501 Line too long (120 > 100)\nFound 1 error."})
+    result = WORKER.slice_checks(env.tmp, "pkg/extra.py", "tests/test_extra.py", lambda: None)
+    assert result["output_tail"] == "E ruff: pkg/extra.py:3:101: E501 Line too long (120 > 100)"
+
+
+def test_an_example_using_the_key_b_is_not_mistaken_for_bytes(env):
+    packet, worktree = plan_for(env)
+    plan = {**GOOD_PLAN, "function_name": "count_keys", "objective": "Return how many pairs are given.",
+            "signature": "def count_keys(pairs: list[tuple[str, int]]) -> int:",
+            "examples": [{"call": "count_keys([('a', 1), ('b', 2)])", "why": "two pairs", "expected": 2},
+                         {"call": "count_keys([('b', 1)])", "why": "one pair", "expected": 1},
+                         {"call": "count_keys([])", "why": "none", "expected": 0}]}
+    assert len(WORKER.validate_plan(plan, worktree, packet["base_sha"], packet)["examples"]) == 3
+    with pytest.raises(WORKER.PlanRejected):
+        WORKER.validate_plan({**plan, "examples": [{**e, "call": "count_keys(b'ab')"} for e in plan["examples"]]},
+                             worktree, packet["base_sha"], packet)
+
+
+DIRECT_TEST = "from pkg.core import one\n\n\ndef test_one_is_two() -> None:\n    assert one() == 2\n"
+
+
+def direct_item(item_id, repo, **direct):
+    item = backlog_item(item_id, repo, level=2, build=False)
+    item["direct"] = {"module_path": "pkg/core.py", "targets": ["one"], "add": [],
+                      "direction": "one() must return 2 instead of 1.", "test_path": "tests/test_one_is_two.py",
+                      "test_source": DIRECT_TEST, **direct}
+    return item
+
+
+def directed_env(env, items):
+    backlog_env(env, items)
+    env.policy["portfolio_rotation"]["development_level"] = 2
+    return env
+
+
+def replying(text, seen=None):
+    def generate(prompt, num_predict, check):
+        check()
+        if seen is not None:
+            seen.append(prompt)
+        return {"text": text, "prompt_tokens": 10, "output_tokens": 5, "model_s": 0.1}
+    return generate
+
+
+def no_model(*_args):
+    pytest.fail("the model must not be called")
+
+
+def test_an_approved_directed_slice_changes_only_its_unit_and_is_published_with_its_roadmap_link(env):
+    directed_env(env, [direct_item("RS-2", REPOS[1])])
+    prompts = []
+    runner = Runner(plan=never_plans, agent=None, generate=replying("```python\ndef one():\n    return 2\n```", prompts))
+    github = FakeGitHub(("pass",))
+    assert step(env, runner, github)["backlog_item"] == "RS-2"
+    accepted = step(env, runner, github)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    assert "def one():\n    return 1" in prompts[0] and DIRECT_TEST not in prompts[0]  # the unit, never the tests
+    step(env, runner, github, allow=False)
+    assert github.opened[0]["title"].startswith("Iron God [RS-2]")
+    clone = pl.ProductLane(env.state).clone(REPOS[1])
+    head = github.pushed[0][1]
+    assert sorted(git(clone, "diff", "--name-only", f"{head}~1", head).split()) == ["pkg/core.py",
+                                                                                     "tests/test_one_is_two.py"]
+    assert git(clone, "show", f"{head}:tests/test_one_is_two.py") + "\n" == DIRECT_TEST
+
+
+@pytest.mark.parametrize(("reply", "summary"), [
+    ("```python\ndef one():\n    return 2\n```\n```python\ndef one():\n    return 3\n```", "DUPLICATE_UNIT"),
+    ("```python\ndef two():\n    return 2\n```", "UNEXPECTED_UNIT: two"),
+    ("no code", "NO_CODE_BLOCKS"),
+    ("```python\ndef one():\n    return 3\n```", "SLICE_TESTS_FAILED"),
+])
+def test_a_failed_directed_slice_is_never_retried_and_never_committed(env, reply, summary):
+    directed_env(env, [direct_item("RS-2", REPOS[1])])
+    runner = Runner(plan=never_plans, agent=None, generate=replying(reply))
+    step(env, runner)
+    harvested = step(env, runner)
+    assert harvested["worker_status"] == "FAIL" and summary in harvested["worker_summary"]
+    assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"  # back to planning, not a retry loop
+    diagnostics = next(pl.ProductLane(env.state).reports.glob("*-handback-diagnostics.json"))
+    assert json.loads(diagnostics.read_text(encoding="utf-8"))["directed"]["reply"] == reply[:8000]
+    lane_root = pl.ProductLane(env.state).root  # the attempt's observed facts reach the development memory
+    assert devmem.stats(lane_root)["attempts"] == 1
+    with devmem.closing(devmem._connect(lane_root)) as connection:
+        prompt, saved = connection.execute("SELECT prompt, reply FROM attempts").fetchone()
+    assert "Rules:" in prompt and saved == reply[:8000]
+
+
+def test_a_directed_slice_whose_tests_already_pass_on_main_is_not_built(env):
+    passing = DIRECT_TEST.replace("== 2", "== 1")
+    directed_env(env, [direct_item("RS-2", REPOS[1], test_source=passing)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    assert "DIRECTED_TEST_NOT_DISCRIMINATING" in step(env, runner)["worker_summary"]
+
+
+@pytest.mark.parametrize(("change", "problem"), [
+    ({"test_path": "tests/test_core.py"}, "DIRECT_TEST_WOULD_OVERWRITE"),
+    ({"module_path": "tools/gen.py"}, "DIRECT_MODULE_OUTSIDE_ENVELOPE"),
+    ({"module_path": "engineering/preflight.py"}, "DIRECT_PATH_FORBIDDEN"),
+    ({"targets": ["missing"]}, "DIRECT_UNITS_UNKNOWN"),
+    ({"targets": ["one", "imports", "x", "y"]}, "DIRECT_UNITS_OUT_OF_BOUNDS"),
+    ({"test_source": "x = 1\n"}, "DIRECT_TEST_INVALID"),
+])
+def test_an_invalid_direction_is_rejected_before_the_model_is_called(env, change, problem):
+    directed_env(env, [direct_item("RS-2", REPOS[1], **change)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    harvested = step(env, runner)
+    assert harvested["worker_summary"].startswith("BACKLOG_SLICE_INVALID") and problem in harvested["worker_summary"]
+
+
+@pytest.mark.parametrize(("files", "expected"), [
+    ({"pyproject.toml": "[tool.mypy]\nstrict = true\n[tool.ruff]\nline-length = 100\n"}, ["strict", "100"]),
+    ({"pyproject.toml": "[tool.mypy]\nwarn_unused_ignores = true\n"}, []),
+    ({"mypy.ini": "[mypy]\ndisallow_untyped_defs = True\n", "ruff.toml": "line-length = 88\n"}, ["strict", "88"]),
+    ({"pyproject.toml": "not toml ["}, []),
+    ({}, []),
+])
+def test_quality_rules_state_only_the_gates_the_repository_configures(tmp_path, files, expected):
+    for name, text in files.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    rules = WORKER.quality_rules(tmp_path)
+    assert len(rules) == len(expected)
+    assert all(word in rule for word, rule in zip(expected, rules, strict=True))
+    if "strict" in expected:
+        assert "-> None" in rules[0] and "list[str]" in rules[0]
+
+
+def test_the_preflight_sees_a_ci_width_console_whatever_the_worker_console_is(tmp_path, monkeypatch):
+    # 2026-10-29 KEC-9: Rich wrapped a CLI error to the hidden console's width and two product tests failed
+    seen = {}
+    monkeypatch.setenv("COLUMNS", "20")
+    monkeypatch.setattr(WORKER, "repository_environment", lambda worktree, check: {
+        "python": "python", "kind": "uv", "overrides": {}})
+    monkeypatch.setattr(WORKER.NativeWindowsRuntime, "execute_supervised",
+                        lambda self, request, check, interval: seen.update(request.env) or SimpleNamespace(
+                            returncode=0, stdout="", stderr=""))
+    (tmp_path / "wt").mkdir()
+    assert WORKER.production_preflight(tmp_path / "wt", lambda: None, 60)["ok"]
+    assert seen["COLUMNS"] == "80" and seen["LINES"] == "24"
+
+
+def test_only_items_assigned_to_iron_god_are_dispatched_and_other_claims_reserve_their_files(env):
+    # 2026-10-28: another agent built KEC-6 while it was approved for Iron God
+    theirs = backlog_item("RS-1", REPOS[1], assignee="chatgpt-dowork")
+    backlog_env(env, [theirs, backlog_item("RS-2", REPOS[1])])
+    assert step(env, Runner(plan=never_plans))["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"  # same file, reserved
+    items, rejected = backlog_mod.load_backlog(env.release)
+    assert rejected == {} and backlog_mod.conflicts(items[1], items) == ["RS-1"]
+    rows = {row["id"]: row for row in backlog_mod.ownership(items, {})}
+    assert rows["RS-1"]["reservation"] == {"by": "chatgpt-dowork", "outcome": "ASSIGNED"}
+    assert rows["RS-2"]["conflicts"] == ["RS-1"] and rows["RS-2"]["files"] == ["pkg/core.py", "pkg/extra.py"]
+    elsewhere = backlog_item("RS-1", REPOS[1], assignee="chatgpt-dowork")
+    elsewhere["interfaces"], elsewhere["build"]["module_path"] = ["pkg/other.py"], "pkg/other.py"
+    backlog_env(env, [elsewhere, backlog_item("RS-2", REPOS[1])])
+    assert step(env, Runner(plan=never_plans))["backlog_item"] == "RS-2"  # disjoint files: not blocked
+    row = next(r for r in backlog_mod.ownership(*_live(env)) if r["id"] == "RS-2")
+    assert row["reservation"]["by"] == "iron-god" and row["reservation"]["outcome"] == "DISPATCHED"
+
+
+def _live(env):
+    items, _rejected = backlog_mod.load_backlog(env.release)
+    return items, backlog_mod.load_state(pl.ProductLane(env.state).root)
+
+
+def test_an_approved_item_needs_an_assignee_and_the_ownership_command_filters_by_path(env, capsys):
+    item = backlog_item("X", REPOS[0], assignee="")
+    assert "APPROVED_ITEM_WITHOUT_ASSIGNEE" in backlog_mod.item_problems(item)
+    assert "APPROVED_ITEM_WITHOUT_ASSIGNEE" not in backlog_mod.item_problems({**item, "status": "proposed"})
+    backlog_env(env, [backlog_item("RS-1", REPOS[1]), {**backlog_item("RS-2", REPOS[2]), "interfaces": ["a.py"]}])
+    assert backlog_mod.main(["--release-repo", str(env.release), "--lane-root", str(env.state / "none"),
+                             "--path", "a.py"]) == 0
+    table = json.loads(capsys.readouterr().out)
+    assert table["agent"] == "iron-god" and [row["id"] for row in table["items"]] == ["RS-2"]
+
+
+def advance_main(env, repo, files, message="another developer's change"):
+    """Another developer merges a change to the 'GitHub' main branch."""
+    work = env.tmp / "other-dev" / repo.split("/")[1]
+    if not work.exists():
+        git(env.tmp, "clone", "-q", str(env.remotes[repo]), str(work))
+        git(work, "config", "user.email", "d@example.com")
+        git(work, "config", "user.name", "Dev")
+    git(work, "pull", "-q", "origin", "main")
+    for name, text in files.items():
+        (work / name).parent.mkdir(parents=True, exist_ok=True)
+        (work / name).write_text(text, encoding="utf-8")
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", message)
+    git(work, "push", "-q", "origin", "HEAD:main")
+    return git(work, "rev-parse", "HEAD")
+
+
+def main_sha(env, repo):
+    return git(env.remotes[repo], "rev-parse", "main")
+
+
+@pytest.mark.parametrize("with_test", [False, True])
+def test_a_slice_completed_by_another_developer_is_verified_on_main_and_unblocks_its_dependents(env, with_test):
+    # 2026-10-28: KEC-6 merged elsewhere as PR #553 while KEC-7 waited on it
+    repo = REPOS[1]
+    approved = main_sha(env, repo)
+    first = direct_item("RS-2", repo, approved_base=approved)
+    second = {**direct_item("RS-3", repo, test_path="tests/test_one_again.py", approved_base=approved),
+              "depends_on": ["RS-2"]}
+    directed_env(env, [first, second])
+    merged = advance_main(env, repo, {"pkg/core.py": "def one():\n    return 2\n",
+                                      **({"tests/test_one_is_two.py": DIRECT_TEST} if with_test else {})})
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    assert step(env, runner)["backlog_item"] == "RS-2"
+    harvested = step(env, runner)
+    assert harvested["worker_summary"].startswith("COMPLETED_EXTERNALLY") and merged[:12] in harvested["worker_summary"]
+    items, state = _live(env)
+    assert state["items"]["RS-2"]["outcome"].startswith("COMPLETED_EXTERNALLY") and backlog_mod.is_done(items[0], state)
+    rows = {row["id"]: row for row in backlog_mod.ownership(items, state)}
+    assert rows["RS-2"]["state"] == "COMPLETED_EXTERNALLY"
+    diagnostics = pl.ProductLane(env.state).reports / f"{harvested['packet_id']}-handback-diagnostics.json"
+    evidence = json.loads(diagnostics.read_text(encoding="utf-8"))["external_completion"]
+    assert evidence["module_commits"] == [merged] and evidence["approved_base"] == approved
+    assert step(env, runner)["backlog_item"] == "RS-3"  # the dependent is unblocked
+
+
+def test_external_completion_is_never_claimed_without_a_verified_change_to_the_module(env):
+    repo = REPOS[1]
+    advance_main(env, repo, {"pkg/core.py": "def one():\n    return 2\n"})
+    approved = main_sha(env, repo)  # the approval base already passes: the tests never discriminated
+    directed_env(env, [direct_item("RS-2", repo, approved_base=approved)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    assert step(env, runner)["worker_summary"].startswith("DIRECTED_TEST_NOT_DISCRIMINATING")
+    items, state = _live(env)
+    assert not backlog_mod.is_done(items[0], state)
+
+
+def test_an_approved_test_already_on_main_that_still_fails_needs_revalidation(env):
+    repo = REPOS[1]
+    approved = main_sha(env, repo)
+    advance_main(env, repo, {"tests/test_one_is_two.py": DIRECT_TEST})
+    directed_env(env, [direct_item("RS-2", repo, approved_base=approved)])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    step(env, runner)
+    harvested = step(env, runner)
+    assert harvested["worker_status"] == "REVIEW_REQUIRED" and "NEEDS_REVALIDATION" in harvested["worker_summary"]
+    assert backlog_mod.ownership(*_live(env))[0]["state"] == "NEEDS_REVALIDATION"
+
+
+def test_a_file_under_another_open_pull_request_blocks_the_slice_without_using_its_attempt(env):
+    directed_env(env, [direct_item("RS-2", REPOS[1])])
+    runner = Runner(plan=never_plans, agent=None, generate=no_model)
+    blocked = step(env, runner, owned=lambda repo: ["pkg/core.py"])
+    assert blocked["status"] == "BLOCKED_CONFLICT" and blocked["files"] == ["pkg/core.py"] and runner.spawned == 0
+    items, state = _live(env)
+    assert state["items"]["RS-2"]["attempts"] == 0 and backlog_mod.ownership(items, state)[0]["state"] == (
+        "BLOCKED_CONFLICT")
+    assert step(env, Runner(plan=never_plans, agent=None, generate=replying("x")))["backlog_item"] == "RS-2"
+
+
+@pytest.mark.parametrize(("change", "row", "expected"), [
+    ({"status": "proposed"}, {}, "PROPOSED"),
+    ({"status": "retired", "superseded_by": "Y"}, {}, "SUPERSEDED"),
+    ({"assignee": "claude-code"}, {}, "ASSIGNED_ELSEWHERE"),
+    ({}, {"outcome": "FAIL: DIRECTED_REPLY_REJECTED: UNEXPECTED_UNIT: x"}, "FAILED_IMPLEMENTATION"),
+    ({}, {"outcome": "DISPATCHED"}, "IN_FLIGHT"),
+    ({"depends_on": ["Z"]}, {}, "BLOCKED_DEPENDENCY"),
+    ({"status": "done"}, {}, "COMPLETED"),
+    ({}, {}, "READY"),
+])
+def test_every_semantic_slice_state_is_derived_from_the_backlog_and_the_lane_record(change, row, expected):
+    item = {**direct_item("X", REPOS[0]), **change}
+    assert backlog_mod.slice_state(item, row, done=set(), conflicting=[]) == expected
+
+
+def test_an_approved_level_2_item_needs_a_complete_direction():
+    item = direct_item("X", REPOS[0])
+    assert backlog_mod.item_problems(item) == []
+    del item["direct"]["test_source"]
+    assert "APPROVED_ITEM_WITHOUT_DIRECTION" in backlog_mod.item_problems(item)
+
+
+def test_production_merge_client_requires_review_gate_before_squash(monkeypatch):
+    """IG-R1 fail-closed: green CI alone cannot send gh pr merge."""
+    def forbidden_command(*_args, **_kwargs):
+        pytest.fail("the unreviewed production merge command must never run")
+
+    monkeypatch.setattr(pl.subprocess, "run", forbidden_command)
+    with pytest.raises(RuntimeError, match="AUTOMATIC_REVIEW_GATE_UNAVAILABLE"):
+        pl.GitHub().merge(REPOS[0], 7, "a" * 40)

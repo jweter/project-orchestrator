@@ -2,12 +2,13 @@ from datetime import UTC, datetime, timedelta
 import json
 
 from scripts.iron_foreman_guardian import guardian_iteration, recovery_rate_allowed
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 def write(path,payload): path.write_text(json.dumps(payload),encoding="utf-8")
 
 def test_guardian_watches_without_mutating_healthy_generation(tmp_path):
     now=datetime.now(UTC)
-    write(tmp_path/"human-mode.json",{"enabled":False})
+    grant_owner_authority(tmp_path)
     write(tmp_path/"supervisor-process-instance.json",{"process_instance_id":"g","burst_id":"b",
         "worker":{"pid":1,"process_start_fingerprint":"x"}})
     write(tmp_path/"supervisor-generation-heartbeat.json",{"process_instance_id":"g","burst_id":"b",

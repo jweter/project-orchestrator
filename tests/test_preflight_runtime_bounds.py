@@ -1,13 +1,29 @@
 import json
+import os
 import subprocess
 
 import engineering.preflight as preflight
 
 
+def test_full_suite_default_covers_measured_runtime_without_removing_timeout():
+    # The verified 3,246-test baseline took 1,259 seconds, so 900 seconds
+    # produced a false-red timeout despite 25 preceding green checks.
+    assert preflight.DEFAULT_TEST_CHECK_TIMEOUT_SECONDS >= 1259
+    assert preflight.DEFAULT_TEST_CHECK_TIMEOUT_SECONDS <= 3600
+    assert preflight.TEST_CHECK_TIMEOUT_SECONDS == int(
+        os.environ.get(
+            "PREFLIGHT_TEST_TIMEOUT_SECONDS",
+            str(preflight.DEFAULT_TEST_CHECK_TIMEOUT_SECONDS),
+        )
+    )
+
+
 def test_tests_get_longer_but_bounded_timeout():
     assert preflight.timeout_for_check("tests") == preflight.TEST_CHECK_TIMEOUT_SECONDS
+    assert preflight.timeout_for_check("controller_proofs") == preflight.CONTROLLER_PROOFS_TIMEOUT_SECONDS
     assert preflight.timeout_for_check("control_plane") == preflight.DEFAULT_CHECK_TIMEOUT_SECONDS
-    assert preflight.TEST_CHECK_TIMEOUT_SECONDS > preflight.DEFAULT_CHECK_TIMEOUT_SECONDS
+    assert preflight.timeout_for_check("resident_dispatch_proof") == preflight.DEFAULT_CHECK_TIMEOUT_SECONDS
+    assert preflight.DEFAULT_CHECK_TIMEOUT_SECONDS < preflight.CONTROLLER_PROOFS_TIMEOUT_SECONDS < preflight.TEST_CHECK_TIMEOUT_SECONDS
 
 
 def test_run_check_classifies_timeout_fail_closed(monkeypatch):

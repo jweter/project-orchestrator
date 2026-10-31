@@ -7,6 +7,13 @@ import types
 from pathlib import Path
 
 import pytest
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 SOURCE = Path(__file__).resolve().parents[1] / 'scripts' / 'independent_pr_controller.py'
 
@@ -33,15 +40,10 @@ def load_controller(monkeypatch, *, pr_cycle=None, failed_cycle=None, lock=True)
     return module
 
 
-@pytest.mark.parametrize('content,status', [
-    ('{"enabled": true}', 'OWNER_CONTROL_ACTIVE'),
-    ('{"enabled": "false"}', 'OWNER_CONTROL_UNVERIFIED'),
-    ('{corrupt', 'OWNER_CONTROL_UNVERIFIED'),
-    ('{}', 'OWNER_CONTROL_UNVERIFIED'),
-])
-def test_owner_gate_rejects_unsafe_marker(tmp_path, monkeypatch, content, status):
+@pytest.mark.parametrize('scenario,status', UNSAFE_OWNER_SCENARIOS)
+def test_owner_gate_rejects_unsafe_owner_state(tmp_path, monkeypatch, scenario, status):
     controller = load_controller(monkeypatch, pr_cycle=lambda _: pytest.fail('PR run must not start'))
-    (tmp_path / 'human-mode.json').write_text(content)
+    apply_owner_scenario(tmp_path, scenario)
     assert controller.reconcile(tmp_path, tmp_path) == {'status': status, 'acted': False}
 
 
@@ -51,7 +53,7 @@ def test_missing_marker_rejects_without_running(tmp_path, monkeypatch):
 
 
 def test_authorized_reconciliation_uses_existing_lock(tmp_path, monkeypatch):
-    (tmp_path / 'human-mode.json').write_text(json.dumps({'enabled': False}))
+    grant_owner_authority(tmp_path)
     count = []
     controller = load_controller(monkeypatch, pr_cycle=lambda dry: count.append(dry) or [])
     result = controller.reconcile(tmp_path, tmp_path)
@@ -60,18 +62,17 @@ def test_authorized_reconciliation_uses_existing_lock(tmp_path, monkeypatch):
 
 
 def test_existing_watcher_owns_lock_and_prevents_duplicate(tmp_path, monkeypatch):
-    (tmp_path / 'human-mode.json').write_text(json.dumps({'enabled': False}))
+    grant_owner_authority(tmp_path)
     controller = load_controller(monkeypatch, lock=False, pr_cycle=lambda _: pytest.fail('duplicate'))
     assert controller.reconcile(tmp_path, tmp_path)['status'] == 'ALREADY_RUNNING'
 
 
 def test_owner_change_before_gh_command_vetoes_mutation(tmp_path, monkeypatch):
-    marker = tmp_path / 'human-mode.json'
-    marker.write_text('{"enabled": false}')
+    grant_owner_authority(tmp_path)
     intercepted = []
 
     def pr_cycle(_):
-        marker.write_text('{"enabled": true}')
+        revoke_owner_authority(tmp_path)
         with pytest.raises(Exception, match='OWNER_CONTROL_ACTIVE'):
             subprocess.run(['gh', 'pr', 'merge', '123'], check=False)
         intercepted.append('blocked')
@@ -85,7 +86,7 @@ def test_owner_change_before_gh_command_vetoes_mutation(tmp_path, monkeypatch):
 
 def test_controller_launches_children_without_console_on_windows(tmp_path, monkeypatch):
     from types import SimpleNamespace
-    (tmp_path / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(tmp_path)
     calls = []
 
     def fake_run(*args, **kwargs):

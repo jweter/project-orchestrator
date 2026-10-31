@@ -21,16 +21,12 @@ from pathlib import Path
 
 import pytest
 
-from iron_god_local_test_support import IRON_GOD_LOCAL_DIR, requires_iron_god_local
-
-pytestmark = requires_iron_god_local("accepted_event_dispatch_coordinator.py")
-
 # accepted_event_dispatch_coordinator.py is a bare module living in
 # IronGodLocal, not part of the installed project_orchestrator package --
 # _build_task_for_slice imports it by bare name, matching how it is
 # actually deployed. Make it importable the same way every other proof
 # test this session does.
-_IRON_GOD_LOCAL = IRON_GOD_LOCAL_DIR
+_IRON_GOD_LOCAL = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local"
 if str(_IRON_GOD_LOCAL) not in sys.path:
     sys.path.insert(0, str(_IRON_GOD_LOCAL))
 
@@ -40,6 +36,7 @@ from project_orchestrator.iron_god_orchestration_caller import (
     provision_candidate_worktree,
     run_continuous_development_cycle,
 )
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 DEFAULT_REPOSITORY = "test-proof-owner/test-proof-repo"
 KE_CORE_REPOSITORY = "jweter/knowledge-engine-core"
@@ -304,7 +301,7 @@ def test_invalid_handoff_never_creates_a_worktree(tmp_path, monkeypatch):
 
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text('{"enabled": false}', encoding="utf-8")
+    grant_owner_authority(flow)
     refs = LocalGitRefs(repo, owner_state_root=flow)
     refs.bootstrap_accepted(base_sha)
     refs.protect("milestone", "M-0", base_sha)

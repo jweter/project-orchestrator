@@ -4,12 +4,13 @@ import sys
 from pathlib import Path
 from datetime import UTC, datetime, timedelta
 from scripts.launch_persistent_supervisor import (activate_repo_imports, atomic, network_guardian_command, publication_blocked_generation_live, publication_blocked_generation_stale, reclaim_stalled_generation, request_stale_generation_handoff, stale_generation_requires_reclaim, supervisor_command, supervisor_environment, supervisor_state_fresh, verified_identity)
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority, tamper_owner_authority
 
 def write(path:Path,payload:dict):
     path.write_text(json.dumps(payload),encoding="utf-8")
 
 def authorize(root:Path):
-    write(root/"human-mode.json",{"enabled":False})
+    grant_owner_authority(root)
 
 def test_atomic_uses_unique_temp_file_when_legacy_temp_is_contended(tmp_path):
     target=tmp_path/"persistent-supervisor-launch.json"
@@ -222,3 +223,45 @@ def test_stale_generation_reclaim_rejects_unreadable_or_future_heartbeat(tmp_pat
             "status":"RUNNING_CURRENT","heartbeat_at_utc":stamp})
         assert stale_generation_requires_reclaim(
             tmp_path,"current",now=now,max_age_seconds=60) is False
+
+
+def test_supervisor_launcher_does_not_spawn_guardian_on_missing_owner_authority(
+    monkeypatch, tmp_path, capsys
+):
+    import scripts.launch_persistent_supervisor as launcher
+
+    state = tmp_path / "owner-unknown"
+    monkeypatch.setattr(launcher, "activate_repo_imports", lambda _repo: None)
+    monkeypatch.setattr(
+        launcher, "start_network_guardian",
+        lambda *_: (_ for _ in ()).throw(AssertionError("no guardian start allowed")),
+    )
+    monkeypatch.setattr(
+        launcher.subprocess, "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("no supervisor launch allowed")
+        ),
+    )
+    monkeypatch.setattr(
+        sys, "argv",
+        ["launch_persistent_supervisor.py", "--repo-root", str(tmp_path),
+         "--workspace-root", str(tmp_path / "workspace"),
+         "--state-root", str(state)],
+    )
+    assert launcher.main() == 3
+    assert not state.exists()
+    assert "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED" in capsys.readouterr().err
+
+
+def test_launcher_owner_gate_is_fail_closed_for_unreadable_or_held_state(tmp_path):
+    from scripts.launch_persistent_supervisor import launcher_owner_gate
+
+    state = tmp_path / "state"
+    state.mkdir()
+    assert launcher_owner_gate(state) is False
+    revoke_owner_authority(state)
+    assert launcher_owner_gate(state) is False
+    tamper_owner_authority(state)
+    assert launcher_owner_gate(state) is False
+    grant_owner_authority(state)
+    assert launcher_owner_gate(state) is True

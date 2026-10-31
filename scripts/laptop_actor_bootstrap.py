@@ -5,12 +5,14 @@ import ctypes
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import shutil
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
 _DATADOG_SPEC = importlib.util.spec_from_file_location(
     "datadog_actor_metrics", Path(__file__).with_name("datadog_actor_metrics.py")
@@ -30,6 +32,30 @@ if _STEWARD_SPEC is None or _STEWARD_SPEC.loader is None:
 _STEWARD_MODULE = importlib.util.module_from_spec(_STEWARD_SPEC)
 _STEWARD_SPEC.loader.exec_module(_STEWARD_MODULE)
 assess_machine_health = _STEWARD_MODULE.assess_machine_health
+
+_ACTOR_SRC = Path(__file__).resolve().parents[1] / "src"
+# The execution decision imports the owner controller as a package. Import it
+# only from this pinned checkout, never from an unrelated editable install.
+if str(_ACTOR_SRC) in sys.path:
+    sys.path.remove(str(_ACTOR_SRC))
+sys.path.insert(0, str(_ACTOR_SRC))
+import project_orchestrator  # noqa: E402
+
+if os.path.normcase(str(Path(project_orchestrator.__file__).resolve().parent)) != os.path.normcase(
+    str(_ACTOR_SRC / "project_orchestrator")
+):
+    raise ImportError(
+        "IMPORT_PROVENANCE_MISMATCH: project_orchestrator loaded from "
+        f"{project_orchestrator.__file__}, expected {_ACTOR_SRC}"
+    )
+from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
+
+
+def default_execution_authority(control_root: Path | None = None) -> object:
+    """Worker decision for the release this actor was launched to run."""
+    return evaluate_execution_authority(
+        control_root, release_sha=os.environ.get("IRON_GOD_ACCEPTED_SHA")
+    )
 
 
 def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -53,96 +79,64 @@ def windows_idle_seconds() -> float | None:
 
 
 def update_actor_checkout(actor_repo: Path) -> str:
-    """Fast-forward the disposable actor checkout to exact origin/main.
+    """Update the dedicated actor only from a verified accepted LOCAL commit.
 
-    The checkout is owned by the laptop actor, never by the user's development
-    workspace, so discarding actor-checkout drift is safe and intentional.
+    Missing pins never enable a stale GitHub fallback; existing actor work is
+    never discarded by the release replacement routine.
     """
     if not (actor_repo / ".git").is_dir():
         raise RuntimeError("actor repository is not a Git checkout")
-    # The historical direct entrypoint must obey exactly the same pin as
-    # run_idle_session. It must never reset an accepted local actor merely
-    # because a caller invokes update_actor_checkout directly.
-    if (
-        os.environ.get("IRON_GOD_ACCEPTED_REPO")
-        or os.environ.get("IRON_GOD_ACCEPTED_SHA")
-        or actor_repo.parent.name.casefold() == "runtime-actors"
-    ):
-        pinned = pinned_actor_revision(actor_repo)
-        if pinned is None:
-            raise RuntimeError("PINNED_ACTOR_IDENTITY_REQUIRED")
-        return pinned
-    fetch = run(["git", "fetch", "origin", "main"], actor_repo)
-    if fetch.returncode != 0:
-        raise RuntimeError("actor checkout fetch failed")
-    remote = run(["git", "rev-parse", "origin/main"], actor_repo)
-    if remote.returncode != 0:
-        raise RuntimeError("origin/main is unavailable")
+    # Local-first promotion is opt-in and pinned to an immutable commit.
+    # Never infer permission to deploy from a mutable development branch.
+    local_repo = os.environ.get("IRON_GOD_ACCEPTED_REPO")
+    accepted_head = os.environ.get("IRON_GOD_ACCEPTED_SHA")
+    if bool(local_repo) != bool(accepted_head):
+        raise RuntimeError("local actor promotion requires both repository and exact SHA")
+    if not local_repo:
+        raise RuntimeError("LOCAL_ACCEPTED_RELEASE_REQUIRED: refusing GitHub origin/main fallback")
+    if re.fullmatch(r"[0-9a-f]{40}", accepted_head) is None:
+        raise RuntimeError("LOCAL_ACCEPTED_SHA_INVALID")
+    if not Path(local_repo).is_absolute():
+        raise RuntimeError("LOCAL_ACCEPTED_SOURCE_NOT_ABSOLUTE")
+    if local_repo:
+        source = Path(local_repo).resolve()
+        actor = actor_repo.resolve()
+        if source == actor or source in actor.parents or actor in source.parents:
+            raise RuntimeError("LOCAL_ACTOR_SOURCE_OVERLAP")
+        if not (source / ".git").exists():
+            raise RuntimeError("accepted local source is not a Git repository")
+        head = run(["git", "rev-parse", "HEAD"], source)
+        clean = run(["git", "status", "--porcelain", "--untracked-files=normal"], source)
+        if head.returncode != 0 or head.stdout.strip() != accepted_head or clean.returncode != 0 or clean.stdout.strip():
+            raise RuntimeError("accepted local source does not match clean exact HEAD")
+        fetch = run(["git", "fetch", "--no-tags", str(source), accepted_head], actor_repo)
+        remote = run(["git", "rev-parse", "FETCH_HEAD"], actor_repo)
+    if fetch.returncode != 0 or remote.returncode != 0:
+        raise RuntimeError("actor checkout source fetch failed")
     target = remote.stdout.strip()
-    if len(target) != 40 or any(c not in "0123456789abcdef" for c in target):
-        raise RuntimeError("origin/main did not resolve to an exact SHA")
+    if target != accepted_head:
+        raise RuntimeError("LOCAL_FETCHED_HEAD_MISMATCH")
+    current = run(["git", "rev-parse", "HEAD"], actor_repo)
+    if current.returncode != 0 or len(current.stdout.strip()) != 40:
+        raise RuntimeError("actor checkout current HEAD is unverified")
+    current_sha = current.stdout.strip()
+    # Never destroy unique actor-checkout changes, even when the checkout is
+    # nominally disposable. The old post-reset cleanliness check came too late.
+    clean_before = run(["git", "status", "--porcelain"], actor_repo)
+    if clean_before.returncode != 0 or clean_before.stdout.strip():
+        raise RuntimeError("actor checkout is dirty; refusing release replacement")
+    if current_sha == target:
+        return target
     reset = run(["git", "reset", "--hard", target], actor_repo)
     if reset.returncode != 0:
         raise RuntimeError("actor checkout reset failed")
+    final_head = run(["git", "rev-parse", "HEAD"], actor_repo)
     clean = run(["git", "status", "--porcelain"], actor_repo)
+    if final_head.returncode != 0 or final_head.stdout.strip() != accepted_head:
+        raise RuntimeError("LOCAL_ACTOR_POST_RESET_HEAD_MISMATCH")
     if clean.returncode != 0 or clean.stdout.strip():
         raise RuntimeError("actor checkout is not clean after update")
     return target
-
-
-def pinned_actor_revision(actor_repo: Path) -> str | None:
-    """Verify both exact-head checkouts without fetching or resetting either.
-
-    A configured local release never falls back to GitHub main, even if its
-    actor checkout is missing, dirty, or on a different revision. The two
-    source paths are independent and must resolve to clean Git roots.
-    This check is not an owner-control or worker-execution authorization.
-    """
-    expected = os.environ.get("IRON_GOD_ACCEPTED_SHA")
-    source_name = os.environ.get("IRON_GOD_ACCEPTED_REPO")
-    is_versioned_actor = actor_repo.parent.name.casefold() == "runtime-actors"
-    if not expected and not source_name:
-        if is_versioned_actor:
-            raise RuntimeError("PINNED_ACTOR_IDENTITY_REQUIRED")
-        return None
-    if not expected or not source_name:
-        raise RuntimeError("PINNED_ACTOR_IDENTITY_INCOMPLETE")
-    if len(expected) != 40 or any(ch not in "0123456789abcdef" for ch in expected):
-        raise RuntimeError("PINNED_ACTOR_SHA_INVALID")
-    source = Path(source_name)
-    if not source.is_absolute() or source.is_symlink():
-        raise RuntimeError("PINNED_RELEASE_SOURCE_INVALID")
-    if is_versioned_actor and actor_repo.name != expected:
-        raise RuntimeError("PINNED_ACTOR_DIRECTORY_SHA_MISMATCH")
-    try:
-        if actor_repo.resolve(strict=True) == source.resolve(strict=True):
-            raise RuntimeError("PINNED_ACTOR_MUST_BE_ISOLATED")
-    except OSError as exc:
-        raise RuntimeError("PINNED_ACTOR_CHECKOUT_UNAVAILABLE") from exc
-
-    for label, repo in (("RELEASE", source), ("ACTOR", actor_repo)):
-        if repo.is_symlink() or not repo.is_dir() or not (repo / ".git").is_dir():
-            raise RuntimeError(f"PINNED_{label}_CHECKOUT_UNAVAILABLE")
-        result = run(["git", "rev-parse", "--show-toplevel"], repo)
-        if result.returncode or os.path.normcase(
-            os.path.abspath(result.stdout.strip())
-        ) != (os.path.normcase(os.path.abspath(str(repo)))):
-            raise RuntimeError(f"PINNED_{label}_GIT_ROOT_MISMATCH")
-        head = run(["git", "rev-parse", "HEAD"], repo)
-        if head.returncode or head.stdout.strip() != expected:
-            raise RuntimeError(f"PINNED_{label}_REVISION_MISMATCH")
-        clean = run(["git", "status", "--porcelain", "--untracked-files=normal"], repo)
-        if clean.returncode or clean.stdout.strip():
-            raise RuntimeError(f"PINNED_{label}_DIRTY")
-    return expected
-
-
-def select_actor_revision(actor_repo: Path) -> str:
-    """Select a pinned local revision, or legacy GitHub mode only when unpinned."""
-    pinned = pinned_actor_revision(actor_repo)
-    if pinned is not None:
-        return pinned
-    return update_actor_checkout(actor_repo)
 
 
 def execute_bridge_once(actor_repo: Path, queue: Path, workspace_root: Path) -> int:
@@ -446,10 +440,7 @@ def run_daily_hygiene(
         if completed.tzinfo is None:
             completed = completed.replace(tzinfo=timezone.utc)
         if current - completed < timedelta(hours=max(1, minimum_interval_hours)):
-            return {
-                "status": "SKIPPED_RECENT",
-                "completed_at_utc": completed.isoformat(),
-            }
+            return {"status": "SKIPPED_RECENT", "completed_at_utc": completed.isoformat()}
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         pass
 
@@ -468,11 +459,7 @@ def run_daily_hygiene(
         if not root.is_dir():
             continue
         for item in root.rglob("*"):
-            if not item.is_file() or item.suffix.lower() not in {
-                ".log",
-                ".jsonl",
-                ".tmp",
-            }:
+            if not item.is_file() or item.suffix.lower() not in {".log", ".jsonl", ".tmp"}:
                 continue
             if item == state_dir / "actor-telemetry.jsonl":
                 continue
@@ -506,9 +493,7 @@ def run_daily_hygiene(
         "errors": errors,
     }
     state_dir.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
 
 
@@ -526,6 +511,21 @@ def resources_allow_execution(
     return isinstance(disk, (int, float)) and float(disk) >= min_disk_free_gb
 
 
+def commissioning_exclusive(actor_repo: Path) -> bool:
+    """True while the pinned release declares Iron God commissioning.
+
+    Absent policy: normal operation. Present but unreadable: exclusive
+    (fail closed), so the actor never adds a second worker.
+    """
+    path = Path(actor_repo) / "engineering" / "iron-god-commissioning.json"
+    if not path.exists():
+        return False
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("mode") == "IRON_GOD_COMMISSIONING"
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def run_idle_session(
     actor_repo: Path,
     queue: Path,
@@ -536,42 +536,35 @@ def run_idle_session(
     max_backoff_seconds: int = 900,
     max_memory_percent: float = 85.0,
     min_disk_free_gb: float = 10.0,
+    execution_authority: Callable[[], object] | None = None,
 ) -> int:
-    """Run bounded actor cycles while the Windows session remains idle.
+    """Stay resident and run bounded actor cycles only while the session is idle.
 
-    The first cycle is allowed only after the configured idle threshold. After that,
-    the actor checks for newly queued work at a short cadence and yields as soon as
-    keyboard/mouse activity drops the idle time below the threshold.
+    A launch normally coincides with owner activity (the owner just clicked
+    Take the Wheel), so the actor must not exit when the idle threshold is
+    unmet: the launcher verifies a resident actor process. While the owner is
+    active the actor holds its singleton lock and only polls; it performs no
+    checkout update, hygiene, or bridge dispatch. The first idle window
+    prepares the pinned checkout once; later owner activity pauses new cycles
+    without ending the process.
+
+    Residency is not execution authority. Before preparing the checkout and
+    before every bridge cycle the actor re-evaluates the single controller +
+    owner execution decision; a denial or revocation keeps it resident and
+    non-executing.
     """
     threshold = max(0, min_idle_seconds)
     cadence = max(30, poll_seconds)
     state_dir = state_dir or (queue / "state")
+    authority = execution_authority or default_execution_authority
     lock_fd = acquire_single_instance(state_dir)
     if lock_fd is None:
         return 0
-    idle = windows_idle_seconds()
-    if idle is not None and idle < threshold:
-        emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
-        release_single_instance(state_dir, lock_fd)
-        return 0
 
     failures = 0
+    prepared = False
+    waiting: object = None
     try:
-        maintenance, maintenance_status = steward_maintenance_active()
-        if maintenance:
-            emit_state(
-                state_dir,
-                "COOLDOWN",
-                reason="steward_maintenance",
-                maintenance_status=maintenance_status,
-            )
-            return 0
-        emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
-        # A pinned release must NEVER be reset to an older GitHub main.
-        # A bad pin blocks the session rather than falling back to remote.
-        actor_revision = select_actor_revision(actor_repo)
-        emit_state(state_dir, "ACTOR_REVISION_VERIFIED", revision=actor_revision)
-        run_daily_hygiene(state_dir)
         while True:
             maintenance, maintenance_status = steward_maintenance_active()
             if maintenance:
@@ -584,8 +577,40 @@ def run_idle_session(
                 return 0
             idle = windows_idle_seconds()
             if idle is not None and idle < threshold:
-                emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle)
-                return 0
+                # Record each waiting episode once; polling must not flood telemetry.
+                if waiting != "USER_ACTIVE":
+                    emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle, resident=True)
+                    waiting = "USER_ACTIVE"
+                time.sleep(cadence)
+                continue
+            try:
+                decision = authority()
+                permitted = getattr(decision, "permitted", False) is True
+                reasons = tuple(getattr(decision, "reasons", ()) or ())
+            except Exception:
+                permitted, reasons = False, ("EXECUTION_AUTHORITY_UNVERIFIED",)
+            if not permitted:
+                reasons = reasons or ("EXECUTION_AUTHORITY_DENIED",)
+                if waiting != reasons:
+                    emit_state(state_dir, "AUTHORITY_WAIT", reasons=list(reasons), resident=True)
+                    waiting = reasons
+                time.sleep(cadence)
+                continue
+            # During Iron God commissioning the supervisor's Canon lane runs the
+            # single worker; the actor stays resident but takes no queue work.
+            if commissioning_exclusive(actor_repo):
+                if waiting != "COMMISSIONING":
+                    emit_state(state_dir, "AUTHORITY_WAIT", resident=True,
+                               reasons=["IRON_GOD_COMMISSIONING_CANON_LANE_EXCLUSIVE"])
+                    waiting = "COMMISSIONING"
+                time.sleep(cadence)
+                continue
+            waiting = None
+            if not prepared:
+                emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
+                update_actor_checkout(actor_repo)
+                run_daily_hygiene(state_dir)
+                prepared = True
             resources = system_resource_snapshot()
             assessment = assess_machine_health(resources)
             if not assessment["allow_new_engineering"]:
@@ -600,14 +625,6 @@ def run_idle_session(
                 )
                 time.sleep(cadence)
                 continue
-            # A long-running actor cannot trust a one-time startup check:
-            # refuse to dispatch if its pinned Git checkout has changed.
-            if (
-                os.environ.get("IRON_GOD_ACCEPTED_SHA")
-                or os.environ.get("IRON_GOD_ACCEPTED_REPO")
-                or actor_repo.parent.name.casefold() == "runtime-actors"
-            ):
-                pinned_actor_revision(actor_repo)
             started = time.monotonic()
             emit_state(
                 state_dir,
@@ -656,10 +673,15 @@ def main() -> int:
     parser.add_argument("--max-backoff-seconds", type=int, default=900)
     parser.add_argument("--max-memory-percent", type=float, default=85.0)
     parser.add_argument("--min-disk-free-gb", type=float, default=10.0)
+    parser.add_argument(
+        "--control-root",
+        help="authoritative owner controller directory (default: under LOCALAPPDATA)",
+    )
     args = parser.parse_args()
     actor_repo = Path(args.actor_repo)
     queue = Path(args.queue)
     workspace_root = Path(args.workspace_root)
+    control_root = Path(args.control_root) if args.control_root else None
     try:
         return run_idle_session(
             actor_repo,
@@ -671,6 +693,7 @@ def main() -> int:
             args.max_backoff_seconds,
             args.max_memory_percent,
             args.min_disk_free_gb,
+            lambda: default_execution_authority(control_root),
         )
     except (OSError, RuntimeError):
         # Fail closed. A bootstrap/update failure must never manufacture worker

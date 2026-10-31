@@ -1,0 +1,116 @@
+{
+  "description": "Planner-written directions for the Level 2 directed calibration (2026-10-27). Written the way a backlog slice would be: the units to change and the required behaviour, including exact strings the tests assert, never the code. Derived by reading each historical fix and its tests.",
+  "cases": {
+    "knowledge-engine-core:4d04fca0a2": {
+      "targets": [
+        "evidence_records_revision"
+      ],
+      "add": [],
+      "direction": "Make the revision independent of record order: the same records in a different order must give the same revision. Keep each record's canonical JSON encoding (ensure_ascii=False, compact separators, sorted keys, UTF-8) and the length-prefixed SHA-256 digest, but feed the encoded records to the digest in sorted order."
+    },
+    "knowledge-engine-core:4373e71b5e": {
+      "targets": [
+        "quality_gates"
+      ],
+      "add": [],
+      "direction": "Add one more QualityGate at the end of the returned tuple, named \"diff_hygiene\", whose command is (\"git\", \"diff\", \"--check\")."
+    },
+    "knowledge-engine-core:0216324767": {
+      "targets": [
+        "backfill_paper"
+      ],
+      "add": [],
+      "direction": "When parsing the source fails with any OSError (for example PermissionError), handle it exactly as FileNotFoundError is handled today; FileNotFoundError is itself an OSError."
+    },
+    "knowledge-engine-core:c097ef4dc6": {
+      "targets": [
+        "imports",
+        "PaperMetadata",
+        "DraftEvidenceItem",
+        "build_draft_evidence_item"
+      ],
+      "add": [],
+      "direction": "PaperMetadata gains a required field `paper_id: int` declared first, before doi. DraftEvidenceItem gains `provenance: dict[str, Any] | None = None` right after confidence_note (import Any from typing). build_draft_evidence_item puts \"paper_id\": paper.paper_id as the first key of source_span."
+    },
+    "knowledge-engine-core:e9b3b24d8f": {
+      "targets": [
+        "_QUALIFIES_PATTERNS"
+      ],
+      "add": [],
+      "direction": "Remove the bare discourse connectives \"however\" and \"although\" from the qualifies cue patterns, because one isolated sentence cannot show what they qualify. Keep every other pattern unchanged."
+    },
+    "knowledge-engine-core:ab63f1db5d": {
+      "targets": [
+        "_SECTION_HEADING_PATTERNS"
+      ],
+      "add": [],
+      "direction": "The \"references\" heading pattern must accept the same optional numbering prefix ({_NUMBERING_PREFIX}, as the other headings use via an rf-string) so a heading like \"7. References\" is recognized."
+    },
+    "knowledge-engine-core:80212de42e": {
+      "targets": [
+        "imports",
+        "search",
+        "answer",
+        "list_papers"
+      ],
+      "add": [
+        {
+          "name": "_safe_text",
+          "after": "_truncate",
+          "spec": "def _safe_text(value: str) -> str: NFKD-normalize with unicodedata and drop non-ASCII characters, so the PDF ligature in \"Efﬁcacy\" prints as \"Efficacy\"."
+        }
+      ],
+      "direction": "Add the helper _safe_text (import unicodedata) and pass every printed title, snippet, author list, question, best snippet, why-matched text and citation in search, answer and list_papers through it."
+    },
+    "knowledge-engine-ai:3246a68df1": {
+      "targets": [
+        "run_retrieval_baseline"
+      ],
+      "add": [
+        {
+          "name": "git_clean_commit",
+          "after": "git_commit",
+          "spec": "def git_clean_commit(checkout_root: Path) -> str: run git -C <root> status --porcelain --untracked-files=no (subprocess.run, capture_output, text, check=False); raise ValueError if it fails, or ValueError(\"Retrieval baseline provenance requires tracked files to match the recorded commit.\") if it reports any change; otherwise return git_commit(checkout_root)."
+        }
+      ],
+      "direction": "Baseline provenance must come from clean checkouts: add git_clean_commit and make run_retrieval_baseline resolve core_commit and ai_commit with it before running the benchmark, passing those values to baseline_payload."
+    },
+    "rocksmith-cdlc-generator:0e78d820c7": {
+      "targets": [
+        "render_mobile_review",
+        "build_mobile_review_report"
+      ],
+      "add": [],
+      "direction": "build_mobile_review_report adds \"observed_at_utc\": evidence.observed_at_utc, \"project_recording_sha256\": evidence.project_recording_sha256 or \"UNKNOWN\" and \"tempo_map_sha256\": evidence.tempo_map_sha256 or \"UNKNOWN\" after scenario_sha256. render_mobile_review reads each with report.get(key, \"UNKNOWN\") and shows three meta lines right after the scenario hash line: <strong>Measured at:</strong>, <strong>Recording hash:</strong>, <strong>Tempo map hash:</strong>, each value escaped."
+    },
+    "rocksmith-cdlc-generator:ac21c5ca48": {
+      "targets": [
+        "imports",
+        "render_mobile_review",
+        "build_mobile_review_report"
+      ],
+      "add": [
+        {
+          "name": "_ROLE_NAMES",
+          "after": "_FIRST_EVENT_SUFFIX",
+          "spec": "_ROLE_NAMES = {role.value for role in ArrangementRole}, using ArrangementRole imported from .score_source"
+        }
+      ],
+      "direction": "Three changes. (1) build_mobile_review_report adds \"scenario_sha256\": evidence.scenario_sha256 after scenario, and render_mobile_review shows a meta line <strong>Scenario hash:</strong> (report.get default \"UNKNOWN\", escaped) right after the Commit line. (2) With no failed checks, render \"All deterministic checks passed.\" only when the automated result is PASS, otherwise \"No deterministic check results were supplied.\". (3) In build_mobile_review_report, a check code counts as a requested role only if it ends with _FIRST_EVENT_SUFFIX and the prefix before the suffix is in the new constant _ROLE_NAMES (import ArrangementRole from .score_source)."
+    },
+    "rocksmith-cdlc-generator:ff6ee87dcd": {
+      "targets": [
+        "record_source_rights_review"
+      ],
+      "add": [],
+      "direction": "Reviews with the same reviewed_at must still sort in call order: put a zero-padded 6-digit sequence number, the count of *.json files already in the directory, between the timestamp and the uuid suffix of the filename."
+    },
+    "rocksmith-cdlc-generator:faa839cc99": {
+      "targets": [
+        "promote_reviewed_timing"
+      ],
+      "add": [],
+      "direction": "Promoting an unedited review must work: load it with load_reviewed_timing(project, create=True), and require a locked anchor only when some anchor's reviewed_time_seconds differs from its original_time_seconds; that error is ValueError(\"lock at least one reviewed timing anchor before promoting edited timing\")."
+    }
+  }
+}

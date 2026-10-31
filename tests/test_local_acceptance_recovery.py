@@ -1,3 +1,4 @@
+import shutil
 """IG-034 recovery classification: real Git refs and durable SQLite intents."""
 
 from pathlib import Path
@@ -8,6 +9,14 @@ from project_orchestrator.local_acceptance_recovery import classify_pending_acce
 from project_orchestrator.local_first_state import LocalFirstState
 from project_orchestrator.local_git_refs import LocalGitRefs
 from test_local_git_refs import git, next_commit
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
+from project_orchestrator.iron_god_owner_control import control_root
 
 
 @pytest.fixture
@@ -22,7 +31,7 @@ def recovery(tmp_path: Path):
     git(repo, "commit", "-qm", "initial")
     owner = tmp_path / "flow-state"
     owner.mkdir()
-    (owner / "human-mode.json").write_text('{"enabled":false}')
+    grant_owner_authority(owner)
     refs = LocalGitRefs(repo, owner_state_root=owner)
     base = git(repo, "rev-parse", "HEAD")
     refs.bootstrap_accepted(base)
@@ -68,34 +77,23 @@ def test_conflicting_milestone_ref_stops(recovery):
     )
 
 
-def test_missing_legacy_marker_allows_read_only_recovery_classification(recovery):
+def test_missing_owner_controller_state_vetoes_recovery(recovery):
     refs, state, owner, base, target = recovery
-    (owner / "human-mode.json").unlink()
-    result = classify_pending_acceptances(state=state, refs=refs)
-    assert result[0].disposition == "MILESTONE_REF_MISSING_STOP"
-    assert refs.accepted() == base
-    assert len(state.pending_acceptances()) == 1
-
-
-def test_symlink_owner_marker_vetoes_recovery(recovery, tmp_path: Path):
-    refs, state, owner, base, target = recovery
-    marker = owner / "human-mode.json"
-    alternate = tmp_path / "alternate-owner.json"
-    alternate.write_text('{"enabled":false}')
-    marker.unlink()
-    try:
-        marker.symlink_to(alternate)
-    except (OSError, NotImplementedError):
-        pytest.skip("Symlinks unavailable on this host")
+    shutil.rmtree(control_root(owner))
     with pytest.raises(ValueError, match="OWNER_CONTROL_VETO"):
         classify_pending_acceptances(state=state, refs=refs)
 
 
-def test_directory_owner_marker_vetoes_recovery(recovery):
+def test_tampered_owner_controller_vetoes_recovery(recovery):
     refs, state, owner, base, target = recovery
-    marker = owner / "human-mode.json"
-    marker.unlink()
-    marker.mkdir()
+    tamper_owner_authority(owner)
+    with pytest.raises(ValueError, match="OWNER_CONTROL_VETO"):
+        classify_pending_acceptances(state=state, refs=refs)
+
+
+def test_revoked_owner_controller_vetoes_recovery(recovery):
+    refs, state, owner, base, target = recovery
+    revoke_owner_authority(owner)
     with pytest.raises(ValueError, match="OWNER_CONTROL_VETO"):
         classify_pending_acceptances(state=state, refs=refs)
 

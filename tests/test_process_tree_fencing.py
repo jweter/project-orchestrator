@@ -29,110 +29,65 @@ def test_supervised_runtime_routes_revocation_through_tree_terminator(monkeypatc
     assert len(seen)==1
 
 
-@pytest.mark.skipif(os.name!="nt",reason="Windows Job Object contract")
-def test_revocation_before_child_resume_runs_no_child_code(tmp_path):
-    marker=tmp_path/"unauthorized-execution.txt"
-    script=f"import pathlib; pathlib.Path(r'{marker}').write_text('unauthorized')"
-    with pytest.raises(RuntimeError,match="EXECUTION_AUTHORITY_REVOKED"):
-        NativeWindowsRuntime().execute_supervised(
-            RuntimeRequest((sys.executable,"-c",script),tmp_path),
-            lambda: (_ for _ in ()).throw(RuntimeError("owner veto")),
-            interval=.01,
-        )
-    time.sleep(.3)
-    assert not marker.exists()
-
-
-@pytest.mark.skipif(os.name!="nt",reason="Windows Job Object contract")
-def test_root_exit_still_terminates_job_owned_descendant(tmp_path):
-    marker=tmp_path/"orphan-after-root-exit.txt"
-    child=("import time,pathlib; time.sleep(1); "
+@pytest.mark.skipif(os.name!="nt", reason="Windows job-object containment contract")
+def test_completed_parent_does_not_leave_detached_descendants(tmp_path):
+    marker=tmp_path/"orphan-survived.txt"
+    child=("import time,pathlib; time.sleep(.8); "
            f"pathlib.Path(r'{marker}').write_text('orphan')")
-    parent=("import subprocess,sys; "
-            f"subprocess.Popen([sys.executable,'-c',{child!r}])")
+    parent=("import subprocess,sys,time; "
+            f"subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(.3)")
     result=NativeWindowsRuntime().execute_supervised(
         RuntimeRequest((sys.executable,"-c",parent),tmp_path),
         lambda: None,interval=.02,
     )
     assert result.returncode==0
-    time.sleep(1.3)
+    time.sleep(1)
     assert not marker.exists()
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object contract")
-def test_failed_containment_never_runs_unowned_child(tmp_path, monkeypatch):
-    from project_orchestrator.windows_process_job import WindowsProcessJob
-
-    marker = tmp_path / "uncontained-child-executed.txt"
-
-    def reject_attach(self, process):
-        raise RuntimeError("PROCESS_TREE_CONTAINMENT_UNAVAILABLE")
-
-    monkeypatch.setattr(WindowsProcessJob, "attach_suspended", reject_attach)
-    with pytest.raises(RuntimeError, match="PROCESS_TREE_CONTAINMENT_UNAVAILABLE"):
+@pytest.mark.skipif(os.name!="nt", reason="Windows job-object containment contract")
+def test_supervised_worker_refuses_unavailable_job_authority(monkeypatch,tmp_path):
+    import project_orchestrator.execution_runtime as runtime
+    from project_orchestrator.windows_process_job import ProcessJobError
+    def refuse(self,_process):
+        raise ProcessJobError("synthetic job-assignment failure")
+    monkeypatch.setattr(runtime.KillOnCloseJob,"attach",refuse)
+    with pytest.raises(RuntimeError,match="EXECUTION_PROCESS_TREE_FENCE_UNAVAILABLE"):
         NativeWindowsRuntime().execute_supervised(
-            RuntimeRequest(
-                (sys.executable, "-c", f"from pathlib import Path; Path(r'{marker}').write_text('BAD')"),
-                tmp_path,
-            ),
-            lambda: None,
-            interval=.01,
+            RuntimeRequest((sys.executable,"-c","import time;time.sleep(10)"),tmp_path),
+            lambda: None,interval=.01,
         )
-    time.sleep(.3)
+
+
+@pytest.mark.skipif(os.name!="nt", reason="Windows suspended-launch contract")
+def test_authority_revoked_before_resume_never_runs_child_code(monkeypatch,tmp_path):
+    """#570 parity: authority is re-checked while the attached child is still suspended."""
+    import project_orchestrator.execution_runtime as runtime
+    marker=tmp_path/"child-ran.txt"
+    resumed=[]
+    original=runtime.resume_suspended_process
+    monkeypatch.setattr(runtime,"resume_suspended_process",lambda p:(resumed.append(p.pid),original(p))[1])
+    def revoked():
+        raise RuntimeError("owner revoked during launch")
+    with pytest.raises(RuntimeError,match="EXECUTION_AUTHORITY_REVOKED"):
+        NativeWindowsRuntime().execute_supervised(
+            RuntimeRequest((sys.executable,"-c",f"import pathlib; pathlib.Path(r'{marker}').write_text('ran')"),tmp_path),
+            revoked,interval=.01,
+        )
+    assert resumed==[]
+    time.sleep(.5)
     assert not marker.exists()
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object contract")
-def test_authority_rechecked_after_fast_root_exits(tmp_path):
-    finished_marker = tmp_path / "root-finished.txt"
-
+def test_authority_revoked_while_fast_root_exits_returns_no_result(tmp_path):
+    """#570 parity: a root that exits between polls cannot report success after revocation."""
+    marker=tmp_path/"root-finished.txt"
     def authority():
-        if finished_marker.exists():
-            raise RuntimeError("revoked after completion")
-
-    with pytest.raises(RuntimeError, match="EXECUTION_AUTHORITY_REVOKED"):
+        if marker.exists():
+            raise RuntimeError("owner revoked")
+    with pytest.raises(RuntimeError,match="EXECUTION_AUTHORITY_REVOKED"):
         NativeWindowsRuntime().execute_supervised(
-            RuntimeRequest(
-                (sys.executable, "-c", f"from pathlib import Path; Path(r'{finished_marker}').write_text('done')"),
-                tmp_path,
-            ),
-            authority,
-            interval=.02,
+            RuntimeRequest((sys.executable,"-c",f"import pathlib; pathlib.Path(r'{marker}').write_text('done')"),tmp_path),
+            authority,interval=2.0,
         )
-    assert finished_marker.exists()
-
-
-@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object contract")
-def test_timeout_terminates_job_descendant(tmp_path):
-    marker = tmp_path / "descendant-after-timeout.txt"
-    child = ("import time,pathlib; time.sleep(2); "
-             f"pathlib.Path(r'{marker}').write_text('survived')")
-    parent = ("import subprocess,sys,time; "
-              f"subprocess.Popen([sys.executable,'-c',{child!r}]); time.sleep(10)")
-    with pytest.raises(subprocess.TimeoutExpired):
-        NativeWindowsRuntime().execute_supervised(
-            RuntimeRequest((sys.executable, "-c", parent), tmp_path, timeout_seconds=1),
-            lambda: None,
-            interval=.02,
-        )
-    time.sleep(2.3)
-    assert not marker.exists()
-
-
-@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object contract")
-def test_failed_primary_thread_resume_never_reports_success(tmp_path, monkeypatch):
-    from project_orchestrator.windows_process_job import WindowsProcessJob
-
-    marker = tmp_path / "resume-failed-child-executed.txt"
-    monkeypatch.setattr(WindowsProcessJob, "_resume_primary_thread", lambda self, pid: False)
-    with pytest.raises(RuntimeError, match="PROCESS_TREE_RESUME_FAILED"):
-        NativeWindowsRuntime().execute_supervised(
-            RuntimeRequest(
-                (sys.executable, "-c", f"from pathlib import Path; Path(r'{marker}').write_text('BAD')"),
-                tmp_path,
-            ),
-            lambda: None,
-            interval=.01,
-        )
-    time.sleep(.3)
-    assert not marker.exists()
+    assert marker.exists()

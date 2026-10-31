@@ -27,14 +27,10 @@ class OwnerControlVeto(RuntimeError):
 
 
 def owner_status(state_root: Path) -> str:
-    """Only literal JSON enabled:false allows external work."""
-    try:
-        value = json.loads((state_root / "human-mode.json").read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError, TypeError):
-        return "OWNER_CONTROL_UNVERIFIED"
-    if not isinstance(value, dict) or type(value.get("enabled")) is not bool:
-        return "OWNER_CONTROL_UNVERIFIED"
-    return "AUTHORIZED" if value["enabled"] is False else "OWNER_CONTROL_ACTIVE"
+    """Only the authoritative owner controller can allow external work."""
+    from project_orchestrator.human_ownership import owner_control_status
+
+    return owner_control_status(state_root)
 
 
 def reconcile(repo_root: Path, state_root: Path) -> dict:

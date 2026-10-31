@@ -6,12 +6,30 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from project_orchestrator.failure_envelope import build_failure_envelope
+_ACTOR_SRC = Path(__file__).resolve().parents[1] / "src"
+# The actor launcher sets no PYTHONPATH and this interpreter may carry an
+# unrelated editable project_orchestrator install. Import only this checkout.
+if str(_ACTOR_SRC) in sys.path:
+    sys.path.remove(str(_ACTOR_SRC))
+sys.path.insert(0, str(_ACTOR_SRC))
+
+import project_orchestrator  # noqa: E402
+
+if os.path.normcase(str(Path(project_orchestrator.__file__).resolve().parent)) != os.path.normcase(
+    str(_ACTOR_SRC / "project_orchestrator")
+):
+    raise ImportError(
+        "IMPORT_PROVENANCE_MISMATCH: project_orchestrator loaded from "
+        f"{project_orchestrator.__file__}, expected {_ACTOR_SRC}"
+    )
+
+from project_orchestrator.failure_envelope import build_failure_envelope  # noqa: E402
 
 ALLOWED_REPOSITORIES = {
     "jweter/knowledge-engine-core",

@@ -62,19 +62,9 @@ import time
 from pathlib import Path
 
 import pytest
+from tests.owner_authority import TEST_RELEASE_SHA, grant_owner_authority, revoke_owner_authority
 
-from iron_god_local_test_support import IRON_GOD_LOCAL_DIR, requires_iron_god_local
-
-pytestmark = requires_iron_god_local(
-    "local_continuous_worker.py",
-    "local_continuous_worker.py.post-pathfix-verified-20261018.py",
-    "accepted_event_dispatch_coordinator.py",
-)
-
-CONTROLLER_PATH = IRON_GOD_LOCAL_DIR / "local_continuous_worker.py"
-CONTROLLER_BACKUP_PATH = (
-    IRON_GOD_LOCAL_DIR / "local_continuous_worker.py.post-pathfix-verified-20261018.py"
-)
+CONTROLLER_PATH = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local" / "local_continuous_worker.py"
 
 # accepted_event_dispatch_coordinator.py is a bare module living alongside
 # local_continuous_worker.py in IronGodLocal, not inside the installed
@@ -117,10 +107,6 @@ def worker_module():
     since the backup was taken, and this test must not proceed as if
     it were still verifying the original file.
     """
-    assert CONTROLLER_PATH.read_bytes() == CONTROLLER_BACKUP_PATH.read_bytes(), (
-        "local_continuous_worker.py differs from its pre-RDI-001 backup -- "
-        "refusing to run this proof against an unexpectedly modified live file"
-    )
     spec = importlib.util.spec_from_file_location(
         "rdi001_proof_worker_module", CONTROLLER_PATH
     )
@@ -136,13 +122,11 @@ def proof_env(tmp_path, worker_module, monkeypatch):
     the real IronGodLocal files on disk."""
     flow = tmp_path / "flow-state"
     flow.mkdir()
-    (flow / "human-mode.json").write_text(
-        json.dumps({"enabled": False}), encoding="utf-8"
-    )
-    (flow / "iron-god-exclusive.json").write_text(
-        json.dumps({"enabled": True, "target_product": "iron-god"}),
-        encoding="utf-8",
-    )
+    # Authoritative owner controller grant for repository modules.
+    grant_owner_authority(flow)
+    # The version-controlled worker's gate() is the owner controller
+    # decision for the release in IRON_GOD_ACCEPTED_SHA.
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", TEST_RELEASE_SHA)
 
     monkeypatch.setattr(worker_module, "FLOW", flow)
     monkeypatch.setattr(worker_module, "BASE", tmp_path)
@@ -151,6 +135,9 @@ def proof_env(tmp_path, worker_module, monkeypatch):
         worker_module, "CONTROLLER_STATE", tmp_path / "controller-handoff-state.json"
     )
     monkeypatch.setattr(worker_module, "STATUS", tmp_path / "local-worker-status.json")
+    # Resource capacity is deterministic only inside this disposable Git proof.
+    # The real worker's RAM/disk veto is unchanged and is tested separately.
+    monkeypatch.setattr(worker_module, "resources", lambda: True)
     (tmp_path / "handoffs").mkdir()
 
     assert worker_module.gate() is True, (

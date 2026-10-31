@@ -34,11 +34,30 @@ def test_validator_rejects_large_non_orchestration_helper(tmp_path):
 
 def test_productive_liveness_sidecar_contention_is_nonfatal_and_visible():
     source = (Path(__file__).parents[1] / "scripts" / "continuous_flow_supervisor.py").read_text(encoding="utf-8")
-    assert 'optional_atomic(state/"productive-liveness.json"' in source
-    assert "PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED" in source
+    # Supervisor owns nonfatal publication; extracted helper owns degradation.
+    assert 'liveness_published=optional_atomic(state/"productive-liveness.json"' in source
+    assert "_throughput.degraded_reasons(" in source
+    assert "liveness_published=liveness_published" in source
 
 
 def test_productive_liveness_publication_failure_degrades_health_verdict():
+    from project_orchestrator.supervisor_throughput_runtime import degraded_reasons
+
     source = (Path(__file__).parents[1] / "scripts" / "continuous_flow_supervisor.py").read_text(encoding="utf-8")
-    assert 'if not liveness_published: degraded_reasons.append({"reason":"PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"})' in source
+    reasons = degraded_reasons(
+        lifecycle_recovery={"publication_blocked": False},
+        liveness_published=False,
+        workspace_provisioning={"status": "OK"},
+        convergence={"status": "CONVERGED"},
+        idle_streaks={},
+        liveness={"status": "HEALTHY"},
+        delivery={"status": "HEALTHY"},
+        builder_ok=True,
+        builder_status="PR_OPEN",
+        rc=0,
+        linear_rc=0,
+        quarantines={},
+    )
+    assert {"reason": "PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"} in reasons
+    assert reasons == [{"reason": "PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"}]
     assert "healthy=not degraded_reasons" in source

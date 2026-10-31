@@ -690,13 +690,17 @@ def _acquire_ollama_lock()->Path:
                 raise TimeoutError("timed out waiting for exclusive local Ollama builder slot")
             time.sleep(1)
 
-def run_aider(ws:Path,message:str)->subprocess.CompletedProcess[str]:
+def aider_invocation(message:str,files:list[str]|None=None)->tuple[list[str],dict[str,str]]:  # shared by builder + Canon worker
     env=os.environ.copy()
-    env.setdefault("OLLAMA_API_BASE","http://127.0.0.1:11434")
+    env.setdefault("OLLAMA_API_BASE","http://127.0.0.1:11434"); env.update(PYTHONIOENCODING="utf-8",PYTHONUTF8="1")  # captured cp1252 output crashes aider's console
     argv=["aider","--model",MODEL,"--message",message,
           "--no-auto-commits","--no-gitignore","--no-pretty","--no-stream",
           "--analytics-disable","--no-check-update","--no-show-model-warnings",
-          "--no-suggest-shell-commands","--yes-always"]
+          "--no-suggest-shell-commands","--yes-always",*(files or [])]
+    return argv,env
+
+def run_aider(ws:Path,message:str)->subprocess.CompletedProcess[str]:
+    argv,env=aider_invocation(message)
     lock=_acquire_ollama_lock()
     try:
         return run(argv,ws,env=env,timeout=MAX_AIDER_SECONDS)

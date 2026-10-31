@@ -2,6 +2,13 @@ from datetime import UTC, datetime, timedelta
 import json
 
 from project_orchestrator.iron_foreman import prepare_reclamation, recovery_decision
+from tests.owner_authority import (
+    UNSAFE_OWNER_SCENARIOS,
+    apply_owner_scenario,
+    grant_owner_authority,
+    revoke_owner_authority,
+    tamper_owner_authority,
+)
 
 NOW=datetime(2026,10,3,2,0,tzinfo=UTC)
 
@@ -9,7 +16,7 @@ def write(path,payload):
     path.write_text(json.dumps(payload),encoding="utf-8")
 
 def stalled_state(root):
-    write(root/"human-mode.json",{"enabled":False})
+    grant_owner_authority(root)
     write(root/"supervisor-process-instance.json",{"process_instance_id":"gen","burst_id":"burst",
         "worker":{"pid":42724,"process_start_fingerprint":"windows:123"}})
     write(root/"supervisor-generation-heartbeat.json",{"process_instance_id":"gen","burst_id":"burst",
@@ -50,7 +57,7 @@ def test_prepare_reclamation_rechecks_identity_then_fences(tmp_path):
 
 def test_human_mode_blocks_recovery_and_reclamation(tmp_path):
     stalled_state(tmp_path)
-    (tmp_path/"human-mode.json").write_text("{}",encoding="utf-8")
+    tamper_owner_authority(tmp_path)
     decision=recovery_decision(tmp_path,now=NOW,confirmation_seconds=0)
     assert decision["status"]=="HUMAN_OWNED"
     result=prepare_reclamation(tmp_path,fingerprint_fn=lambda pid:"windows:123",now=NOW)

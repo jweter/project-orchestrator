@@ -10,6 +10,21 @@ $humanMode = Join-Path $StateRoot "human-mode.json"
   since = [DateTimeOffset]::UtcNow.ToString("o")
   source = "desktop-human-control"
 } | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $humanMode
+# The file above is only a stop signal for unmigrated SYSTEM guardians; the
+# authoritative revocation is recorded in the owner controller.
+# Success is reported only when the controller confirms OWNER_CONTROL_ACTIVE (the same test as the
+# desktop Give Me Control); the stops below run regardless, because stopping work is the safe direction.
+$controllerLoaded = $false
+$revocation = "OWNER_CONTROLLER_UNAVAILABLE"
+try {
+  $pinned = Get-Content (Join-Path $StateRoot "supervisor-pinned-release.json") -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+  . (Join-Path ([string]$pinned.accepted_repo) "scripts\desktop-control\IronGodOwnerControl.ps1")
+  $controllerLoaded = $true
+  $issued = Invoke-IronGodOwnerController -StateRoot $StateRoot -Arguments @("issue","--action","GIVE_ME_CONTROL")
+  $revocation = if ($issued.ExitCode -eq 0) { "ISSUED" } else { [string]$issued.Result.reason }
+} catch {
+  $revocation = "OWNER_CONTROLLER_ERROR: " + $_.Exception.Message
+}
 
 $tasks = @(
   "ExponentialEngine-ContinuousFlow-Watchdog",
@@ -40,4 +55,13 @@ Get-CimInstance Win32_Process | Where-Object {
   Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
+$ownerActive = $false
+if ($controllerLoaded) {
+  try { $ownerActive = (Get-IronGodOwnerStatus $StateRoot) -ceq "OWNER_CONTROL_ACTIVE" } catch { $ownerActive = $false }
+}
+if (-not $ownerActive) {
+  Write-Host "HUMAN MODE NOT CONFIRMED - workers were stopped, but the owner controller did not record Give Me Control ($revocation). Use the desktop Give Me Control icon." -ForegroundColor Red
+  exit 3
+}
 Write-Host "HUMAN MODE ACTIVE - autonomous development stopped." -ForegroundColor Green
+exit 0

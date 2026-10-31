@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "migration": "iron-god-local-worker-into-version-control",
+  "owner_authorization": "2026-10-25 owner decision: migrate the legacy worker into version control; replace retired-file authorization with the authoritative execution decision",
+  "installed_root": "%LOCALAPPDATA%\\ExponentialEngine\\IronGodLocal",
+  "imported_at": "2026-10-26",
+  "modules": {
+    "local_continuous_worker.py": {
+      "installed_sha256": "05039ef79f9f696e407924db6b75ce7f244f6838dd1bde155337d5254e710ed3",
+      "installed_mtime": "2026-10-18T09:15",
+      "installed_identical_backup": "local_continuous_worker.py.post-pathfix-verified-20261018.py",
+      "repository_path": "scripts/iron_god_local/local_continuous_worker.py",
+      "imported_git_blob": "309cf5897f65bf861cb6bb4bd2de08e689e69834",
+      "migrated_changes": [
+        "CODE_DIR (version-controlled code) separated from BASE (live state: IRON_GOD_LOCAL_BASE or %LOCALAPPDATA%\\ExponentialEngine\\IronGodLocal)",
+        "gate() is the authoritative owner-controller execution decision for IRON_GOD_ACCEPTED_SHA",
+        "default authorized_fn in execute_candidate_attempt is gate() (legacy candidate_mode flag no longer authority)"
+      ]
+    },
+    "accepted_event_dispatch_coordinator.py": {
+      "installed_sha256": "cd4077ba8dcef1b7007c812d233022c97fa1bac09ba5a9d330c67e63fd572ca1",
+      "installed_mtime": "2026-10-18T10:13",
+      "repository_path": "scripts/iron_god_local/accepted_event_dispatch_coordinator.py",
+      "imported_git_blob": "467cf1348550a5c5dc39766a6e886ef862363627"
+    }
+  },
+  "observed_runtime_state": {
+    "scheduled_task_launching_worker": "none",
+    "local_worker_mutex": "absent",
+    "slice_lease_db": "absent",
+    "last_status": "RUNNING IG-CANARY-focused at 2026-10-13T14:01:43Z (stale; no live process)",
+    "controller_handoff_state_sha256": "f0636374ac8ab5be095f58ad8407d72f764b9617d1049b02e2f2af5ddefc4fb8",
+    "consumers": "repository tests and iron_god_orchestration_caller load it by file path; no production entrypoint runs it"
+  },
+  "still_required": [
+    "slice lease claim/heartbeat/transition/release/outcome (SQLite, fenced)",
+    "resource gate (disk >= 25 GiB free, RAM >= 2 GiB available)",
+    "exact-head verification and changed-path checks",
+    "safe cancellation of owned child processes on veto",
+    "durable repair routing and handback evidence",
+    "refusal of the unbound legacy queue path in main()"
+  ],
+  "obsolete": [
+    "gate() reading flow-state/human-mode.json and flow-state/iron-god-exclusive.json",
+    "default authorized_fn requiring controller-handoff-state candidate_mode + candidate_execution_authorized",
+    "BASE = Path(__file__).parent conflating code location with live state location"
+  ],
+  "rollback": [
+    "The installed IronGodLocal files are not modified by this migration.",
+    "Any later replacement of the installed copy must first preserve the current files beside them (as the existing *.pre-*-backup-* convention does) and is reverted by restoring those bytes, verified against installed_sha256 above."
+  ],
+  "import_commit": "87faae2"
+}

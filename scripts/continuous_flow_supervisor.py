@@ -12,6 +12,7 @@ from scripts.agent_voice import manager_status, worker_status
 from scripts.blocker_buddy import diagnose as diagnose_blocker
 from scripts.autonomous_slice_builder import ensure_workspace
 from project_orchestrator.parallel_worker_pool import ParallelWorkerPool
+from project_orchestrator import supervisor_throughput_runtime as _throughput
 from project_orchestrator.runner_registry import DEFAULT_RUNNERS, RunnerRegistry
 from project_orchestrator.execution_runtime import require_runtime_capabilities
 from project_orchestrator.runtime_leases import RuntimeLeasePool, DEFAULT_RUNTIME_CAPACITIES
@@ -62,11 +63,13 @@ def load_runtime_leases_with_recovery(state_path:Path=RUNTIME_LEASE_STATE)->tupl
 RUNTIME_LEASES,RUNTIME_LEASE_RECOVERY=load_runtime_leases_with_recovery()
 
 def start_merge_watcher(repo_root:Path,state_root:Path,poll_seconds:int)->subprocess.Popen:
+    if _supervisor_runtime.commissioning_active(repo_root): return _supervisor_runtime.SuspendedMergeWatcher()  # no product merges
     return subprocess.Popen([sys.executable,str(repo_root/"scripts"/"green_pr_watch_loop.py"),
         "--state",str(state_root/"green-pr-watcher.json"),"--poll-seconds",str(poll_seconds)],
         cwd=repo_root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
 def run_linear_reconciliation(repo_root:Path,state_root:Path)->int|None:
+    if _supervisor_runtime.commissioning_active(repo_root): return None  # no external product tracker mutations
     bindings=state_root/"linear-bindings.json"
     if not bindings.exists():
         return None
@@ -84,6 +87,7 @@ def observe_live_heads(repo_root:Path,workspace_root:Path,state_root:Path)->tupl
     return _authority.observe_live_heads(repo_root,workspace_root,state_root,subprocess.run)
 
 def evolution_authorized(repo_root:Path,workspace_root:Path,state_root:Path)->tuple[bool,str,list[str],list[str]]:
+    if _supervisor_runtime.commissioning_active(repo_root): return False,"IRON_GOD_COMMISSIONING_LEGACY_READINESS_SKIPPED",[],[]
     return _authority.evolution_authorized(
         repo_root,workspace_root,state_root,
         observe_fn=observe_live_heads,run_fn=subprocess.run,
@@ -391,7 +395,8 @@ def durable_runner_occupancy(state_root:Path,now:datetime|None=None)->dict[str,i
 def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_root:Path,
                                state_root:Path,products:list[str],
                                runner_registry:RunnerRegistry|None=None,
-                               dispatch_invocation_id:str|None=None)->list[str]:
+                               dispatch_invocation_id:str|None=None,
+                               new_worker_budget:int|None=None)->list[str]:
     return _parallel_runtime.dispatch_parallel_builders(
         pool,repo_root,workspace_root,state_root,products,
         ready_task_batch_fn=ready_task_batch,
@@ -400,6 +405,7 @@ def dispatch_parallel_builders(pool:ParallelWorkerPool,repo_root:Path,workspace_
         runtime_lease_recovery=RUNTIME_LEASE_RECOVERY,
         runner_registry=runner_registry,
         dispatch_invocation_id=dispatch_invocation_id,
+        new_worker_budget=new_worker_budget,
     )
 
 
@@ -653,19 +659,14 @@ def main()->int:
     try: product_proof=json.loads((state/"portfolio-product-advancement-proof.json").read_text(encoding="utf-8"))
     except (OSError,json.JSONDecodeError,TypeError,ValueError): product_proof={}
     previous_repository=previous_builder_status=rotation_evidence=None
-    worker_pool=ParallelWorkerPool(max_workers_per_product=2,max_total_workers=6); atexit.register(worker_pool.shutdown,wait=False)
+    worker_pool=ParallelWorkerPool(**_supervisor_runtime.COMMISSIONING_WORKER_LIMITS); atexit.register(worker_pool.shutdown,wait=False)
     dead_builder_reconciliation=_supervisor_runtime.reconcile_dead_builder_states(state); workspace_provisioning=_authority.ensure_portfolio_workspaces(repo,workspace,state,ensure_workspace_fn=ensure_workspace)
     progress_sequence=0
     while True:
         progress_sequence+=1
         revision_rollover=_supervisor_runtime.prepare_actor_revision_rollover(repo,workspace,state,loaded_actor_revision=loaded_actor_revision,current_actor_revision=actor_revision(repo),process_instance_id=process_instance_id,worker_pool=worker_pool,builder_seconds=a.builder_seconds,merge_seconds=a.merge_seconds,yield_on_interactive_session=a.yield_on_interactive_session)
         if _supervisor_runtime.guard_generation_iteration(state,process_instance_id=process_instance_id,burst_id=burst_id,actor_revision=loaded_actor_revision,sequence=progress_sequence,worker_pool=worker_pool,heartbeat_fn=publish_generation_heartbeat,handoff_fn=generation_handoff_status): return 0
-        if human_mode_active(state):
-            atomic(state/"supervisor-human-ownership.json",{
-                "schema_version":1,"status":"HUMAN_MODE_ACTIVE",
-                "process_instance_id":process_instance_id,
-                "observed_at_utc":datetime.now(UTC).isoformat(),
-            })
+        if _supervisor_runtime.owner_reclaimed(state,instance_lock["worker"],loaded_actor_revision,process_instance_id=process_instance_id):
             if merge is not None and merge.poll() is None:
                 merge.terminate()
             return 0
@@ -713,7 +714,7 @@ def main()->int:
                 authorized,activation_reason,products,stale_products=evolution_authorized(repo,workspace,state)
             else:
                 activation_reason=refresh_reason
-        products=products if authorized else []; products=(['iron-god'] if 'iron-god' in products else []) if (state / 'iron-god-exclusive.json').is_file() else products; capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}
+        products=_supervisor_runtime.authorized_dispatch_products(state,products if authorized else [],supervisor=instance_lock["worker"],release_sha=loaded_actor_revision); products=_supervisor_runtime.commissioning_products(state,repo,products,supervisor=instance_lock["worker"],release_sha=loaded_actor_revision); capability_authority_compilation=_authority.compile_runtime_capability_authority(workspace,state) if products else {"schema_version":1,"repositories":{}}
         issue_frontier=reconcile_issue_cycle(state, portfolio_path=repo/"engineering"/"portfolio.json") if products else {"status":"NO_AUTHORIZED_PRODUCTS"}; frontier_replenishment=replenish_frontiers(workspace,state,compile_fn=_authority.compile_runtime_capability_authority,load_slice_fn=load_execution_slice) if products else {"status":"NO_AUTHORIZED_PRODUCTS"}
         parallel_results=harvest_parallel_builders(worker_pool,state)
         # Harvest first, then reclaim dead-owner leases plus only this supervisor
@@ -723,9 +724,12 @@ def main()->int:
             RUNTIME_LEASES,worker_pool
         )
         dispatch_invocation_id=uuid.uuid4().hex if products else None
+        memory_budget=_throughput.publish_worker_memory_admission(
+            state,worker_pool.snapshot()["running_total"])
         dispatched_workers=dispatch_parallel_builders(
             worker_pool,repo,workspace,state,products,
-            dispatch_invocation_id=dispatch_invocation_id
+            dispatch_invocation_id=dispatch_invocation_id,
+            new_worker_budget=memory_budget,
         ) if products and not revision_rollover["requested"] else []
         # Historical abandoned-work recovery is idle-capacity work. Never make
         # an active or newly dispatched product lane wait behind backlog cleanup.
@@ -743,19 +747,17 @@ def main()->int:
         # This turns ownership/no-work/exception outcomes into routing feedback.
         if products and not revision_rollover["requested"] and parallel_results and any(not row.get("healthy",False) for row in parallel_results.values()):
             dispatch_invocation_id=uuid.uuid4().hex
-            dispatched_workers.extend(
-                dispatch_parallel_builders(worker_pool,repo,workspace,state,products,
-                                           dispatch_invocation_id=dispatch_invocation_id)
-            )
+            refill_budget=_throughput.next_worker_budget(
+                worker_pool.snapshot()["running_total"])
+            if refill_budget:
+                dispatched_workers.extend(dispatch_parallel_builders(
+                    worker_pool,repo,workspace,state,products,
+                    dispatch_invocation_id=dispatch_invocation_id,
+                    new_worker_budget=refill_budget))
         pool_snapshot=worker_pool.snapshot()
-        # Persist authoritative post-harvest/post-dispatch pool so completed futures cannot remain as phantom RUNNING workers.
-        atomic(state/"parallel-worker-pool.json",{
-            "schema_version":2,"pool":pool_snapshot,"runtime_leases":RUNTIME_LEASES.snapshot(),
-            "runtime_lease_reconciliation":runtime_lease_reconciliation,
-            "dispatched":dispatched_workers,"dispatch_invocation_id":dispatch_invocation_id,
-            "runtime_lease_recovery":RUNTIME_LEASE_RECOVERY,
-            "recorded_at_utc":datetime.now(UTC).isoformat(),
-        })
+        _throughput.publish_worker_pool_snapshot(
+            state,pool_snapshot,RUNTIME_LEASES.snapshot(),runtime_lease_reconciliation,
+            dispatched_workers,dispatch_invocation_id,RUNTIME_LEASE_RECOVERY)
         # The supervisor no longer blocks on implementation. A worker holding a
         # repository grant is active work; other product slots remain schedulable.
         rc=0 if (dispatched_workers or pool_snapshot["running_total"] or parallel_results) else 3
@@ -786,31 +788,25 @@ def main()->int:
         if lifecycle_advanced:
             request_immediate_builder(state)
         liveness=productive_liveness(state,products,builder_status=builder_status)
+        delivery,quarantine_triage=_throughput.publish_delivery_diagnostics(
+            state,products,pool_snapshot,quarantines)
         liveness_published=optional_atomic(state/"productive-liveness.json",liveness,replace_attempts=SUPERVISOR_STATE_REPLACE_ATTEMPTS)
         convergence=product_convergence(state,products,current_invocation_id=dispatch_invocation_id)
         idle_streaks=_planning.record_eligible_idle_streaks(
             state,products,current_invocation_id=dispatch_invocation_id,
         )
-        degraded_reasons=[]
-        if lifecycle_recovery["publication_blocked"]: degraded_reasons.append({"reason":"LIFECYCLE_STATE_PUBLICATION_BLOCKED"})
-        if not liveness_published: degraded_reasons.append({"reason":"PRODUCTIVE_LIVENESS_PUBLICATION_BLOCKED"})
-        if workspace_provisioning.get("status") != "OK":
-            degraded_reasons.append({"reason":"WORKSPACE_PROVISIONING_DEGRADED","details":workspace_provisioning})
-        if convergence.get("status") != "CONVERGED":
-            degraded_reasons.append({"reason":convergence.get("status"),"products":convergence.get("unexplained_eligible_products",[])})
-        if idle_streaks.get("status") == "P1_LIVENESS_DEFECT":
-            degraded_reasons.append({"reason":"P1_LIVENESS_DEFECT"})
-        if liveness.get("status") in {"STALE_ACTIVE_WORK","ELIGIBLE_IDLE","AUTHORIZED_NO_SLICE"}:
-            degraded_reasons.append({"reason":liveness.get("status")})
+        degraded_reasons=_throughput.degraded_reasons(
+            lifecycle_recovery=lifecycle_recovery,liveness_published=liveness_published,
+            workspace_provisioning=workspace_provisioning,convergence=convergence,
+            idle_streaks=idle_streaks,liveness=liveness,delivery=delivery,
+            builder_ok=builder_ok,builder_status=builder_status,rc=rc,
+            linear_rc=linear_rc,quarantines=quarantines)
         liveness_reacquire=request_liveness_reacquire(state,liveness)
         if convergence["status"]=="UNEXPLAINED_ELIGIBLE_IDLE":
             request_immediate_builder(state)
             liveness_reacquire={"requested":True,"reason":"PRODUCT_CONVERGENCE_DEFECT",
                 "products":convergence["unexplained_eligible_products"],
                 "requested_at_utc":datetime.now(UTC).isoformat()}
-        if not builder_ok and builder_status!="NO_READY_EXECUTION_SLICE": degraded_reasons.append({"reason":"BUILDER_FAILED","status":builder_status,"returncode":rc})
-        if linear_rc not in (None,0): degraded_reasons.append({"reason":"LINEAR_RECONCILIATION_FAILED","returncode":linear_rc})
-        if quarantines: degraded_reasons.append({"reason":"QUARANTINED_GRANTS","count":len(quarantines)})
         healthy=not degraded_reasons
         publish_supervisor_snapshot(state,{"updated_at_utc":datetime.now(UTC).isoformat(),
             "status":"HEALTHY" if healthy else "FLOW_DEGRADED","builder_returncode":rc,
@@ -822,6 +818,7 @@ def main()->int:
             "parallel_workers_dispatched":dispatched_workers,
             "parallel_worker_results":parallel_results,
             "productive_liveness":liveness,
+            "verified_delivery_throughput":delivery,
             "product_convergence":convergence,
             "eligible_idle_streaks":idle_streaks,
             "workspace_provisioning":workspace_provisioning,
@@ -835,6 +832,7 @@ def main()->int:
             "quarantine_rechecks":quarantine_rechecks,
             "quarantined_grants":quarantines,
             "quarantine_count":len(quarantines),
+            "quarantine_triage":quarantine_triage,
             "pr_lifecycle_advanced":lifecycle_advanced,
             "merge_watcher_pid":merge.pid,"merge_watcher_running":merge.poll() is None,
             "process_instance_id":process_instance_id,"burst_id":burst_id,
@@ -894,6 +892,6 @@ def main()->int:
             "previous_process_instance_id":burst.get("previous_process_instance_id"),
             "resumed":burst["resumed"],"pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
-        worker_pool.wait_for_completion(delay)
+        _supervisor_runtime.wait_for_completion_or_reclaim(worker_pool,delay,state)
 if __name__=="__main__": raise SystemExit(main())
 

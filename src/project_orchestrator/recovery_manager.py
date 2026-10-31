@@ -15,7 +15,6 @@ from .grant_lifecycle import (
     atomic_lifecycle_json,
     release_lifecycle_lock,
 )
-from .human_ownership import human_mode_active
 
 ISSUE_LEASE_SECONDS = 60
 RECOVERY_GENERATION_LEASE_SECONDS = 60
@@ -469,6 +468,10 @@ def terminalize_abandoned_preclaim_quarantines(
     path = state_root / "hands-off-grant-lifecycle.json"
     lock = acquire_lifecycle_lock(path)
     try:
+        # Imported here: human_ownership -> iron_god_owner_control imports this
+        # module, so a top-level import would be circular.
+        from .human_ownership import human_mode_active
+
         if not path.exists() or human_mode_active(state_root):
             return {}
         try:

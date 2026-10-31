@@ -26,6 +26,7 @@ from test_local_dispatch_outcome_reconciliation import (
     store,
     worker_store,
 )
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 ATTEMPT = "a" * 32
 
@@ -153,7 +154,7 @@ def test_owner_takeover_blocks_provenance_binding(demo):
     def executor(_):
         put_lease(demo, attempt=ATTEMPT, when=time.time())
         active_lease(demo)
-        (demo[1] / "human-mode.json").write_text('{"enabled":true}', encoding="utf8")
+        revoke_owner_authority(demo[1])
         with pytest.raises(WorkerBindingError, match="OWNER_CONTROL_VETO"):
             bind(demo, claim)
 
@@ -170,7 +171,7 @@ def test_unrelated_authorized_owner_root_not_accepted(demo, tmp_path):
         active_lease(demo)
         fake = tmp_path / "fake-flow-state"
         fake.mkdir()
-        (fake / "human-mode.json").write_text('{"enabled":false}')
+        grant_owner_authority(fake)
         with pytest.raises(WorkerBindingError, match="OWNER_ROOT_MISMATCH"):
             bind_worker_lease(
                 claim=claim,

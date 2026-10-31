@@ -19,13 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from iron_god_local_test_support import IRON_GOD_LOCAL_DIR, requires_iron_god_local
-
-pytestmark = requires_iron_god_local(
-    "local_continuous_worker.py", "accepted_event_dispatch_coordinator.py"
-)
-
-CONTROLLER_PATH = IRON_GOD_LOCAL_DIR / "local_continuous_worker.py"
+CONTROLLER_PATH = Path(__file__).resolve().parents[1] / "scripts" / "iron_god_local" / "local_continuous_worker.py"
 
 if str(CONTROLLER_PATH.parent) not in sys.path:
     sys.path.insert(0, str(CONTROLLER_PATH.parent))

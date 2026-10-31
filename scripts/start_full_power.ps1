@@ -2,17 +2,17 @@ param(
   [string]$StateRoot = "$env:LOCALAPPDATA\ExponentialEngine\flow-state"
 )
 $ErrorActionPreference = "Stop"
-$humanMode = Join-Path $StateRoot "human-mode.json"
+# Authority comes only from the authoritative owner controller. A remote or
+# dashboard request can never grant it: only the desktop Take the Wheel icon
+# records a grant. This script may only (re)start the engine for a grant the
+# owner already made and a live supervisor still holds or is about to ack.
 $ownerReleased = $false
-if(-not (Test-Path -LiteralPath $humanMode)){
-  $ownerReleased = $true
-} else {
-  try {
-    $ownerControl = Get-Content -LiteralPath $humanMode -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-    $ownerReleased = ($ownerControl.enabled -is [bool] -and $ownerControl.enabled -eq $false)
-  } catch {
-    $ownerReleased = $false
-  }
+try {
+  $pinned = Get-Content (Join-Path $StateRoot "supervisor-pinned-release.json") -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+  . (Join-Path ([string]$pinned.accepted_repo) "scripts\desktop-control\IronGodOwnerControl.ps1")
+  $ownerReleased = ((Get-IronGodOwnerStatus $StateRoot) -ceq "AUTHORIZED")
+} catch {
+  $ownerReleased = $false
 }
 if(-not $ownerReleased){
   throw "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL"

@@ -283,6 +283,11 @@ def ready_task_batch(
                 continue
             if conflict_check_fn(state_root, repo, task) is None:
                 candidates.append((repo, head, task))
+    # An actionable issue is NOT automatically an authorized executable
+    # capability slice. In particular TRIAGE issues from the GitHub frontier
+    # lack repository/head, approved paths and testable acceptance. Passing
+    # those incomplete tasks to grant issuance causes a repeat exception loop.
+    deferred_issues = []
     for issue in issue_rows:
         if not isinstance(issue, dict) or issue.get("product") != product:
             continue
@@ -290,19 +295,65 @@ def ready_task_batch(
         head = repositories.get(repo) if isinstance(repo, str) else None
         if not head:
             continue
+        paths = issue.get("allowed_paths")
+        acceptance = issue.get("acceptance")
+        issue_id = issue.get("work_id")
+        gate = issue.get("next_gate")
+        if (
+            issue.get("eligible") is False
+            or issue.get("blocked") is True
+            or gate == "TRIAGE"
+            or (issue.get("exact_head") is not None and issue.get("exact_head") != head)
+            or not isinstance(issue_id, str)
+            or not issue_id.strip()
+            or not isinstance(issue.get("title"), str)
+            or not issue["title"].strip()
+            or not isinstance(paths, list)
+            or not paths
+            or any(not isinstance(p, str) or not p.strip() for p in paths)
+            or not isinstance(acceptance, list)
+            or not acceptance
+            or any(not isinstance(a, str) or not a.strip() for a in acceptance)
+        ):
+            deferred_issues.append(
+                {
+                    "repository": repo,
+                    "head_sha": head,
+                    "work_id": issue_id,
+                    "next_gate": gate,
+                    "reason": "ISSUE_EXECUTION_AUTHORITY_REQUIRED",
+                }
+            )
+            continue
+        # Only an explicitly scoped, accepted issue may enter the regular
+        # exact-head grant path. Never fill missing authority by guessing.
         task = {
-            "slice_id": issue.get("work_id"),
-            "capability_id": issue.get("work_id"),
-            "objective": issue.get("title"),
+            "repository": repo,
+            "exact_head": head,
+            "slice_id": issue_id,
+            "capability_id": issue_id,
+            "objective": issue["title"],
+            "acceptance": list(acceptance),
             "task_class": "repair",
             "source_kind": "ISSUE",
             "issue_number": issue.get("issue_number"),
             "issue_url": issue.get("url"),
-            "next_gate": issue.get("next_gate"),
-            "allowed_paths": issue.get("allowed_paths", []),
+            "next_gate": gate,
+            "allowed_paths": list(paths),
+            "forbidden_paths": issue.get("forbidden_paths", []),
         }
         if conflict_check_fn(state_root, repo, task) is None:
             candidates.append((repo, head, task))
+    atomic_json(
+        state_root / "issue-execution-deferrals" / f"{product}.json",
+        {
+            "schema_version": 1,
+            "product": product,
+            "deferred": deferred_issues,
+            "count": len(deferred_issues),
+            "recorded_at_utc": datetime.now(UTC).isoformat(),
+        },
+    )
     candidates.sort(
         key=lambda item: (
             task_outcome_priority(state_root, item[2]),

@@ -14,10 +14,14 @@ def test_supervisor_checks_human_ownership_before_instance_and_merge_work():
     assert startup < lock
 
     loop = text.index("while True:")
-    loop_gate = text.index("if human_mode_active(state):", loop)
+    # Each pass acknowledges a fresh owner grant or stops (acknowledging any
+    # revocation) before session handoff, merge watching or dispatch.
+    loop_gate = text.index("if _supervisor_runtime.owner_reclaimed(state,instance_lock[\"worker\"],", loop)
     session_gate = text.index("if a.yield_on_interactive_session:", loop)
-    assert loop_gate < session_gate
-    assert 'status":"HUMAN_MODE_ACTIVE"' in text
+    merge_watch = text.index("merge=start_merge_watcher(", loop)
+    assert loop_gate < session_gate < merge_watch
+    runtime = Path("src/project_orchestrator/supervisor_runtime.py").read_text(encoding="utf-8")
+    assert '"status": "HUMAN_MODE_ACTIVE"' in runtime
 
 
 def test_startup_launcher_uses_marker_payload_not_marker_presence():
@@ -28,12 +32,12 @@ def test_startup_launcher_uses_marker_payload_not_marker_presence():
     assert "'if exist \"' + $HumanMode + '\" exit /b 0'" not in text
 
 
-def test_full_power_script_requires_prior_owner_release_and_preserves_marker():
+def test_full_power_script_requires_a_controller_grant_and_never_grants():
     text = FULL_POWER.read_text(encoding="utf-8")
-    assert "ConvertFrom-Json" in text
-    assert "$ownerControl.enabled -is [bool]" in text
+    assert '(Get-IronGodOwnerStatus $StateRoot) -ceq "AUTHORIZED"' in text
     assert "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL" in text
-    assert "Remove-Item -Force $humanMode" not in text
+    assert "TAKE_THE_WHEEL" not in text.replace("OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL", "")
+    assert "human-mode.json" not in text
 
 
 def test_fallback_recovery_cannot_restart_supervisor_during_human_mode():
@@ -64,6 +68,17 @@ def test_local_human_mode_keeps_control_plane_and_dashboard_alive():
     assert "Azathoth-Dashboard-Control" not in text
     assert "Guard-GitHubMailbox.ps1" not in text
     assert "foundry_dashboard_server.py" not in text
+
+
+def test_local_human_mode_reports_success_only_when_the_owner_controller_confirms_it():
+    """PR #586 review: a swallowed bridge failure let this script claim a human handoff it never recorded."""
+    text = Path("scripts/enter_human_mode.ps1").read_text(encoding="utf-8")
+    assert "catch {}" not in text
+    check = text.index('-ceq "OWNER_CONTROL_ACTIVE"')
+    failure = text.index("HUMAN MODE NOT CONFIRMED")
+    success = text.index("HUMAN MODE ACTIVE - autonomous development stopped.")
+    assert check < failure < success and "exit 3" in text[failure:success]
+    assert text.index("Stop-Process") < check  # the workers are stopped whatever the controller says
 
 
 def test_remote_recovery_and_deploy_have_owner_veto_before_side_effects():
@@ -98,3 +113,23 @@ def test_actor_sync_rechecks_human_lock_before_git_checkout():
     sync = text[text.index("function Invoke-SafeActorSync"):text.index("function Invoke-SafeSupervisorKick")]
     assert sync.index("if(Test-HumanMode)") < sync.index("git -C $ActorRepo fetch")
     assert sync.index("if(Test-HumanMode)", sync.index("git -C $ActorRepo fetch")) < sync.index("git -C $ActorRepo checkout")
+
+
+
+def test_full_power_missing_owner_marker_fails_before_any_scheduled_task(tmp_path):
+    import subprocess
+
+    # The command MUST fail before enabling any Windows scheduled task.
+    state = tmp_path / "isolated-missing-owner"
+    state.mkdir()
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive",
+         "-ExecutionPolicy", "Bypass", "-File", str(FULL_POWER.resolve()),
+         "-StateRoot", str(state)],
+        capture_output=True, text=True, check=False, timeout=15,
+    )
+    assert result.returncode != 0
+    assert "OWNER_CONTROL_ACTIVE_OR_UNVERIFIED_USE_TAKE_THE_WHEEL" in (
+        result.stdout + result.stderr
+    )
+    assert list(state.iterdir()) == []

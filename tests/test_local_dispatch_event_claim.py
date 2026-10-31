@@ -20,6 +20,7 @@ from project_orchestrator.local_dispatch_event_claim import (
     invoke_once,
 )
 from test_local_acceptance_refill import accept_feature_a, demo, git, plan
+from tests.owner_authority import grant_owner_authority, revoke_owner_authority
 
 
 def reserve(demo, **overrides):
@@ -147,7 +148,7 @@ def test_crash_after_invocation_reservation_never_calls_worker_twice(demo):
 
 def test_owner_takeover_before_claim_denies_without_creating_store(demo):
     accept_feature_a(demo)
-    (demo[1] / "human-mode.json").write_text('{"enabled":true}')
+    revoke_owner_authority(demo[1])
     with pytest.raises(DispatchFenceError, match="OWNER_CONTROL_VETO"):
         reserve(demo)
     assert not store(demo).exists()
@@ -156,7 +157,7 @@ def test_owner_takeover_before_claim_denies_without_creating_store(demo):
 def test_owner_takeover_after_claim_prevents_invocation(demo):
     accept_feature_a(demo)
     claim = reserve(demo)
-    (demo[1] / "human-mode.json").write_text('{"enabled":true}')
+    revoke_owner_authority(demo[1])
     calls = []
     with pytest.raises(DispatchFenceError, match="OWNER_CONTROL_VETO"):
         invoke_once(
@@ -175,7 +176,7 @@ def test_owner_takeover_during_worker_keeps_ambiguous_state(demo):
     claim = reserve(demo)
 
     def take_over(_):
-        (demo[1] / "human-mode.json").write_text('{"enabled":true}')
+        revoke_owner_authority(demo[1])
 
     with pytest.raises(DispatchFenceError, match="OWNER_CONTROL_VETO"):
         invoke_once(
@@ -193,7 +194,7 @@ def test_revocation_between_claim_and_callback_keeps_hold(demo):
     claim = reserve(demo)
 
     def revoke_during_revalidate():
-        (demo[1] / "human-mode.json").write_text('{"enabled":true}')
+        revoke_owner_authority(demo[1])
         return True
 
     with pytest.raises(DispatchFenceError, match="OWNER_CONTROL_VETO"):
@@ -279,7 +280,7 @@ def test_claim_cannot_be_invoked_under_unrelated_authorized_owner_root(demo, tmp
     claim = reserve(demo)
     second_owner = tmp_path / "unrelated-flow-state"
     second_owner.mkdir()
-    (second_owner / "human-mode.json").write_text('{"enabled":false}', encoding="utf-8")
+    grant_owner_authority(second_owner)
     callbacks = []
     with pytest.raises(DispatchFenceError, match="OWNER_ROOT_MISMATCH"):
         invoke_once(

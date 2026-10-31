@@ -9,6 +9,7 @@ from project_orchestrator.ledger_recovery_publish import (
     publish_reconciled_ledger,
     reconcile_ledger,
 )
+from tests.owner_authority import grant_owner_authority
 
 
 def issue(grant_id, repo="o/r", head="a" * 40):
@@ -30,7 +31,7 @@ def issue(grant_id, repo="o/r", head="a" * 40):
 def incident(tmp_path):
     state = tmp_path / "state"
     state.mkdir()
-    (state / "human-mode.json").write_text('{"enabled": false}\n', encoding="utf-8")
+    grant_owner_authority(state)
     live = state / "hands-off-grant-lifecycle.json"
     live.write_bytes(bytes(4096))
     snapshot = tmp_path / "snapshot.json"

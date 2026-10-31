@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from .evolution_bridge import normalize_worker_result
+from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
+from .state_io import atomic_json
 
 PACKET_STATES = {
     "CANDIDATE",
@@ -13,6 +17,8 @@ PACKET_STATES = {
     "RESERVED",
     "DISPATCHED",
     "IMPLEMENTING",
+    "HANDED_BACK",
+    "WAITING_FOR_SUPERVISOR",
     "PREFLIGHT_UNVERIFIED",
     "PREFLIGHT_GREEN",
     "PR_OPEN",
@@ -25,8 +31,36 @@ PACKET_STATES = {
     "BLOCKED",
     "PARKED",
     "CANCELLED",
+    "ACCEPTED_LOCAL",
 }
-TERMINAL_STATES = {"MERGED", "LEARNING_EXTRACTED", "CANCELLED"}
+# ACCEPTED_LOCAL: independently verified and recorded as accepted local
+# progress (a protected local ref). It is not a merge, push or release.
+TERMINAL_STATES = {"MERGED", "LEARNING_EXTRACTED", "CANCELLED", "ACCEPTED_LOCAL"}
+
+# Only metadata lifecycle edges are permitted here. Promotion requires a
+# separately authorized independent verifier, implemented after this slice.
+ALLOWED_STATE_EDGES = {
+    "DISPATCHED": frozenset({"IMPLEMENTING", "CANCELLED"}),
+    "IMPLEMENTING": frozenset({"CANCELLED"}),
+    "HANDED_BACK": frozenset({"PREFLIGHT_UNVERIFIED", "RECONCILE_REQUIRED", "CANCELLED"}),
+    "PREFLIGHT_UNVERIFIED": frozenset({"BLOCKED", "RECONCILE_REQUIRED", "CANCELLED"}),
+    "BLOCKED": frozenset({"RECONCILE_REQUIRED", "CANCELLED"}),
+    "PARKED": frozenset({"RECONCILE_REQUIRED", "CANCELLED"}),
+    "RECONCILE_REQUIRED": frozenset({"CANCELLED"}),
+}
+WORKER_RESULT_STATES = {
+    "PASS": "HANDED_BACK",  # worker PASS is NOT independently verified
+    "FAIL": "BLOCKED",
+    "REVIEW_REQUIRED": "BLOCKED",
+    "PRODUCT_REALITY_REQUIRED": "PARKED",
+    "ENVIRONMENT_FAILURE": "PARKED",
+}
+PRIVILEGED_STATES = frozenset({
+    "PREFLIGHT_GREEN", "PR_OPEN", "CI_PENDING", "GREEN",
+    "PROMOTION_READY", "MERGED", "LEARNING_EXTRACTED", "ACCEPTED_LOCAL",
+})
+VERIFICATION_STATES = frozenset({"NOT_VERIFIED", "VERIFIED_GREEN", "VERIFIED_FAIL"})
+
 REQUIRED_PACKET_FIELDS = {"packet_id", "project", "repository", "source_ref", "base_sha", "branch", "task"}
 
 
@@ -34,9 +68,21 @@ class WorkerTransportError(ValueError):
     pass
 
 
+def _digest(value: dict[str, Any]) -> str:
+    """Deterministic corruption checksum, NOT an authentication signature."""
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+
+
 def _event_id(event: dict[str, Any]) -> str:
-    stable = {key: event[key] for key in sorted(event) if key not in {"event_id"}}
-    return hashlib.sha256(json.dumps(stable, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:24]
+    stable = {key: event[key] for key in sorted(event) if key != "event_id"}
+    return _digest(stable)
+
+
+def _sealed(ledger: dict[str, Any]) -> dict[str, Any]:
+    ledger["seal_sha256"] = _digest({key: value for key, value in ledger.items() if key != "seal_sha256"})
+    return ledger
 
 
 def validate_packet(packet: dict[str, Any]) -> dict[str, Any]:
@@ -61,44 +107,274 @@ def validate_packet(packet: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+CANON_PLAN_FIELDS = {
+    "vision_ref", "roadmap_ref", "architecture_ref", "current_state_ref",
+    "dependency_evidence_ref", "source_head_sha", "objective",
+    "acceptance_criteria", "allowed_paths", "forbidden_paths",
+    "verification_commands", "expected_artifacts", "run_budget_minutes",
+    "handoff_instructions", "escalation_policy",
+}
+
+
+def validate_canonical_slice_plan(packet: dict[str, Any]) -> dict[str, Any]:
+    """Require complete bounded planning evidence before supervisor issuance.
+
+    References identify material the planner must actually inspect; these
+    fields cannot themselves prove a document was read or is up-to-date.
+    Live ownership and authority must be independently checked at dispatch.
+    """
+    work = validate_packet(packet)
+    plan = packet.get("planning")
+    if not isinstance(plan, dict) or CANON_PLAN_FIELDS - plan.keys():
+        raise WorkerTransportError("canonical slice requires complete planning evidence")
+    for field in (
+        "vision_ref", "roadmap_ref", "architecture_ref", "current_state_ref",
+        "dependency_evidence_ref", "objective",
+    ):
+        _safe_handoff_text(plan[field], field)
+    _safe_handoff_text(plan["handoff_instructions"], "handoff_instructions", max_length=8000)
+    if plan["source_head_sha"] != work["base_sha"]:
+        raise WorkerTransportError("canonical plan must bind the exact dispatched base")
+    if plan["objective"] != work["task"]:
+        raise WorkerTransportError("canonical objective differs from dispatched worker task")
+    if (
+        type(plan["run_budget_minutes"]) is not int
+        or not 1 <= plan["run_budget_minutes"] <= 120
+    ):
+        raise WorkerTransportError("canonical slice must fit one bounded worker run")
+    if plan["escalation_policy"] != "ASK_SUPERVISOR_AND_PAUSE":
+        raise WorkerTransportError("canonical slice must require supervisor escalation")
+    for field in ("acceptance_criteria", "allowed_paths", "verification_commands", "expected_artifacts"):
+        rows = plan.get(field)
+        if not isinstance(rows, list) or not rows or len(rows) > 32:
+            raise WorkerTransportError(f"{field} must be a bounded non-empty list")
+        for value in rows:
+            _safe_handoff_text(value, field)
+    forbidden = plan["forbidden_paths"]
+    if not isinstance(forbidden, list) or len(forbidden) > 32:
+        raise WorkerTransportError("forbidden_paths must be a bounded list")
+    for item in forbidden:
+        _safe_handoff_text(item, "forbidden_paths")
+    if plan["allowed_paths"] != work["paths"] or plan["verification_commands"] != work["verification"]:
+        raise WorkerTransportError("planning scope or verification differs from issued packet")
+    if any(
+        item.startswith("/") or ".." in item.replace(chr(92), "/").split("/")
+        for item in [*plan["allowed_paths"], *forbidden]
+    ):
+        raise WorkerTransportError("canonical plan contains unsafe path scope")
+    return {**work, "planning": dict(plan)}
+
+
+def dispatch_canonical_slice(
+    ledger: dict[str, Any], packet: dict[str, Any], *, transport: str,
+) -> dict[str, Any]:
+    """Issue a single-run planned handoff using the existing transport ledger.
+
+    The authority-grant and live owner checks remain prerequisites of the
+    caller; this pure function does not start processes or approve code.
+    """
+    planned = validate_canonical_slice_plan(packet)
+    return dispatch_packet(ledger, planned, transport=transport)
+
+
 def empty_ledger() -> dict[str, Any]:
-    return {"schema_version": 1, "packets": {}, "events": []}
+    """A sealed transport ledger, incompatible with unaudited v1 projections."""
+    return _sealed({"schema_version": 2, "revision": 0, "packets": {}, "events": []})
+
+
+def _check_event_transition(
+    event: dict[str, Any], prior: str | None, *,
+    pending_questions: dict[str, tuple[str, str]],
+    prior_worker_status: dict[str, str],
+    retries: dict[str, int],
+    base_sha: str,
+) -> None:
+    """Replay the event's claimed state through the same fail-closed rules."""
+    kind = event.get("type")
+    packet_id = event["packet_id"]
+    after = event["state_after"]
+    if kind == "DISPATCHED":
+        if prior is not None or after != "DISPATCHED":
+            raise WorkerTransportError("invalid initial dispatch history")
+        retries[packet_id] = 1
+    elif kind == "RETRY":
+        if prior not in {"BLOCKED", "PARKED"} or after != "DISPATCHED":
+            raise WorkerTransportError("invalid retry transition history")
+        if prior_worker_status.get(packet_id) not in {"FAIL", "ENVIRONMENT_FAILURE"}:
+            raise WorkerTransportError("non-retryable worker outcome in event history")
+        count = retries.get(packet_id, 0) + 1
+        if not 2 <= count <= 3 or event.get("attempt_count") != count:
+            raise WorkerTransportError("retry history exceeds bounded attempts")
+        if not isinstance(event.get("evidence_ref"), str) or not event["evidence_ref"]:
+            raise WorkerTransportError("retry evidence required")
+        retries[packet_id] = count
+    elif kind == "WORKER_QUESTION":
+        if prior not in {"DISPATCHED", "IMPLEMENTING"} or after != "WAITING_FOR_SUPERVISOR":
+            raise WorkerTransportError("question from non-active worker")
+        if packet_id in pending_questions or not event.get("question_id"):
+            raise WorkerTransportError("unpaired or unidentified worker question")
+        pending_questions[packet_id] = (str(event["question_id"]), prior)
+    elif kind == "SUPERVISOR_RESPONSE":
+        question = pending_questions.pop(packet_id, None)
+        if prior != "WAITING_FOR_SUPERVISOR" or question is None:
+            raise WorkerTransportError("supervisor response without pending question")
+        if event.get("question_id") != question[0]:
+            raise WorkerTransportError("supervisor answered a different question")
+        target = {
+            "CONTINUE_WITHIN_SCOPE": question[1],
+            "REPLAN_REQUIRED": "RECONCILE_REQUIRED",
+            "PARK_SLICE": "PARKED",
+        }.get(event.get("decision"))
+        if target != after:
+            raise WorkerTransportError("supervisor decision/state mismatch")
+    elif kind == "WORKER_RESULT":
+        if prior not in {"DISPATCHED", "IMPLEMENTING"}:
+            raise WorkerTransportError("worker result recorded without active job")
+        status = event.get("status")
+        if status not in WORKER_RESULT_STATES or WORKER_RESULT_STATES[status] != after:
+            raise WorkerTransportError("worker-result status illegally promoted")
+        head = event.get("exact_head_sha")
+        if not isinstance(head, str) or len(head) != 40 or any(c not in "0123456789abcdef" for c in head):
+            raise WorkerTransportError("worker-result head invalid")
+        if status == "PASS" and head == base_sha:
+            raise WorkerTransportError("unchanged-head PASS is not completed code")
+        if not event.get("evidence_ref") or not event.get("observed_at"):
+            raise WorkerTransportError("worker-result evidence required")
+        prior_worker_status[packet_id] = status
+    elif kind == "INDEPENDENT_VERIFICATION":
+        if prior != "PREFLIGHT_UNVERIFIED" or prior_worker_status.get(packet_id) != "PASS":
+            raise WorkerTransportError("independent verification requires an unverified PASS handback")
+        verdict = event.get("verdict")
+        if {"GREEN": "PREFLIGHT_GREEN", "FAIL": "BLOCKED"}.get(verdict) != after:
+            raise WorkerTransportError("independent verification verdict/state mismatch")
+        checks = event.get("checks")
+        if not isinstance(checks, list) or not checks or not event.get("evidence_ref"):
+            raise WorkerTransportError("independent verification evidence required")
+    elif kind == "LOCAL_ACCEPTANCE":
+        if prior != "PREFLIGHT_GREEN" or after != "ACCEPTED_LOCAL":
+            raise WorkerTransportError("local acceptance requires independent GREEN verification")
+        ref = event.get("accepted_ref")
+        if not isinstance(ref, str) or not ref.startswith("refs/iron-god/") or not event.get("evidence_ref"):
+            raise WorkerTransportError("local acceptance requires a protected local ref and evidence")
+    elif kind == "STATE_TRANSITION":
+        if after != event.get("state") or after not in ALLOWED_STATE_EDGES.get(prior, frozenset()):
+            raise WorkerTransportError("illegal state transition in replay")
+        if after in {"CANCELLED", "RECONCILE_REQUIRED", "BLOCKED", "PREFLIGHT_UNVERIFIED"}:
+            if not event.get("evidence_ref"):
+                raise WorkerTransportError("state transition missing evidence")
+        if after == "PREFLIGHT_UNVERIFIED" and prior_worker_status.get(packet_id) != "PASS":
+            raise WorkerTransportError("preflight started without handback PASS")
+    else:
+        raise WorkerTransportError("unsupported event type in worker transport ledger")
 
 
 def validate_ledger(payload: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
-        raise WorkerTransportError("ledger schema_version must equal 1")
-    packets = payload.get("packets")
-    events = payload.get("events")
-    if not isinstance(packets, dict) or not isinstance(events, list):
+    if not isinstance(payload, dict) or payload.get("schema_version") != 2:
+        raise WorkerTransportError("ledger requires verified schema_version 2")
+    if set(payload) != {"schema_version", "revision", "packets", "events", "seal_sha256"}:
+        raise WorkerTransportError("ledger envelope missing integrity fields")
+    if not isinstance(payload.get("packets"), dict) or not isinstance(payload.get("events"), list):
         raise WorkerTransportError("ledger packets/events have invalid shape")
-    normalized_packets: dict[str, Any] = {}
-    for packet_id, record in packets.items():
+    packets, events = payload["packets"], payload["events"]
+    revision = payload.get("revision")
+    if type(revision) is not int or revision != len(events):
+        raise WorkerTransportError("ledger revision does not match append-only history")
+    if payload.get("seal_sha256") != _digest({key: value for key, value in payload.items() if key != "seal_sha256"}):
+        raise WorkerTransportError("ledger corruption checksum mismatch")
+
+    # Deep copies prevent a caller from mutating a previously validated snapshot.
+    normalized = deepcopy(payload)
+    previous = "GENESIS"
+    latest: dict[str, str] = {}
+    pending_questions: dict[str, tuple[str, str]] = {}
+    prior_worker_status: dict[str, str] = {}
+    last_worker_head: dict[str, str] = {}
+    retries: dict[str, int] = {}
+    verification: dict[str, str] = {}
+    for sequence, event in enumerate(normalized["events"], 1):
+        if not isinstance(event, dict) or event.get("seq") != sequence:
+            raise WorkerTransportError("ledger event sequence changed")
+        if event.get("previous_event_id") != previous or event.get("event_id") != _event_id(event):
+            raise WorkerTransportError("ledger event chain is broken")
+        packet_id = event.get("packet_id")
+        record = packets.get(packet_id)
+        if not isinstance(record, dict):
+            raise WorkerTransportError("ledger event refers to unknown packet")
+        if event.get("repository") not in {None, record.get("repository")}:
+            raise WorkerTransportError("ledger event repository mismatch")
+        if event.get("base_sha") not in {None, record.get("base_sha")}:
+            raise WorkerTransportError("ledger event base mismatch")
+        state_after = event.get("state_after")
+        if state_after not in PACKET_STATES:
+            raise WorkerTransportError("ledger event has no valid state projection")
+        _check_event_transition(
+            event, latest.get(packet_id),
+            pending_questions=pending_questions,
+            prior_worker_status=prior_worker_status,
+            retries=retries,
+            base_sha=record["base_sha"],
+        )
+        if event["type"] == "WORKER_RESULT":
+            last_worker_head[packet_id] = event["exact_head_sha"]
+            verification[packet_id] = "NOT_VERIFIED"
+        if event["type"] in {"INDEPENDENT_VERIFICATION", "LOCAL_ACCEPTANCE"}:
+            # Verification and acceptance bind the exact handed-back head.
+            if last_worker_head.get(packet_id) != event.get("exact_head_sha"):
+                raise WorkerTransportError("verification attempted to bind a different candidate head")
+        if event["type"] == "INDEPENDENT_VERIFICATION":
+            verification[packet_id] = "VERIFIED_GREEN" if event["verdict"] == "GREEN" else "VERIFIED_FAIL"
+        if event["type"] == "STATE_TRANSITION" and event.get("exact_head_sha") is not None:
+            if last_worker_head.get(packet_id) != event["exact_head_sha"]:
+                raise WorkerTransportError("state event attempted to forge a new candidate head")
+        latest[packet_id] = state_after
+        previous = event["event_id"]
+
+    if set(packets) != set(latest) and packets:
+        raise WorkerTransportError("ledger packet lacks dispatch history")
+    for packet_id, record in normalized["packets"].items():
         if not isinstance(record, dict) or record.get("packet_id") != packet_id:
             raise WorkerTransportError("ledger packet identity mismatch")
-        if record.get("state") not in PACKET_STATES:
-            raise WorkerTransportError("ledger packet has unsupported state")
-        normalized_packets[packet_id] = dict(record)
-    normalized_events: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for raw in events:
-        if not isinstance(raw, dict) or raw.get("event_id") != _event_id(raw):
-            raise WorkerTransportError("ledger event_id does not match event content")
-        if raw["event_id"] in seen:
-            raise WorkerTransportError("duplicate ledger event")
-        seen.add(raw["event_id"])
-        normalized_events.append(dict(raw))
-    return {"schema_version": 1, "packets": normalized_packets, "events": normalized_events}
+        if record.get("state") not in PACKET_STATES or latest.get(packet_id) != record["state"]:
+            raise WorkerTransportError("ledger packet state disagrees with history")
+        if record.get("merge_authority") is not False or record.get("product_reality_authority") is not False:
+            raise WorkerTransportError("ledger packet cannot grant promotion authority")
+        if record.get("attempt_count") != retries.get(packet_id):
+            raise WorkerTransportError("ledger retry count disagrees with event history")
+        if record.get("worker_status") != prior_worker_status.get(packet_id):
+            raise WorkerTransportError("ledger worker-status projection differs from handback")
+        if record.get("exact_head_sha") != last_worker_head.get(packet_id):
+            raise WorkerTransportError("ledger head projection differs from worker handback")
+        if record.get("independent_verification") not in {None, *VERIFICATION_STATES}:
+            raise WorkerTransportError("unknown independent verification state")
+        if record.get("independent_verification") not in {None, verification.get(packet_id)}:
+            raise WorkerTransportError("independent verification projection differs from history")
+        if (packet_id in pending_questions) != (record["state"] == "WAITING_FOR_SUPERVISOR"):
+            raise WorkerTransportError("pending worker question disagrees with packet state")
+        required = REQUIRED_PACKET_FIELDS - set(record)
+        if required:
+            raise WorkerTransportError("ledger packet missing immutable identity")
+        if not isinstance(record.get("paths"), list):
+            raise WorkerTransportError("ledger packet paths are not a list")
+        plan = record.get("planning")
+        if plan is not None and (
+            not isinstance(plan, dict)
+            or record.get("base_sha") != plan.get("source_head_sha")
+        ):
+            raise WorkerTransportError("ledger packet base mismatch with plan")
+    return normalized
 
 
 def _append_event(ledger: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
-    normalized = validate_ledger(ledger)
+    """Finalize a validated-and-mutated ledger snapshot with one new event."""
     material = dict(event)
+    packet_id = material["packet_id"]
+    material["seq"] = len(ledger["events"]) + 1
+    material["previous_event_id"] = ledger["events"][-1]["event_id"] if ledger["events"] else "GENESIS"
+    material["state_after"] = ledger["packets"][packet_id]["state"]
     material["event_id"] = _event_id(material)
-    if any(existing["event_id"] == material["event_id"] for existing in normalized["events"]):
-        return normalized
-    normalized["events"].append(material)
-    return normalized
+    ledger["events"].append(material)
+    ledger["revision"] = len(ledger["events"])
+    return _sealed(ledger)
 
 
 def dispatch_packet(ledger: dict[str, Any], packet: dict[str, Any], *, transport: str) -> dict[str, Any]:
@@ -109,13 +385,26 @@ def dispatch_packet(ledger: dict[str, Any], packet: dict[str, Any], *, transport
     existing = normalized["packets"].get(work["packet_id"])
     if existing and existing["state"] in TERMINAL_STATES:
         raise WorkerTransportError("terminal packet cannot be redispatched")
+    if existing and existing.get("supervisor_question"):
+        raise WorkerTransportError("supervisor exchange requires an explicit new approved packet")
     if existing and existing.get("base_sha") != work["base_sha"]:
         raise WorkerTransportError("packet base changed; reconcile before redispatch")
+    if existing and (
+        any(existing.get(field) != work.get(field) for field in REQUIRED_PACKET_FIELDS)
+        or existing.get("planning") != work.get("planning")
+        or existing.get("paths") != work.get("paths")
+    ):
+        raise WorkerTransportError("issued packet changed; require a new approved packet")
+    if existing:
+        if existing["state"] == "DISPATCHED" and existing.get("transport") == transport:
+            return normalized  # idempotent request, never rewrites state or provenance
+        raise WorkerTransportError("redispatch requires new ownership and a new packet")
     normalized["packets"][work["packet_id"]] = {
         **work,
         "state": "DISPATCHED",
         "transport": transport,
         "exact_head_sha": existing.get("exact_head_sha") if existing else None,
+        "attempt_count": 1,
     }
     return _append_event(normalized, {
         "type": "DISPATCHED",
@@ -124,6 +413,135 @@ def dispatch_packet(ledger: dict[str, Any], packet: dict[str, Any], *, transport
         "base_sha": work["base_sha"],
         "transport": transport,
     })
+
+
+_QUESTION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_SECRET = re.compile(
+    r"(?i)\b(?:password|api[_-]?key|secret|access[_-]?token)\s*[:=]\s*\S+"
+    r"|gh[pousr]_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}"
+)
+QUESTION_DECISIONS = {"CONTINUE_WITHIN_SCOPE", "REPLAN_REQUIRED", "PARK_SLICE"}
+
+
+def _safe_handoff_text(value: str, field: str, *, max_length: int = 1200) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value) > max_length
+        or any(ord(char) < 32 and char not in "\n\t" for char in value)
+        or _SECRET.search(value)
+    ):
+        raise WorkerTransportError(f"{field} must be bounded, sanitized non-empty text")
+    return value.strip()
+
+
+def request_supervisor_guidance(
+    ledger: dict[str, Any], packet_id: str, *,
+    question_id: str, worker_id: str, summary: str, evidence_ref: str,
+    expected_base_sha: str,
+) -> dict[str, Any]:
+    """Pause one issued slice without changing its work authority or creating a queue.
+
+    A worker can communicate an obstacle but cannot widen paths, edit product
+    intent, auto-answer its own question, or self-approve completion.
+    """
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if record is None or record["state"] not in {"DISPATCHED", "IMPLEMENTING", "WAITING_FOR_SUPERVISOR"}:
+        raise WorkerTransportError("question requires an active dispatched packet")
+    if record["base_sha"] != expected_base_sha:
+        raise WorkerTransportError("question base does not match the accepted dispatch")
+    if not isinstance(question_id, str) or not _QUESTION_ID.fullmatch(question_id):
+        raise WorkerTransportError("question_id must be a bounded stable identifier")
+    worker_id = _safe_handoff_text(worker_id, "worker_id")
+    summary = _safe_handoff_text(summary, "summary")
+    evidence_ref = _safe_handoff_text(evidence_ref, "evidence_ref")
+    if record.get("worker_id") not in {None, worker_id}:
+        raise WorkerTransportError("question worker identity mismatch")
+    existing = record.get("supervisor_question")
+    question = {
+        "question_id": question_id, "worker_id": worker_id,
+        "summary": summary, "evidence_ref": evidence_ref,
+        "expected_base_sha": expected_base_sha,
+        "status": "PENDING",
+    }
+    if existing is not None:
+        if existing == question and record["state"] == "WAITING_FOR_SUPERVISOR":
+            return normalized  # safe replay
+        history = list(record.get("supervisor_history", []))
+        if (
+            existing.get("status") != "ANSWERED"
+            or existing.get("decision") != "CONTINUE_WITHIN_SCOPE"
+            or len(history) >= 8
+            or question_id in {row["question_id"] for row in [*history, existing]}
+        ):
+            raise WorkerTransportError("unresolved or duplicate supervisor question")
+        record["supervisor_history"] = [*history, existing]
+    previous = record["state"]
+    record.update({
+        "worker_id": worker_id,
+        "resume_state": previous,
+        "supervisor_question": question,
+        "state": "WAITING_FOR_SUPERVISOR",
+    })
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "WORKER_QUESTION", "packet_id": packet_id,
+        "repository": record["repository"], "base_sha": record["base_sha"],
+        "question_id": question_id, "worker_id": worker_id,
+        "evidence_ref": evidence_ref, "summary": summary,
+    })
+
+
+def respond_to_supervisor_question(
+    ledger: dict[str, Any], packet_id: str, *,
+    question_id: str, decision: str, guidance: str,
+    expected_base_sha: str,
+) -> dict[str, Any]:
+    """Record a supervisor answer; CONTINUE never broadens the original grant."""
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if record is None or record["state"] != "WAITING_FOR_SUPERVISOR":
+        raise WorkerTransportError("no pending supervisor question for packet")
+    question = record.get("supervisor_question")
+    if (
+        not isinstance(question, dict) or question.get("status") != "PENDING"
+        or question.get("question_id") != question_id
+        or question.get("expected_base_sha") != expected_base_sha
+        or record["base_sha"] != expected_base_sha
+    ):
+        raise WorkerTransportError("supervisor response question identity mismatch")
+    if decision not in QUESTION_DECISIONS:
+        raise WorkerTransportError("unsupported supervisor decision")
+    guidance = _safe_handoff_text(guidance, "guidance")
+    question = {**question, "status": "ANSWERED", "decision": decision, "guidance": guidance}
+    record["supervisor_question"] = question
+    record["state"] = (
+        record["resume_state"] if decision == "CONTINUE_WITHIN_SCOPE"
+        else "RECONCILE_REQUIRED" if decision == "REPLAN_REQUIRED"
+        else "PARKED"
+    )
+    record.pop("resume_state", None)
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "SUPERVISOR_RESPONSE", "packet_id": packet_id,
+        "repository": record["repository"], "base_sha": record["base_sha"],
+        "question_id": question_id, "decision": decision, "guidance": guidance,
+    })
+
+
+def read_supervisor_response(
+    ledger: dict[str, Any], packet_id: str, *, question_id: str,
+    expected_base_sha: str,
+) -> dict[str, Any]:
+    """Read-only worker polling; no auto-resume, merge, or grant mutation."""
+    record = validate_ledger(ledger)["packets"].get(packet_id)
+    if record is None or record["base_sha"] != expected_base_sha:
+        raise WorkerTransportError("supervisor response packet identity mismatch")
+    question = record.get("supervisor_question")
+    if not isinstance(question, dict) or question.get("question_id") != question_id:
+        raise WorkerTransportError("supervisor response question identity mismatch")
+    return dict(question)
 
 
 def record_worker_result(ledger: dict[str, Any], packet_id: str, worker_result: dict[str, Any]) -> dict[str, Any]:
@@ -136,17 +554,19 @@ def record_worker_result(ledger: dict[str, Any], packet_id: str, worker_result: 
         raise WorkerTransportError("worker result project/repository mismatch")
     if result.get("branch") not in {None, record["branch"]}:
         raise WorkerTransportError("worker result branch mismatch")
-    if record["state"] in TERMINAL_STATES:
-        raise WorkerTransportError("terminal packet cannot accept worker result")
+    if record["state"] not in {"DISPATCHED", "IMPLEMENTING"}:
+        raise WorkerTransportError("worker result requires active dispatched/implementing packet")
+    if record.get("supervisor_question", {}).get("decision") in {"PARK_SLICE", "REPLAN_REQUIRED"}:
+        raise WorkerTransportError("supervisor question must be resolved before worker result")
+    if result["status"] == "PASS" and result["head_sha"] == record["base_sha"]:
+        raise WorkerTransportError("worker PASS cannot claim unchanged base as completed code")
 
-    state = {
-        "PASS": "PREFLIGHT_GREEN",
-        "FAIL": "BLOCKED",
-        "REVIEW_REQUIRED": "BLOCKED",
-        "PRODUCT_REALITY_REQUIRED": "PARKED",
-        "ENVIRONMENT_FAILURE": "PARKED",
-    }[result["status"]]
-    record = {**record, "state": state, "exact_head_sha": result["head_sha"], "worker_status": result["status"], "evidence_ref": result["evidence_ref"]}
+    state = WORKER_RESULT_STATES[result["status"]]
+    record = {
+        **record, "state": state, "exact_head_sha": result["head_sha"],
+        "worker_status": result["status"], "evidence_ref": result["evidence_ref"],
+        "worker_observed_at": result["observed_at"], "independent_verification": "NOT_VERIFIED",
+    }
     normalized["packets"][packet_id] = record
     return _append_event(normalized, {
         "type": "WORKER_RESULT",
@@ -155,6 +575,7 @@ def record_worker_result(ledger: dict[str, Any], packet_id: str, worker_result: 
         "exact_head_sha": result["head_sha"],
         "status": result["status"],
         "evidence_ref": result["evidence_ref"],
+        "observed_at": result["observed_at"],
     })
 
 
@@ -165,12 +586,40 @@ def transition_packet(ledger: dict[str, Any], packet_id: str, *, state: str, exa
     record = normalized["packets"].get(packet_id)
     if not record:
         raise WorkerTransportError("unknown packet")
-    if record["state"] in TERMINAL_STATES and state != record["state"]:
+    if record["state"] in TERMINAL_STATES:
         raise WorkerTransportError("terminal packet cannot transition")
-    if exact_head_sha is not None:
-        if len(exact_head_sha) != 40 or any(c not in "0123456789abcdef" for c in exact_head_sha):
-            raise WorkerTransportError("exact_head_sha must be a lowercase 40-character SHA")
-        record["exact_head_sha"] = exact_head_sha
+    if record["state"] == "WAITING_FOR_SUPERVISOR" or record.get("supervisor_question", {}).get("decision") in {"PARK_SLICE", "REPLAN_REQUIRED"}:
+        raise WorkerTransportError("supervisor question prevents arbitrary state transitions")
+    last_event = normalized["events"][-1] if normalized["events"] else {}
+    if state == record["state"]:
+        if (
+            last_event.get("type") == "STATE_TRANSITION"
+            and last_event.get("packet_id") == packet_id
+            and last_event.get("state") == state
+            and last_event.get("exact_head_sha") == exact_head_sha
+            and last_event.get("evidence_ref") == evidence_ref
+        ):
+            return normalized  # exact duplicate of the immediately prior transition
+        raise WorkerTransportError("state replay requires exact recorded transition identity")
+    if state not in ALLOWED_STATE_EDGES.get(record["state"], frozenset()):
+        raise WorkerTransportError("ILLEGAL_STATE_TRANSITION: independent gate required")
+    if state in {"CANCELLED", "RECONCILE_REQUIRED", "BLOCKED", "PREFLIGHT_UNVERIFIED"}:
+        if not isinstance(evidence_ref, str) or not evidence_ref.strip():
+            raise WorkerTransportError("state transition requires evidence reference")
+    if state == "PREFLIGHT_UNVERIFIED" and (
+        record.get("worker_status") != "PASS"
+        or record.get("independent_verification") != "NOT_VERIFIED"
+        or not record.get("exact_head_sha")
+    ):
+        raise WorkerTransportError("preflight requires unverified worker handback first")
+    if exact_head_sha is not None and exact_head_sha != record.get("exact_head_sha"):
+        raise WorkerTransportError("state transition cannot rewrite exact worker head")
+    if exact_head_sha is not None and (
+        not isinstance(exact_head_sha, str)
+        or len(exact_head_sha) != 40
+        or any(c not in "0123456789abcdef" for c in exact_head_sha)
+    ):
+        raise WorkerTransportError("exact_head_sha must be a lowercase 40-character SHA")
     record["state"] = state
     normalized["packets"][packet_id] = record
     event = {"type": "STATE_TRANSITION", "packet_id": packet_id, "state": state}
@@ -181,15 +630,155 @@ def transition_packet(ledger: dict[str, Any], packet_id: str, *, state: str, exa
     return _append_event(normalized, event)
 
 
+def _require_sha(value: object, field: str) -> str:
+    if not isinstance(value, str) or len(value) != 40 or any(c not in "0123456789abcdef" for c in value):
+        raise WorkerTransportError(f"{field} must be a lowercase 40-character SHA")
+    return value
+
+
+def record_independent_verification(
+    ledger: dict[str, Any], packet_id: str, *,
+    verified_head_sha: str, passed: bool, checks: list[dict[str, Any]], evidence_ref: str,
+) -> dict[str, Any]:
+    """Supervisor-only verdict on the exact handed-back candidate head.
+
+    A worker PASS is never acceptance. The supervisor re-runs the packet's
+    verification itself, at the exact head, and records the outcome here: the
+    only path into the privileged PREFLIGHT_GREEN state.
+    """
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if not record or record["state"] != "PREFLIGHT_UNVERIFIED":
+        raise WorkerTransportError("independent verification requires PREFLIGHT_UNVERIFIED")
+    if record.get("worker_status") != "PASS" or record.get("independent_verification") != "NOT_VERIFIED":
+        raise WorkerTransportError("independent verification requires an unverified PASS handback")
+    head = _require_sha(verified_head_sha, "verified_head_sha")
+    if head != record.get("exact_head_sha"):
+        raise WorkerTransportError("verified head differs from the handed-back candidate")
+    if not isinstance(checks, list) or not checks or not all(isinstance(c, dict) for c in checks):
+        raise WorkerTransportError("independent verification requires recorded checks")
+    evidence = _safe_handoff_text(evidence_ref, "evidence_ref")
+    record["state"] = "PREFLIGHT_GREEN" if passed is True else "BLOCKED"
+    record["independent_verification"] = "VERIFIED_GREEN" if passed is True else "VERIFIED_FAIL"
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "INDEPENDENT_VERIFICATION", "packet_id": packet_id,
+        "repository": record["repository"], "exact_head_sha": head,
+        "verdict": "GREEN" if passed is True else "FAIL",
+        "checks": deepcopy(checks), "evidence_ref": evidence,
+    })
+
+
+def accept_locally(
+    ledger: dict[str, Any], packet_id: str, *,
+    accepted_ref: str, accepted_sha: str, evidence_ref: str,
+) -> dict[str, Any]:
+    """Record independently verified work as accepted LOCAL progress.
+
+    This never merges, pushes or releases: merge_authority stays False.
+    """
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if not record or record["state"] != "PREFLIGHT_GREEN" or record.get("independent_verification") != "VERIFIED_GREEN":
+        raise WorkerTransportError("local acceptance requires independent GREEN verification")
+    sha = _require_sha(accepted_sha, "accepted_sha")
+    if sha != record.get("exact_head_sha"):
+        raise WorkerTransportError("accepted sha differs from the verified candidate")
+    if not isinstance(accepted_ref, str) or not accepted_ref.startswith("refs/iron-god/"):
+        raise WorkerTransportError("local acceptance requires a protected refs/iron-god/ ref")
+    evidence = _safe_handoff_text(evidence_ref, "evidence_ref")
+    record["state"] = "ACCEPTED_LOCAL"
+    record["accepted_ref"] = accepted_ref
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "LOCAL_ACCEPTANCE", "packet_id": packet_id,
+        "repository": record["repository"], "exact_head_sha": sha,
+        "accepted_ref": accepted_ref, "evidence_ref": evidence,
+    })
+
+
+def retry_packet(
+    ledger: dict[str, Any], packet_id: str, *,
+    expected_base_sha: str, remediation_evidence_ref: str,
+) -> dict[str, Any]:
+    """Explicit bounded data-only retry; never grants or launches a worker.
+
+    A real dispatcher must separately verify owner authority, current Git
+    identity, leases and paths before ever executing a retry.
+    """
+    normalized = validate_ledger(ledger)
+    record = normalized["packets"].get(packet_id)
+    if not record or record["state"] not in {"BLOCKED", "PARKED"}:
+        raise WorkerTransportError("retry requires a failed or environment-parked packet")
+    if record.get("worker_status") not in {"FAIL", "ENVIRONMENT_FAILURE"}:
+        raise WorkerTransportError("human/review decisions cannot be retried automatically")
+    if record.get("supervisor_question"):
+        raise WorkerTransportError("supervisor-parked questions require approved successor")
+    if record["base_sha"] != expected_base_sha:
+        raise WorkerTransportError("retry exact base mismatch")
+    evidence = _safe_handoff_text(remediation_evidence_ref, "remediation_evidence_ref")
+    attempts = record.get("attempt_count", 1)
+    if type(attempts) is not int or attempts >= 3:
+        raise WorkerTransportError("retry budget exhausted; replan required")
+    previous = {
+        "attempt": attempts, "status": record.get("worker_status"),
+        "head": record.get("exact_head_sha"),
+        "evidence_ref": record.get("evidence_ref"),
+    }
+    record["previous_results"] = [*record.get("previous_results", []), previous]
+    record["attempt_count"] = attempts + 1
+    record["state"] = "DISPATCHED"
+    normalized["packets"][packet_id] = record
+    return _append_event(normalized, {
+        "type": "RETRY", "packet_id": packet_id,
+        "repository": record["repository"], "base_sha": record["base_sha"],
+        "attempt_count": record["attempt_count"], "evidence_ref": evidence,
+    })
+
+
 def requeueable_packets(ledger: dict[str, Any]) -> list[dict[str, Any]]:
     normalized = validate_ledger(ledger)
-    allowed = {"BLOCKED", "PARKED", "RECONCILE_REQUIRED", "PREFLIGHT_UNVERIFIED"}
-    return [dict(record) for _, record in sorted(normalized["packets"].items()) if record["state"] in allowed]
+    return [
+        deepcopy(record) for _, record in sorted(normalized["packets"].items())
+        if record["state"] in {"BLOCKED", "PARKED"}
+        and record.get("worker_status") in {"FAIL", "ENVIRONMENT_FAILURE"}
+        and not record.get("supervisor_question")
+        and type(record.get("attempt_count")) is int
+        and record["attempt_count"] < 3
+    ]
 
 
 def load_ledger(path: str | Path) -> dict[str, Any]:
     return validate_ledger(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
-def write_ledger(path: str | Path, ledger: dict[str, Any]) -> None:
-    Path(path).write_text(json.dumps(validate_ledger(ledger), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+def write_ledger(
+    path: str | Path, ledger: dict[str, Any], *, expected_revision: int | None = None,
+) -> None:
+    """Atomic compare-and-swap on the EXISTING worker ledger, not a second queue.
+
+    The kernel lock serializes cooperating processes, and atomic_json keeps the
+    previous complete file intact when publication fails. A caller updating an
+    existing ledger must supply the revision it read; stale writers are rejected.
+    """
+    destination = Path(path)
+    normalized = validate_ledger(ledger)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    handle = acquire_lifecycle_lock(destination)
+    try:
+        if destination.exists():
+            current = load_ledger(destination)
+            if expected_revision is None or expected_revision != current["revision"]:
+                raise WorkerTransportError("LEDGER_REVISION_CONFLICT")
+            if current == normalized:
+                return
+            if (
+                normalized["revision"] <= current["revision"]
+                or normalized["events"][:len(current["events"])] != current["events"]
+            ):
+                raise WorkerTransportError("LEDGER_HISTORY_CONFLICT")
+        elif expected_revision not in {None, 0}:
+            raise WorkerTransportError("LEDGER_REVISION_CONFLICT")
+        atomic_json(destination, normalized)
+    finally:
+        release_lifecycle_lock(handle)
