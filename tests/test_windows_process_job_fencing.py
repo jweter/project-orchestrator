@@ -92,3 +92,20 @@ def test_repeated_revocation_cannot_leave_child_alive(n, tmp_path):
         )
     time.sleep(.9)
     assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object contract")
+def test_authority_denial_before_resume_does_not_run_child(tmp_path):
+    """Real process (from Copilot's 9fa69ab): a launch revoked before resume never runs its first line."""
+    from project_orchestrator.execution_runtime import NativeWindowsRuntime, RuntimeRequest
+
+    marker = tmp_path / "revoked-before-resume.txt"
+    code = f"import pathlib,time;pathlib.Path({str(marker)!r}).write_text('started');time.sleep(1)"
+
+    def denied():
+        raise RuntimeError("revoked")
+
+    with pytest.raises(RuntimeError, match="EXECUTION_AUTHORITY_REVOKED"):
+        NativeWindowsRuntime().execute_supervised(RuntimeRequest((sys.executable, "-c", code), tmp_path), denied,
+                                                  interval=.05)
+    assert not marker.exists()
