@@ -78,6 +78,46 @@ def windows_idle_seconds() -> float | None:
     return max(0.0, (tick - info.dwTime) / 1000.0)
 
 
+def accepted_pin(actor_repo: Path) -> tuple[str, str]:
+    """Return the (source, sha) pin this actor may run, or fail closed.
+
+    Local-first promotion is opt-in and pinned to an immutable commit. Never
+    infer permission to deploy from a mutable development branch, a symlink
+    that can be repointed, or a versioned actor directory named for another SHA.
+    """
+    local_repo = os.environ.get("IRON_GOD_ACCEPTED_REPO")
+    accepted_head = os.environ.get("IRON_GOD_ACCEPTED_SHA")
+    if bool(local_repo) != bool(accepted_head):
+        raise RuntimeError("local actor promotion requires both repository and exact SHA")
+    if not local_repo or not accepted_head:
+        raise RuntimeError("LOCAL_ACCEPTED_RELEASE_REQUIRED: refusing GitHub origin/main fallback")
+    if re.fullmatch(r"[0-9a-f]{40}", accepted_head) is None:
+        raise RuntimeError("LOCAL_ACCEPTED_SHA_INVALID")
+    if not Path(local_repo).is_absolute():
+        raise RuntimeError("LOCAL_ACCEPTED_SOURCE_NOT_ABSOLUTE")
+    if Path(local_repo).is_symlink() or actor_repo.is_symlink():
+        raise RuntimeError("LOCAL_ACCEPTED_CHECKOUT_SYMLINK")
+    if actor_repo.parent.name.casefold() == "runtime-actors" and actor_repo.name != accepted_head:
+        raise RuntimeError("LOCAL_ACTOR_DIRECTORY_SHA_MISMATCH")
+    return local_repo, accepted_head
+
+
+def verify_pinned_actor(actor_repo: Path) -> str:
+    """Re-verify the prepared actor before a dispatch, without fetching or resetting.
+
+    A long-running actor cannot trust its one-time preparation: refuse to run
+    the bridge if the checkout moved, was modified, or the pin changed.
+    """
+    _, accepted_head = accepted_pin(actor_repo)
+    head = run(["git", "rev-parse", "HEAD"], actor_repo)
+    if head.returncode != 0 or head.stdout.strip() != accepted_head:
+        raise RuntimeError("LOCAL_ACTOR_REVISION_DRIFT")
+    clean = run(["git", "status", "--porcelain", "--untracked-files=normal"], actor_repo)
+    if clean.returncode != 0 or clean.stdout.strip():
+        raise RuntimeError("LOCAL_ACTOR_DIRTY_BEFORE_DISPATCH")
+    return accepted_head
+
+
 def update_actor_checkout(actor_repo: Path) -> str:
     """Update the dedicated actor only from a verified accepted LOCAL commit.
 
@@ -86,18 +126,7 @@ def update_actor_checkout(actor_repo: Path) -> str:
     """
     if not (actor_repo / ".git").is_dir():
         raise RuntimeError("actor repository is not a Git checkout")
-    # Local-first promotion is opt-in and pinned to an immutable commit.
-    # Never infer permission to deploy from a mutable development branch.
-    local_repo = os.environ.get("IRON_GOD_ACCEPTED_REPO")
-    accepted_head = os.environ.get("IRON_GOD_ACCEPTED_SHA")
-    if bool(local_repo) != bool(accepted_head):
-        raise RuntimeError("local actor promotion requires both repository and exact SHA")
-    if not local_repo:
-        raise RuntimeError("LOCAL_ACCEPTED_RELEASE_REQUIRED: refusing GitHub origin/main fallback")
-    if re.fullmatch(r"[0-9a-f]{40}", accepted_head) is None:
-        raise RuntimeError("LOCAL_ACCEPTED_SHA_INVALID")
-    if not Path(local_repo).is_absolute():
-        raise RuntimeError("LOCAL_ACCEPTED_SOURCE_NOT_ABSOLUTE")
+    local_repo, accepted_head = accepted_pin(actor_repo)
     if local_repo:
         source = Path(local_repo).resolve()
         actor = actor_repo.resolve()
@@ -625,6 +654,9 @@ def run_idle_session(
                 )
                 time.sleep(cadence)
                 continue
+            # Preparation is not a standing guarantee: re-verify the pinned
+            # checkout before every dispatch. Drift fails closed (RuntimeError).
+            verify_pinned_actor(actor_repo)
             started = time.monotonic()
             emit_state(
                 state_dir,
