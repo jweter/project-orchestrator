@@ -30,6 +30,7 @@ While the owner holds control nothing is dispatched, pushed or merged.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import random
@@ -980,9 +981,12 @@ def dispatch_repair(lane: ProductLane, release_repo: Path, ledger: dict[str, Any
     repo, head = item["repository"], item["head_sha"]
     clone = lane.clone(repo)
     attempt = int(item.get("repair_attempts", 0)) + 1
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")  # unique: a cancelled repair keeps its worktree
+    # Unique (a cancelled repair keeps its worktree) but short: the branch already carries the packet id,
+    # and a long ref under canon-workspaces/products/<repo>/.git/refs/heads hit Windows MAX_PATH (2026-10-31).
+    stamp = datetime.now(UTC).strftime("%d%H%M%S")
     repair_id = f"{publication_id}-R{attempt}-{stamp}"
-    branch = f"{item['branch']}-repair-{attempt}-{stamp.lower()}"
+    # local-only name: the repaired head is pushed to the pull request's own branch (item["branch"])
+    branch = f"igr/{hashlib.sha256(publication_id.encode()).hexdigest()[:8]}-{attempt}-{stamp}"
     worktree = lane.worktrees / repair_id
 
     def block(reason: str) -> dict[str, Any]:
