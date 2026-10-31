@@ -155,8 +155,6 @@ def test_review_reader_rejects_missing_or_invalid_pagination_metadata(monkeypatc
     import scripts.green_pr_merger as merger
 
     comment={"body":"P1 must not merge", "commit":{"oid":"current-head"}}
-    thread={"isResolved":False,"comments":{"nodes":[comment],
-                                            "pageInfo":{"hasNextPage":False}}}
     payloads=[
         {"nodes":[]},
         {"pageInfo":{},"nodes":[]},
