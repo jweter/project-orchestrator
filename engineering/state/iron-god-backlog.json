@@ -1083,7 +1083,7 @@
       "complexity": "low",
       "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged with CI green; the empty-suite half of the PR #36/#37 findings resolved.",
-      "status": "proposed",
+      "status": "approved",
       "implementer": "iron-god-local-7b",
       "assignee": "iron-god",
       "direct": {
@@ -1098,7 +1098,8 @@
         "note": "An empty golden-question suite no longer reports a passing benchmark.",
         "approved_base": "3597f276e5fc7fa14ac765e78134588c33e90b0a"
       },
-      "evidence": "Verified 2026-10-31 on knowledge-engine-ai 3597f27: only the empty-suite test fails on main; with the reference edit the three approved tests and test_retrieval_benchmark_runner.py, test_retrieval_baseline.py, test_retrieval_baseline_compare.py and test_retrieval_benchmark.py pass (27 passed); ruff check, ruff format and strict mypy are clean. Recommended; not yet approved by the owner."
+      "evidence": "Re-verified 2026-10-31 at approval on knowledge-engine-ai 3597f27 (main unchanged since approved_base): the approved empty-suite test fails on main; with the reference edit the three approved tests and test_retrieval_benchmark_runner.py, test_retrieval_baseline.py, test_retrieval_baseline_compare.py and test_retrieval_benchmark.py pass (27 passed, exit 0); ruff check, ruff format and strict mypy are clean; the worker's validate_direct accepts the spec.",
+      "owner_authorization": "Approved by the owner on 2026-10-31 after confirming the defect: an empty golden-question benchmark must not report PASS. Approval is for this slice only."
     },
     {
       "id": "KEC-6",
