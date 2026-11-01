@@ -297,6 +297,7 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
             "forbidden_paths": list(spec.forbidden_paths), "runtime_requirements": list(spec.runtime_requirements),
             "runner_requirements": list(spec.runner_requirements), "prior_failures": failures,
             "capability_level": declared.get((capability_id, chosen["slice_id"]), {}).get("capability_level"),
+            "acceptance_examples": declared.get((capability_id, chosen["slice_id"]), {}).get("acceptance_examples", []),
             "max_builder_level": max(backlog.BUILDABLE_LEVELS),
             "needs": "a backlog item (level 1 build spec, or level 2 directed edit with approved tests that fail at "
                      "exact_head) whose id and roadmap_ref equal this request's, written to the drafts directory"})
@@ -495,6 +496,7 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         # Open pull requests own files; a capable slice may touch anything its allowed paths cover.
         request["reserved_conflicts"] = sorted(path for path in reserved if _matches(path, request["allowed_paths"]))
     report["capable_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == CAPABLE]
+    report["local_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == LOCAL]
     report["direction_required"], report["skipped"] = derived["direction_required"], derived["skipped"]
     report["requests"] = [request["id"] for request in derived["requests"]]
     requests_dir = Path(lane_root) / REQUESTS

@@ -258,6 +258,8 @@
     "planning": "backlog",
     "planning_decision": "2026-10-27: owner directed roadmap-driven development; only approved items from engineering/state/iron-god-backlog.json are built, never self-invented slices",
     "roadmap_refill": true,
+    "local_draft_author": true,
+    "local_draft_author_decision": "2026-11-01: for roadmap slices routed LOCAL at declared capability level 1, the product worker planning step (with its plan validator) drafts the build spec in its own process while the lane is idle, one job at a time, two attempts per slice; the strict admission still decides",
     "roadmap_progress": true,
     "roadmap_progress_decision": "2026-11-01: after a slice merges, one mechanical pull request per repository records it as VERIFIED_COMPLETE in the declared capability graph (state and verification only, validated before publishing); the existing green-PR merger merges it once checks pass",
     "capable_builder": false,
