@@ -1861,3 +1861,219 @@ def test_a_standing_missing_examples_question_is_asked_once(env, monkeypatch):
 
     kinds = [e["kind"] for e in refill_mod.load_store(lane.root)["ledger"]]
     assert kinds == ["LOCAL_DRAFT_NEEDS_ACCEPTANCE_EXAMPLES"]
+
+
+# --- the whole roadmap loop, end to end, across repositories and restarts (rehearsal for the release procedure) -------
+
+
+def publish_graph_payload(env, repo, payload):
+    """Commit a declared capability graph to the repository's 'GitHub' main, as an owner roadmap PR would."""
+    work = env.tmp / "graph-work2" / repo.split("/")[1]
+    git(env.tmp, "clone", "-q", str(env.remotes[repo]), str(work))
+    git(work, "config", "user.email", "o@example.com")
+    git(work, "config", "user.name", "Owner")
+    source = "engineering/capability-graph.json"
+    (work / source).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+    (work / "engineering" / "control-plane.json").write_text(
+        json.dumps({"schema_version": 1, "capability_graph": source, "authoritative_documents": [source]}), encoding="utf-8")
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", "owner roadmap graph")
+    git(work, "push", "-q", "origin", "main")
+
+
+def two_step_graph(repo):
+    def piece(sid, fn_word, plus, depends_on=()):
+        row = {"id": sid, "state": "PLANNED", "capability_level": 1, "objective": f"Return the integer plus {fn_word}.",
+               "acceptance": [f"adds {plus}"], "allowed_paths": ["pkg/**", "tests/**"],
+               "acceptance_examples": [
+                   {"call": "{fn}(1)", "expected": 1 + plus, "why": f"1 + {plus}"},
+                   {"call": "{fn}(0)", "expected": plus, "why": f"0 + {plus}"}]}
+        if depends_on:
+            row["depends_on"] = list(depends_on)
+        return row
+
+    return {"schema_version": 1, "repository": repo, "roadmap": ["cap-adders"], "capabilities": [{
+        "id": "cap-adders", "capability": "Adders", "state": "PLANNED", "depends_on": [], "completion_evidence": ["docs/ROADMAP.md"],
+        "slices": [piece("add-two", "two", 2), piece("add-three", "three", 3, ["add-two"])]}]}
+
+
+PLANS = {
+    "add-two": {"function_name": "add_two", "signature": "def add_two(value: int) -> int:", "module_path": "pkg/add_two.py",
+                "objective": "Return the given integer plus two, exactly.",
+                "examples": [{"call": "add_two(1)", "why": "1 + 2", "expected": 3}, {"call": "add_two(0)", "why": "0 + 2", "expected": 2},
+                             {"call": "add_two(-2)", "why": "-2 + 2", "expected": 0}], "note": "Added pkg.add_two."},
+    "add-three": {"function_name": "add_three", "signature": "def add_three(value: int) -> int:", "module_path": "pkg/add_three.py",
+                  "objective": "Return the given integer plus three, exactly.",
+                  "examples": [{"call": "add_three(1)", "why": "1 + 3", "expected": 4}, {"call": "add_three(0)", "why": "0 + 3", "expected": 3},
+                               {"call": "add_three(-3)", "why": "-3 + 3", "expected": 0}], "note": "Added pkg.add_three."},
+}
+MODULES = {"pkg/add_two.py": "def add_two(value: int) -> int:\n    \"\"\"Return value plus two.\"\"\"\n    return value + 2\n",
+           "pkg/add_three.py": "def add_three(value: int) -> int:\n    \"\"\"Return value plus three.\"\"\"\n    return value + 3\n"}
+
+
+def module_agent(worktree, message, files, check, source=None):
+    check()
+    (worktree / files[0]).write_text(MODULES[files[0]], encoding="utf-8")
+
+
+def test_the_whole_roadmap_loop_runs_across_repositories_continues_after_a_merge_and_survives_restarts(env, monkeypatch):
+    """Read roadmap -> next slice -> route -> draft -> admit -> build -> verify -> accept -> PR -> CI -> merge ->
+    continue with the dependent slice -> record the progress, across three repositories and mid-flight restarts."""
+    import functools
+
+    from project_orchestrator import iron_god_capable_builder as cap
+    from project_orchestrator import iron_god_local_drafter as drafter_mod
+    from project_orchestrator import iron_god_roadmap_progress as progress_mod
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+    from scripts import iron_god_draft_author as author_mod
+
+    backlog_env(env, [])
+    monkeypatch.setattr(refill_mod, "CHECK_INTERVAL_SECONDS", 0)
+    main_repo, beyond_repo, undeclared_repo = REPOS[1], REPOS[0], REPOS[2]
+    publish_graph_payload(env, main_repo, two_step_graph(main_repo))
+    beyond = two_step_graph(beyond_repo)
+    for row in beyond["capabilities"][0]["slices"]:
+        row["capability_level"] = 3  # beyond what the local builder is measured to build
+    publish_graph_payload(env, beyond_repo, beyond)
+    write_calibration(env)
+    lane = pl.ProductLane(env.state)
+    monkeypatch.delenv(cap.ROUTINES[cap.ROUTINE][1], raising=False)
+
+    # The model's plan, the builder's code and the heavy preflight process are the only stand-ins; the worker's own
+    # plan validator runs for real. Each stand-in finishes at once so one lane turn sees its result on the next turn.
+    def fake_draft_launch(release_repo, release_sha, request_file, clone, base, result, log_path):
+        request = json.loads(Path(request_file).read_text(encoding="utf-8"))
+        author_mod.run(request, clone, base, result, planner=lambda *_a: PLANS[request["slice"]],
+                       validator=WORKER.validate_plan, authority=lambda: True,
+                       roots=author_mod.planning_roots(request["allowed_paths"]), forbidden=[*pl.ALWAYS_FORBIDDEN],
+                       attempted=request.get("attempted_functions", []))
+        return 4242
+
+    def fake_preflight_launch(release_repo, release_sha, worktree, result, log_path):
+        result.parent.mkdir(parents=True, exist_ok=True)
+        head = git(worktree, "rev-parse", "HEAD")
+        result.write_text(json.dumps({"ok": True, "head": head, "output_tail": "28 passed"}), encoding="utf-8")
+        return 4343
+
+    published, pr_state = [], {"value": "OPEN"}
+    original = progress_mod.record_progress
+    monkeypatch.setattr(pl, "spawn_draft_author", fake_draft_launch)
+    monkeypatch.setattr(pl, "spawn_progress_preflight", fake_preflight_launch)
+    monkeypatch.setattr(progress_mod, "record_progress", functools.partial(
+        original, publisher=lambda repo, branch, title, body: published.append((repo, branch, title, body)) or
+        f"https://github.com/{repo}/pull/50{len(published)}", pr_lookup=lambda _repo, _branch: None,
+        pr_state=lambda _url: pr_state["value"]))
+    runner, github = Runner(agent=module_agent, plan=never_plans), FakeGitHub(("pass",))
+
+    def drive(until, limit=14, **kw):
+        """Run lane turns (a fresh call each time, i.e. a restart) until the predicate holds."""
+        for _ in range(limit):
+            result = step(env, runner, github, **kw)
+            if until(result):
+                return result
+        raise AssertionError(f"never reached the goal; last: {result}")
+
+    add_two = refill_mod.item_id(main_repo, "cap-adders", "add-two")
+    add_three = refill_mod.item_id(main_repo, "cap-adders", "add-three")
+
+    # 1. the first slice: planned locally from the roadmap, admitted, built and accepted (a restart between every turn)
+    drive(lambda r: r["status"] == "DISPATCHED")
+    state = backlog_mod.load_state(lane.root)
+    assert state["items"][add_two]["outcome"] == "DISPATCHED"
+    ledger = refill_mod.load_store(lane.root)["ledger"]
+    assert {"GENERATED", "ADMITTED"} <= {e["kind"] for e in ledger if e["id"] == add_two}
+    assert not any(e["id"] == add_three for e in ledger)  # the dependent slice waits for its dependency
+    (admitted,) = refill_mod.admitted_items(lane.root)
+    assert admitted["id"] == add_two and admitted["authorization"]["route"] == "LOCAL"
+    assert any("roadmap acceptance example" in e["why"] for e in admitted["build"]["examples"])  # owner's examples travel on
+    assert drive(lambda r: r["status"] == "ACCEPTED_LOCAL")["status"] == "ACCEPTED_LOCAL"
+    drive(lambda r: bool(github.opened), allow=False)  # push + pull request
+    assert github.opened[0]["title"].startswith(f"Iron God [{add_two}]")
+    assert "Roadmap: engineering/capability-graph.json#cap-adders/add-two" in github.opened[0]["body"]
+    drive(lambda r: backlog_mod.load_state(lane.root)["items"][add_two]["outcome"] == "MERGED", allow=False)  # CI -> merge
+
+    # 2. continuation: the merge unlocks the dependent slice with no graph update and no human; it is built the same way
+    drive(lambda r: r["status"] == "DISPATCHED" and r.get("backlog_item") == add_three)
+    assert drive(lambda r: r["status"] == "ACCEPTED_LOCAL")["status"] == "ACCEPTED_LOCAL"
+    drive(lambda r: len(github.opened) == 2, allow=False)
+    drive(lambda r: backlog_mod.load_state(lane.root)["items"][add_three]["outcome"] == "MERGED", allow=False)
+    assert len(github.merged) == 2
+
+    # 3. durable progress: native preflight first, ONE graph pull request at a time; once it merges the graph on main
+    #    shows the slices complete and nothing is proposed twice
+    drive(lambda r: bool(published), limit=24)
+    repo, branch, title, body = published[0]
+    assert repo == main_repo and "preflight passed at this exact commit" in body and body.count("pull/") >= 1
+    first_slices = {s for s in ("add-two", "add-three") if f"`{s}`" in body}
+    assert "add-two" in first_slices
+    step(env, runner, github)
+    assert len(published) == 1  # the open progress PR keeps a second one from conflicting with it
+    remote = env.remotes[main_repo]
+    git(remote, "update-ref", "refs/heads/main", git(remote, "rev-parse", f"refs/heads/{branch}"))  # the PR merges
+    pr_state["value"] = "MERGED"
+    if first_slices != {"add-two", "add-three"}:
+        drive(lambda r: len(published) == 2, limit=24)
+    recorded = [s for _repo, _branch, _title, text in published for s in ("add-two", "add-three") if f"`{s}`" in text]
+    assert sorted(recorded) == ["add-three", "add-two"]  # each merged slice recorded exactly once, across all PRs
+    last_branch = published[-1][1]
+    git(remote, "update-ref", "refs/heads/main", git(remote, "rev-parse", f"refs/heads/{last_branch}"))
+    edited = json.loads(git(remote, "show", "refs/heads/main:engineering/capability-graph.json"))
+    states = {s["id"]: s["state"] for s in edited["capabilities"][0]["slices"]}
+    assert states == {"add-two": "VERIFIED_COMPLETE", "add-three": "VERIFIED_COMPLETE"}
+    assert edited["capabilities"][0]["state"] == "PLANNED"  # a capability is never declared complete by merged slices
+
+    # 4. nothing left to plan: the roadmap asks what comes next; it never re-plans merged work or invents a third slice
+    final = step(env, runner, github)
+    assert final["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" and runner.spawned == 2
+    ledger = refill_mod.load_store(lane.root)["ledger"]
+    assert any(e["kind"] == "DIRECTION_REQUIRED" and e["repository"] == main_repo
+               and e["detail"]["reason"] == "NO_EXECUTABLE_SLICE" for e in ledger)
+
+    # 5. the other repositories were handled without blocking this one
+    kinds = {(e["repository"], e["kind"]) for e in ledger}
+    assert (beyond_repo, "CAPABILITY_BLOCKER") in kinds and (beyond_repo, "CAPABLE_NOT_DISPATCHED") in kinds
+    assert (undeclared_repo, "DIRECTION_REQUIRED") in kinds
+    offending = [(e["repository"], e["kind"], e["detail"]) for e in ledger
+                 if e["repository"] in {beyond_repo, undeclared_repo} and e["kind"].startswith(("LOCAL_DRAFT", "ADMITTED"))]
+    assert not offending, offending  # nothing beyond capability is simplified into a local build, nothing is invented
+    assert not drafter_mod.drafting_in_progress(lane.root) and cap.open_request_ids(lane.root) == set()
+
+
+def test_a_harvested_draft_is_logged_against_its_own_repository_not_the_one_being_refilled(env):
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+
+    pl.log_draft_outcomes(lane, REPOS[2], [{"id": "RM-a", "status": "DRAFTED", "repository": REPOS[1]},
+                                           {"id": "RM-b", "status": "ERROR", "reason": "OSError: x"}])
+
+    ledger = {e["id"]: e["repository"] for e in refill_mod.load_store(lane.root)["ledger"]}
+    assert ledger == {"RM-a": REPOS[1], "RM-b": REPOS[2]}  # an outcome without its own repository falls back to the pass
+
+
+def test_an_unreachable_repository_cannot_leave_a_settled_preflight_blocking_the_rest(env, monkeypatch):
+    """Review P2 on #609: a sync failure skipped progress harvesting, so a stale VERIFYING job suppressed drafting everywhere."""
+    import time as time_mod
+
+    from project_orchestrator import iron_god_roadmap_progress as progress_mod
+
+    backlog_env(env, [])
+    lane = pl.ProductLane(env.state)
+    workspace = lane.workspaces / "progress"
+    (workspace / "jobs").mkdir(parents=True, exist_ok=True)
+    result = workspace / "results" / "x.json"
+    result.parent.mkdir(parents=True, exist_ok=True)
+    result.write_text(json.dumps({"ok": True, "head": "c" * 40}), encoding="utf-8")
+    job = {"repository": REPOS[1], "branch": "iron-god/roadmap-progress/x", "stage": "VERIFYING", "started_at": time_mod.time(),
+           "result": str(result), "commit_sha": "c" * 40, "lease_id": None, "worktree": str(workspace / "t"),
+           "clone": str(workspace / "c")}
+    progress_mod._job_file(workspace, job["branch"]).write_text(json.dumps(job), encoding="utf-8")  # the writer's own name
+    assert progress_mod.verifying(workspace)
+
+    def unreachable(_lane, repo):
+        raise OSError("PRODUCT_FETCH_FAILED")
+
+    pl.refill_from_roadmaps(lane, REPOS, set(), [], {}, 1, unreachable, lambda repo: [], record_progress=True,
+                            draft_locally=True, lease_pool=env.pool)
+
+    assert not progress_mod.verifying(workspace)  # settled before any repository was synced

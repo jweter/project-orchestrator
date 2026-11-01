@@ -160,6 +160,14 @@ def gh_pr_lookup(repository: str, branch: str) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
+def gh_pr_state(url: str) -> str | None:
+    """OPEN, MERGED or CLOSED for a pull request URL; None when GitHub cannot be asked (treated as still open)."""
+    out = subprocess.run(["gh", "pr", "view", url, "--json", "state", "--jq", ".state"], capture_output=True, text=True,
+                         check=False, timeout=60)
+    value = out.stdout.strip()
+    return value if out.returncode == 0 and value in {"OPEN", "MERGED", "CLOSED"} else None
+
+
 def spawn_preflight(worktree: Path, result: Path) -> int | None:
     """Default launcher: the native-preflight runner in its own process. The lane supplies a release-bound variant."""
     runner = Path(__file__).resolve().parents[2] / "scripts" / "iron_god_progress_preflight.py"
@@ -194,40 +202,95 @@ def _save(workspace: Path, job: dict[str, Any]) -> None:
     atomic_json(_job_file(workspace, job["branch"]), job)
 
 
-def _fail(workspace: Path, job: dict[str, Any], reason: str, detail: str = "") -> dict[str, Any]:
+def verifying(workspace: Path) -> bool:
+    """True while a progress preflight is running; other heavy local work waits for it."""
+    return any(job["stage"] == "VERIFYING" for job in _jobs(workspace))
+
+
+def _return_lease(job: dict[str, Any], release: Callable[[str], None] | None) -> None:
+    lease, job["lease_id"] = job.get("lease_id"), None
+    if lease and release is not None:
+        try:
+            release(lease)
+        except Exception:  # a lease that is already gone must not lose the job record
+            pass
+
+
+def _fail(workspace: Path, job: dict[str, Any], reason: str, detail: str = "",
+          release: Callable[[str], None] | None = None) -> dict[str, Any]:
+    _return_lease(job, release)
     job.update(stage="FAILED", reason=reason, detail=detail[-400:])
     _save(workspace, job)
     return {"status": "BLOCKED", "reason": reason, "branch": job["branch"], "detail": detail[-400:]}
 
 
+def settle_verification(workspace: Path, job: dict[str, Any], *, now: Callable[[], float],
+                        release: Callable[[str], None] | None) -> dict[str, Any] | None:
+    """VERIFYING -> VERIFIED or FAILED once the result is in or the run hung; None means settled and still going.
+
+    Needs neither the repository clone nor GitHub, so it can run for every job on every turn.
+    """
+    branch = job["branch"]
+    result_path = Path(job["result"])
+    if not result_path.is_file():
+        if now() - float(job.get("started_at", 0)) > PREFLIGHT_TIMEOUT_S + 600:
+            return _fail(workspace, job, "PREFLIGHT_TIMED_OUT", release=release)
+        return {"status": "VERIFYING", "branch": branch}
+    try:
+        verdict = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _fail(workspace, job, "PREFLIGHT_RESULT_UNREADABLE", release=release)
+    if verdict.get("ok") is not True or verdict.get("head") != job["commit_sha"]:
+        return _fail(workspace, job, "PREFLIGHT_FAILED", str(verdict.get("output_tail", "")), release=release)
+    _return_lease(job, release)  # the heavy part is over; pushing and publishing need no model
+    job["stage"] = "VERIFIED"
+    _save(workspace, job)
+    return None
+
+
+def harvest(workspace: Path, *, now: Callable[[], float] = time.time,
+            release: Callable[[str], None] | None = None) -> list[dict[str, Any]]:
+    """Settle every verifying job (result in, or hung) whatever happens to its repository; returns the failures.
+
+    A repository that cannot be synced must not leave a finished or hung job holding the shared runtime lease and the
+    portfolio-wide exclusion: that would suppress executable work everywhere else.
+    """
+    failures = []
+    for job in [row for row in _jobs(workspace) if row["stage"] == "VERIFYING"]:
+        outcome = settle_verification(workspace, job, now=now, release=release)
+        if outcome is not None and outcome["status"] == "BLOCKED":
+            failures.append({**outcome, "repository": job["repository"]})
+    return failures
+
+
 def _advance(job: dict[str, Any], *, workspace: Path, publisher: Callable[[str, str, str, str], str],
              pr_lookup: Callable[[str, str], dict[str, Any] | None], spawn: Callable[[Path, Path], int | None],
-             may_start: bool, now: Callable[[], float]) -> dict[str, Any]:
+             may_start: bool, now: Callable[[], float], reserve: Callable[[], str | None] | None = None,
+             release: Callable[[str], None] | None = None) -> dict[str, Any]:
     tree, branch, repository = Path(job["worktree"]), job["branch"], job["repository"]
     while True:
         stage = job["stage"]
         if stage == "PREPARED":
             if not may_start:  # the lane is busy with a worker; heavy checks run serially
                 return {"status": "WAITING_FOR_IDLE", "branch": branch}
+            lease = reserve() if reserve is not None else None  # the shared runtime lease: heavy checks stay serial
+            if reserve is not None and lease is None:
+                return {"status": "WAITING_FOR_IDLE", "branch": branch}
             result = Path(workspace) / "results" / (branch.replace("/", "-") + ".json")
             result.unlink(missing_ok=True)
-            job.update(stage="VERIFYING", started_at=now(), pid=spawn(tree, result), result=str(result))
+            try:
+                pid = spawn(tree, result)
+            except Exception:
+                if lease and release is not None:
+                    release(lease)
+                raise
+            job.update(stage="VERIFYING", started_at=now(), pid=pid, result=str(result), lease_id=lease)
             _save(workspace, job)
             return {"status": "VERIFYING", "branch": branch}
         if stage == "VERIFYING":
-            result_path = Path(job["result"])
-            if not result_path.is_file():
-                if now() - float(job.get("started_at", 0)) > PREFLIGHT_TIMEOUT_S + 600:
-                    return _fail(workspace, job, "PREFLIGHT_TIMED_OUT")
-                return {"status": "VERIFYING", "branch": branch}
-            try:
-                verdict = json.loads(result_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                return _fail(workspace, job, "PREFLIGHT_RESULT_UNREADABLE")
-            if verdict.get("ok") is not True or verdict.get("head") != job["commit_sha"]:
-                return _fail(workspace, job, "PREFLIGHT_FAILED", str(verdict.get("output_tail", "")))
-            job["stage"] = "VERIFIED"
-            _save(workspace, job)
+            outcome = settle_verification(workspace, job, now=now, release=release)
+            if outcome is not None:
+                return outcome
             continue
         if stage == "VERIFIED":
             if _git(tree, "rev-parse", "HEAD").stdout.strip() != job["commit_sha"]:
@@ -253,13 +316,23 @@ def record_progress(lane_root: Path, state_root: Path, repository: str, clone: P
                     workspace: Path, publisher: Callable[[str, str, str, str], str] = gh_publisher,
                     pr_lookup: Callable[[str, str], dict[str, Any] | None] = gh_pr_lookup,
                     spawn: Callable[[Path, Path], int | None] = spawn_preflight, may_start: bool = True,
-                    now: Callable[[], float] = time.time) -> dict[str, Any]:
+                    now: Callable[[], float] = time.time, reserve: Callable[[], str | None] | None = None,
+                    release: Callable[[str], None] | None = None,
+                    pr_state: Callable[[str], str | None] = gh_pr_state) -> dict[str, Any]:
     """Advance (or start) the single progress job for ``repository``; never raises on a refusal."""
     context = {"workspace": Path(workspace), "publisher": publisher, "pr_lookup": pr_lookup, "spawn": spawn,
-               "may_start": may_start, "now": now}
+               "may_start": may_start, "now": now, "reserve": reserve, "release": release}
     unfinished = [job for job in _jobs(workspace) if job["repository"] == repository and job["stage"] not in FINAL]
     if unfinished:  # one open progress job per repository: finish it before looking at anything newer
         return _advance(unfinished[0], **context)
+    for job in _jobs(workspace):  # one open progress pull request per repository: a second would conflict on the file
+        if job["repository"] == repository and job["stage"] == "PUBLISHED" and job.get("pr_state") not in ("MERGED", "CLOSED"):
+            observed = pr_state(str(job.get("pr", "")))
+            if observed in ("MERGED", "CLOSED"):
+                job["pr_state"] = observed
+                _save(workspace, job)
+            else:
+                return {"status": "WAITING_FOR_PROGRESS_PR", "pr": job.get("pr"), "branch": job["branch"]}
     graph_file = Path(state_root) / "capability-graphs" / f"{repository.replace('/', '__')}.json"
     try:
         compiled = json.loads(graph_file.read_text(encoding="utf-8"))

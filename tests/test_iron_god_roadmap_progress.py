@@ -167,12 +167,12 @@ class Preflight:
 
 
 def step(world: dict, items, state, publications, *, publisher=None, preflight=None, lookup=None, may_start=True,
-         now=None) -> dict:
+         now=None, reserve=None, release=None, pr_state=None) -> dict:
     return progress.record_progress(
         world["lane"], world["state_root"], REPO, world["clone"], world["head"], items=items, state=state,
         publications=publications, workspace=world["tmp"] / "scratch", publisher=publisher or Publisher(),
         spawn=preflight or Preflight(), pr_lookup=lookup or (lambda _r, _b: None), may_start=may_start,
-        now=now or (lambda: 1000.0))
+        now=now or (lambda: 1000.0), reserve=reserve, release=release, pr_state=pr_state or (lambda _url: "OPEN"))
 
 
 def remote_branches(world: dict) -> list[str]:
@@ -261,7 +261,10 @@ def test_a_failed_publish_after_the_push_resumes_instead_of_reporting_an_open_pu
     resumed = step(world, items, state, publications, publisher=publisher, preflight=preflight)
 
     assert resumed["status"] == "OPENED" and len(publisher.calls) == 1
-    assert step(world, items, state, publications, publisher=publisher, preflight=preflight)["status"] == "ALREADY_OPEN"
+    waiting = step(world, items, state, publications, publisher=publisher, preflight=preflight)
+    assert waiting["status"] == "WAITING_FOR_PROGRESS_PR"
+    assert step(world, items, state, publications, publisher=publisher, preflight=preflight,
+                pr_state=lambda _url: "CLOSED")["status"] == "ALREADY_OPEN"  # same set and base, closed: not retried blindly
     assert len(publisher.calls) == 1 and len(preflight.spawned) == 1  # nothing re-verified or re-published
 
 
@@ -356,3 +359,165 @@ def test_the_writer_never_merges_or_touches_owner_controls() -> None:
     source = Path(progress.__file__).read_text(encoding="utf-8")
     for forbidden in ("gh pr merge", "Enable-ScheduledTask", "owner_control", "branch -D", "--force", "reset --hard"):
         assert forbidden not in source
+
+
+# --- the heavy preflight shares the runtime exclusion (found while rehearsing the whole loop) --------------------------
+
+
+class LeasePool:
+    def __init__(self, held: str | None = None) -> None:
+        self.held, self.released = held, []
+
+    def reserve(self) -> str | None:
+        if self.held:
+            return None
+        self.held = "lease-p"
+        return self.held
+
+    def release(self, lease_id: str) -> None:
+        self.released.append(lease_id)
+        self.held = None
+
+
+def test_the_preflight_holds_the_runtime_lease_while_it_runs_and_returns_it_when_the_result_is_in(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    pool, preflight = LeasePool(), Preflight(finish=False)
+
+    started = step(world, items, state, publications, preflight=preflight, reserve=pool.reserve, release=pool.release)
+
+    assert started["status"] == "VERIFYING" and pool.held == "lease-p" and pool.reserve() is None and progress.verifying(
+        world["tmp"] / "scratch")
+    result_dir = world["tmp"] / "scratch" / "results"
+    (job,) = progress._jobs(world["tmp"] / "scratch")
+    Path(job["result"]).parent.mkdir(parents=True, exist_ok=True)
+    Path(job["result"]).write_text(json.dumps({"ok": True, "head": job["commit_sha"]}), encoding="utf-8")
+    finished = step(world, items, state, publications, preflight=preflight, reserve=pool.reserve, release=pool.release)
+
+    assert finished["status"] == "OPENED" and pool.held is None and pool.released == ["lease-p"] and result_dir.exists()
+    assert not progress.verifying(world["tmp"] / "scratch")
+
+
+def test_the_preflight_waits_while_the_local_model_is_in_use(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    pool, preflight = LeasePool(held="a-worker"), Preflight()
+
+    waiting = step(world, items, state, publications, preflight=preflight, reserve=pool.reserve, release=pool.release)
+
+    assert waiting["status"] == "WAITING_FOR_IDLE" and preflight.spawned == []
+    pool.held = None
+    assert step(world, items, state, publications, preflight=preflight, reserve=pool.reserve,
+                release=pool.release)["status"] == "VERIFYING"
+
+
+def test_a_failed_a_hung_or_an_unlaunchable_preflight_still_returns_the_lease(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    pool = LeasePool()
+    step(world, items, state, publications, preflight=Preflight(ok=False), reserve=pool.reserve, release=pool.release)
+    failed = step(world, items, state, publications, reserve=pool.reserve, release=pool.release)
+    assert failed["reason"] == "PREFLIGHT_FAILED" and pool.held is None and pool.released == ["lease-p"]
+
+
+def test_a_hung_preflight_gives_its_lease_back(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    pool = LeasePool()
+    step(world, items, state, publications, preflight=Preflight(finish=False), reserve=pool.reserve,
+         release=pool.release, now=lambda: 0.0)
+
+    result = step(world, items, state, publications, reserve=pool.reserve, release=pool.release,
+                  now=lambda: progress.PREFLIGHT_TIMEOUT_S + 601.0)
+
+    assert result["reason"] == "PREFLIGHT_TIMED_OUT" and pool.held is None
+
+
+def test_a_launch_that_raises_returns_the_lease(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    pool = LeasePool()
+
+    def broken(*_a):
+        raise OSError("cannot launch")
+
+    with pytest.raises(OSError):
+        step(world, items, state, publications, preflight=broken, reserve=pool.reserve, release=pool.release)
+    assert pool.held is None and pool.released == ["lease-p"]
+
+
+# --- one open progress pull request per repository (found while rehearsing the whole loop) -------------------------------
+
+
+def second_slice_merged(world: dict, items: list, state: dict, publications: dict) -> tuple[list, dict, dict]:
+    request = {"exact_head": world["head"], "capability": "cap-a", "slice": "s2", "route": {"builder": "LOCAL"},
+               "capability_level": 1}
+    item = refill.stamp({"id": refill.item_id(REPO, "cap-a", "s2"), "repository": REPO, "level": 1}, request, SOURCE)
+    state = {"items": {**state["items"], item["id"]: {"attempts": 1, "outcome": "MERGED", "packets": ["PRODUCT-X-2"]}}}
+    publications = {**publications, "PRODUCT-X-2": {"state": "MERGED", "merged_sha": "b" * 40,
+                                                    "pr": {"url": f"https://github.com/{REPO}/pull/8"}}}
+    return [*items, item], state, publications
+
+
+def test_a_second_progress_pr_waits_while_the_first_is_open_and_proceeds_once_it_merged(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    publisher = Publisher()
+    step(world, items, state, publications, publisher=publisher)
+    assert step(world, items, state, publications, publisher=publisher)["status"] == "OPENED"
+    items, state, publications = second_slice_merged(world, items, state, publications)
+
+    waiting = step(world, items, state, publications, publisher=publisher, pr_state=lambda _url: "OPEN")
+    unknown = step(world, items, state, publications, publisher=publisher, pr_state=lambda _url: None)
+
+    assert waiting["status"] == "WAITING_FOR_PROGRESS_PR" and unknown["status"] == "WAITING_FOR_PROGRESS_PR"
+    assert len(publisher.calls) == 1  # no second, conflicting pull request on the same file
+    # the first progress PR merges: main now shows s1 complete, so the next one records only s2
+    run(world["origin"], "update-ref", "refs/heads/main", run(world["origin"], "rev-parse", f"refs/heads/{publisher.calls[0][1]}"))
+    run(world["clone"], "fetch", "-q", "origin", "main")
+    run(world["clone"], "merge", "-q", "--ff-only", "origin/main")
+    world["head"] = run(world["clone"], "rev-parse", "HEAD")
+    refill.refill_repository(world["lane"], world["state_root"], REPO, world["clone"], world["head"], items=[], state={},
+                             reserved=set(), max_level=2)
+    step(world, items, state, publications, publisher=publisher, pr_state=lambda _url: "MERGED")
+    done = step(world, items, state, publications, publisher=publisher, pr_state=lambda _url: "MERGED")
+
+    assert done["status"] == "OPENED" and done["slices"] == ["s2"] and len(publisher.calls) == 2
+
+
+# --- review P2 on #609: verification is settled independently of repository sync ----------------------------------------
+
+
+def test_a_finished_preflight_is_settled_and_its_lease_returned_with_no_repository_access(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    pool = LeasePool()
+    step(world, items, state, publications, preflight=Preflight(finish=False), reserve=pool.reserve, release=pool.release)
+    (job,) = progress._jobs(world["tmp"] / "scratch")
+    Path(job["result"]).parent.mkdir(parents=True, exist_ok=True)
+    Path(job["result"]).write_text(json.dumps({"ok": True, "head": job["commit_sha"]}), encoding="utf-8")
+    assert progress.verifying(world["tmp"] / "scratch") and pool.held == "lease-p"
+
+    failures = progress.harvest(world["tmp"] / "scratch", release=pool.release)  # no clone, no graph, no GitHub
+
+    assert failures == [] and not progress.verifying(world["tmp"] / "scratch")
+    assert pool.held is None and progress._jobs(world["tmp"] / "scratch")[0]["stage"] == "VERIFIED"
+
+
+def test_a_failed_or_hung_preflight_is_settled_globally_and_reported_with_its_repository(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    pool = LeasePool()
+    step(world, items, state, publications, preflight=Preflight(finish=False), reserve=pool.reserve,
+         release=pool.release, now=lambda: 0.0)
+
+    assert progress.harvest(world["tmp"] / "scratch", now=lambda: 60.0, release=pool.release) == []  # still within its time
+    failures = progress.harvest(world["tmp"] / "scratch", now=lambda: progress.PREFLIGHT_TIMEOUT_S + 601.0,
+                                release=pool.release)
+
+    assert [(f["repository"], f["reason"]) for f in failures] == [(REPO, "PREFLIGHT_TIMED_OUT")]
+    assert pool.held is None and not progress.verifying(world["tmp"] / "scratch")
+    assert progress.harvest(world["tmp"] / "scratch") == []  # settled once
+
+
+def test_a_verified_job_published_later_still_pushes_only_the_verified_commit(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    publisher, preflight = Publisher(), Preflight()
+    step(world, items, state, publications, publisher=publisher, preflight=preflight)
+    assert progress.harvest(world["tmp"] / "scratch") == []  # verification settled by the global pass
+
+    result = step(world, items, state, publications, publisher=publisher, preflight=preflight)
+
+    assert result["status"] == "OPENED" and len(publisher.calls) == 1 and len(preflight.spawned) == 1
