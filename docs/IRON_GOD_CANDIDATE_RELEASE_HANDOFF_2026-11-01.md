@@ -70,7 +70,7 @@ the real Ollama (control `MODEL_RESIDENT` 13/13, after the worker's release `VER
 
 ## 5. Install, using the existing controlled procedure (unchanged scripts)
 
-Same sequence used for `36fb3aa`; each step is the owner's or an unchanged script:
+Same sequence used for `36fb3aa`; each step is the owner's or an unchanged script (the way back is section 7, not a re-promote):
 1. Owner clicks **Give Me Control** (workers stop, tasks verified Disabled).
 2. Post-stop safety check (read-only): no engine/worker/model processes, tasks Disabled, no unsafe publication, no lease.
 3. Stage dry-run then apply with `scripts/desktop-control/Stage-VerifiedLocalRelease.ps1`: needs GREEN FULL native preflight
@@ -92,14 +92,55 @@ Same sequence used for `36fb3aa`; each step is the owner's or an unchanged scrip
   responsiveness; on a draft/build failing repeatedly (the attempt cap makes this finite); or on any PR appearing in a
   repository it should not touch. I will not kill workers or change owner control myself.
 
-## 7. Rollback
+## 7. Rollback (after a successful install)
 
-Re-promote the previous release with the same `Promote-DisabledLocalRelease.ps1` using the backup written at install
-(`flow-state\pinned-release-promotion-<guid>` holds the previous pin, the actor pin, the task XMLs and the desktop
-controls). The `36fb3aa` release, its actor checkout and its receipt remain on disk. New runtime state is additive
-(`roadmap-refill.json`, `draft-jobs/`, `draft-results/`, `roadmap-requests/`, `roadmap-drafts/`, `capable-dispatches/`,
-`canon-workspaces/products/progress/`) and is ignored by the old release; none of it needs migration or deletion. The policy flags live in
-the hash-bound release, so turning a feature off means a new release or rolling back, not editing a running install.
+**Do not re-run `Promote-DisabledLocalRelease.ps1` to go back.** It refuses any target that is not a descendant of the
+current pin (`NEW_RELEASE_IS_NOT_DESCENDANT_OF_CURRENT_PIN`), and its automatic restore only runs when a promotion itself
+fails midway. After a successful install, rollback is an **owner-controlled restoration of the records the promotion
+saved** (the same restore steps the script's own failure path performs). Nothing here starts a worker or enables a task.
+
+The promotion wrote `flow-state\pinned-release-promotion-<guid>\` containing `supervisor-pinned-release.before.json`,
+`actor-local-promotion.before.json`, `desktop-controls\`, one `<TaskName>.xml` per scheduled task, and
+`promotion-result.json`. The `36fb3aa` release, its actor checkout and its receipt stay on disk untouched. Earlier
+promotion folders (for example the one holding the `a402a70` pins) are **older** backups: pick the newest and verify it.
+
+Run as the owner, with the engine stopped (Give Me Control held, both tasks Disabled, zero engine processes):
+
+```powershell
+$Base  = "$env:LOCALAPPDATA\ExponentialEngine"
+$state = Join-Path $Base 'flow-state'
+$backup = (Get-ChildItem $state -Directory -Filter 'pinned-release-promotion-*' |
+           Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+# 1. confirm this is the backup of THIS install: old_sha must be the pinned release you are returning to
+(Get-Content "$backup\promotion-result.json" -Raw | ConvertFrom-Json) | Select-Object old_sha, accepted_sha
+(Get-Content "$backup\supervisor-pinned-release.before.json" -Raw | ConvertFrom-Json).accepted_sha   # must be 36fb3aa6...
+# 2. restore the pins
+Copy-Item "$backup\supervisor-pinned-release.before.json" (Join-Path $state 'supervisor-pinned-release.json') -Force
+Copy-Item "$backup\actor-local-promotion.before.json"    (Join-Path $state 'actor-local-promotion.json') -Force
+# 3. restore the two task definitions exactly as saved (they stay Disabled)
+foreach ($n in 'ExponentialEngine-ContinuousFlow-Watchdog', 'ExponentialEngine-LaptopActor') {
+  Register-ScheduledTask -TaskName $n -Xml ([IO.File]::ReadAllText("$backup\$n.xml")) -Force | Out-Null
+  "{0}: {1}" -f $n, (Get-ScheduledTask -TaskName $n).State          # must print Disabled
+}
+# 4. restore the desktop controls that the install replaced
+Copy-Item "$backup\desktop-controls\*" $Base -Force
+```
+
+Verify before the owner takes the wheel again, each independent of the script that was just run: both pin files read
+`accepted_sha` = `36fb3aa628a281b95f3ad7f02c4f9ce01f934955`; the release and actor checkouts for `36fb3aa` are clean and
+match the saved receipt; both tasks are Disabled and their actions launch from the `36fb3aa` release; no engine process
+exists; `Check-Development-ResumeReady` reports `RESUME_READY`; `Test-DesktopControlShortcuts` passes. A later re-install of
+the candidate still works, because the candidate descends from `36fb3aa`.
+
+**Gap to close before the first install (recommended, not yet built):** this procedure is manual and untested against a real
+install. A small reviewed `Restore-PinnedReleaseBackup.ps1` with a dry-run mode, the same owner-held and disabled-task
+checks, and a post-restore verification would make rollback as repeatable as the promote. I have not written it, because
+it would change the protected desktop-control scripts and should be reviewed on its own.
+
+New runtime state is additive (`roadmap-refill.json`, `draft-jobs/`, `draft-results/`, `roadmap-requests/`,
+`roadmap-drafts/`, `capable-dispatches/`, `canon-workspaces/products/progress/`) and is ignored by the old release; none of it
+needs migration or deletion. The policy flags live in the hash-bound release, so turning a feature off means a new release
+or this rollback, not editing a running install.
 
 ## 8. Decisions that are the owner's
 
