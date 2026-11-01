@@ -33,10 +33,17 @@ GOOD_PLAN = {
 }
 
 
+ACCEPTANCE = [
+    {"call": "{fn}([1, 2, 3, 4], 2)", "expected": [3, 4], "why": "the newest two entries are the last two, in order"},
+    {"call": "{fn}([1, 2, 3], 0)", "expected": [], "why": "a non-positive count keeps nothing"},
+]
+
+
 def graph(level: int | None = 1) -> dict:
     row = {"id": "s1", "state": "PLANNED", "objective": "Keep only the newest entries of a list.",
            "acceptance": ["returns the last N items in order", "a non-positive N returns an empty list"],
-           "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"]}
+           "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"],
+           "acceptance_examples": ACCEPTANCE}
     if level is not None:
         row["capability_level"] = level
     return {"schema_version": 1, "repository": REPO, "roadmap": ["cap-a"], "capabilities": [{
@@ -130,7 +137,9 @@ def test_examples_the_validator_dropped_are_not_carried_into_the_draft(world: di
 
     draft = drafter.plan_to_draft(request, plan, validated)
 
-    assert [e["call"] for e in draft["build"]["examples"]] == [e["call"] for e in GOOD_PLAN["examples"]]
+    # the roadmap's two examples first, then the plan's one remaining own example; the unusable one is gone
+    assert [e["call"] for e in draft["build"]["examples"]] == [
+        "newest_entries([1, 2, 3, 4], 2)", "newest_entries([1, 2, 3], 0)", "newest_entries([1, 2], 5)"]
 
 
 # --- who may be drafted -------------------------------------------------------------------------------------------
@@ -139,8 +148,19 @@ def test_examples_the_validator_dropped_are_not_carried_into_the_draft(world: di
 @pytest.mark.parametrize("route,level,expected", [
     ({"builder": "LOCAL"}, 1, True), ({"builder": "LOCAL"}, 2, False),  # level 2 needs approved failing tests
     ({"builder": "CAPABLE"}, 1, False), ({"builder": "NONE"}, 1, False), (None, 1, False)])
-def test_only_local_routed_level_one_requests_are_drafted(route, level, expected) -> None:
-    assert drafter.eligible({"route": route, "capability_level": level}) is expected
+def test_only_local_routed_level_one_requests_with_roadmap_examples_are_drafted(route, level, expected) -> None:
+    assert drafter.eligible({"route": route, "capability_level": level, "acceptance_examples": ACCEPTANCE}) is expected
+
+
+@pytest.mark.parametrize("examples", [
+    [], ACCEPTANCE[:1],  # fewer than the two the builder must be anchored by
+    [{"call": "{fn}(1)", "expected": 1}, {"call": "{fn}(2)", "expected": 2}],  # no stated reason
+    [{"call": "other(1)", "expected": 1, "why": "x"}, {"call": "{fn}(1)", "expected": 1, "why": "x"}],  # no {fn}
+    [{"call": "{fn}(os.getcwd())", "expected": 1, "why": "x"}, {"call": "{fn}(1)", "expected": 1, "why": "x"}]])  # not literal
+def test_a_slice_without_usable_roadmap_examples_is_not_drafted_locally(examples) -> None:
+    request = {"route": {"builder": "LOCAL"}, "capability_level": 1, "acceptance_examples": examples}
+
+    assert drafter.eligible(request) is False and drafter.missing_examples(request) is True
 
 
 # --- jobs ---------------------------------------------------------------------------------------------------------
@@ -153,7 +173,7 @@ def test_one_job_starts_with_the_roadmap_request_and_nothing_else_runs_beside_it
     first = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
     second = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
 
-    assert first == [{"id": request["id"], "status": "STARTED", "attempt": 0}] and second == []
+    assert first == [{"id": request["id"], "status": "STARTED", "attempt": 0, "repository": REPO}] and second == []
     assert len(spawner.launched) == 1 and drafter.drafting_in_progress(world["lane"])
     copy = json.loads(spawner.launched[0][0].read_text(encoding="utf-8"))
     assert copy["objective"] == "Keep only the newest entries of a list." and copy["roadmap_ref"] == request["roadmap_ref"]
@@ -185,7 +205,7 @@ def test_a_finished_job_writes_the_draft_for_admission(world: dict) -> None:
 
     outcomes = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
 
-    assert outcomes == [{"id": request["id"], "status": "DRAFTED"}]
+    assert outcomes == [{"id": request["id"], "status": "DRAFTED", "repository": REPO}]
     written = json.loads((world["lane"] / refill.DRAFTS / f"{request['id']}.json").read_text(encoding="utf-8"))
     assert written["build"]["function_name"] == "newest_entries" and not drafter.drafting_in_progress(world["lane"])
 
@@ -226,14 +246,24 @@ def test_a_hung_job_is_failed_by_age(world: dict) -> None:
     assert waiting == [] and timed_out[0]["reason"] == "DRAFT_TIMED_OUT" and not drafter.drafting_in_progress(world["lane"])
 
 
-def test_a_result_for_a_request_that_is_no_longer_current_writes_nothing(world: dict) -> None:
+def test_a_finished_job_is_harvested_even_while_another_repository_is_refilled(world: dict) -> None:
+    """Review P1: a VoiceStudio result seen during another repository's pass was discarded as 'no longer current'."""
     request = request_of(world)
     spawner = Spawner(finish=True)
     drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
 
-    outcomes = drafter.advance(world["lane"], [], world["clone"], world["head"], spawn=spawner)
+    other_repository_pass = drafter.advance(world["lane"], [], world["clone"], world["head"], spawn=spawner)
 
-    assert outcomes[0]["reason"] == "REQUEST_NO_LONGER_CURRENT" and not (world["lane"] / refill.DRAFTS).exists()
+    assert other_repository_pass == [{"id": request["id"], "status": "DRAFTED", "repository": REPO}]
+    assert (world["lane"] / refill.DRAFTS / f"{request['id']}.json").is_file()
+    assert drafter.harvest(world["lane"]) == []  # harvested once
+
+
+def test_the_standalone_harvest_finishes_jobs_with_no_refill_pass_at_all(world: dict) -> None:
+    request = request_of(world)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=Spawner(finish=True))
+
+    assert drafter.harvest(world["lane"])[0]["status"] == "DRAFTED" and not drafter.drafting_in_progress(world["lane"])
 
 
 def test_an_unjudged_draft_is_waited_for_and_a_rejected_one_is_retried_with_the_reasons(world: dict) -> None:
@@ -296,3 +326,136 @@ def test_a_plan_that_escapes_the_roadmap_scope_is_rejected_by_admission_even_if_
     assert report["admitted"] == [] and refill.admitted_items(world["lane"]) == [] and report["rejected"] == [request["id"]]
     problems = refill.load_store(world["lane"])["ledger"][-1]["detail"]["problems"]
     assert "PATH_OUTSIDE_ROADMAP_SCOPE" in problems  # the slice's own forbidden path, enforced by admission, not the worker
+
+
+# --- review P1: a model cannot certify its own work - the roadmap's examples anchor the draft ------------------------
+
+
+def test_the_roadmap_acceptance_examples_are_injected_for_the_chosen_function_name(world: dict) -> None:
+    request = request_of(world)
+
+    draft = drafter.plan_to_draft(request, GOOD_PLAN, validated_good(world, request))
+
+    calls = {e["call"]: e for e in draft["build"]["examples"]}
+    assert calls["newest_entries([1, 2, 3, 4], 2)"]["why"].startswith("roadmap acceptance example")
+    assert calls["newest_entries([1, 2, 3], 0)"]["expected"] == []
+    assert any("(roadmap acceptance)" in c for c in draft["acceptance_criteria"])
+    assert "Roadmap slice goal: Keep only the newest entries of a list." in draft["build"]["objective"]
+    assert len(draft["build"]["objective"]) <= 600 and draft["build"]["objective"] == draft["objective"]
+
+
+def test_a_plan_that_contradicts_the_roadmap_is_failed_and_never_written(world: dict) -> None:
+    """Review P1 reproduction: the planner returns the FIRST N items, with matching examples of its own."""
+    request = request_of(world)
+    first_n = {**GOOD_PLAN, "objective": "Return the first `limit` items of the list in their original order, empty if limit < 1.",
+               "examples": [{"call": "newest_entries([1, 2, 3, 4], 2)", "why": "the first two are 1 and 2", "expected": [1, 2]},
+                            {"call": "newest_entries([5, 6], 9)", "why": "fewer items than the limit returns all", "expected": [5, 6]},
+                            {"call": "newest_entries([7], 0)", "why": "a non-positive limit returns nothing", "expected": []}]}
+    spawner = Spawner(plan=first_n, finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    outcomes = drafter.harvest(world["lane"])
+
+    assert outcomes[0]["status"] == "FAILED" and "ContradictsRoadmap" in outcomes[0]["reason"]
+    assert not (world["lane"] / refill.DRAFTS).exists()
+
+
+def test_a_plan_whose_own_examples_avoid_the_roadmap_calls_still_carries_the_roadmap_tests(world: dict) -> None:
+    """Even an evasive plan cannot drop the owner's examples: they travel with the build spec into the builder's tests."""
+    request = request_of(world)
+    evasive = {**GOOD_PLAN, "examples": [
+        {"call": "newest_entries([9, 8, 7], 1)", "why": "the newest one entry is the last", "expected": [7]},
+        {"call": "newest_entries([], 3)", "why": "nothing to keep", "expected": []},
+        {"call": "newest_entries([1], 5)", "why": "fewer than asked returns all", "expected": [1]}]}
+    packet = author.build_packet(request, ["pkg/"], world["head"], [".github/"], [])
+    validated = WORKER.validate_plan(evasive, world["clone"], world["head"], packet)
+
+    draft = drafter.plan_to_draft(request, evasive, validated)
+
+    expected_calls = {"newest_entries([1, 2, 3, 4], 2)", "newest_entries([1, 2, 3], 0)"}
+    assert expected_calls <= {e["call"] for e in draft["build"]["examples"]}
+    assert backlog.item_problems({**draft, "status": "approved", "assignee": backlog.AGENT_ID}) == []
+
+
+def test_a_slice_without_roadmap_examples_asks_for_them_and_starts_nothing(world: dict) -> None:
+    request = request_of(world)
+    request["acceptance_examples"] = []
+    spawner = Spawner()
+
+    outcomes = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert outcomes[0]["status"] == "NEEDS_ACCEPTANCE_EXAMPLES" and "acceptance_examples" in outcomes[0]["reason"]
+    assert spawner.launched == []
+
+
+def test_the_guide_shows_the_planner_the_owners_examples() -> None:
+    text = author.guide_text({**REQUEST_FOR_GUIDE, "acceptance_examples": ACCEPTANCE})
+
+    assert "{fn}([1, 2, 3, 4], 2) -> [3, 4]" in text and "MUST satisfy every one" in text
+
+
+REQUEST_FOR_GUIDE = {"id": "RM-x", "roadmap_ref": "g#c/s", "objective": "Keep the newest entries.", "slice_acceptance": [],
+                     "allowed_paths": ["pkg/**"], "forbidden_paths": []}
+
+
+# --- review P2: the draft shares the runtime exclusion --------------------------------------------------------------
+
+
+class Pool:
+    """A one-slot lease pool standing in for RuntimeLeasePool."""
+
+    def __init__(self) -> None:
+        self.held: str | None = None
+        self.released: list[str] = []
+
+    def reserve(self) -> str | None:
+        if self.held:
+            return None
+        self.held = "lease-1"
+        return self.held
+
+    def release(self, lease_id: str) -> None:
+        self.released.append(lease_id)
+        self.held = None
+
+
+def test_a_draft_job_holds_the_runtime_lease_and_gives_it_back_when_it_ends(world: dict) -> None:
+    request = request_of(world)
+    pool, spawner = Pool(), Spawner(finish=True)
+
+    started = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner,
+                              reserve=pool.reserve, release=pool.release)
+
+    assert started[0]["status"] == "STARTED" and pool.held == "lease-1" and pool.reserve() is None  # nobody else gets it
+    drafter.harvest(world["lane"], release=pool.release)
+    assert pool.held is None and pool.released == ["lease-1"]
+
+
+def test_no_draft_starts_while_the_model_is_in_use_and_a_failed_launch_returns_the_lease(world: dict) -> None:
+    request = request_of(world)
+    pool = Pool()
+    pool.held = "a-worker"
+    spawner = Spawner()
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, reserve=pool.reserve,
+                           release=pool.release) == [] and spawner.launched == []
+    pool.held = None
+
+    def broken(*_a):
+        raise OSError("cannot launch")
+
+    with pytest.raises(OSError):
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=broken, reserve=pool.reserve,
+                        release=pool.release)
+    assert pool.held is None and pool.released == ["lease-1"]  # nothing leaks
+
+
+def test_a_hung_job_gives_its_lease_back(world: dict) -> None:
+    request = request_of(world)
+    pool = Pool()
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=Spawner(), reserve=pool.reserve,
+                    release=pool.release, now=lambda: 0.0)
+
+    drafter.harvest(world["lane"], now=lambda: drafter.DRAFT_TIMEOUT_S + 1.0, release=pool.release)
+
+    assert pool.held is None

@@ -37,6 +37,11 @@ def guide_text(request: dict[str, Any]) -> str:
         "acceptance criterion, including invalid inputs (return the documented empty/neutral value, never raise "
         "unless the criteria say so).",
     ]
+    given = [e for e in request.get("acceptance_examples", []) if isinstance(e, dict) and "call" in e and "expected" in e]
+    if given:
+        lines.append("The owner's acceptance examples (your function name replaces {fn}; they are added to your tests "
+                     "and your function MUST satisfy every one; never contradict them):")
+        lines += [f"- {e['call']} -> {json.dumps(e['expected'])}" for e in given]
     if request.get("prior_failures"):
         lines.append("Earlier attempts failed; plan differently: " + json.dumps(request["prior_failures"])[:600])
     if request.get("planner_feedback"):

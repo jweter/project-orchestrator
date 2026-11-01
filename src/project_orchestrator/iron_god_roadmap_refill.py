@@ -297,6 +297,7 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
             "forbidden_paths": list(spec.forbidden_paths), "runtime_requirements": list(spec.runtime_requirements),
             "runner_requirements": list(spec.runner_requirements), "prior_failures": failures,
             "capability_level": declared.get((capability_id, chosen["slice_id"]), {}).get("capability_level"),
+            "acceptance_examples": declared.get((capability_id, chosen["slice_id"]), {}).get("acceptance_examples", []),
             "max_builder_level": max(backlog.BUILDABLE_LEVELS),
             "needs": "a backlog item (level 1 build spec, or level 2 directed edit with approved tests that fail at "
                      "exact_head) whose id and roadmap_ref equal this request's, written to the drafts directory"})

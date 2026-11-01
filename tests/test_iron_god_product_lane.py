@@ -1816,3 +1816,48 @@ def test_local_draft_outcomes_are_logged_and_a_drafter_error_never_stops_the_rot
 
 def test_the_shipped_policy_enables_the_local_draft_author():
     assert POLICY["portfolio_rotation"]["local_draft_author"] is True
+
+
+def test_a_draft_job_holds_the_runtime_lease_so_a_repair_or_build_cannot_run_beside_it(env, monkeypatch):
+    """Review P2 on #608: a repair acquired its normal lease and ran inference alongside the draft."""
+    from project_orchestrator import iron_god_local_drafter as drafter_mod
+
+    lane = pl.ProductLane(env.state)
+    examples = [{"call": "{fn}([1, 2, 3, 4], 2)", "expected": [3, 4], "why": "the newest two"},
+                {"call": "{fn}([1, 2, 3], 0)", "expected": [], "why": "nothing kept"}]
+    request = {"id": "RM-x", "repository": REPOS[1], "slice": "s1", "capability": "c", "roadmap_ref": "g#c/s",
+               "objective": "Keep the newest entries.", "allowed_paths": ["pkg/**"], "forbidden_paths": [],
+               "slice_acceptance": [], "capability_level": 1, "acceptance_examples": examples,
+               "route": {"builder": "LOCAL"}}
+    monkeypatch.setattr(pl, "spawn_draft_author", lambda *a: 4242)
+
+    pl.draft_with_local_builder(lane, REPOS[1], {"local_requests": [request]}, env.tmp, "a" * 40,
+                                (env.release, "b" * 40), env.pool)
+
+    assert drafter_mod.drafting_in_progress(lane.root)
+    with pytest.raises(Exception):
+        env.pool.acquire(pl.WORKER_LEASE_RUNTIME, pl.WORKER_LEASE_ID, owner_pid=os.getpid())
+    (job,) = drafter_mod._jobs(lane.root)
+    Path(job["result"]).parent.mkdir(parents=True, exist_ok=True)
+    Path(job["result"]).write_text(json.dumps({"ok": False, "reason": "PlanRejected: PLAN_PATH_INVALID"}), encoding="utf-8")
+    pl.refill_from_roadmaps(lane, [], set(), [], {}, 2, env.sync, lambda repo: [], draft_locally=True, lease_pool=env.pool)
+
+    assert not drafter_mod.drafting_in_progress(lane.root)  # harvested every turn, whichever repository is refilled
+    lease = env.pool.acquire(pl.WORKER_LEASE_RUNTIME, pl.WORKER_LEASE_ID, owner_pid=os.getpid())
+    env.pool.release(pl.WORKER_LEASE_ID, lease.lease_id)  # the lease came back
+
+
+def test_a_standing_missing_examples_question_is_asked_once(env, monkeypatch):
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+    request = {"id": "RM-y", "repository": REPOS[1], "slice": "s1", "capability": "c", "objective": "o",
+               "capability_level": 1, "acceptance_examples": [], "route": {"builder": "LOCAL"}}
+    monkeypatch.setattr(pl, "spawn_draft_author", lambda *a: 1)
+
+    for _ in range(3):
+        pl.draft_with_local_builder(lane, REPOS[1], {"local_requests": [request]}, env.tmp, "a" * 40,
+                                    (env.release, "b" * 40), env.pool)
+
+    kinds = [e["kind"] for e in refill_mod.load_store(lane.root)["ledger"]]
+    assert kinds == ["LOCAL_DRAFT_NEEDS_ACCEPTANCE_EXAMPLES"]
