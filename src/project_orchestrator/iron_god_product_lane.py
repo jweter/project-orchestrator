@@ -46,6 +46,7 @@ from . import iron_god_backlog as backlog
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
+from . import iron_god_roadmap_refill as roadmap_refill
 from . import iron_god_working_memory as working_memory
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .iron_god_calibration import capability_gate, load_profile, remove_tree
@@ -902,6 +903,8 @@ def advance_product_lane(
         approved, _rejected = backlog.load_backlog(release_repo)
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
+        if config.get("roadmap_refill", True):
+            approved = refill_from_roadmaps(lane, repos, busy, approved, state, level, sync, owned_paths)
         for name in repos:
             chosen = backlog.next_item(approved, state, name, max_level=level)
             if chosen is not None:
@@ -929,6 +932,35 @@ def advance_product_lane(
     if result["status"] != "DISPATCHED":
         pool.release(WORKER_LEASE_ID, lease.lease_id)
     return result
+
+
+def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], static: list[dict[str, Any]],
+                         state: dict[str, Any], level: int, sync: Callable[[ProductLane, str], tuple[Path, str]],
+                         owned_paths: Callable[[str], list[str]]) -> list[dict[str, Any]]:
+    """Backlog plus runtime-admitted roadmap items; a repository with no dispatchable item gets one planning pass.
+
+    Owner delegation 2026-11-01 (issue #594): the owner-approved roadmap authorizes development, so an
+    exhausted backlog is refilled from it instead of idling. A failure here never stops the rotation.
+    """
+    approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
+    for name in repos:
+        if name in busy or backlog.next_item(approved, state, name, max_level=level) is not None:
+            continue
+        if not roadmap_refill.due(lane.root, name):
+            continue
+        try:
+            clone, head = sync(lane, name)
+            report = roadmap_refill.refill_repository(
+                lane.root, lane.state_root, name, clone, head, items=approved, state=state,
+                reserved={path.replace("\\", "/") for path in owned_paths(name)}, max_level=level)
+        except Exception as exc:  # planning is best-effort; dispatch of other work continues
+            working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
+                                  blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
+            continue
+        working_memory.record(lane.state_root, name, "ROADMAP_REFILL", detail=roadmap_refill.summarize(report),
+                              outcome="DIRECTION_REQUIRED" if report["direction_required"] and not report["requests"] else None)
+        approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
+    return approved
 
 
 def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo: str, *, release_sha: str,
