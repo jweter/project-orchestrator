@@ -857,7 +857,8 @@ def test_a_merged_capable_builder_pull_request_completes_the_slice() -> None:
     derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=[], state={},
                             external_done=frozenset({first["id"]}))
 
-    assert derived["requests"] == [] and derived["skipped"][0]["reason"] == "DONE"
+    # the only slice is complete, so nothing is left to request and the roadmap asks what comes next
+    assert derived["requests"] == [] and derived["direction_required"][0]["reason"] == "NO_EXECUTABLE_SLICE"
 
 
 # --- continuation: a merged slice unlocks its dependents without waiting for a graph update ----------------------
@@ -929,3 +930,15 @@ def test_the_whole_chain_advances_slice_by_slice_with_restart_in_between(tmp_pat
 
     (second_id,) = again["requests"]
     assert second_id != first_id and again["skipped"] == [] and first["skipped"] == []
+
+
+def test_a_merged_capable_builder_pull_request_unlocks_the_next_dependent_slice() -> None:
+    payload = graph(PORTFOLIO[0], slices=two_slices())
+    (first,) = [r for r in derive_routed(PORTFOLIO[0], HEAD, payload, SOURCE, items=[], state={})["requests"]]
+
+    derived = derive_routed(PORTFOLIO[0], HEAD, payload, SOURCE, items=[], state={},
+                            external_done=frozenset({first["id"]}))
+
+    (request,) = derived["requests"]
+    assert request["slice"] == "s2" and request["id"] != first["id"]
+    assert payload["capabilities"][0]["slices"][0]["state"] == "PLANNED"  # the input graph is untouched
