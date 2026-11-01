@@ -1666,3 +1666,47 @@ def test_a_repository_without_a_python_package_is_unsupported_for_the_local_buil
 
     assert pl.repository_unsupported(cpp, git(cpp, "rev-parse", "HEAD")) == "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
     assert pl.repository_unsupported(python, git(python, "rev-parse", "HEAD")) is None
+
+
+def test_capable_requests_are_logged_and_never_fire_unless_enabled_and_configured(env, monkeypatch):
+    from project_orchestrator import iron_god_capable_builder as cap
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+    fired = []
+    monkeypatch.setattr(cap.urllib.request, "urlopen", lambda *a, **k: fired.append(a) or (_ for _ in ()).throw(AssertionError))
+    monkeypatch.delenv(cap.ROUTINES[cap.ROUTINE][1], raising=False)
+    request = {"id": "RM-x", "repository": REPOS[1], "exact_head": "a" * 40, "roadmap_ref": "g#c/s", "objective": "o",
+               "allowed_paths": ["pkg/**"], "forbidden_paths": [], "route": {"builder": "CAPABLE", "reason": "X"}}
+    report = {"capable_requests": [request]}
+
+    pl.hand_to_capable_builder(lane, REPOS[1], report, {"enabled": False, "daily_limit": 2})
+    pl.hand_to_capable_builder(lane, REPOS[1], report, {"enabled": True, "daily_limit": 2})
+
+    ledger = [(e["kind"], e["detail"]["reason"]) for e in refill_mod.load_store(lane.root)["ledger"]]
+    assert ledger == [("CAPABLE_NOT_DISPATCHED", "CAPABLE_BUILDER_DISABLED"),
+                      ("CAPABLE_NOT_DISPATCHED", "CAPABLE_BUILDER_UNCONFIGURED")]
+    assert fired == [] and "CAPABLE_NOT_DISPATCHED" in json.dumps(wm.load(env.state))
+
+
+def test_a_routine_api_error_is_a_recorded_blocker_not_a_crash(env, monkeypatch):
+    from project_orchestrator import iron_god_capable_builder as cap
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+
+    def explode(*_a, **_k):
+        raise OSError("network down")
+
+    monkeypatch.setattr(cap, "dispatch_request", explode)
+    request = {"id": "RM-y", "repository": REPOS[1], "route": {"builder": "CAPABLE"}}
+
+    pl.hand_to_capable_builder(lane, REPOS[1], {"capable_requests": [request]}, {"enabled": True, "daily_limit": 2})
+
+    (row,) = refill_mod.load_store(lane.root)["ledger"]
+    assert row["kind"] == "CAPABLE_NOT_DISPATCHED" and "CAPABLE_BUILDER_ERROR: OSError" in row["detail"]["reason"]
+
+
+def test_the_shipped_policy_keeps_the_capable_builder_off():
+    assert POLICY["portfolio_rotation"]["capable_builder"] is False
+    assert POLICY["portfolio_rotation"]["capable_builder_daily_limit"] == 2

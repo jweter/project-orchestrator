@@ -798,3 +798,62 @@ def test_an_admitted_item_records_the_declared_level_and_route_and_a_restart_rec
     refill.store_path(tmp_path).write_text(json.dumps({"items": [item, understated, legacy]}), encoding="utf-8")
 
     assert [i["id"] for i in refill.admitted_items(tmp_path)] == [item["id"]]
+
+
+def test_a_request_with_a_live_capable_dispatch_is_pending_not_requested_again() -> None:
+    first = request_for()
+    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=[], state={},
+                            external_pending=frozenset({first["id"]}))
+
+    assert derived["requests"] == [] and derived["skipped"][0]["reason"] == "PENDING_CAPABLE_BUILDER"
+
+
+def test_the_refill_report_hands_only_capable_routed_requests_to_the_adapter(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, level_graph(repository, 4))
+
+    report = run_refill(tmp_path, repository, clone, head)
+
+    assert [r["id"] for r in report["capable_requests"]] == report["requests"]
+    assert report["capable_requests"][0]["route"]["builder"] == refill.CAPABLE
+    clone2, head2 = product(tmp_path / "local", PORTFOLIO[1], level_graph(PORTFOLIO[1], 1))
+    local = refill.refill_repository(tmp_path / "lane", tmp_path / "flow-state", PORTFOLIO[1], clone2, head2, items=[],
+                                     state={}, reserved=set(), max_level=2)
+    assert local["capable_requests"] == [] and local["routed"][refill.LOCAL]
+
+
+def test_log_event_appends_to_the_same_bounded_ledger(tmp_path: Path) -> None:
+    refill.log_event(tmp_path, "CAPABLE_DISPATCHED", PORTFOLIO[0], "RM-x", {"reason": "DISPATCHED"})
+
+    (row,) = refill.load_store(tmp_path)["ledger"]
+    assert row["kind"] == "CAPABLE_DISPATCHED" and row["id"] == "RM-x"
+
+
+def test_the_first_ledger_write_creates_a_missing_lane_directory(tmp_path: Path) -> None:
+    fresh = tmp_path / "does" / "not" / "exist"
+
+    refill.log_event(fresh, "GENERATED", PORTFOLIO[0], "RM-z", {})
+
+    assert refill.load_store(fresh)["ledger"][0]["id"] == "RM-z"
+
+
+# --- review P1s on #605 --------------------------------------------------------------------------------------
+
+
+def test_capable_requests_carry_the_open_pull_request_reservations_that_overlap_their_scope(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, level_graph(repository, 4))
+
+    report = run_refill(tmp_path, repository, clone, head, reserved={"pkg/core.py", "docs/elsewhere.md"})
+
+    (request,) = report["capable_requests"]
+    assert request["reserved_conflicts"] == ["pkg/core.py"]  # docs/elsewhere.md is outside the slice's allowed paths
+
+
+def test_a_merged_capable_builder_pull_request_completes_the_slice() -> None:
+    first = request_for()
+
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=[], state={},
+                            external_done=frozenset({first["id"]}))
+
+    assert derived["requests"] == [] and derived["skipped"][0]["reason"] == "DONE"

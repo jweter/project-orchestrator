@@ -37,6 +37,7 @@ from typing import Any, Callable
 from scripts.capability_slice_contract import derive_slices
 
 from . import iron_god_backlog as backlog
+from . import iron_god_capable_builder as capable_builder
 from . import iron_god_development_memory as development_memory
 from .capability_authority import CapabilityAuthorityError, compile_capability_authority
 from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
@@ -84,6 +85,7 @@ def load_store(lane_root: Path) -> dict[str, Any]:
 
 def _mutate(lane_root: Path, change: Callable[[dict[str, Any]], Any]) -> Any:
     """Serialize every read/modify/write of the store across processes; a crash leaves the last whole file."""
+    Path(lane_root).mkdir(parents=True, exist_ok=True)  # the first write on a fresh state root must not crash
     lock = acquire_lifecycle_lock(store_path(lane_root))
     try:
         store = load_store(lane_root)
@@ -154,10 +156,16 @@ def revisions(base_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]
     return [item for item in items if item.get("id") == base_id or str(item.get("id", "")).startswith(base_id + "-r")]
 
 
-def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, Any]) -> tuple[str, str]:
-    """(NEW|PENDING|DONE|FAILED, id to author next), from the lane's own record and never from the graph."""
+def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, Any],
+                  delivered: frozenset[str] = frozenset()) -> tuple[str, str]:
+    """(NEW|PENDING|DONE|FAILED, id to author next), from the lane's own record and never from the graph.
+
+    ``delivered`` are request ids whose capable-builder pull request was merged; that is completion too.
+    """
     chain = revisions(base_id, items)
     if not chain:
+        if any(ident == base_id or ident.startswith(base_id + "-r") for ident in delivered):
+            return "DONE", base_id
         return "NEW", base_id
     latest = chain[-1]
     row = state.get("items", {}).get(latest["id"], {})
@@ -171,8 +179,8 @@ def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, An
 
 
 def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, items: list[dict[str, Any]],
-           state: dict[str, Any], repo_root: Path | None = None,
-           milestones: dict[str, str] | None = None) -> dict[str, Any]:
+           state: dict[str, Any], repo_root: Path | None = None, milestones: dict[str, str] | None = None,
+           external_pending: frozenset[str] = frozenset(), external_done: frozenset[str] = frozenset()) -> dict[str, Any]:
     """Run the existing compiler over the graph; returns requests plus what was skipped or needs direction.
 
     Slice selection is the supervisor's own ``derive_slices`` contract (roadmap order, slice dependencies,
@@ -222,9 +230,13 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
     candidates = []
     for chosen in derived["slices"]:
         base_id = item_id(repository, capability_id, str(chosen["slice_id"]))
-        status, expected = _slice_status(base_id, items, state)
+        status, expected = _slice_status(base_id, items, state, external_done)
         if status in {"PENDING", "DONE"}:
             result["skipped"].append({"capability": capability_id, "slice": chosen["slice_id"], "reason": status, "id": expected})
+            continue
+        if expected in external_pending:  # a stronger builder is already working on exactly this request
+            result["skipped"].append({"capability": capability_id, "slice": chosen["slice_id"],
+                                      "reason": "PENDING_CAPABLE_BUILDER", "id": expected})
             continue
         if not chosen["allowed_paths"]:
             result["direction_required"].append({
@@ -425,7 +437,9 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         control_plane = json.loads(show(repository, head, "engineering/control-plane.json"))
         compiled = compile_capability_authority(state_root, repository, head, control_plane, read_authoritative_file=show)
         source = compiled["graph"]["authority"]["source"]
-        derived = derive(repository, head, compiled["graph"], source, items=items, state=state)
+        derived = derive(repository, head, compiled["graph"], source, items=items, state=state,
+                         external_pending=frozenset(capable_builder.open_request_ids(lane_root)),
+                         external_done=frozenset(capable_builder.merged_request_ids(lane_root)))
     except (CapabilityAuthorityError, ValueError, OSError, subprocess.SubprocessError) as exc:
         reason = str(exc)[:300] or type(exc).__name__
         derived = {"requests": [], "skipped": [], "direction_required": [{
@@ -446,6 +460,10 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         request["development_rules"] = rules
         request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem)
         report["routed"][request["route"]["builder"]].append(request["id"])
+    for request in derived["requests"]:
+        # Open pull requests own files; a capable slice may touch anything its allowed paths cover.
+        request["reserved_conflicts"] = sorted(path for path in reserved if _matches(path, request["allowed_paths"]))
+    report["capable_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == CAPABLE]
     report["direction_required"], report["skipped"] = derived["direction_required"], derived["skipped"]
     report["requests"] = [request["id"] for request in derived["requests"]]
     requests_dir = Path(lane_root) / REQUESTS
@@ -479,6 +497,11 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
 
     _mutate(lane_root, record)
     return report
+
+
+def log_event(lane_root: Path, kind: str, repository: str, ident: str, detail: Any) -> None:
+    """Append one outcome (for example a capable-builder dispatch) to the same bounded ledger."""
+    _mutate(lane_root, lambda store: _log(store, kind, repository, ident, detail))
 
 
 def due(lane_root: Path, repository: str, *, now: datetime | None = None) -> bool:
