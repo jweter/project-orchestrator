@@ -1028,6 +1028,96 @@ def test_the_preflight_sees_a_ci_width_console_whatever_the_worker_console_is(tm
     assert seen["COLUMNS"] == "80" and seen["LINES"] == "24"
 
 
+REAL_RELEASE_BUILDER_MODEL = WORKER.release_builder_model
+
+
+@pytest.fixture(autouse=True)
+def _never_unload_the_real_builder_model(monkeypatch):
+    # the suite must not reach a live Ollama on the developer machine
+    monkeypatch.setattr(WORKER, "release_builder_model", lambda *a, **k: False)
+
+
+class _OllamaReply:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def read(self):
+        return b'{"done": true}'
+
+
+def test_the_builder_model_is_unloaded_through_ollama_while_holding_the_model_slot(tmp_path, monkeypatch):
+    # 2026-10-31: the 5 GB builder model stayed resident beside mypy and left 404 MB free
+    from scripts.autonomous_slice_builder import MODEL
+
+    slot = tmp_path / "slot"
+    monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR", str(slot))
+    monkeypatch.setenv("OLLAMA_API_BASE", "http://127.0.0.1:1")
+    sent = []
+
+    def urlopen(request, timeout):
+        sent.append((request.full_url, json.loads(request.data), slot.is_dir()))
+        return _OllamaReply()
+
+    monkeypatch.setattr(WORKER.urllib.request, "urlopen", urlopen)
+    assert REAL_RELEASE_BUILDER_MODEL() is True
+    assert sent == [("http://127.0.0.1:1/api/generate", {"model": MODEL.split("/", 1)[-1], "keep_alive": 0}, True)]
+    assert not slot.exists()  # the slot is handed back
+
+
+def test_a_generation_in_progress_is_never_interrupted_by_the_unload(tmp_path, monkeypatch):
+    slot = tmp_path / "slot"
+    slot.mkdir()
+    monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR", str(slot))
+    monkeypatch.setattr(WORKER.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("the model slot is held by another process"))
+    assert REAL_RELEASE_BUILDER_MODEL() is False
+    assert slot.is_dir()  # not ours: left exactly as found
+
+
+@pytest.mark.parametrize("failure", [OSError("refused"), TimeoutError(), ValueError("bad"),
+                                     __import__("http.client").client.RemoteDisconnected("gone")])
+def test_an_unreachable_ollama_never_fails_the_gate_and_releases_the_slot(tmp_path, monkeypatch, failure):
+    slot = tmp_path / "slot"
+    monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR", str(slot))
+
+    def urlopen(*_a, **_k):
+        raise failure
+
+    monkeypatch.setattr(WORKER.urllib.request, "urlopen", urlopen)
+    assert REAL_RELEASE_BUILDER_MODEL() is False
+    assert not slot.exists()
+
+
+def test_the_model_is_unloaded_before_the_full_preflight_runs(tmp_path, monkeypatch):
+    order = []
+    monkeypatch.setattr(WORKER, "release_builder_model", lambda *a, **k: order.append("unload") or True)
+    monkeypatch.setattr(WORKER, "repository_environment", lambda worktree, check: {
+        "python": "python", "kind": "uv", "overrides": {}})
+    monkeypatch.setattr(WORKER.NativeWindowsRuntime, "execute_supervised",
+                        lambda self, request, check, interval: order.append("preflight") or SimpleNamespace(
+                            returncode=0, stdout="", stderr=""))
+    (tmp_path / "wt").mkdir()
+    assert WORKER.production_preflight(tmp_path / "wt", lambda: None, 60)["ok"]
+    assert order == ["unload", "preflight"]
+
+
+def test_the_model_is_unloaded_before_the_type_check_runs(tmp_path, monkeypatch):
+    order = []
+    monkeypatch.setattr(WORKER, "release_builder_model", lambda *a, **k: order.append("unload") or True)
+    monkeypatch.setattr(WORKER, "mypy_configured", lambda worktree: True)
+    monkeypatch.setattr(WORKER, "repository_environment", lambda worktree, check: {
+        "python": "python", "kind": "uv", "overrides": {}})
+    monkeypatch.setattr(WORKER.NativeWindowsRuntime, "execute_supervised",
+                        lambda self, request, check, interval: order.append("mypy") or SimpleNamespace(
+                            returncode=0, stdout="", stderr=""))
+    (tmp_path / "wt").mkdir()
+    assert WORKER.type_check(tmp_path / "wt", ["pkg/mod.py"], lambda: None)["ok"]
+    assert order == ["unload", "mypy"]
+
+
 def test_only_items_assigned_to_iron_god_are_dispatched_and_other_claims_reserve_their_files(env):
     # 2026-10-28: another agent built KEC-6 while it was approved for Iron God
     theirs = backlog_item("RS-1", REPOS[1], assignee="chatgpt-dowork")
