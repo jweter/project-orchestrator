@@ -934,6 +934,12 @@ def advance_product_lane(
     return result
 
 
+def repository_unsupported(clone: Path, head: str) -> str | None:
+    """Why the Python product lane cannot build this repository at all (e.g. an Unreal/C++ game), else None."""
+    roots = scope_envelope(clone, head)
+    return None if roots and python_packages(clone, head, roots) else "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
+
+
 def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], static: list[dict[str, Any]],
                          state: dict[str, Any], level: int, sync: Callable[[ProductLane, str], tuple[Path, str]],
                          owned_paths: Callable[[str], list[str]]) -> list[dict[str, Any]]:
@@ -952,7 +958,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             clone, head = sync(lane, name)
             report = roadmap_refill.refill_repository(
                 lane.root, lane.state_root, name, clone, head, items=approved, state=state,
-                reserved={path.replace("\\", "/") for path in owned_paths(name)}, max_level=level)
+                reserved={path.replace("\\", "/") for path in owned_paths(name)}, max_level=level,
+                unsupported=repository_unsupported)
         except Exception as exc:  # planning is best-effort; dispatch of other work continues
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")

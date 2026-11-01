@@ -1554,6 +1554,16 @@ def test_current_head_review_added_between_merge_readiness_and_merge_queues_repa
     assert item["findings"][0]["thread_id"] == "T-LATE"
 
 
+def write_calibration(env):
+    """The owner-held calibration profile the routing step reads, bound to this model and hardware."""
+    from project_orchestrator import iron_god_calibration as cal
+
+    cal.profile_path(env.state).parent.mkdir(parents=True, exist_ok=True)
+    cal.profile_path(env.state).write_text(json.dumps({
+        "schema_version": 1, "ladder_version": cal.LADDER_VERSION, "model": cal.DEFAULT_MODEL,
+        "hardware": cal.hardware_fingerprint(), "max_passing_level": 3, "levels": {}}), encoding="utf-8")
+
+
 def publish_graph(env, repo):
     """Commit a declared capability graph to the repository's 'GitHub' main, as an owner roadmap PR would."""
     work = env.tmp / "graph-work" / repo.split("/")[1]
@@ -1564,7 +1574,7 @@ def publish_graph(env, repo):
     payload = {"schema_version": 1, "repository": repo, "roadmap": ["cap-extra"], "capabilities": [{
         "id": "cap-extra", "capability": "Extra helpers", "state": "PLANNED", "depends_on": [],
         "completion_evidence": ["docs/ROADMAP.md extras"],
-        "slices": [{"id": "extra-helper", "state": "PLANNED", "objective": "Add add_two for the export workflow.",
+        "slices": [{"id": "extra-helper", "state": "PLANNED", "capability_level": 1, "objective": "Add add_two for the export workflow.",
                     "acceptance": ["examples hold"], "allowed_paths": ["pkg/**", "tests/**"]}]}]}
     (work / source).write_text(json.dumps(payload), encoding="utf-8")
     (work / "engineering" / "control-plane.json").write_text(
@@ -1580,6 +1590,7 @@ def test_an_empty_backlog_is_refilled_from_the_roadmap_and_the_item_merges_throu
     backlog_env(env, [])
     repo = REPOS[1]
     publish_graph(env, repo)
+    write_calibration(env)
     runner, github = Runner(plan=never_plans), FakeGitHub(("pass",))
     lane = pl.ProductLane(env.state)
 
@@ -1638,3 +1649,20 @@ def test_a_repository_with_an_open_publication_is_not_replanned(env):
     from project_orchestrator import iron_god_roadmap_refill as refill_mod
     requests = lane.root / refill_mod.REQUESTS
     assert approved == [] and not list(requests.glob("*.json") if requests.is_dir() else [])  # in-flight repo: untouched
+
+
+def test_a_repository_without_a_python_package_is_unsupported_for_the_local_builder(tmp_path):
+    cpp, python = tmp_path / "cpp", tmp_path / "python"
+    for root, files in ((cpp, {"Source/Game.cpp": "int main() { return 0; }\n", "Config/Default.ini": "[a]\n"}),
+                        (python, {"pkg/__init__.py": "", "pkg/core.py": "def one():\n    return 1\n"})):
+        for name, text in files.items():
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text(text, encoding="utf-8")
+        git(tmp_path, "init", "-q", "-b", "main", str(root))
+        git(root, "config", "user.email", "o@example.com")
+        git(root, "config", "user.name", "Owner")
+        git(root, "add", ".")
+        git(root, "commit", "-q", "-m", "seed")
+
+    assert pl.repository_unsupported(cpp, git(cpp, "rev-parse", "HEAD")) == "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
+    assert pl.repository_unsupported(python, git(python, "rev-parse", "HEAD")) is None

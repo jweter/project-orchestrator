@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from project_orchestrator import iron_god_backlog as backlog
+from project_orchestrator import iron_god_calibration as calibration
 from project_orchestrator import iron_god_roadmap_refill as refill
 
 PORTFOLIO = [
@@ -27,7 +28,7 @@ HEAD = "a" * 40
 
 def graph(repository: str, *, state: str = "PLANNED", slices: object = "default", depends_on: tuple[str, ...] = (),
           extra: list[dict] | None = None) -> dict:
-    slice_rows = [{"id": "s1", "state": "PLANNED", "objective": "Bound the cache by entry count.",
+    slice_rows = [{"id": "s1", "state": "PLANNED", "capability_level": 1, "objective": "Bound the cache by entry count.",
                    "acceptance": ["pruning keeps the newest entries"],
                    "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"]}]
     cap = {"id": "cap-cache", "capability": "Bounded cache", "state": state, "depends_on": list(depends_on),
@@ -257,10 +258,20 @@ def test_non_object_drafts_are_rejected() -> None:
 # --- end to end: real git repository -> request -> draft -> dispatchable backlog item ------------------------------
 
 
+def write_profile(state: Path, **over) -> dict:
+    """A calibration profile for THIS model and hardware, as the owner-held calibration run would write."""
+    profile = {"schema_version": 1, "ladder_version": calibration.LADDER_VERSION, "model": calibration.DEFAULT_MODEL,
+               "hardware": calibration.hardware_fingerprint(), "max_passing_level": 3, "levels": {}}
+    profile.update(over)
+    calibration.profile_path(state).write_text(json.dumps(profile), encoding="utf-8")
+    return profile
+
+
 def lane_dirs(tmp_path: Path) -> tuple[Path, Path]:
     lane, state = tmp_path / "lane", tmp_path / "flow-state"
     lane.mkdir()
     state.mkdir()
+    write_profile(state)
     return lane, state
 
 
@@ -602,3 +613,125 @@ def test_the_re_authoring_path_end_to_end_admits_the_revision_once(tmp_path: Pat
     assert admitted["id"] == request_id
     again = run_refill(tmp_path, repository, clone, head, items=[failed, admitted], state=state)
     assert again["requests"] == []  # the revision is now pending; nothing is re-requested
+
+
+# --- builder routing: who may take a request (measured capability, never assumption) --------------------------
+
+
+def tempdir() -> Path:
+    import tempfile
+
+    return Path(tempfile.mkdtemp(prefix="route-"))
+
+
+def test_a_declared_level_inside_the_measured_profile_routes_to_the_local_builder() -> None:
+    request = {**request_for(), "capability_level": 2}
+
+    result = refill.route(request, profile=write_profile(tempdir()), max_level=2)
+
+    assert result["builder"] == refill.LOCAL and result["reason"] == "WITHIN_MEASURED_LOCAL_CAPABILITY"
+
+
+@pytest.mark.parametrize("level,reason", [
+    (None, "SLICE_CAPABILITY_LEVEL_UNDECLARED"),
+    (3, "LEVEL_BEYOND_PRODUCT_LANE"),
+    (5, "SLICE_EXCEEDS_CALIBRATED_CAPABILITY"),
+])
+def test_unproven_or_over_level_work_goes_to_a_stronger_builder_never_the_local_one(level, reason) -> None:
+    request = {**request_for(), "capability_level": level}
+
+    result = refill.route(request, profile=write_profile(tempdir()), max_level=2)
+
+    assert result["builder"] == refill.CAPABLE and result["reason"] == reason
+
+
+def test_the_lane_development_level_caps_local_work_below_the_calibrated_level() -> None:
+    request = {**request_for(), "capability_level": 2}
+
+    assert refill.route(request, profile=write_profile(tempdir()), max_level=1)["builder"] == refill.CAPABLE
+
+
+@pytest.mark.parametrize("profile,reason", [
+    (None, "CALIBRATION_REQUIRED"),
+    ({"model": "ollama/other-model"}, "CALIBRATION_STALE_MODEL"),
+    ({"hardware": {"cpu": "different"}}, "CALIBRATION_STALE_HARDWARE"),
+])
+def test_a_missing_or_stale_calibration_is_not_evidence_of_local_capability(profile, reason) -> None:
+    request = {**request_for(), "capability_level": 1}
+    loaded = None if profile is None else write_profile(tempdir(), **profile)
+
+    result = refill.route(request, profile=loaded, max_level=2)
+
+    assert result["builder"] == refill.CAPABLE and result["reason"] == reason
+
+
+def test_a_repository_the_local_lane_cannot_build_routes_to_nobody() -> None:
+    request = {**request_for(), "capability_level": 1}
+
+    result = refill.route(request, profile=write_profile(tempdir()), max_level=2,
+                          unsupported="NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER")
+
+    assert result["builder"] == refill.NONE and result["reason"] == "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
+
+
+def test_the_declared_capability_level_travels_into_the_request() -> None:
+    assert request_for()["capability_level"] == 1
+
+
+def level_graph(repository: str, level: int | None) -> dict:
+    payload = graph(repository)
+    row = payload["capabilities"][0]["slices"][0]
+    if level is None:
+        row.pop("capability_level")
+    else:
+        row["capability_level"] = level
+    return payload
+
+
+def test_a_beyond_capability_slice_is_recorded_once_as_a_blocker_and_is_never_simplified(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, level_graph(repository, 4))
+
+    first = run_refill(tmp_path, repository, clone, head)
+    run_refill(tmp_path, repository, clone, head)
+
+    (request_id,) = first["requests"]
+    assert first["routed"][refill.CAPABLE] == [request_id] and first["routed"][refill.LOCAL] == []
+    request = json.loads((tmp_path / "lane" / refill.REQUESTS / f"{request_id}.json").read_text("utf-8"))
+    assert request["route"]["builder"] == refill.CAPABLE and request["capability_level"] == 4
+    assert request["objective"] == "Bound the cache by entry count."  # the objective is carried verbatim
+    ledger = refill.load_store(tmp_path / "lane")["ledger"]
+    blockers = [e for e in ledger if e["kind"] == "CAPABILITY_BLOCKER"]
+    assert len(blockers) == 1 and blockers[0]["detail"]["builder_needed"] == refill.CAPABLE
+    assert refill.admitted_items(tmp_path / "lane") == []
+
+
+def test_an_unsupported_repository_is_a_blocker_while_other_repositories_keep_getting_requests(tmp_path: Path) -> None:
+    lane, state = tmp_path / "lane", tmp_path / "flow-state"
+    lane.mkdir()
+    state.mkdir()
+    write_profile(state)
+    results = {}
+    for repository, reason in ((PORTFOLIO[4], "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"), (PORTFOLIO[5], None)):
+        clone, head = product(tmp_path / repository.split("/")[1], repository, graph(repository))
+        results[repository] = refill.refill_repository(
+            lane, state, repository, clone, head, items=[], state={}, reserved=set(), max_level=2,
+            unsupported=lambda _clone, _head, reason=reason: reason)
+
+    assert results[PORTFOLIO[4]]["routed"][refill.NONE] and not results[PORTFOLIO[4]]["routed"][refill.LOCAL]
+    assert results[PORTFOLIO[5]]["routed"][refill.LOCAL]
+    kinds = {(e["repository"], e["kind"]) for e in refill.load_store(lane)["ledger"]}
+    assert (PORTFOLIO[4], "CAPABILITY_BLOCKER") in kinds and (PORTFOLIO[5], "CAPABILITY_BLOCKER") not in kinds
+
+
+def test_an_unreadable_repository_tree_is_a_blocker_not_a_crash(tmp_path: Path) -> None:
+    repository = PORTFOLIO[2]
+    clone, head = product(tmp_path, repository, graph(repository))
+
+    def boom(_clone: Path, _head: str) -> str | None:
+        raise OSError("tree unreadable")
+
+    report = run_refill(tmp_path, repository, clone, head, unsupported=boom)
+
+    assert report["routed"][refill.NONE]
+    assert "REPOSITORY_UNREADABLE" in json.dumps(refill.load_store(tmp_path / "lane")["ledger"])

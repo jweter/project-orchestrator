@@ -40,6 +40,7 @@ from . import iron_god_backlog as backlog
 from . import iron_god_development_memory as development_memory
 from .capability_authority import CapabilityAuthorityError, compile_capability_authority
 from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
+from .iron_god_calibration import capability_gate, load_profile
 from .iron_god_ambiguity_detector import CLEAR, detect_ambiguity
 from .iron_god_capability_graph_parser import CapabilityGraphInvalidError, parse_capability_graph
 from .iron_god_dependency_resolution import DependencyResolutionError, resolve_dependencies
@@ -55,6 +56,7 @@ DRAFTS = "roadmap-drafts"
 LEDGER_LIMIT = 500
 CHECK_INTERVAL_SECONDS = 20 * 60  # authority is re-read at most this often per repository
 BASE_RE = re.compile(r"[0-9a-f]{40}")
+LOCAL, CAPABLE, NONE = "LOCAL", "CAPABLE", "NONE"  # who may build a request: the local 7B, a stronger builder, nobody yet
 
 
 def _now() -> str:
@@ -212,6 +214,8 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
             if decomposition.status in {DIRECTION_REQUIRED, DECOMPOSED} else {"capability": capability_id,
                                                                               "reason": decomposition.status})
         return result
+    declared = {(cap.get("id"), row.get("id")): row for cap in payload.get("capabilities", []) if isinstance(cap, dict)
+                for row in cap.get("slices", []) if isinstance(row, dict)}
     candidates = []
     for chosen in derived["slices"]:
         base_id = item_id(repository, capability_id, str(chosen["slice_id"]))
@@ -246,10 +250,32 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
             "completion_evidence": list(spec.acceptance_criteria), "allowed_paths": list(spec.allowed_paths),
             "forbidden_paths": list(spec.forbidden_paths), "runtime_requirements": list(spec.runtime_requirements),
             "runner_requirements": list(spec.runner_requirements), "prior_failures": failures,
+            "capability_level": declared.get((capability_id, chosen["slice_id"]), {}).get("capability_level"),
             "max_builder_level": max(backlog.BUILDABLE_LEVELS),
             "needs": "a backlog item (level 1 build spec, or level 2 directed edit with approved tests that fail at "
                      "exact_head) whose id and roadmap_ref equal this request's, written to the drafts directory"})
     return result
+
+
+def route(request: dict[str, Any], *, profile: dict[str, Any] | None, max_level: int,
+          unsupported: str | None = None) -> dict[str, Any]:
+    """Which builder may take a request, from declared level + the measured profile + the lane's buildable levels.
+
+    The local worker is only assigned work inside what was measured: the slice must declare ``capability_level``,
+    the calibration profile must match this model and hardware and pass that level, and the product lane must
+    build that level. Anything else goes to a stronger builder or nobody, never silently simplified.
+    """
+    level = request.get("capability_level")
+    if unsupported:
+        return {"builder": NONE, "reason": unsupported, "level": level}
+    gate = capability_gate(profile, {"capability_level": level})
+    if gate is not None:
+        # An undeclared or uncalibrated level is not evidence the local builder can do it.
+        return {"builder": CAPABLE, "reason": gate, "level": level}
+    limit = min(max_level, max(backlog.BUILDABLE_LEVELS))
+    if level not in backlog.BUILDABLE_LEVELS or level > limit:
+        return {"builder": CAPABLE, "reason": "LEVEL_BEYOND_PRODUCT_LANE", "level": level, "lane_limit": limit}
+    return {"builder": LOCAL, "reason": "WITHIN_MEASURED_LOCAL_CAPABILITY", "level": level, "lane_limit": limit}
 
 
 def draft_problems(draft: Any, request: dict[str, Any], *, items: list[dict[str, Any]], reserved: set[str],
@@ -366,7 +392,8 @@ def process_drafts(lane_root: Path, repository: str, requests: list[dict[str, An
 
 def refill_repository(lane_root: Path, state_root: Path, repository: str, clone: Path, head: str, *,
                       items: list[dict[str, Any]], state: dict[str, Any], reserved: set[str], max_level: int,
-                      changed_since: Callable[[str, str], set[str]] | None = None) -> dict[str, Any]:
+                      changed_since: Callable[[str, str], set[str]] | None = None,
+                      unsupported: Callable[[Path, str], str | None] | None = None) -> dict[str, Any]:
     """One planning pass for a repository without a dispatchable item; bad authority becomes DIRECTION_REQUIRED."""
     changed_since = changed_since or _git_changed(clone)
 
@@ -378,7 +405,8 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         return proc.stdout
 
     report: dict[str, Any] = {"repository": repository, "exact_head": head, "requests": [], "admitted": [],
-                              "rejected": [], "blocked": [], "direction_required": [], "skipped": []}
+                              "rejected": [], "blocked": [], "direction_required": [], "skipped": [],
+                              "routed": {LOCAL: [], CAPABLE: [], NONE: []}}
     source = ""
     try:
         control_plane = json.loads(show(repository, head, "engineering/control-plane.json"))
@@ -396,8 +424,15 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         rules = development_memory.rules_for(lane_root, repository)
     except Exception:  # memory is advisory evidence for the planner, never a gate
         rules = []
+    profile = load_profile(state_root)
+    try:
+        repo_problem = unsupported(clone, head) if unsupported else None
+    except Exception as exc:  # an unreadable tree is not evidence the repository can be built
+        repo_problem = f"REPOSITORY_UNREADABLE: {type(exc).__name__}"
     for request in derived["requests"]:
         request["development_rules"] = rules
+        request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem)
+        report["routed"][request["route"]["builder"]].append(request["id"])
     report["direction_required"], report["skipped"] = derived["direction_required"], derived["skipped"]
     report["requests"] = [request["id"] for request in derived["requests"]]
     requests_dir = Path(lane_root) / REQUESTS
@@ -414,6 +449,15 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         for ident in report["requests"]:
             if not any(e["kind"] == "GENERATED" and e["id"] == ident and e["detail"].get("head") == head for e in recent):
                 _log(store, "GENERATED", repository, ident, {"head": head})
+        for builder in (CAPABLE, NONE):
+            for ident in report["routed"][builder]:
+                reason = next(r["route"]["reason"] for r in derived["requests"] if r["id"] == ident)
+                if not any(e["kind"] == "CAPABILITY_BLOCKER" and e["id"] == ident and e["detail"].get("head") == head
+                           and e["detail"].get("reason") == reason for e in recent):
+                    _log(store, "CAPABILITY_BLOCKER", repository, ident,
+                         {"head": head, "builder_needed": builder, "reason": reason,
+                          "route": "a capable, separately authorized builder" if builder == CAPABLE
+                          else "none available for this repository yet"})
         for row in report["direction_required"]:
             key = json.dumps(row, sort_keys=True)
             if not any(e["kind"] == "DIRECTION_REQUIRED" and e["repository"] == repository
