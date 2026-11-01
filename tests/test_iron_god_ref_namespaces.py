@@ -28,10 +28,7 @@ def lane_anchor_template() -> str:
 
 
 def cumulative_baseline_ref() -> str:
-    text = (SRC / "local_git_refs.py").read_text(encoding="utf-8")
-    match = re.search(r'"(refs/iron-god/[a-z_/-]+)",\s*\n?\s*allowed=\(0, 1\)', text)
-    assert match, "the cumulative baseline ref was not found; update this test with LocalGitRefs"
-    return match.group(1)
+    return local_git_refs.BASELINE_REF
 
 
 def all_ref_names() -> dict[str, str]:
@@ -50,11 +47,9 @@ def directory_of(name: str) -> str:
 
 def test_the_scan_finds_the_names_it_is_meant_to_compare() -> None:
     assert lane_anchor_template() == "refs/iron-god/accepted"
-    assert cumulative_baseline_ref() == "refs/iron-god/accepted"
+    assert cumulative_baseline_ref() == "refs/iron-god/baseline/accepted"
 
 
-@pytest.mark.xfail(strict=True, reason="#597: the lane's per-packet anchors and LocalGitRefs' cumulative baseline "
-                   "collide (refs/iron-god/accepted vs refs/iron-god/accepted/<id>); fixed by renaming the baseline")
 def test_no_ref_name_is_a_directory_of_another() -> None:
     names = all_ref_names()
     ref_files = [name for name in names if not name.endswith(">")]  # concrete single refs
@@ -83,3 +78,18 @@ def test_git_refuses_the_two_accepted_conventions_in_one_repository(tmp_path: Pa
     refused = run_git(repo, "update-ref", second, sha)
 
     assert refused.returncode != 0 and "exists; cannot create" in refused.stderr
+
+
+def test_nothing_writes_the_legacy_baseline_name() -> None:
+    """The legacy name is read-only history; a write to it would bring the collision back."""
+    import ast
+
+    tree = ast.parse((SRC / "local_git_refs.py").read_text(encoding="utf-8"))
+    targets = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "_run"
+                and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value == "update-ref"):
+            targets.append(" ".join(ast.unparse(arg) for arg in node.args[1:]))
+    assert targets, "no update-ref calls found; this check must keep looking at the real writes"
+    assert not any("LEGACY_BASELINE_REF" in call or "refs/iron-god/accepted" in call for call in targets), targets
+    assert any("BASELINE_REF" in call for call in targets)  # the new name is the one written

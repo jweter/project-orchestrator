@@ -31,6 +31,17 @@ cumulative baseline to a name outside that directory: `refs/iron-god/baseline/ac
 the old name are shadow-only code and tests (no live consumer), so the rename is the smaller change. The regression test
 in section 8 fails today (expected failure, strict) and turns green when the rename lands.
 
+**Resolved (step 1 of section 3).** `LocalGitRefs` now writes the cumulative baseline to
+`refs/iron-god/baseline/accepted` (also added to the ref-protection policy: protected, advance-only, never deleted). The old
+name is read-only history: `accepted()` falls back to it so older repositories keep working, `bootstrap_accepted` and
+`advance_accepted` never write it, and nothing is deleted. A read-only survey of this machine (256 repositories) found
+the legacy ref in exactly four preserved KE-Core worker repositories (`ke-core-s1..s4-*-worker-1`, the vector-index
+lineage); they are untouched and keep working through the fallback. Until the legacy ref is retired there (an owner
+decision, since it is preserved work), the lane must not create `refs/iron-god/accepted/<packet>` anchors in those four
+repositories; it never works in them. `tests/test_iron_god_ref_namespaces.py::test_no_ref_name_is_a_directory_of_another`
+is now a real passing test (it was the strict expected failure) and `tests/test_local_git_refs_baseline.py` covers both
+creation orders, the fallback, the untouched legacy ref, the compare-and-swap and the protection policy.
+
 ### 2.2 State ownership: two ledgers, different shapes
 
 * Lane (authoritative, JSON, atomic): packet ledger (`... INDEPENDENT_VERIFICATION -> ACCEPTED_LOCAL | BLOCKED`),

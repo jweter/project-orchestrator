@@ -7,7 +7,7 @@ import pytest
 
 from project_orchestrator.local_acceptance_recovery import classify_pending_acceptances
 from project_orchestrator.local_first_state import LocalFirstState
-from project_orchestrator.local_git_refs import LocalGitRefs
+from project_orchestrator.local_git_refs import BASELINE_REF, LocalGitRefs
 from test_local_git_refs import git, next_commit
 from tests.owner_authority import (
     UNSAFE_OWNER_SCENARIOS,
@@ -117,7 +117,7 @@ def test_advanced_cas_without_protected_milestone_stops(recovery):
 
 def test_missing_accepted_baseline_stops_recovery(recovery):
     refs, state, owner, base, target = recovery
-    git(refs.repo, "update-ref", "-d", "refs/iron-god/accepted", base)
+    git(refs.repo, "update-ref", "-d", BASELINE_REF, base)
     refs.protect("milestone", "m1", target)
     assert classify_pending_acceptances(state=state, refs=refs)[0].disposition == (
         "ACCEPTED_REF_MISSING_STOP"

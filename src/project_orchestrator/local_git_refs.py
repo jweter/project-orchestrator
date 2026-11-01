@@ -17,6 +17,11 @@ _ZERO = "0" * 40
 _SHA = re.compile(r"[a-f0-9]{40}\Z")
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 _KINDS = frozenset({"candidate", "milestone", "recovery", "publication"})
+# The cumulative accepted baseline. It used to live at refs/iron-god/accepted, which Git cannot hold beside the product
+# lane's per-packet anchors refs/iron-god/accepted/<packet> (a ref and a directory of the same name, #597). New writes go
+# to BASELINE_REF; the legacy name is only ever READ, as a fallback, and is never written or deleted.
+BASELINE_REF = "refs/iron-god/baseline/accepted"
+LEGACY_BASELINE_REF = "refs/iron-god/accepted"
 
 
 class LocalGitRefError(ValueError):
@@ -109,12 +114,17 @@ class LocalGitRefs:
             raise LocalGitRefError("PROTECTED_REF_RACE") from exc
         return True
 
-    def accepted(self) -> str | None:
-        p = self._run(
-            "rev-parse", "--verify", "--quiet", "refs/iron-god/accepted",
-            allowed=(0, 1),
-        )
+    def _read(self, ref: str) -> str | None:
+        p = self._run("rev-parse", "--verify", "--quiet", ref, allowed=(0, 1))
         return p.stdout.strip() if p.returncode == 0 else None
+
+    def legacy_baseline(self) -> str | None:
+        """The pre-#597 baseline at LEGACY_BASELINE_REF, if the repository still has one (read-only, never written)."""
+        return self._read(LEGACY_BASELINE_REF)
+
+    def accepted(self) -> str | None:
+        """The cumulative accepted baseline: the current ref, else the legacy one so older repositories keep working."""
+        return self._read(BASELINE_REF) or self._read(LEGACY_BASELINE_REF)
 
     def bootstrap_accepted(self, commit: str) -> bool:
         """Seed accepted baseline ONLY after caller verifies release authority.
@@ -132,7 +142,7 @@ class LocalGitRefs:
         try:
             self._run(
                 "update-ref", "--create-reflog",
-                "refs/iron-god/accepted", commit, _ZERO,
+                BASELINE_REF, commit, _ZERO,
             )
         except LocalGitRefError as exc:
             if self.accepted() == commit:
@@ -147,7 +157,10 @@ class LocalGitRefs:
         self._commit_exists(new_sha)
         if expected_sha == new_sha:
             raise LocalGitRefError("NO_ACCEPTED_ADVANCEMENT")
-        current = self.accepted()
+        # Capture what is stored at the NEW name once, before validating: that value is the compare-and-swap's expected old
+        # value. Re-reading it at write time would let a stale caller overwrite an acceptance that landed in between.
+        stored = self._read(BASELINE_REF)
+        current = stored or self._read(LEGACY_BASELINE_REF)
         if current != expected_sha:
             raise LocalGitRefError("ACCEPTED_BASE_CHANGED")
         ff = self._run(
@@ -158,9 +171,11 @@ class LocalGitRefs:
             raise LocalGitRefError("NON_FAST_FORWARD_ACCEPTANCE")
         self._owner_check()
         try:
+            # A repository that only has the legacy baseline starts the new ref from nothing (old value zero), so a
+            # concurrent creation of the new ref fails the swap; the legacy ref is left untouched.
             self._run(
                 "update-ref", "--create-reflog",
-                "refs/iron-god/accepted", new_sha, expected_sha,
+                BASELINE_REF, new_sha, stored or _ZERO,
             )
         except LocalGitRefError as exc:
             raise LocalGitRefError("ACCEPTED_COMPARE_AND_SWAP_FAILED") from exc
