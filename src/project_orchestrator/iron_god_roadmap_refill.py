@@ -169,6 +169,31 @@ def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, An
     return "PENDING", latest["id"]
 
 
+def with_lane_progress(repository: str, payload: dict[str, Any], items: list[dict[str, Any]],
+                       state: dict[str, Any]) -> dict[str, Any]:
+    """A copy of the graph in which slices the lane itself has merged count as VERIFIED_COMPLETE.
+
+    The lane's record (an item whose outcome is MERGED through its own preflight, CI and merge gates) is the
+    proof; nothing is inferred from a pull request title. This lets the next dependent slice become ready right
+    after a merge, before any durable graph update lands, and never marks a capability complete: a capability
+    with no slice left asks for direction instead.
+    """
+    copy = json.loads(json.dumps(payload))
+    for capability in copy.get("capabilities", []):
+        if not isinstance(capability, dict):
+            continue
+        for row in capability.get("slices", []):
+            if not isinstance(row, dict) or row.get("state") == "VERIFIED_COMPLETE":
+                continue
+            status, ident = _slice_status(item_id(repository, str(capability.get("id")), str(row.get("id"))), items, state)
+            if status == "DONE":
+                outcome = state.get("items", {}).get(ident, {})
+                row["state"] = "VERIFIED_COMPLETE"
+                row["verification"] = [f"lane item {ident} merged through preflight, CI and merge gates "
+                                       f"(packet {outcome.get('packet_id', 'unrecorded')})"]
+    return copy
+
+
 def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, items: list[dict[str, Any]],
            state: dict[str, Any], repo_root: Path | None = None, milestones: dict[str, str] | None = None,
            external_pending: frozenset[str] = frozenset()) -> dict[str, Any]:
@@ -185,6 +210,7 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
             "reason": "CAPABILITY_GRAPH_INVALID", "evidence": str(exc)[:600],
             "question": f"{source} fails validation; correct the declared capability graph so the engine can plan from it."})
         return result
+    payload = with_lane_progress(repository, payload, items, state)
     derived = derive_slices(payload, repository=repository, exact_head=head)
     if derived["status"] == "NO_WORK":
         result["skipped"].append({"reason": derived.get("reason") or "NO_WORK"})
