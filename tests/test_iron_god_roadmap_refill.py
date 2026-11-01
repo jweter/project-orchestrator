@@ -942,3 +942,13 @@ def test_a_merged_capable_builder_pull_request_unlocks_the_next_dependent_slice(
     (request,) = derived["requests"]
     assert request["slice"] == "s2" and request["id"] != first["id"]
     assert payload["capabilities"][0]["slices"][0]["state"] == "PLANNED"  # the input graph is untouched
+
+
+@pytest.mark.parametrize("slices", [None, "oops", {"id": "s1"}, 7])
+def test_a_non_list_slice_collection_keeps_its_direction_request_instead_of_crashing(slices) -> None:
+    """Review P2 on #606: the overlay raised TypeError on `"slices": null` before the compiler could answer."""
+    payload = graph(PORTFOLIO[0], slices=slices)
+
+    derived = derive_routed(PORTFOLIO[0], HEAD, payload, SOURCE, items=[], state={})
+
+    assert derived["requests"] == [] and derived["direction_required"][0]["reason"] == "EXECUTION_SLICE_REQUIRED"

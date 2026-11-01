@@ -192,7 +192,8 @@ def with_lane_progress(repository: str, payload: dict[str, Any], items: list[dic
     for capability in copy.get("capabilities", []):
         if not isinstance(capability, dict):
             continue
-        for row in capability.get("slices", []):
+        slices = capability.get("slices")
+        for row in slices if isinstance(slices, list) else []:  # a null/non-list collection keeps its direction request
             if not isinstance(row, dict) or row.get("state") == "VERIFIED_COMPLETE":
                 continue
             status, ident = _slice_status(item_id(repository, str(capability.get("id")), str(row.get("id"))), items,
