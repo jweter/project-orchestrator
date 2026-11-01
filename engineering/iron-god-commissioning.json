@@ -258,6 +258,9 @@
     "planning": "backlog",
     "planning_decision": "2026-10-27: owner directed roadmap-driven development; only approved items from engineering/state/iron-god-backlog.json are built, never self-invented slices",
     "roadmap_refill": true,
+    "capable_builder": false,
+    "capable_builder_daily_limit": 2,
+    "capable_builder_decision": "2026-11-01: OFF by default. When the owner enables it and the portfolio_builder routine token is configured, roadmap requests the local builder cannot take are handed to the existing claude_dispatch routine within a daily budget; the routine opens an ordinary pull request that meets the repository gates",
     "roadmap_refill_decision": "2026-11-01: owner-approved roadmaps are standing development authorization (issue #594); an exhausted backlog is refilled from each repository's declared capability graph through the strict admission gate in iron_god_roadmap_refill.py",
     "development_level": 2,
     "development_level_decision": "2026-10-28: owner approved a Level 2 pilot limited to directed edits (named units in one existing module, one requirement, approved tests that fail on main); calibration 9/12 first try, then the named-block fix"
