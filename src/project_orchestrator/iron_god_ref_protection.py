@@ -20,12 +20,14 @@ ACCEPTED_PREFIX = "refs/iron-god/accepted/"
 CANDIDATE_PREFIX = "refs/iron-god/candidate/"
 MILESTONE_PREFIX = "refs/iron-god/milestone/"
 RECOVERY_PREFIX = "refs/iron-god/recovery/"
+BASELINE_PREFIX = "refs/iron-god/baseline/"  # the cumulative accepted baseline (#597); advance-only, never deleted
 
 PROTECTED_PREFIXES = (
     ACCEPTED_PREFIX,
     CANDIDATE_PREFIX,
     MILESTONE_PREFIX,
     RECOVERY_PREFIX,
+    BASELINE_PREFIX,
 )
 
 # Refs with no sanctioned delete path in their owning module: accepted
@@ -35,6 +37,7 @@ NO_DELETE_PREFIXES = (
     ACCEPTED_PREFIX,
     MILESTONE_PREFIX,
     RECOVERY_PREFIX,
+    BASELINE_PREFIX,
 )
 
 FORCE_OPERATIONS = frozenset({"force-update", "force-delete", "force-push"})
