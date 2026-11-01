@@ -1710,3 +1710,57 @@ def test_a_routine_api_error_is_a_recorded_blocker_not_a_crash(env, monkeypatch)
 def test_the_shipped_policy_keeps_the_capable_builder_off():
     assert POLICY["portfolio_rotation"]["capable_builder"] is False
     assert POLICY["portfolio_rotation"]["capable_builder_daily_limit"] == 2
+
+
+def test_roadmap_progress_outcomes_are_logged_and_errors_never_stop_the_rotation(env, monkeypatch):
+    from project_orchestrator import iron_god_roadmap_progress as progress_mod
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+    outcomes = iter([{"status": "OPENED", "branch": "iron-god/roadmap-progress/x-1", "pr": "https://github.com/o/r/pull/5"},
+                     {"status": "NOTHING_TO_RECORD"},
+                     {"status": "BLOCKED", "reason": "GRAPH_FORMAT_NOT_CANONICAL"}])
+
+    def fake(*_a, **_k):
+        value = next(outcomes, None)
+        if value is None:
+            raise OSError("git unavailable")
+        return value
+
+    monkeypatch.setattr(progress_mod, "record_progress", fake)
+    for _ in range(4):
+        pl.record_roadmap_progress(lane, REPOS[1], env.tmp, "a" * 40, [], {}, (env.release, "a" * 40))
+
+    kinds = [e["kind"] for e in refill_mod.load_store(lane.root)["ledger"]]
+    assert kinds == ["PROGRESS_OPENED", "PROGRESS_BLOCKED", "PROGRESS_ERROR"]  # NOTHING_TO_RECORD is silent
+    assert "ROADMAP_PROGRESS_OPENED" in json.dumps(wm.load(env.state))
+
+
+def test_the_shipped_policy_records_roadmap_progress():
+    assert POLICY["portfolio_rotation"]["roadmap_progress"] is True
+
+
+def test_progress_is_not_started_without_a_release_identity_and_waits_for_an_idle_lane(env, monkeypatch):
+    from project_orchestrator import iron_god_roadmap_progress as progress_mod
+
+    lane = pl.ProductLane(env.state)
+    seen = []
+
+    def fake(*_a, **kwargs):
+        seen.append(kwargs["may_start"])
+        kwargs["spawn"](env.tmp / "tree", env.tmp / "result.json")
+        return {"status": "NOTHING_TO_RECORD"}
+
+    launched = []
+    monkeypatch.setattr(progress_mod, "record_progress", fake)
+    monkeypatch.setattr(pl, "spawn_progress_preflight", lambda *a: launched.append(a) or 77)
+
+    pl.record_roadmap_progress(lane, REPOS[1], env.tmp, "a" * 40, [], {}, None)  # no release identity: nothing runs
+    assert seen == []
+    pl.record_roadmap_progress(lane, REPOS[1], env.tmp, "a" * 40, [], {}, (env.release, "b" * 40))
+    lane.active_path.parent.mkdir(parents=True, exist_ok=True)
+    lane.active_path.write_text(json.dumps({"packet_id": "P-1"}), encoding="utf-8")
+    pl.record_roadmap_progress(lane, REPOS[1], env.tmp, "a" * 40, [], {}, (env.release, "b" * 40))
+
+    assert seen == [True, False]  # idle lane may start verification; an active worker keeps it waiting
+    assert launched[0][0] == env.release and launched[0][1] == "b" * 40  # bound to the release identity

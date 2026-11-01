@@ -44,6 +44,7 @@ from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
+from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
@@ -908,7 +909,8 @@ def advance_product_lane(
             approved = refill_from_roadmaps(
                 lane, repos, busy, approved, state, level, sync, owned_paths,
                 capable={"enabled": config.get("capable_builder") is True,
-                         "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT))})
+                         "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT))},
+                record_progress=config.get("roadmap_progress", True) is True, release=(release_repo, release_sha))
         for name in repos:
             chosen = backlog.next_item(approved, state, name, max_level=level)
             if chosen is not None:
@@ -959,10 +961,52 @@ def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any]
                               outcome=None if result.get("dispatched") else "BLOCKED")
 
 
+def spawn_progress_preflight(release_repo: Path, release_sha: str, worktree: Path, result: Path,
+                              log_path: Path) -> int:
+    """Launch the progress preflight runner exactly like a product worker: release-bound, its own process."""
+    env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    with log_path.open("ab") as log:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_progress_preflight.py"),
+             "--worktree", str(worktree), "--result", str(result)],
+            cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            creationflags=flags)
+    return process.pid
+
+
+def record_roadmap_progress(lane: ProductLane, name: str, clone: Path, head: str, items: list[dict[str, Any]],
+                            state: dict[str, Any], release: tuple[Path, str] | None = None) -> None:
+    """Advance the mechanical graph-progress job for ``name``; outcomes are logged, never fatal.
+
+    The repository's native preflight runs in its own process and only while no worker is active, so the supervisor
+    heartbeat never stalls and heavy checks stay serial. Without a release identity nothing is started.
+    """
+    if release is None:
+        return
+    release_repo, release_sha = release
+    try:
+        result = roadmap_progress.record_progress(
+            lane.root, lane.state_root, name, clone, head, items=items, state=state,
+            publications=lane.publications()["items"], workspace=lane.workspaces / "progress",
+            spawn=lambda tree, out: spawn_progress_preflight(release_repo, release_sha, tree, out,
+                                                             lane.reports / f"progress-{out.stem}.log"),
+            may_start=lane.active() is None)
+    except Exception as exc:  # recording progress is best-effort; the overlay already lets the engine continue
+        result = {"status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}
+    if result["status"] in {"OPENED", "BLOCKED", "ERROR"}:
+        roadmap_refill.log_event(lane.root, "PROGRESS_" + result["status"], name, result.get("branch") or name, result)
+        working_memory.record(lane.state_root, name, "ROADMAP_PROGRESS_" + result["status"],
+                              detail=str(result.get("pr") or result.get("reason") or ""),
+                              outcome=None if result["status"] == "OPENED" else "BLOCKED")
+
+
 def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], static: list[dict[str, Any]],
                          state: dict[str, Any], level: int, sync: Callable[[ProductLane, str], tuple[Path, str]],
                          owned_paths: Callable[[str], list[str]],
-                         capable: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                         capable: dict[str, Any] | None = None, record_progress: bool = False,
+                         release: tuple[Path, str] | None = None) -> list[dict[str, Any]]:
     """Backlog plus runtime-admitted roadmap items; a repository with no dispatchable item gets one planning pass.
 
     Owner delegation 2026-11-01 (issue #594): the owner-approved roadmap authorizes development, so an
@@ -992,6 +1036,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
         hand_to_capable_builder(lane, name, report, capable)
+        if record_progress:
+            record_roadmap_progress(lane, name, clone, head, approved, state, release)
         working_memory.record(lane.state_root, name, "ROADMAP_REFILL", detail=roadmap_refill.summarize(report),
                               outcome="DIRECTION_REQUIRED" if report["direction_required"] and not report["requests"] else None)
         approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
