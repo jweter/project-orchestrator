@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from project_orchestrator import iron_god_backlog as backlog
+from project_orchestrator import iron_god_calibration as calibration
 from project_orchestrator import iron_god_roadmap_refill as refill
 
 PORTFOLIO = [
@@ -22,12 +23,20 @@ PORTFOLIO = [
     "jweter/VoiceStudio",
 ]
 SOURCE = "engineering/capability-graph.json"
+
+
+def derive_routed(*args, **kwargs) -> dict:
+    """derive() plus the LOCAL route the refill attaches to a request inside the measured capability."""
+    derived = refill.derive(*args, **kwargs)
+    for request in derived["requests"]:
+        request["route"] = {"builder": refill.LOCAL, "reason": "WITHIN_MEASURED_LOCAL_CAPABILITY"}
+    return derived
 HEAD = "a" * 40
 
 
 def graph(repository: str, *, state: str = "PLANNED", slices: object = "default", depends_on: tuple[str, ...] = (),
           extra: list[dict] | None = None) -> dict:
-    slice_rows = [{"id": "s1", "state": "PLANNED", "objective": "Bound the cache by entry count.",
+    slice_rows = [{"id": "s1", "state": "PLANNED", "capability_level": 1, "objective": "Bound the cache by entry count.",
                    "acceptance": ["pruning keeps the newest entries"],
                    "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"]}]
     cap = {"id": "cap-cache", "capability": "Bounded cache", "state": state, "depends_on": list(depends_on),
@@ -60,7 +69,7 @@ def product(tmp_path: Path, repository: str, payload: dict | None, *, declare: b
 
 
 def request_for(repository: str = PORTFOLIO[0], **kw) -> dict:
-    derived = refill.derive(repository, HEAD, graph(repository, **kw), SOURCE, items=[], state={})
+    derived = derive_routed(repository, HEAD, graph(repository, **kw), SOURCE, items=[], state={})
     assert len(derived["requests"]) == 1, derived
     return derived["requests"][0]
 
@@ -105,7 +114,7 @@ def test_a_ready_capability_becomes_a_traceable_request_with_baseline_and_scope(
 
 @pytest.mark.parametrize("state", ["BLOCKED", "IMPLEMENTED_UNVERIFIED"])
 def test_blocked_or_unverified_capabilities_never_produce_work_and_ask_for_direction(state: str) -> None:
-    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], state=state), SOURCE, items=[], state={})
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], state=state), SOURCE, items=[], state={})
 
     assert derived["requests"] == [] and derived["direction_required"][0]["question"]
 
@@ -113,7 +122,7 @@ def test_blocked_or_unverified_capabilities_never_produce_work_and_ask_for_direc
 def test_a_capability_with_unmet_dependencies_is_not_eligible() -> None:
     other = {"id": "cap-first", "capability": "First", "state": "PLANNED", "depends_on": [],
              "completion_evidence": ["docs/x.md"], "slices": []}
-    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], depends_on=("cap-first",), extra=[other]),
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], depends_on=("cap-first",), extra=[other]),
                             SOURCE, items=[], state={})
 
     assert derived["requests"] == []  # cap-cache waits for cap-first, which declares no executable slice
@@ -122,7 +131,7 @@ def test_a_capability_with_unmet_dependencies_is_not_eligible() -> None:
 
 
 def test_an_eligible_capability_without_a_bounded_slice_asks_a_focused_question() -> None:
-    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], slices=[]), SOURCE, items=[], state={})
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], slices=[]), SOURCE, items=[], state={})
 
     (row,) = derived["direction_required"]
     assert row["reason"] == "EXECUTION_SLICE_REQUIRED" and "what bounded slice" in row["question"]
@@ -132,7 +141,7 @@ def test_slice_dependencies_are_honoured_so_only_the_ready_slice_is_requested() 
     slices = [{"id": "s2", "state": "PLANNED", "objective": "Second", "acceptance": ["b"], "depends_on": ["s1"],
                "allowed_paths": ["pkg/**"]},
               {"id": "s1", "state": "PLANNED", "objective": "First", "acceptance": ["a"], "allowed_paths": ["pkg/**"]}]
-    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], slices=slices), SOURCE, items=[], state={})
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], slices=slices), SOURCE, items=[], state={})
 
     assert [r["slice"] for r in derived["requests"]] == ["s1"]  # s2 is listed first but depends on s1
 
@@ -141,18 +150,18 @@ def test_a_completed_roadmap_needs_proof_before_it_stops_refilling() -> None:
     done = graph(PORTFOLIO[0], state="VERIFIED_COMPLETE")
     done["capabilities"][0]["verification"] = ["pytest"]
     done["roadmap"] = []
-    unproven = refill.derive(PORTFOLIO[0], HEAD, done, SOURCE, items=[], state={})
+    unproven = derive_routed(PORTFOLIO[0], HEAD, done, SOURCE, items=[], state={})
     assert unproven["requests"] == [] and unproven["direction_required"][0]["reason"] == "PRODUCT_COMPLETION_EVIDENCE_REQUIRED"
 
     done["product_completion"] = {"verified": True, "exact_head": HEAD, "evidence": ["docs/PROJECT_STATUS.md"],
                                   "checks": [{"name": "product reality", "status": "PASS"}]}
-    proven = refill.derive(PORTFOLIO[0], HEAD, done, SOURCE, items=[], state={})
+    proven = derive_routed(PORTFOLIO[0], HEAD, done, SOURCE, items=[], state={})
     assert proven["requests"] == [] and proven["direction_required"] == [] and proven["skipped"][0]["reason"] == "ROADMAP_EXHAUSTED"
 
 
 def test_a_slice_without_allowed_paths_is_direction_required_not_guessed() -> None:
     bare = [{"id": "s1", "state": "PLANNED", "objective": "x", "acceptance": ["y"]}]
-    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], slices=bare), SOURCE, items=[], state={})
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0], slices=bare), SOURCE, items=[], state={})
 
     assert derived["requests"] == [] and derived["direction_required"][0]["reason"] == "ALLOWED_PATHS_MISSING"
 
@@ -160,7 +169,7 @@ def test_a_slice_without_allowed_paths_is_direction_required_not_guessed() -> No
 def test_an_invalid_graph_is_direction_required() -> None:
     broken = graph(PORTFOLIO[0])
     broken["capabilities"][0]["completion_evidence"] = []
-    derived = refill.derive(PORTFOLIO[0], HEAD, broken, SOURCE, items=[], state={})
+    derived = derive_routed(PORTFOLIO[0], HEAD, broken, SOURCE, items=[], state={})
 
     assert derived["requests"] == [] and derived["direction_required"][0]["reason"] == "CAPABILITY_GRAPH_INVALID"
 
@@ -174,7 +183,7 @@ def test_in_flight_and_finished_slices_are_skipped_and_a_failed_one_asks_for_a_n
     item = seeded_item(request)
 
     def derive_with(state: dict) -> dict:
-        return refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=[item], state=state)
+        return derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=[item], state=state)
 
     pending = derive_with({"items": {item["id"]: {"attempts": 1, "outcome": "DISPATCHED"}}})
     assert pending["requests"] == [] and pending["skipped"][0]["reason"] == "PENDING"
@@ -257,10 +266,20 @@ def test_non_object_drafts_are_rejected() -> None:
 # --- end to end: real git repository -> request -> draft -> dispatchable backlog item ------------------------------
 
 
+def write_profile(state: Path, **over) -> dict:
+    """A calibration profile for THIS model and hardware, as the owner-held calibration run would write."""
+    profile = {"schema_version": 1, "ladder_version": calibration.LADDER_VERSION, "model": calibration.DEFAULT_MODEL,
+               "hardware": calibration.hardware_fingerprint(), "max_passing_level": 3, "levels": {}}
+    profile.update(over)
+    calibration.profile_path(state).write_text(json.dumps(profile), encoding="utf-8")
+    return profile
+
+
 def lane_dirs(tmp_path: Path) -> tuple[Path, Path]:
     lane, state = tmp_path / "lane", tmp_path / "flow-state"
     lane.mkdir()
     state.mkdir()
+    write_profile(state)
     return lane, state
 
 
@@ -341,6 +360,7 @@ def test_all_six_product_repositories_get_independent_requests_and_dispatchable_
         lane = tmp_path / "lane-all"
         lane.mkdir(exist_ok=True)
         (tmp_path / "state-all").mkdir(exist_ok=True)
+        write_profile(tmp_path / "state-all")  # calibrated for this model and hardware
         report = refill.refill_repository(lane, tmp_path / "state-all", repository, clone, head, items=items,
                                           state={}, reserved=set(), max_level=2)
         (request_id,) = report["requests"]
@@ -513,7 +533,7 @@ def failed_chain(count: int = 1) -> tuple[list[dict], dict]:
     items, state = [seeded_item(first)], {"items": {}}
     state["items"][items[0]["id"]] = dict(FAILED)
     for number in range(1, count):
-        derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
+        derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
         (request,) = derived["requests"]
         assert request["id"] == f"{first['id']}-r{number}"
         revision = seeded_item(request)
@@ -548,7 +568,7 @@ def test_a_second_capability_reusing_a_slice_id_does_not_inherit_the_first_ones_
                     "acceptance": ["it works"], "allowed_paths": ["pkg/**"]}]})
     payload["roadmap"] = ["cap-next"]
 
-    derived = refill.derive(PORTFOLIO[0], HEAD, payload, SOURCE, items=[merged],
+    derived = derive_routed(PORTFOLIO[0], HEAD, payload, SOURCE, items=[merged],
                             state={"items": {merged["id"]: {"attempts": 1, "outcome": "MERGED"}}})
 
     (request,) = derived["requests"]
@@ -558,7 +578,7 @@ def test_a_second_capability_reusing_a_slice_id_does_not_inherit_the_first_ones_
 
 def test_a_corrected_draft_for_failed_work_is_admitted_even_with_the_same_objective_and_target() -> None:
     items, state = failed_chain()
-    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
     (request,) = derived["requests"]
     same = good_draft(request)  # identical objective and direct target as the failed predecessor
     reworded = good_draft(request, objective="A corrected wording aimed at the same named unit.")
@@ -570,7 +590,7 @@ def test_a_corrected_draft_for_failed_work_is_admitted_even_with_the_same_object
 
 def test_every_failed_predecessor_is_exempt_but_unrelated_and_active_work_still_counts() -> None:
     items, state = failed_chain(count=3)
-    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
     (request,) = derived["requests"]
     assert request["id"].endswith("-r3") and len(request["prior_failures"]) == 3
     assert problems(good_draft(request), request, items=items) == []
@@ -584,7 +604,7 @@ def test_every_failed_predecessor_is_exempt_but_unrelated_and_active_work_still_
 def test_the_re_authoring_path_end_to_end_admits_the_revision_once(tmp_path: Path) -> None:
     repository = PORTFOLIO[0]
     clone, head = product(tmp_path, repository, graph(repository))
-    failed_request = refill.derive(repository, head, graph(repository), SOURCE, items=[], state={})["requests"][0]
+    failed_request = derive_routed(repository, head, graph(repository), SOURCE, items=[], state={})["requests"][0]
     failed = refill.stamp(good_draft(failed_request, base=head), failed_request, SOURCE)
     state = {"items": {failed["id"]: dict(FAILED)}}
     first = run_refill(tmp_path, repository, clone, head, items=[failed], state=state)
@@ -602,3 +622,179 @@ def test_the_re_authoring_path_end_to_end_admits_the_revision_once(tmp_path: Pat
     assert admitted["id"] == request_id
     again = run_refill(tmp_path, repository, clone, head, items=[failed, admitted], state=state)
     assert again["requests"] == []  # the revision is now pending; nothing is re-requested
+
+
+# --- builder routing: who may take a request (measured capability, never assumption) --------------------------
+
+
+def tempdir() -> Path:
+    import tempfile
+
+    return Path(tempfile.mkdtemp(prefix="route-"))
+
+
+def test_a_declared_level_inside_the_measured_profile_routes_to_the_local_builder() -> None:
+    request = {**request_for(), "capability_level": 2}
+
+    result = refill.route(request, profile=write_profile(tempdir()), max_level=2)
+
+    assert result["builder"] == refill.LOCAL and result["reason"] == "WITHIN_MEASURED_LOCAL_CAPABILITY"
+
+
+@pytest.mark.parametrize("level,reason", [
+    (None, "SLICE_CAPABILITY_LEVEL_UNDECLARED"),
+    (3, "LEVEL_BEYOND_PRODUCT_LANE"),
+    (5, "SLICE_EXCEEDS_CALIBRATED_CAPABILITY"),
+])
+def test_unproven_or_over_level_work_goes_to_a_stronger_builder_never_the_local_one(level, reason) -> None:
+    request = {**request_for(), "capability_level": level}
+
+    result = refill.route(request, profile=write_profile(tempdir()), max_level=2)
+
+    assert result["builder"] == refill.CAPABLE and result["reason"] == reason
+
+
+def test_the_lane_development_level_caps_local_work_below_the_calibrated_level() -> None:
+    request = {**request_for(), "capability_level": 2}
+
+    assert refill.route(request, profile=write_profile(tempdir()), max_level=1)["builder"] == refill.CAPABLE
+
+
+@pytest.mark.parametrize("profile,reason", [
+    (None, "CALIBRATION_REQUIRED"),
+    ({"model": "ollama/other-model"}, "CALIBRATION_STALE_MODEL"),
+    ({"hardware": {"cpu": "different"}}, "CALIBRATION_STALE_HARDWARE"),
+])
+def test_a_missing_or_stale_calibration_is_not_evidence_of_local_capability(profile, reason) -> None:
+    request = {**request_for(), "capability_level": 1}
+    loaded = None if profile is None else write_profile(tempdir(), **profile)
+
+    result = refill.route(request, profile=loaded, max_level=2)
+
+    assert result["builder"] == refill.CAPABLE and result["reason"] == reason
+
+
+def test_a_repository_the_local_lane_cannot_build_routes_to_nobody() -> None:
+    request = {**request_for(), "capability_level": 1}
+
+    result = refill.route(request, profile=write_profile(tempdir()), max_level=2,
+                          unsupported="NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER")
+
+    assert result["builder"] == refill.NONE and result["reason"] == "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
+
+
+def test_the_declared_capability_level_travels_into_the_request() -> None:
+    assert request_for()["capability_level"] == 1
+
+
+def level_graph(repository: str, level: int | None) -> dict:
+    payload = graph(repository)
+    row = payload["capabilities"][0]["slices"][0]
+    if level is None:
+        row.pop("capability_level")
+    else:
+        row["capability_level"] = level
+    return payload
+
+
+def test_a_beyond_capability_slice_is_recorded_once_as_a_blocker_and_is_never_simplified(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, level_graph(repository, 4))
+
+    first = run_refill(tmp_path, repository, clone, head)
+    run_refill(tmp_path, repository, clone, head)
+
+    (request_id,) = first["requests"]
+    assert first["routed"][refill.CAPABLE] == [request_id] and first["routed"][refill.LOCAL] == []
+    request = json.loads((tmp_path / "lane" / refill.REQUESTS / f"{request_id}.json").read_text("utf-8"))
+    assert request["route"]["builder"] == refill.CAPABLE and request["capability_level"] == 4
+    assert request["objective"] == "Bound the cache by entry count."  # the objective is carried verbatim
+    ledger = refill.load_store(tmp_path / "lane")["ledger"]
+    blockers = [e for e in ledger if e["kind"] == "CAPABILITY_BLOCKER"]
+    assert len(blockers) == 1 and blockers[0]["detail"]["builder_needed"] == refill.CAPABLE
+    assert refill.admitted_items(tmp_path / "lane") == []
+
+
+def test_an_unsupported_repository_is_a_blocker_while_other_repositories_keep_getting_requests(tmp_path: Path) -> None:
+    lane, state = tmp_path / "lane", tmp_path / "flow-state"
+    lane.mkdir()
+    state.mkdir()
+    write_profile(state)
+    results = {}
+    for repository, reason in ((PORTFOLIO[4], "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"), (PORTFOLIO[5], None)):
+        clone, head = product(tmp_path / repository.split("/")[1], repository, graph(repository))
+        results[repository] = refill.refill_repository(
+            lane, state, repository, clone, head, items=[], state={}, reserved=set(), max_level=2,
+            unsupported=lambda _clone, _head, reason=reason: reason)
+
+    assert results[PORTFOLIO[4]]["routed"][refill.NONE] and not results[PORTFOLIO[4]]["routed"][refill.LOCAL]
+    assert results[PORTFOLIO[5]]["routed"][refill.LOCAL]
+    kinds = {(e["repository"], e["kind"]) for e in refill.load_store(lane)["ledger"]}
+    assert (PORTFOLIO[4], "CAPABILITY_BLOCKER") in kinds and (PORTFOLIO[5], "CAPABILITY_BLOCKER") not in kinds
+
+
+def test_an_unreadable_repository_tree_is_a_blocker_not_a_crash(tmp_path: Path) -> None:
+    repository = PORTFOLIO[2]
+    clone, head = product(tmp_path, repository, graph(repository))
+
+    def boom(_clone: Path, _head: str) -> str | None:
+        raise OSError("tree unreadable")
+
+    report = run_refill(tmp_path, repository, clone, head, unsupported=boom)
+
+    assert report["routed"][refill.NONE]
+    assert "REPOSITORY_UNREADABLE" in json.dumps(refill.load_store(tmp_path / "lane")["ledger"])
+
+
+# --- review P1 on #603: admission must enforce the route and the declared level -------------------------------
+
+
+def test_a_valid_looking_draft_for_a_capable_routed_request_is_not_admitted_to_the_local_queue(tmp_path: Path) -> None:
+    """The reviewer's reproduction: level-4 slice, profile capped at 3, a level-2 draft supplied for it."""
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, level_graph(repository, 4))
+    first = run_refill(tmp_path, repository, clone, head)
+    (request_id,) = first["requests"]
+    assert first["routed"][refill.CAPABLE] == [request_id]
+    request = json.loads((tmp_path / "lane" / refill.REQUESTS / f"{request_id}.json").read_text("utf-8"))
+    drafts = tmp_path / "lane" / refill.DRAFTS
+    drafts.mkdir()
+    (drafts / f"{request_id}.json").write_text(json.dumps(good_draft(request, base=head, level=2)), encoding="utf-8")
+
+    second = run_refill(tmp_path, repository, clone, head)
+
+    assert second["admitted"] == [] and second["rejected"] == [request_id]
+    assert refill.admitted_items(tmp_path / "lane") == []
+    assert backlog.next_item(refill.admitted_items(tmp_path / "lane"), {}, repository, max_level=2) is None
+    detail = refill.load_store(tmp_path / "lane")["ledger"][-1]["detail"]["problems"]
+    assert "REQUEST_NOT_ROUTED_TO_LOCAL_BUILDER" in detail and "DRAFT_UNDERSTATES_DECLARED_LEVEL" in detail
+
+
+def test_a_draft_may_not_understate_the_slices_declared_level() -> None:
+    request = {**request_for(), "capability_level": 2}
+    request["route"] = {"builder": refill.LOCAL}
+
+    assert "DRAFT_UNDERSTATES_DECLARED_LEVEL" in problems(good_draft(request, level=1), request)
+    assert problems(good_draft(request, level=2), request) == []
+
+
+def test_a_request_without_a_route_fails_closed() -> None:
+    request = request_for()
+    request.pop("route")
+
+    assert "REQUEST_NOT_ROUTED_TO_LOCAL_BUILDER" in problems(good_draft(request), request)
+    request["route"] = {"builder": refill.NONE}
+    assert "REQUEST_NOT_ROUTED_TO_LOCAL_BUILDER" in problems(good_draft(request), request)
+
+
+def test_an_admitted_item_records_the_declared_level_and_route_and_a_restart_rechecks_them(tmp_path: Path) -> None:
+    request = {**request_for(), "capability_level": 2, "route": {"builder": refill.LOCAL}}
+    item = refill.stamp(good_draft(request), request, SOURCE)
+    assert item["authorization"]["declared_capability_level"] == 2 and item["authorization"]["route"] == refill.LOCAL
+
+    understated = {**item, "id": "RM-low", "level": 1}
+    legacy = {**item, "id": "RM-old", "authorization": {k: v for k, v in item["authorization"].items()
+                                                       if k != "declared_capability_level"}}
+    refill.store_path(tmp_path).write_text(json.dumps({"items": [item, understated, legacy]}), encoding="utf-8")
+
+    assert [i["id"] for i in refill.admitted_items(tmp_path)] == [item["id"]]
