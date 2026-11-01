@@ -188,7 +188,8 @@ def test_in_flight_and_finished_slices_are_skipped_and_a_failed_one_asks_for_a_n
     pending = derive_with({"items": {item["id"]: {"attempts": 1, "outcome": "DISPATCHED"}}})
     assert pending["requests"] == [] and pending["skipped"][0]["reason"] == "PENDING"
     merged = derive_with({"items": {item["id"]: {"attempts": 1, "outcome": "MERGED"}}})
-    assert merged["requests"] == [] and merged["skipped"][0]["reason"] == "DONE"
+    # the only slice is merged: nothing is left to request, so the roadmap asks what comes next
+    assert merged["requests"] == [] and merged["direction_required"][0]["reason"] == "NO_EXECUTABLE_SLICE"
     failed = derive_with({"items": {item["id"]: {"attempts": 1, "outcome": "FAIL: canonical preflight failed"}}})
     (again,) = failed["requests"]
     assert again["id"] == item["id"] + "-r1"  # a failed directed edit is re-authored under a new id
@@ -857,3 +858,74 @@ def test_a_merged_capable_builder_pull_request_completes_the_slice() -> None:
                             external_done=frozenset({first["id"]}))
 
     assert derived["requests"] == [] and derived["skipped"][0]["reason"] == "DONE"
+
+
+# --- continuation: a merged slice unlocks its dependents without waiting for a graph update ----------------------
+
+
+def two_slices() -> list[dict]:
+    return [{"id": "s1", "state": "PLANNED", "capability_level": 1, "objective": "First step.", "acceptance": ["a"],
+             "allowed_paths": ["pkg/**", "tests/**"]},
+            {"id": "s2", "state": "PLANNED", "capability_level": 1, "objective": "Second step.", "acceptance": ["b"],
+             "allowed_paths": ["pkg/**", "tests/**"], "depends_on": ["s1"]}]
+
+
+def first_item_of(payload: dict) -> dict:
+    (request,) = refill.derive(PORTFOLIO[0], HEAD, payload, SOURCE, items=[], state={})["requests"]
+    return seeded_item(request)
+
+
+def test_a_slice_merged_through_the_lane_unlocks_the_next_dependent_slice() -> None:
+    payload = graph(PORTFOLIO[0], slices=two_slices())
+    merged = first_item_of(payload)
+    state = {"items": {merged["id"]: {"attempts": 1, "outcome": "MERGED", "packet_id": "PRODUCT-X-1"}}}
+
+    derived = refill.derive(PORTFOLIO[0], HEAD, payload, SOURCE, items=[merged], state=state)
+
+    (request,) = derived["requests"]
+    assert request["slice"] == "s2" and request["id"] != merged["id"]
+    assert payload["capabilities"][0]["slices"][0]["state"] == "PLANNED"  # the input graph is never mutated
+
+
+@pytest.mark.parametrize("outcome", ["FAIL: canonical preflight failed", "DISPATCHED", "BLOCKED_CONFLICT: open pull request"])
+def test_only_a_merged_outcome_unlocks_dependents(outcome: str) -> None:
+    payload = graph(PORTFOLIO[0], slices=two_slices())
+    item = first_item_of(payload)
+    state = {"items": {item["id"]: {"attempts": 1, "outcome": outcome}}}
+
+    derived = refill.derive(PORTFOLIO[0], HEAD, payload, SOURCE, items=[item], state=state)
+
+    assert all(request["slice"] != "s2" for request in derived["requests"])
+
+
+def test_when_every_slice_is_merged_the_capability_asks_for_direction_instead_of_claiming_completion() -> None:
+    payload = graph(PORTFOLIO[0], slices=two_slices()[:1])
+    merged = first_item_of(payload)
+    state = {"items": {merged["id"]: {"attempts": 1, "outcome": "MERGED"}}}
+
+    derived = refill.derive(PORTFOLIO[0], HEAD, payload, SOURCE, items=[merged], state=state)
+
+    assert derived["requests"] == []
+    assert derived["direction_required"][0]["reason"] == "NO_EXECUTABLE_SLICE"
+    assert payload["capabilities"][0]["state"] == "PLANNED"  # completion needs evidence, not just merged slices
+
+
+def test_the_whole_chain_advances_slice_by_slice_with_restart_in_between(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    payload = graph(repository, slices=two_slices())
+    clone, head = product(tmp_path, repository, payload)
+    first = run_refill(tmp_path, repository, clone, head)
+    (first_id,) = first["requests"]
+    request = json.loads((tmp_path / "lane" / refill.REQUESTS / f"{first_id}.json").read_text("utf-8"))
+    drafts = tmp_path / "lane" / refill.DRAFTS
+    drafts.mkdir()
+    (drafts / f"{first_id}.json").write_text(json.dumps(good_draft(request, base=head)), encoding="utf-8")
+    run_refill(tmp_path, repository, clone, head)
+    (admitted,) = refill.admitted_items(tmp_path / "lane")
+    state = {"items": {admitted["id"]: {"attempts": 1, "outcome": "MERGED"}}}
+
+    # a restarted engine reloads only durable files: store + backlog state
+    again = run_refill(tmp_path, repository, clone, head, items=[admitted], state=state)
+
+    (second_id,) = again["requests"]
+    assert second_id != first_id and again["skipped"] == [] and first["skipped"] == []
