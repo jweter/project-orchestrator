@@ -199,7 +199,7 @@
       "complexity": "low",
       "verification": "Worker slice checks (pytest, mypy, ruff) and the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged; counted as product progress only once KEC-3 merges and calls it.",
-      "status": "approved",
+      "status": "retired",
       "implementer": "iron-god-local-7b",
       "build": {
         "module_path": "knowledge_engine/cache_eviction.py",
@@ -252,7 +252,9 @@
         "note": "Pure eviction policy for the bounded on-demand source cache (roadmap: bounded ephemeral cache); KEC-3 consumes it."
       },
       "approval": "owner approved 2026-10-27 as the first authorized roadmap development slice",
-      "assignee": "iron-god"
+      "assignee": "iron-god",
+      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
     },
     {
       "id": "KEC-3",
@@ -1056,6 +1058,49 @@
       "assignee": "iron-god"
     },
     {
+      "id": "KEA-9",
+      "repository": "jweter/knowledge-engine-ai",
+      "title": "An empty golden-question suite must not pass (Codex finding on PR #36)",
+      "roadmap_ref": "Retrieval baseline (PRs #35-#38); open Codex finding 'Reject an empty golden-question suite'",
+      "addresses": "GoldenBenchmarkSuite.passes is all() over its runs, which is True for zero runs, so an empty question bank records a passing benchmark with no measurements",
+      "why": "A baseline that reports green without measuring anything hides a broken or missing question bank and corrupts later ranking comparisons.",
+      "consumer": "retrieval_baseline.baseline_payload serializes suite.passes into the recorded cross-domain baseline.",
+      "objective": "GoldenBenchmarkSuite.passes is False unless at least one golden question ran and every one passed.",
+      "interfaces": [
+        "knowledge_engine_ai/retrieval_benchmark_runner.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "a suite with no runs does not pass",
+        "a suite whose every run passes still passes",
+        "one failing run fails the suite",
+        "existing retrieval benchmark runner and baseline tests still pass"
+      ],
+      "tests": [
+        "tests/test_golden_suite_empty_does_not_pass.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green; the empty-suite half of the PR #36/#37 findings resolved.",
+      "status": "proposed",
+      "implementer": "iron-god-local-7b",
+      "assignee": "iron-god",
+      "direct": {
+        "module_path": "knowledge_engine_ai/retrieval_benchmark_runner.py",
+        "targets": [
+          "GoldenBenchmarkSuite"
+        ],
+        "add": [],
+        "direction": "Return the whole GoldenBenchmarkSuite class, from its @dataclass(frozen=True) decorator to the end of its passes property, with every field and the class docstring unchanged. In the passes property change only two things: the docstring becomes exactly \"\"\"Return true only when questions ran and every one passes conservatively.\"\"\" and the return statement becomes exactly return bool(self.runs) and all(run.result.passes for run in self.runs).",
+        "test_path": "tests/test_golden_suite_empty_does_not_pass.py",
+        "test_source": "\"\"\"An empty golden-question suite must not pass (Codex finding on PR #36).\"\"\"\n\nfrom __future__ import annotations\n\nfrom knowledge_engine_ai.retrieval_benchmark import GoldenQuestion, evaluate_retrieval\nfrom knowledge_engine_ai.retrieval_benchmark_runner import (\n    GoldenBenchmarkRun,\n    GoldenBenchmarkSuite,\n)\n\n\ndef _run(question_id: str, retrieved: tuple[str, ...]) -> GoldenBenchmarkRun:\n    question = GoldenQuestion(\n        question_id=question_id,\n        domain=\"glp1\",\n        question=\"Does treatment help?\",\n        required_evidence_ids=(\"ev-a\",),\n        qualifier_evidence_ids=(),\n    )\n    return GoldenBenchmarkRun(question=question, result=evaluate_retrieval(question, retrieved))\n\n\ndef test_a_suite_that_ran_no_questions_does_not_pass() -> None:\n    assert GoldenBenchmarkSuite(limit=10, runs=()).passes is False\n\n\ndef test_a_suite_whose_every_question_passes_still_passes() -> None:\n    suite = GoldenBenchmarkSuite(limit=10, runs=(_run(\"q1\", (\"ev-a\",)), _run(\"q2\", (\"ev-a\",))))\n\n    assert suite.passes is True\n\n\ndef test_one_failing_question_fails_the_suite() -> None:\n    suite = GoldenBenchmarkSuite(limit=10, runs=(_run(\"q1\", (\"ev-a\",)), _run(\"q2\", ())))\n\n    assert suite.passes is False\n",
+        "note": "An empty golden-question suite no longer reports a passing benchmark.",
+        "approved_base": "3597f276e5fc7fa14ac765e78134588c33e90b0a"
+      },
+      "evidence": "Verified 2026-10-31 on knowledge-engine-ai 3597f27: only the empty-suite test fails on main; with the reference edit the three approved tests and test_retrieval_benchmark_runner.py, test_retrieval_baseline.py, test_retrieval_baseline_compare.py and test_retrieval_benchmark.py pass (27 passed); ruff check, ruff format and strict mypy are clean. Recommended; not yet approved by the owner."
+    },
+    {
       "id": "KEC-6",
       "repository": "jweter/knowledge-engine-core",
       "title": "Recognize Roman-numeral numbered section headings",
@@ -1237,7 +1282,7 @@
       "complexity": "low",
       "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged with CI green.",
-      "status": "approved",
+      "status": "retired",
       "implementer": "iron-god-local-7b",
       "direct": {
         "module_path": "knowledge_engine/extraction/sections.py",
@@ -1253,7 +1298,54 @@
       },
       "supersedes": "KEC-8",
       "assignee": "iron-god",
-      "evidence": "KEC-8's reply (packet PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T214911Z) passed the approved test 3/3 when applied to deb3d83 offline; it failed only ruff E501 (one 140-character line). This re-issue names the exact line split. Verified 2026-10-29 on deb3d83: with exactly these lines the approved test and the existing section tests pass (22 passed); ruff check, ruff format and strict mypy are clean."
+      "evidence": "KEC-8's reply (packet PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T214911Z) passed the approved test 3/3 when applied to deb3d83 offline; it failed only ruff E501 (one 140-character line). This re-issue names the exact line split. Verified 2026-10-29 on deb3d83: with exactly these lines the approved test and the existing section tests pass (22 passed); ruff check, ruff format and strict mypy are clean.",
+      "superseded_by": "KEC-19",
+      "retired_reason": "Failed only on the old worker environment; re-issued as KEC-19. Record preserved."
+    },
+    {
+      "id": "KEC-19",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Recognize Methodology and 'Patients/Subjects and Methods' headings (re-issue of KEC-16 on the post-#562 baseline)",
+      "roadmap_ref": "Issue #449 / KEC-4 (structured, auditable evidence); docs/phase2_design.md structured-section detection",
+      "addresses": "Common clinical methods headings are not detected, so methods text merges into the previous section",
+      "why": "Methods spans let evidence records cite study design; missing them weakens report-level auditability.",
+      "consumer": "detect_sections, used by claim-candidate extraction and evidence records (entrypoint.py).",
+      "objective": "Add 'methodology', 'patients and methods' and 'subjects and methods' to the methods heading alternatives.",
+      "interfaces": [
+        "knowledge_engine/extraction/sections.py"
+      ],
+      "depends_on": [
+        "KEC-6"
+      ],
+      "acceptance_criteria": [
+        "'Methodology' alone on a line is a methods heading",
+        "'2. Patients and Methods' and 'Subjects and methods: ...' are methods headings",
+        "existing methods headings still match; prose containing 'methodology' does not"
+      ],
+      "tests": [
+        "tests/test_methods_heading_variants.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "direct": {
+        "module_path": "knowledge_engine/extraction/sections.py",
+        "targets": [
+          "_SECTION_HEADING_PATTERNS"
+        ],
+        "add": [],
+        "direction": "Return the whole _SECTION_HEADING_PATTERNS assignment, from its first line to the closing brace, with every entry. Change only the methods entry and copy every other entry unchanged. Inside re.compile( of the methods entry write exactly these three adjacent rf-string lines, each on its own line, then the closing ),:\nrf\"(?im)^\\s*{_NUMBERING_PREFIX}(?:methods|materials and methods|study design|methodology\"\nrf\"|patients and methods|subjects and methods)\"\nrf\"{_INLINE_LABEL_SUFFIX}\"",
+        "test_path": "tests/test_methods_heading_variants.py",
+        "test_source": "from knowledge_engine.extraction.sections import detect_sections\nfrom knowledge_engine.parser import ParsedPage\n\n\ndef _types(text: str) -> list[str]:\n    return [span.section_type for span in detect_sections([ParsedPage(page_number=1, text=text)])]\n\n\ndef test_methodology_heading_is_a_methods_section() -> None:\n    assert _types(\"Methodology\\nWe sampled.\\nResults\\nIt worked.\\n\") == [\"methods\", \"results\"]\n\n\ndef test_patients_and_subjects_methods_headings_are_methods_sections() -> None:\n    assert _types(\"2. Patients and Methods\\nCohort.\\n\") == [\"methods\"]\n    assert _types(\"Subjects and methods: adults aged 40-65.\\n\") == [\"methods\"]\n\n\ndef test_existing_methods_headings_still_match_and_prose_does_not() -> None:\n    assert _types(\"Materials and Methods\\nHow.\\nStudy design\\nWhy.\\n\") == [\"methods\", \"methods\"]\n    assert _types(\"Our methodology was simple.\\n\") == []\n",
+        "note": "Section detection now recognizes Methodology and Patients/Subjects and Methods headings.",
+        "approved_base": "c6126fe203cf47d6378802f527da249b24f82199"
+      },
+      "supersedes": "KEC-16",
+      "assignee": "iron-god",
+      "evidence": "KEC-16 (packet PRODUCT-KNOWLEDGE-ENGINE-CORE-20261101T011848Z, commit 80774ff) built a correct edit: its approved tests, ruff and mypy passed; its canonical preflight failed only on 3 pre-existing knowledge-engine-core tests whose assertions wrapped with the worker's 133-character TEMP (fixed by knowledge-engine-core #562, merged fc531dd). KEC-17 failed the same 3 tests. Verified 2026-10-31 on c6126fe: the approved tests fail on main; with the engine's own generated edit (80774ff) they pass, with the neighbouring tests/test_extraction_sections.py; ruff check, ruff format and strict mypy are clean. The failure record of KEC-16 is preserved (attempts and failed-source fingerprints are runtime state and are untouched)."
     },
     {
       "id": "KEC-9",
@@ -1425,7 +1517,7 @@
       "complexity": "low",
       "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
       "definition_of_done": "Merged with CI green; the Codex P2 finding on PR #529 (malformed timing evidence) is resolved.",
-      "status": "approved",
+      "status": "retired",
       "implementer": "iron-god-local-7b",
       "evidence": "Verified 2026-10-29 on deb3d83: the approved test fails on main and passes with the reference fix, together with the related existing tests; strict mypy, ruff check and ruff format pass. KEC-10's attempt (PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T221019Z) implemented it correctly; only the console width failed it.",
       "direct": {
@@ -1441,7 +1533,52 @@
         "approved_base": "deb3d83bc22b6027a2232691562001c6e25ce95e"
       },
       "assignee": "iron-god",
-      "supersedes": "KEC-10"
+      "supersedes": "KEC-10",
+      "superseded_by": "KEC-20",
+      "retired_reason": "Failed only on the old worker environment; re-issued as KEC-20. Record preserved."
+    },
+    {
+      "id": "KEC-20",
+      "repository": "jweter/knowledge-engine-core",
+      "title": "Startup-timing evidence must hold nonnegative JSON integers (Codex P2 on PR #529) (re-issue of KEC-18 on the post-#562 baseline)",
+      "roadmap_ref": "Issue #493 (unattended local verification worker) and #433 item 1; open Codex P2 finding on PR #529",
+      "addresses": "run_process_startup_timing coerces timings with int(), so true, 1.9 or '12' pass as 1, 1 and 12, and a negative value passes",
+      "why": "The worker exists to fail closed on malformed evidence; a coerced value reports PASS with invented metrics attributed to the verified SHA.",
+      "consumer": "The unattended verification worker's process-startup-timing check (execute_request).",
+      "objective": "Reject timing evidence whose values are not nonnegative JSON integers, reporting the existing ENVIRONMENT_FAILURE result.",
+      "interfaces": [
+        "knowledge_engine/unattended_worker.py"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "true, 1.9, '12', -1 or null in either timing field gives ENVIRONMENT_FAILURE / ENVIRONMENT_FAILURE",
+        "0 ms timings are valid and reported",
+        "existing tests/test_unattended_worker.py still passes"
+      ],
+      "tests": [
+        "tests/test_process_startup_timing_evidence_types.py (approved, written by the worker)"
+      ],
+      "level": 2,
+      "complexity": "low",
+      "verification": "Directed Level 2 worker: the approved tests fail on main, then pass after the edit; mypy and ruff on the module and tests; the repository's canonical preflight; CI green before merge.",
+      "definition_of_done": "Merged with CI green; the Codex P2 finding on PR #529 (malformed timing evidence) is resolved.",
+      "status": "approved",
+      "implementer": "iron-god-local-7b",
+      "evidence": "KEC-18 (packet PRODUCT-KNOWLEDGE-ENGINE-CORE-20261101T014515Z, commit 2f1f242) built a correct edit: its approved tests, ruff and mypy passed; its canonical preflight failed only on 3 pre-existing knowledge-engine-core tests whose assertions wrapped with the worker's 133-character TEMP (fixed by knowledge-engine-core #562, merged fc531dd). KEC-17 failed the same 3 tests. Verified 2026-10-31 on c6126fe: the approved tests fail on main; with the engine's own generated edit (2f1f242) they pass, with tests/test_unattended_worker.py and test_unattended_worker_publication.py (35 passed); ruff check, ruff format and strict mypy are clean. The failure record of KEC-18 is preserved (attempts and failed-source fingerprints are runtime state and are untouched).",
+      "direct": {
+        "module_path": "knowledge_engine/unattended_worker.py",
+        "targets": [
+          "run_process_startup_timing"
+        ],
+        "add": [],
+        "direction": "In run_process_startup_timing, stop converting the two timings with int(). Inside the existing try block, read payload['import_to_command_ms'] and payload['database_open_ms'] as they are, and raise TypeError unless each one is an int that is not a bool and is at least 0, so the existing except clause returns the ENVIRONMENT_FAILURE result. Change nothing else in the function, and keep its docstring and return values.",
+        "test_path": "tests/test_process_startup_timing_evidence_types.py",
+        "test_source": "import json\nfrom pathlib import Path\n\nimport pytest\n\nfrom knowledge_engine import unattended_worker as worker\n\n\ndef _run_with_evidence(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, evidence: dict[str, object]\n) -> tuple[str, str, str | None]:\n    def fake_run_logged(\n        args: list[str], *, cwd: Path, log_path: Path, timeout_seconds: float\n    ) -> tuple[int, float, bool]:\n        evidence_path = Path(args[-1])\n        evidence_path.parent.mkdir(parents=True, exist_ok=True)\n        evidence_path.write_text(json.dumps(evidence), encoding=\"utf-8\")\n        return 0, 0.5, False\n\n    monkeypatch.setattr(worker, \"run_logged\", fake_run_logged)\n    return worker.run_process_startup_timing(tmp_path, tmp_path / \"state\", 30)\n\n\n@pytest.mark.parametrize(\"value\", [True, 1.9, \"12\", -1, None])\n@pytest.mark.parametrize(\"field\", [\"import_to_command_ms\", \"database_open_ms\"])\ndef test_coercible_or_negative_timing_values_fail_closed(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 12, \"database_open_ms\": 3}\n    evidence[field] = value\n    status, _summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"ENVIRONMENT_FAILURE\"\n    assert failure_class == \"ENVIRONMENT_FAILURE\"\n\n\ndef test_zero_millisecond_timings_are_valid(\n    tmp_path: Path, monkeypatch: pytest.MonkeyPatch\n) -> None:\n    evidence: dict[str, object] = {\"import_to_command_ms\": 0, \"database_open_ms\": 0}\n    status, summary, failure_class = _run_with_evidence(tmp_path, monkeypatch, evidence)\n    assert status == \"PASS\" and failure_class is None\n    assert \"import_to_command_ms=0\" in summary and \"database_open_ms=0\" in summary\n",
+        "note": "Startup-timing evidence is now rejected unless both timings are nonnegative JSON integers (Codex P2, PR #529).",
+        "approved_base": "c6126fe203cf47d6378802f527da249b24f82199"
+      },
+      "assignee": "iron-god",
+      "supersedes": "KEC-18"
     },
     {
       "id": "KEC-11",
@@ -1551,7 +1688,7 @@
       "depends_on": [],
       "level": 1,
       "complexity": "low",
-      "status": "proposed",
+      "status": "retired",
       "supersedes": "KEC-2 (with KEC-14 and KEC-15)",
       "acceptance_criteria": [
         "the expiry examples from KEC-2 hold (strictly older than max_age_seconds; order by last_used then key)",
@@ -1561,7 +1698,9 @@
         "tests/test_cache_eviction_expiry.py"
       ],
       "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
-      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met."
+      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met.",
+      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
     },
     {
       "id": "KEC-14",
@@ -1580,7 +1719,7 @@
       ],
       "level": 2,
       "complexity": "low",
-      "status": "proposed",
+      "status": "retired",
       "supersedes": "KEC-2 (with KEC-13 and KEC-15)",
       "acceptance_criteria": [
         "walks by last_used then key and stops as soon as the remaining total is <= max_bytes",
@@ -1590,7 +1729,9 @@
         "tests/test_cache_eviction_lru.py"
       ],
       "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
-      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met."
+      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met.",
+      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
     },
     {
       "id": "KEC-15",
@@ -1610,7 +1751,7 @@
       ],
       "level": 2,
       "complexity": "low",
-      "status": "proposed",
+      "status": "retired",
       "supersedes": "KEC-2 (with KEC-13 and KEC-14)",
       "acceptance_criteria": [
         "KEC-2's six original examples hold unchanged",
@@ -1620,7 +1761,9 @@
         "tests/test_cache_eviction.py (KEC-2's examples)"
       ],
       "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
-      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met."
+      "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met.",
+      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
     }
   ],
   "ownership": "Every approved item names its assignee (iron-god, or another developer or agent). Iron God dispatches only items assigned to iron-god; an approved item assigned to anyone else reserves the files it edits. Read the table from the installed release folder with: PYTHONPATH=src python -m project_orchestrator.iron_god_backlog [--repository R] [--path P]."
