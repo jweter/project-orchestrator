@@ -253,8 +253,8 @@
       },
       "approval": "owner approved 2026-10-27 as the first authorized roadmap development slice",
       "assignee": "iron-god",
-      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
-      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused.",
+      "superseded_by_code": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)"
     },
     {
       "id": "KEC-3",
@@ -1301,7 +1301,13 @@
       "assignee": "iron-god",
       "evidence": "KEC-8's reply (packet PRODUCT-KNOWLEDGE-ENGINE-CORE-20261029T214911Z) passed the approved test 3/3 when applied to deb3d83 offline; it failed only ruff E501 (one 140-character line). This re-issue names the exact line split. Verified 2026-10-29 on deb3d83: with exactly these lines the approved test and the existing section tests pass (22 passed); ruff check, ruff format and strict mypy are clean.",
       "superseded_by": "KEC-19",
-      "retired_reason": "Failed only on the old worker environment; re-issued as KEC-19. Record preserved."
+      "retirement": {
+        "reason": "ENVIRONMENT: the model's change was correct (approved tests, ruff and mypy passed), but the canonical preflight failed three existing knowledge-engine-core tests (test_evidence_map_grounding_verify / test_statistical_readiness / test_general_question_core_cli *_refuses_*) that match a Rich-wrapped CLI error whose line breaks depend on the temp-path length; the worker's TEMP is 133 characters. Fixed in knowledge-engine-core #562 (merged fc531dd). One attempt used, not retried; re-issued unchanged as KEC-19 on the new baseline.",
+        "packet_id": "PRODUCT-KNOWLEDGE-ENGINE-CORE-20261101T011848Z",
+        "outcome": "FAIL: canonical preflight failed",
+        "evidence": "flow-state/iron-god-products/handbacks/PRODUCT-KNOWLEDGE-ENGINE-CORE-20261101T011848Z.json",
+        "retired_at": "2026-10-31"
+      }
     },
     {
       "id": "KEC-19",
@@ -1536,7 +1542,13 @@
       "assignee": "iron-god",
       "supersedes": "KEC-10",
       "superseded_by": "KEC-20",
-      "retired_reason": "Failed only on the old worker environment; re-issued as KEC-20. Record preserved."
+      "retirement": {
+        "reason": "ENVIRONMENT: the model's change was correct (approved tests, ruff and mypy passed), but the canonical preflight failed three existing knowledge-engine-core tests (test_evidence_map_grounding_verify / test_statistical_readiness / test_general_question_core_cli *_refuses_*) that match a Rich-wrapped CLI error whose line breaks depend on the temp-path length; the worker's TEMP is 133 characters. Fixed in knowledge-engine-core #562 (merged fc531dd). One attempt used, not retried; re-issued unchanged as KEC-20 on the new baseline.",
+        "packet_id": "PRODUCT-KNOWLEDGE-ENGINE-CORE-20261101T014515Z",
+        "outcome": "FAIL: canonical preflight failed",
+        "evidence": "flow-state/iron-god-products/handbacks/PRODUCT-KNOWLEDGE-ENGINE-CORE-20261101T014515Z.json",
+        "retired_at": "2026-10-31"
+      }
     },
     {
       "id": "KEC-20",
@@ -1700,8 +1712,8 @@
       ],
       "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
       "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met.",
-      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
-      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused.",
+      "superseded_by_code": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)"
     },
     {
       "id": "KEC-14",
@@ -1731,8 +1743,8 @@
       ],
       "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
       "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met.",
-      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
-      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused.",
+      "superseded_by_code": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)"
     },
     {
       "id": "KEC-15",
@@ -1763,8 +1775,8 @@
       ],
       "verification": "To be verified before approval: the test fails on main and passes with the reference split (passes all six KEC-2 examples, checked 2026-10-29).",
       "definition_of_done": "Merged with CI green; with its two siblings, KEC-2's requirement is met.",
-      "superseded_by": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)",
-      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused."
+      "retired_reason": "Superseded 2026-10-31 by knowledge-engine-core #561 (c6126fe): BoundedTextCache.prune() in knowledge_engine/online_retrieval.py already deletes entries strictly older than max_age_seconds, then evicts oldest-first by (mtime, name) until the byte budget holds, and protects held texts. Covered by test_the_cache_evicts_oldest_first_to_stay_within_its_budget, test_expired_texts_are_deleted_and_not_served and test_expired_cache_files_are_removed_at_the_start_of_a_run. A separate cache_eviction.py would be redundant and unused.",
+      "superseded_by_code": "knowledge_engine.online_retrieval.BoundedTextCache.prune (PR #561)"
     }
   ],
   "ownership": "Every approved item names its assignee (iron-god, or another developer or agent). Iron God dispatches only items assigned to iron-god; an approved item assigned to anyone else reserves the files it edits. Read the table from the installed release folder with: PYTHONPATH=src python -m project_orchestrator.iron_god_backlog [--repository R] [--path P]."
