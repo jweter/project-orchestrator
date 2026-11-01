@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import http.client
 import json
 import keyword
 import os
@@ -135,6 +136,38 @@ def ollama_json(prompt: str, *, model: str | None = None, timeout: int = 1800) -
     with urllib.request.urlopen(request, timeout=timeout) as response:
         reply = json.load(response)
     return json.loads(reply.get("response") or "{}")
+
+
+def release_builder_model(timeout: float = 15.0) -> bool:
+    """Unload the resident builder model before a heavy gate; True when Ollama confirmed it.
+
+    The model stays loaded for minutes after its last reply, and on the 16 GB host it overlapped mypy
+    and the full test run (2026-10-31: 404 MB free). The shared model lock is taken without waiting, so
+    a generation in progress is never interrupted; any failure only leaves the model resident, as before.
+    """
+    import shutil
+
+    from scripts.autonomous_slice_builder import MODEL, _ollama_lock_dir
+
+    lock = _ollama_lock_dir()
+    try:
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.mkdir()
+    except OSError:
+        return False  # another process holds the model slot
+    try:
+        (lock / "owner").write_text(f"{os.getpid()}\n{time.time()}\n", encoding="utf-8")
+        base = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
+        body = {"model": MODEL.split("/", 1)[-1], "keep_alive": 0}
+        request = urllib.request.Request(base + "/api/generate", data=json.dumps(body).encode("utf-8"),
+                                         headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            response.read()
+        return True
+    except (OSError, ValueError, http.client.HTTPException):
+        return False
+    finally:
+        shutil.rmtree(lock, ignore_errors=True)
 
 
 def import_path(module: str) -> str:
@@ -465,6 +498,7 @@ def type_check(worktree: Path, files: list[str], check: Callable[[], None]) -> d
     if not mypy_configured(worktree):
         return None
     environment = repository_environment(worktree, check)
+    release_builder_model()  # mypy needs about 1.3 GB beside the 5 GB model
     temp = worktree.parent / f"{worktree.name}.mypy.tmp"
     env = {**os.environ, **environment["overrides"], "MYPY_CACHE_DIR": str(temp),
            "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)])}
@@ -680,6 +714,7 @@ def production_preflight(worktree: Path, check: Callable[[], None], timeout: int
             raise
         return {"command": "prepare repository environment", "returncode": None, "ok": False,
                 "output_tail": str(exc)[:1500], "environment": "FAILED"}
+    release_builder_model()  # the full test run and mypy must not overlap the resident model
     env = private_temp_env({**os.environ, **environment["overrides"], **PREFLIGHT_CONSOLE,
                             "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree),
                                                            os.environ.get("PYTHONPATH", "")])}, temp)
