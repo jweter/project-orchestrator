@@ -44,7 +44,8 @@ Verified: 352+ tests across the lane, refill, routing, drafter, author, capable-
 gate-watch and ref suites; the **whole-loop rehearsal** (`test_the_whole_roadmap_loop_runs_across_repositories...`) drives
 the real lane across three repositories with every turn a restart: plan, admit, build, verify, accept, PR, CI, merge,
 continuation to the dependent slice, durable progress, "what next?" at the end, blockers elsewhere. Every PR in the series
-passed CI plus the canonical Preflight at its exact head on GitHub's Windows runner. The unload mechanism was verified on
+passed CI and a canonical preflight at its exact head (a local native run for #595, the GitHub Windows-runner
+`Preflight` workflow for the rest). The unload mechanism was verified on
 the real Ollama (control `MODEL_RESIDENT` 13/13, after the worker's release `VERIFIED_UNLOADED` 14/14, 1.5B stand-in).
 
 **Not verified (only the first real cycle can show these):**
@@ -94,10 +95,10 @@ Same sequence used for `36fb3aa`; each step is the owner's or an unchanged scrip
 ## 7. Rollback
 
 Re-promote the previous release with the same `Promote-DisabledLocalRelease.ps1` using the backup written at install
-(`flow-state\\pinned-release-promotion-<guid>` holds the previous pin, the actor pin, the task XMLs and the desktop
+(`flow-state\pinned-release-promotion-<guid>` holds the previous pin, the actor pin, the task XMLs and the desktop
 controls). The `36fb3aa` release, its actor checkout and its receipt remain on disk. New runtime state is additive
 (`roadmap-refill.json`, `draft-jobs/`, `draft-results/`, `roadmap-requests/`, `roadmap-drafts/`, `capable-dispatches/`,
-`workspaces/progress/`) and is ignored by the old release; none of it needs migration or deletion. The policy flags live in
+`canon-workspaces/products/progress/`) and is ignored by the old release; none of it needs migration or deletion. The policy flags live in
 the hash-bound release, so turning a feature off means a new release or rolling back, not editing a running install.
 
 ## 8. Decisions that are the owner's
