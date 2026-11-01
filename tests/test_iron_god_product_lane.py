@@ -1552,3 +1552,89 @@ def test_current_head_review_added_between_merge_readiness_and_merge_queues_repa
     assert item["state"] == "REPAIR_PENDING"
     assert item["readiness"]["reason"] == "REVIEW_FINDINGS_ON_CURRENT_HEAD"
     assert item["findings"][0]["thread_id"] == "T-LATE"
+
+
+def publish_graph(env, repo):
+    """Commit a declared capability graph to the repository's 'GitHub' main, as an owner roadmap PR would."""
+    work = env.tmp / "graph-work" / repo.split("/")[1]
+    git(env.tmp, "clone", "-q", str(env.remotes[repo]), str(work))
+    git(work, "config", "user.email", "o@example.com")
+    git(work, "config", "user.name", "Owner")
+    source = "engineering/capability-graph.json"
+    payload = {"schema_version": 1, "repository": repo, "roadmap": ["cap-extra"], "capabilities": [{
+        "id": "cap-extra", "capability": "Extra helpers", "state": "PLANNED", "depends_on": [],
+        "completion_evidence": ["docs/ROADMAP.md extras"],
+        "slices": [{"id": "extra-helper", "state": "PLANNED", "objective": "Add add_two for the export workflow.",
+                    "acceptance": ["examples hold"], "allowed_paths": ["pkg/**", "tests/**"]}]}]}
+    (work / source).write_text(json.dumps(payload), encoding="utf-8")
+    (work / "engineering" / "control-plane.json").write_text(
+        json.dumps({"schema_version": 1, "capability_graph": source, "authoritative_documents": [source]}), encoding="utf-8")
+    git(work, "add", ".")
+    git(work, "commit", "-q", "-m", "owner roadmap graph")
+    git(work, "push", "-q", "origin", "main")
+
+
+def test_an_empty_backlog_is_refilled_from_the_roadmap_and_the_item_merges_through_the_normal_gates(env):
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    backlog_env(env, [])
+    repo = REPOS[1]
+    publish_graph(env, repo)
+    runner, github = Runner(plan=never_plans), FakeGitHub(("pass",))
+    lane = pl.ProductLane(env.state)
+
+    idle = step(env, runner, github)  # empty approved backlog: planning runs, a request is written, nothing is invented
+    assert idle["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" and runner.spawned == 0
+    request = json.loads((lane.root / refill_mod.REQUESTS / (refill_mod.item_id(repo, "cap-extra", "extra-helper") + ".json")).read_text("utf-8"))
+    assert request["roadmap_ref"] == "engineering/capability-graph.json#cap-extra/extra-helper"
+    assert request["exact_head"] == git(env.tmp / "graph-work" / "VoiceStudio", "rev-parse", "HEAD")
+
+    draft = backlog_item(request["id"], repo)  # a qualified planner answers the request
+    draft.update(roadmap_ref=request["roadmap_ref"], addresses="cap-extra: extra helpers", status="proposed")
+    (lane.root / refill_mod.DRAFTS).mkdir(parents=True, exist_ok=True)
+    (lane.root / refill_mod.DRAFTS / f"{request['id']}.json").write_text(json.dumps(draft), encoding="utf-8")
+
+    dispatched = step(env, runner, github)
+    assert dispatched["status"] == "DISPATCHED" and dispatched["backlog_item"] == request["id"], dispatched
+    assert step(env, runner, github)["status"] == "ACCEPTED_LOCAL"
+    step(env, runner, github, allow=False)  # push + PR
+    assert github.opened[0]["title"].startswith(f"Iron God [{request['id']}]")
+    assert "Roadmap: engineering/capability-graph.json#cap-extra/extra-helper" in github.opened[0]["body"]
+    step(env, runner, github, allow=False)  # CI green -> merge
+    assert backlog_mod.load_state(lane.root)["items"][request["id"]]["outcome"] == "MERGED"
+    ledger = refill_mod.load_store(lane.root)["ledger"]
+    assert [r["kind"] for r in ledger if r["repository"] == repo] == ["GENERATED", "ADMITTED"]
+    undeclared = {r["repository"] for r in ledger if r["kind"] == "DIRECTION_REQUIRED"}
+    assert undeclared == {REPOS[0], REPOS[2]}  # no declared roadmap authority: a focused question, never a guess
+    assert "ROADMAP_REFILL" in json.dumps(wm.load(env.state))  # the next planner reads it from shared context
+
+
+def test_roadmap_refill_failures_never_stop_the_rotation_or_invent_work(env):
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    publish_graph(env, REPOS[2])
+
+    real_sync = env.sync
+
+    def flaky_sync(lane, repo):
+        if repo == REPOS[0]:
+            raise RuntimeError("PRODUCT_FETCH_FAILED")
+        return real_sync(lane, repo)
+
+    env.sync = flaky_sync
+    runner = Runner(plan=never_plans)
+    result = step(env, runner, FakeGitHub(("pass",)))
+
+    assert result["status"] == "DISPATCHED" and result["backlog_item"] == "RS-1"
+    assert "ROADMAP_REFILL_FAILED" in json.dumps(wm.load(env.state))
+
+
+def test_a_repository_with_an_open_publication_is_not_replanned(env):
+    backlog_env(env, [])
+    publish_graph(env, REPOS[1])
+    lane = pl.ProductLane(env.state)
+    busy = {REPOS[1]}
+    approved = pl.refill_from_roadmaps(lane, REPOS, busy, [], {}, 2, env.sync, lambda repo: [])
+
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+    requests = lane.root / refill_mod.REQUESTS
+    assert approved == [] and not list(requests.glob("*.json") if requests.is_dir() else [])  # in-flight repo: untouched
