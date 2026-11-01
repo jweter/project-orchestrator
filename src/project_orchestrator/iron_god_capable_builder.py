@@ -88,6 +88,9 @@ def decide(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_lim
     route = request.get("route") or {}
     if route.get("builder") != "CAPABLE":
         return {"dispatch": False, "reason": "NOT_ROUTED_TO_CAPABLE_BUILDER"}
+    if request.get("reserved_conflicts"):
+        # An open pull request already owns files this slice may touch; wait for it (this is not an attempt).
+        return {"dispatch": False, "reason": "BLOCKED_CONFLICT", "files": list(request["reserved_conflicts"])}
     if not enabled:
         return {"dispatch": False, "reason": "CAPABLE_BUILDER_DISABLED"}
     token_env = ROUTINES[ROUTINE][1]
@@ -97,6 +100,8 @@ def decide(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_lim
     rows = _rows(state_dir)
     if attempts_for(state_dir, request["id"]) >= MAX_ATTEMPTS:
         return {"dispatch": False, "reason": "ATTEMPTS_EXHAUSTED"}
+    if request["id"] in open_request_ids(lane_root, now=now) or request["id"] in merged_request_ids(lane_root):
+        return {"dispatch": False, "reason": "REQUEST_ALREADY_DELIVERED_OR_PENDING"}
     if any(r.get("repository") == request["repository"] and r.get("status") == "DISPATCHED" for r in rows):
         return {"dispatch": False, "reason": "REPOSITORY_HAS_OPEN_DISPATCH"}
     if sum(1 for r in rows if now - float(r.get("started_at", 0)) < 24 * 3600) >= daily_limit:
@@ -121,11 +126,36 @@ def dispatch_request(request: dict[str, Any], *, lane_root: Path, enabled: bool,
             "session_id": result["session_id"], "task_key": task["task_key"]}
 
 
+def request_of(row: dict[str, Any]) -> str:
+    return str(row.get("task_key", "")).split("#a")[0]
+
+
 def open_request_ids(lane_root: Path, *, now: float | None = None) -> set[str]:
-    """Request ids with a live capable dispatch; the refill treats them as pending, never re-requests them."""
+    """Request ids still being delivered: a live session, or an observed pull request that is not yet merged or closed.
+
+    The refill treats them as pending and never re-requests them, so an open pull request keeps exactly one owner.
+    """
     now = time.time() if now is None else now
-    return {str(r.get("task_key", "")).split("#a")[0] for r in _rows(dispatch_state(lane_root))
-            if r.get("status") == "DISPATCHED" and now - float(r.get("started_at", 0)) < STALE_SECONDS}
+    pending = set()
+    for row in _rows(dispatch_state(lane_root)):
+        live = row.get("status") == "DISPATCHED" and now - float(row.get("started_at", 0)) < STALE_SECONDS
+        delivering = row.get("outcome_kind") == "PRODUCT_PR" and row.get("pr_state") in (None, "OPEN")
+        if live or delivering:
+            pending.add(request_of(row))
+    return pending
+
+
+def merged_request_ids(lane_root: Path) -> set[str]:
+    """Requests whose capable-builder pull request was merged: the slice is complete, not merely delivered."""
+    return {request_of(row) for row in _rows(dispatch_state(lane_root)) if row.get("pr_state") == "MERGED"}
+
+
+def pull_request_state(url: str) -> str | None:
+    """OPEN, MERGED or CLOSED for a pull request URL, or None when GitHub cannot be asked."""
+    out = subprocess.run(["gh", "pr", "view", url, "--json", "state", "--jq", ".state"], capture_output=True,
+                         text=True, check=False, timeout=60)
+    value = out.stdout.strip()
+    return value if out.returncode == 0 and value in {"OPEN", "MERGED", "CLOSED"} else None
 
 
 def find_pull_request(repository: str, request_id: str) -> str | None:
@@ -142,12 +172,25 @@ def find_pull_request(repository: str, request_id: str) -> str | None:
 
 
 def reconcile(lane_root: Path, *, now: float | None = None,
-              lookup: Callable[[str, str], str | None] = find_pull_request) -> list[dict[str, Any]]:
-    """Fold observed outcomes into the existing measurement ledger; returns what changed."""
+              lookup: Callable[[str, str], str | None] = find_pull_request,
+              state_of: Callable[[str], str | None] = pull_request_state) -> list[dict[str, Any]]:
+    """Fold observed outcomes into the existing measurement ledger; returns what changed.
+
+    Also follows each observed pull request to its end (OPEN -> MERGED or CLOSED) so delivery stays pending while it
+    is open and a merge counts as completion.
+    """
     now = time.time() if now is None else now
     state_dir = dispatch_state(lane_root)
     changed = []
     for row in _rows(state_dir):
+        if row.get("outcome_kind") == "PRODUCT_PR" and row.get("pr_state") not in ("MERGED", "CLOSED") and row.get("pr_url"):
+            observed = state_of(str(row["pr_url"]))
+            if observed and observed != row.get("pr_state"):
+                row["pr_state"] = observed
+                (state_dir / f"{row['dispatch_id']}.json").write_text(json.dumps(row, sort_keys=True, indent=2),
+                                                                      encoding="utf-8")
+                changed.append({"dispatch_id": row["dispatch_id"], "id": request_of(row), "pr_state": observed})
+            continue
         if row.get("status") != "DISPATCHED":
             continue
         request_id = str(row.get("task_key", "")).split("#a")[0]

@@ -835,3 +835,25 @@ def test_the_first_ledger_write_creates_a_missing_lane_directory(tmp_path: Path)
     refill.log_event(fresh, "GENERATED", PORTFOLIO[0], "RM-z", {})
 
     assert refill.load_store(fresh)["ledger"][0]["id"] == "RM-z"
+
+
+# --- review P1s on #605 --------------------------------------------------------------------------------------
+
+
+def test_capable_requests_carry_the_open_pull_request_reservations_that_overlap_their_scope(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, level_graph(repository, 4))
+
+    report = run_refill(tmp_path, repository, clone, head, reserved={"pkg/core.py", "docs/elsewhere.md"})
+
+    (request,) = report["capable_requests"]
+    assert request["reserved_conflicts"] == ["pkg/core.py"]  # docs/elsewhere.md is outside the slice's allowed paths
+
+
+def test_a_merged_capable_builder_pull_request_completes_the_slice() -> None:
+    first = request_for()
+
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=[], state={},
+                            external_done=frozenset({first["id"]}))
+
+    assert derived["requests"] == [] and derived["skipped"][0]["reason"] == "DONE"
