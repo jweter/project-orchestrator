@@ -95,7 +95,8 @@ def problems(draft, request, *, items=(), reserved=frozenset(), changed=no_chang
 def test_a_ready_capability_becomes_a_traceable_request_with_baseline_and_scope() -> None:
     request = request_for()
 
-    assert request["id"] == "RM-knowledge-engine-core-s1" and request["exact_head"] == HEAD
+    assert request["id"] == refill.item_id(PORTFOLIO[0], "cap-cache", "s1") and request["exact_head"] == HEAD
+    assert request["id"].startswith("RM-knowledge-engine-core-cap-cache-s1-")
     assert request["roadmap_ref"] == f"{SOURCE}#cap-cache/s1" and request["capability"] == "cap-cache"
     assert request["allowed_paths"] == ["pkg/**", "tests/**"] and request["forbidden_paths"] == ["pkg/secret/**"]
     assert request["slice_acceptance"] == ["pruning keeps the newest entries"]
@@ -275,7 +276,7 @@ def test_empty_backlog_refill_end_to_end_yields_a_dispatchable_item_without_fabr
     clone, head = product(tmp_path, repository, graph(repository))
 
     first = run_refill(tmp_path, repository, clone, head)
-    request = json.loads((tmp_path / "lane" / refill.REQUESTS / "RM-knowledge-engine-core-s1.json").read_text("utf-8"))
+    request = json.loads((tmp_path / "lane" / refill.REQUESTS / (refill.item_id(PORTFOLIO[0], "cap-cache", "s1") + ".json")).read_text("utf-8"))
     assert first["requests"] == [request["id"]] and first["admitted"] == [] and request["exact_head"] == head
     assert refill.admitted_items(tmp_path / "lane") == []  # a request alone grants nothing
 
@@ -458,7 +459,7 @@ def test_authority_is_rechecked_on_an_interval_or_when_a_draft_waits(tmp_path: P
     assert refill.due(tmp_path, PORTFOLIO[0], now=now + timedelta(seconds=refill.CHECK_INTERVAL_SECONDS + 1))
     drafts = tmp_path / refill.DRAFTS
     drafts.mkdir()
-    (drafts / "RM-knowledge-engine-core-s1.json").write_text("{}", encoding="utf-8")
+    (drafts / (refill.id_prefix(PORTFOLIO[0]) + "anything.json")).write_text("{}", encoding="utf-8")
     assert refill.due(tmp_path, PORTFOLIO[0], now=now + timedelta(minutes=5))
     assert refill.due(tmp_path, PORTFOLIO[1], now=now)  # never checked
     refill._mutate(tmp_path, lambda store: store["checked"].update({PORTFOLIO[1]: {"at": now.isoformat(), "head": HEAD}}))
@@ -498,3 +499,106 @@ def test_drafts_are_not_mutated_by_admission() -> None:
     problems(draft, request)
 
     assert draft == before
+
+
+# --- review findings on #595: revision duplicates and capability identity ------------------------------------
+
+
+FAILED = {"attempts": 1, "outcome": "FAIL: canonical preflight failed"}
+
+
+def failed_chain(count: int = 1) -> tuple[list[dict], dict]:
+    """The first request's item plus (count - 1) admitted revisions, every one failed."""
+    first = request_for()
+    items, state = [seeded_item(first)], {"items": {}}
+    state["items"][items[0]["id"]] = dict(FAILED)
+    for number in range(1, count):
+        derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
+        (request,) = derived["requests"]
+        assert request["id"] == f"{first['id']}-r{number}"
+        revision = seeded_item(request)
+        items.append(revision)
+        state["items"][revision["id"]] = dict(FAILED)
+    return items, state
+
+
+def test_slice_ids_include_the_capability_and_survive_sanitization_and_truncation() -> None:
+    repository = PORTFOLIO[0]
+    ids = {
+        refill.item_id(repository, "cap-a", "s1"), refill.item_id(repository, "cap-b", "s1"),
+        refill.item_id(repository, "cap a", "s1"), refill.item_id(repository, "cap-a", "s 1"),
+        refill.item_id(repository, "x" * 90, "s1"), refill.item_id(repository, "x" * 90 + "y", "s1"),
+        refill.item_id(PORTFOLIO[1], "cap-a", "s1")}
+
+    assert len(ids) == 7  # same slice id under another capability, odd characters, long names: all distinct
+    assert refill.item_id(repository, "cap-a", "s1") == refill.item_id(repository, "cap-a", "s1")  # and stable
+    assert all(len(i) <= 90 and i.startswith(refill.id_prefix(repository)) or i.startswith(refill.id_prefix(PORTFOLIO[1]))
+               for i in ids)
+
+
+def test_a_second_capability_reusing_a_slice_id_does_not_inherit_the_first_ones_completion() -> None:
+    first = request_for()  # cap-cache / s1
+    merged = seeded_item(first)
+    payload = graph(PORTFOLIO[0], state="VERIFIED_COMPLETE")
+    payload["capabilities"][0]["verification"] = ["pytest"]
+    payload["capabilities"].append({
+        "id": "cap-next", "capability": "Next outcome", "state": "PLANNED", "depends_on": ["cap-cache"],
+        "completion_evidence": ["docs/ROADMAP.md next"],
+        "slices": [{"id": "s1", "state": "PLANNED", "objective": "Different work under the same local slice id.",
+                    "acceptance": ["it works"], "allowed_paths": ["pkg/**"]}]})
+    payload["roadmap"] = ["cap-next"]
+
+    derived = refill.derive(PORTFOLIO[0], HEAD, payload, SOURCE, items=[merged],
+                            state={"items": {merged["id"]: {"attempts": 1, "outcome": "MERGED"}}})
+
+    (request,) = derived["requests"]
+    assert request["capability"] == "cap-next" and request["id"] != merged["id"]
+    assert derived["skipped"] == []  # not silently treated as DONE
+
+
+def test_a_corrected_draft_for_failed_work_is_admitted_even_with_the_same_objective_and_target() -> None:
+    items, state = failed_chain()
+    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
+    (request,) = derived["requests"]
+    same = good_draft(request)  # identical objective and direct target as the failed predecessor
+    reworded = good_draft(request, objective="A corrected wording aimed at the same named unit.")
+
+    assert request["prior_failures"][0]["id"] == items[0]["id"]
+    assert problems(same, request, items=items) == []
+    assert problems(reworded, request, items=items) == []
+
+
+def test_every_failed_predecessor_is_exempt_but_unrelated_and_active_work_still_counts() -> None:
+    items, state = failed_chain(count=3)
+    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
+    (request,) = derived["requests"]
+    assert request["id"].endswith("-r3") and len(request["prior_failures"]) == 3
+    assert problems(good_draft(request), request, items=items) == []
+
+    unrelated = {**seeded_item(request_for()), "id": "OWNER-ITEM", "status": "approved"}
+    assert "DUPLICATE_OBJECTIVE" in problems(good_draft(request), request, items=[*items, unrelated])
+    other_target = {**unrelated, "objective": "Something else entirely."}
+    assert "DUPLICATE_TARGET" in problems(good_draft(request), request, items=[*items, other_target])
+
+
+def test_the_re_authoring_path_end_to_end_admits_the_revision_once(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, graph(repository))
+    failed_request = refill.derive(repository, head, graph(repository), SOURCE, items=[], state={})["requests"][0]
+    failed = refill.stamp(good_draft(failed_request, base=head), failed_request, SOURCE)
+    state = {"items": {failed["id"]: dict(FAILED)}}
+    first = run_refill(tmp_path, repository, clone, head, items=[failed], state=state)
+    (request_id,) = first["requests"]
+    assert request_id == failed["id"] + "-r1"
+    request = json.loads((tmp_path / "lane" / refill.REQUESTS / f"{request_id}.json").read_text("utf-8"))
+    drafts = tmp_path / "lane" / refill.DRAFTS
+    drafts.mkdir()
+    (drafts / f"{request_id}.json").write_text(json.dumps(good_draft(request, base=head)), encoding="utf-8")
+
+    second = run_refill(tmp_path, repository, clone, head, items=[failed], state=state)
+
+    assert second["admitted"] == [request_id] and second["rejected"] == []
+    (admitted,) = refill.admitted_items(tmp_path / "lane", existing=[failed])
+    assert admitted["id"] == request_id
+    again = run_refill(tmp_path, repository, clone, head, items=[failed, admitted], state=state)
+    assert again["requests"] == []  # the revision is now pending; nothing is re-requested

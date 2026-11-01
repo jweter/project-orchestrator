@@ -1585,7 +1585,7 @@ def test_an_empty_backlog_is_refilled_from_the_roadmap_and_the_item_merges_throu
 
     idle = step(env, runner, github)  # empty approved backlog: planning runs, a request is written, nothing is invented
     assert idle["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" and runner.spawned == 0
-    request = json.loads((lane.root / refill_mod.REQUESTS / "RM-VoiceStudio-extra-helper.json").read_text("utf-8"))
+    request = json.loads((lane.root / refill_mod.REQUESTS / (refill_mod.item_id(repo, "cap-extra", "extra-helper") + ".json")).read_text("utf-8"))
     assert request["roadmap_ref"] == "engineering/capability-graph.json#cap-extra/extra-helper"
     assert request["exact_head"] == git(env.tmp / "graph-work" / "VoiceStudio", "rev-parse", "HEAD")
 

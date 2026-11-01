@@ -109,9 +109,16 @@ def admitted_items(lane_root: Path, existing: list[dict[str, Any]] | None = None
     return kept
 
 
-def item_id(repository: str, slice_id: str) -> str:
-    short = repository.split("/", 1)[-1]
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", f"RM-{short}-{slice_id}")[:80]
+def id_prefix(repository: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", f"RM-{repository.split('/', 1)[-1]}-")
+
+
+def item_id(repository: str, capability_id: str, slice_id: str) -> str:
+    """Stable identity of a capability's slice; slice ids are only unique within their capability, and the
+    digest keeps sanitization or truncation from merging two different slices into one completion state."""
+    readable = re.sub(r"[^A-Za-z0-9._-]+", "-", f"{id_prefix(repository)}{capability_id}-{slice_id}")[:64]
+    digest = hashlib.sha256(json.dumps([repository, capability_id, slice_id]).encode()).hexdigest()[:8]
+    return f"{readable}-{digest}"
 
 
 def _glob_regex(pattern: str) -> re.Pattern[str]:
@@ -207,7 +214,7 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
         return result
     candidates = []
     for chosen in derived["slices"]:
-        base_id = item_id(repository, str(chosen["slice_id"]))
+        base_id = item_id(repository, capability_id, str(chosen["slice_id"]))
         status, expected = _slice_status(base_id, items, state)
         if status in {"PENDING", "DONE"}:
             result["skipped"].append({"capability": capability_id, "slice": chosen["slice_id"], "reason": status, "id": expected})
@@ -280,12 +287,15 @@ def draft_problems(draft: Any, request: dict[str, Any], *, items: list[dict[str,
                     problems.append("APPROVED_BASE_STALE")
             except Exception:  # an unreadable history is not evidence that the base is current
                 problems.append("APPROVED_BASE_UNVERIFIABLE")
+    superseded = {str(row.get("id")) for row in request.get("prior_failures", []) if isinstance(row, dict)}
     objective = " ".join(str(draft.get("objective", "")).split()).lower()
     target = (candidate["direct"].get("module_path"), sorted(candidate["direct"].get("targets") or [])) \
         if isinstance(candidate.get("direct"), dict) else None
     for other in items:
         if other.get("repository") != request["repository"] or other.get("status") == "retired":
             continue
+        if other.get("id") in superseded:
+            continue  # a failed predecessor of this very revision: re-authoring it is the point, not a duplicate
         other_direct = other.get("direct") if isinstance(other.get("direct"), dict) else None
         if " ".join(str(other.get("objective", "")).split()).lower() == objective:
             problems.append("DUPLICATE_OBJECTIVE")
@@ -416,7 +426,7 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
 
 def due(lane_root: Path, repository: str, *, now: datetime | None = None) -> bool:
     store = load_store(lane_root)
-    prefix = item_id(repository, "")
+    prefix = id_prefix(repository)
     directory = Path(lane_root) / DRAFTS
     for draft in directory.glob("*.json") if directory.is_dir() else []:
         if draft.stem.startswith(prefix) and store["processed"].get(draft.stem) != hashlib.sha256(draft.read_bytes()).hexdigest():
