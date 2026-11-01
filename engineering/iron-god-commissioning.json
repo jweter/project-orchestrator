@@ -258,6 +258,8 @@
     "planning": "backlog",
     "planning_decision": "2026-10-27: owner directed roadmap-driven development; only approved items from engineering/state/iron-god-backlog.json are built, never self-invented slices",
     "roadmap_refill": true,
+    "roadmap_progress": true,
+    "roadmap_progress_decision": "2026-11-01: after a slice merges, one mechanical pull request per repository records it as VERIFIED_COMPLETE in the declared capability graph (state and verification only, validated before publishing); the existing green-PR merger merges it once checks pass",
     "capable_builder": false,
     "capable_builder_daily_limit": 2,
     "capable_builder_decision": "2026-11-01: OFF by default. When the owner enables it and the portfolio_builder routine token is configured, roadmap requests the local builder cannot take are handed to the existing claude_dispatch routine within a daily budget; the routine opens an ordinary pull request that meets the repository gates",

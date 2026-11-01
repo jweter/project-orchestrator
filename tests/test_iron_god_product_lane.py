@@ -1710,3 +1710,31 @@ def test_a_routine_api_error_is_a_recorded_blocker_not_a_crash(env, monkeypatch)
 def test_the_shipped_policy_keeps_the_capable_builder_off():
     assert POLICY["portfolio_rotation"]["capable_builder"] is False
     assert POLICY["portfolio_rotation"]["capable_builder_daily_limit"] == 2
+
+
+def test_roadmap_progress_outcomes_are_logged_and_errors_never_stop_the_rotation(env, monkeypatch):
+    from project_orchestrator import iron_god_roadmap_progress as progress_mod
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+    outcomes = iter([{"status": "OPENED", "branch": "iron-god/roadmap-progress/x-1", "pr": "https://github.com/o/r/pull/5"},
+                     {"status": "NOTHING_TO_RECORD"},
+                     {"status": "BLOCKED", "reason": "GRAPH_FORMAT_NOT_CANONICAL"}])
+
+    def fake(*_a, **_k):
+        value = next(outcomes, None)
+        if value is None:
+            raise OSError("git unavailable")
+        return value
+
+    monkeypatch.setattr(progress_mod, "record_progress", fake)
+    for _ in range(4):
+        pl.record_roadmap_progress(lane, REPOS[1], env.tmp, "a" * 40, [], {})
+
+    kinds = [e["kind"] for e in refill_mod.load_store(lane.root)["ledger"]]
+    assert kinds == ["PROGRESS_OPENED", "PROGRESS_BLOCKED", "PROGRESS_ERROR"]  # NOTHING_TO_RECORD is silent
+    assert "ROADMAP_PROGRESS_OPENED" in json.dumps(wm.load(env.state))
+
+
+def test_the_shipped_policy_records_roadmap_progress():
+    assert POLICY["portfolio_rotation"]["roadmap_progress"] is True
