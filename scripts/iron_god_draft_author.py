@@ -49,6 +49,18 @@ def guide_text(request: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def planning_roots(allowed_paths: list[str]) -> list[str]:
+    """Directories the planned module may live in: the prefix before a glob, or the directory of a single named file."""
+    roots = set()
+    for path in allowed_paths:
+        if path.startswith("tests/"):
+            continue
+        root = path.split("*")[0].rstrip("/") + "/" if "*" in path else (path.rsplit("/", 1)[0] + "/" if "/" in path else "")
+        if root:
+            roots.add(root)
+    return sorted(roots)
+
+
 def build_packet(request: dict[str, Any], roots: list[str], base: str, forbidden: list[str], attempted: list[str]) -> dict[str, Any]:
     return {"repository": request["repository"], "base_sha": base, "paths": roots,
             "planning": {"forbidden_paths": forbidden}, "avoid_paths": request.get("reserved_conflicts", []),
@@ -106,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
             return False
 
     request = json.loads(args.request.read_text(encoding="utf-8"))
-    roots = sorted({path.split("*")[0].rstrip("/") + "/" for path in request["allowed_paths"] if not path.startswith("tests/")})
+    roots = planning_roots(request["allowed_paths"])
     run(request, args.clone, args.base, args.result, planner=worker.production_planner, validator=worker.validate_plan,
         authority=authority, roots=roots, forbidden=[*ALWAYS_FORBIDDEN, *request["forbidden_paths"]],
         attempted=request.get("attempted_functions", []))

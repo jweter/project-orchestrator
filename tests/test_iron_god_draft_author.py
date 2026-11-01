@@ -68,3 +68,10 @@ def test_a_rejected_plan_a_model_error_and_a_revoked_authority_are_all_failed_re
     revoked = go(tmp_path, authority=lambda: False)
     assert revoked["ok"] is False and "EXECUTION_AUTHORITY_REVOKED" in revoked["reason"]
     assert (tmp_path / "out" / "r.json").is_file()
+
+
+def test_planning_roots_follow_globs_and_single_named_files() -> None:
+    assert author.planning_roots(["backend/**", "src/pkg/*.py", "tests/**", "docs/x.md"]) == ["backend/", "docs/", "src/pkg/"]
+    assert author.planning_roots(["backend/services/singing_project.py", "tests/backend/services/test_x.py"]) == [
+        "backend/services/"]  # a single named file plans into its directory, not a bogus 'file.py/' root
+    assert author.planning_roots(["tests/**"]) == [] and author.planning_roots(["top_level.py"]) == []
