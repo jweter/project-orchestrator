@@ -72,21 +72,6 @@ def merged_item(world: dict) -> tuple[list[dict], dict, dict]:
     return [item], state, publications
 
 
-class Publisher:
-    def __init__(self) -> None:
-        self.calls: list[tuple] = []
-
-    def __call__(self, repository: str, branch: str, title: str, body: str) -> str:
-        self.calls.append((repository, branch, title, body))
-        return f"https://github.com/{repository}/pull/99"
-
-
-def record(world: dict, items, state, publications, publisher=None, **kw) -> dict:
-    return progress.record_progress(world["lane"], world["state_root"], REPO, world["clone"], world["head"], items=items,
-                                    state=state, publications=publications, workspace=world["tmp"] / "scratch",
-                                    publisher=publisher or Publisher(), **kw)
-
-
 # --- the pure edit ----------------------------------------------------------------------------------------------
 
 
@@ -149,19 +134,74 @@ def test_only_merged_work_is_recorded(world: dict, outcome: str) -> None:
     assert progress.completed_slices(REPO, compiled, items, state, publications, world["lane"]) == []
 
 
-# --- the pull request -------------------------------------------------------------------------------------------
+# --- publishing: native preflight BEFORE a pull request exists, resumable at every step -------------------------
 
 
-def test_a_merged_slice_becomes_one_verified_pull_request_that_touches_only_the_graph(world: dict) -> None:
+class Publisher:
+    def __init__(self, fail_times: int = 0) -> None:
+        self.calls: list[tuple] = []
+        self.fail_times = fail_times
+
+    def __call__(self, repository: str, branch: str, title: str, body: str) -> str:
+        if self.fail_times:
+            self.fail_times -= 1
+            raise RuntimeError("PROGRESS_PR_FAILED: gh unavailable")
+        self.calls.append((repository, branch, title, body))
+        return f"https://github.com/{repository}/pull/99"
+
+
+class Preflight:
+    """Stands in for the separate preflight process; optionally finishes at once by writing the runner's result file."""
+
+    def __init__(self, ok: bool = True, finish: bool = True, head: str | None = None, tail: str = "") -> None:
+        self.ok, self.finish, self.head, self.tail = ok, finish, head, tail
+        self.spawned: list[tuple[Path, Path]] = []
+
+    def __call__(self, worktree: Path, result: Path) -> int:
+        self.spawned.append((worktree, result))
+        if self.finish:
+            head = self.head or run(worktree, "rev-parse", "HEAD")
+            result.parent.mkdir(parents=True, exist_ok=True)
+            result.write_text(json.dumps({"ok": self.ok, "head": head, "output_tail": self.tail}), encoding="utf-8")
+        return 4242
+
+
+def step(world: dict, items, state, publications, *, publisher=None, preflight=None, lookup=None, may_start=True,
+         now=None) -> dict:
+    return progress.record_progress(
+        world["lane"], world["state_root"], REPO, world["clone"], world["head"], items=items, state=state,
+        publications=publications, workspace=world["tmp"] / "scratch", publisher=publisher or Publisher(),
+        spawn=preflight or Preflight(), pr_lookup=lookup or (lambda _r, _b: None), may_start=may_start,
+        now=now or (lambda: 1000.0))
+
+
+def remote_branches(world: dict) -> list[str]:
+    return run(world["origin"], "for-each-ref", "--format=%(refname:short)", "refs/heads").split()
+
+
+def test_nothing_is_pushed_or_published_until_the_repository_preflight_has_passed(world: dict) -> None:
     items, state, publications = merged_item(world)
-    publisher = Publisher()
+    publisher, preflight = Publisher(), Preflight(finish=False)
 
-    result = record(world, items, state, publications, publisher)
+    first = step(world, items, state, publications, publisher=publisher, preflight=preflight)
+    still = step(world, items, state, publications, publisher=publisher, preflight=preflight, now=lambda: 1500.0)
+
+    assert first["status"] == "VERIFYING" and still["status"] == "VERIFYING"
+    assert len(preflight.spawned) == 1  # started once, not once per pass
+    assert publisher.calls == [] and remote_branches(world) == ["main"]  # the review P1: no push before verification
+
+
+def test_a_passing_preflight_for_the_exact_commit_then_publishes_one_pull_request_touching_only_the_graph(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    publisher, preflight = Publisher(), Preflight()
+
+    assert step(world, items, state, publications, publisher=publisher, preflight=preflight)["status"] == "VERIFYING"
+    result = step(world, items, state, publications, publisher=publisher, preflight=preflight)
 
     assert result["status"] == "OPENED" and result["pr"].endswith("/pull/99") and result["slices"] == ["s1"]
     ((repository, branch, title, body),) = publisher.calls
     assert repository == REPO and branch.startswith(progress.BRANCH_PREFIX) and "record 1 merged slice" in title
-    assert "pull/7 merged as" in body and "Only `state` and `verification`" in body
+    assert "pull/7 merged as" in body and "native preflight passed at this exact commit" in body
     pushed = run(world["origin"], "rev-parse", f"refs/heads/{branch}")
     assert run(world["origin"], "diff", "--name-only", world["head"], pushed).split() == [SOURCE]
     edited = json.loads(run(world["origin"], "show", f"{pushed}:{SOURCE}"))
@@ -170,25 +210,120 @@ def test_a_merged_slice_becomes_one_verified_pull_request_that_touches_only_the_
     assert edited["capabilities"][0]["state"] == "PLANNED"  # a capability is never completed here
 
 
-def test_the_same_progress_is_never_proposed_twice(world: dict) -> None:
+@pytest.mark.parametrize("verdict", [
+    {"ok": False, "tail": "ruff failed"},
+    {"ok": True, "head": "f" * 40},  # a pass bound to a DIFFERENT commit is not a pass for this one
+])
+def test_a_failed_or_mismatched_preflight_publishes_nothing_and_blocks_with_a_reason(world: dict, verdict: dict) -> None:
     items, state, publications = merged_item(world)
     publisher = Publisher()
-    first = record(world, items, state, publications, publisher)
+    preflight = Preflight(ok=verdict["ok"], head=verdict.get("head"), tail=verdict.get("tail", ""))
+    step(world, items, state, publications, publisher=publisher, preflight=preflight)
 
-    second = record(world, items, state, publications, publisher)
+    result = step(world, items, state, publications, publisher=publisher, preflight=preflight)
+    again = step(world, items, state, publications, publisher=publisher, preflight=preflight)
 
-    assert first["status"] == "OPENED" and second["status"] == "ALREADY_OPEN" and len(publisher.calls) == 1
+    assert result["status"] == "BLOCKED" and result["reason"] == "PREFLIGHT_FAILED"
+    assert again["status"] == "BLOCKED" and len(preflight.spawned) == 1  # sticky: no retry loop on the same base
+    assert publisher.calls == [] and remote_branches(world) == ["main"]
 
 
-def test_nothing_merged_means_nothing_is_published(world: dict) -> None:
+def test_a_hung_preflight_is_failed_by_age_not_waited_on_forever(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    preflight = Preflight(finish=False)
+    step(world, items, state, publications, preflight=preflight, now=lambda: 0.0)
+
+    result = step(world, items, state, publications, preflight=preflight,
+                  now=lambda: progress.PREFLIGHT_TIMEOUT_S + 601.0)
+
+    assert result["status"] == "BLOCKED" and result["reason"] == "PREFLIGHT_TIMED_OUT"
+
+
+def test_heavy_verification_waits_for_an_idle_lane(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    preflight = Preflight()
+
+    waiting = step(world, items, state, publications, preflight=preflight, may_start=False)
+    started = step(world, items, state, publications, preflight=preflight, may_start=True)
+
+    assert waiting["status"] == "WAITING_FOR_IDLE" and started["status"] == "VERIFYING" and len(preflight.spawned) == 1
+
+
+def test_a_failed_publish_after_the_push_resumes_instead_of_reporting_an_open_pull_request(world: dict) -> None:
+    """Review P2: the push succeeded, PR creation failed, and every retry said ALREADY_OPEN without publishing."""
+    items, state, publications = merged_item(world)
+    publisher, preflight = Publisher(fail_times=1), Preflight()
+    step(world, items, state, publications, publisher=publisher, preflight=preflight)
+    with pytest.raises(RuntimeError, match="PROGRESS_PR_FAILED"):
+        step(world, items, state, publications, publisher=publisher, preflight=preflight)
+    assert len(remote_branches(world)) == 2 and publisher.calls == []  # the branch is on the remote, no PR exists
+
+    resumed = step(world, items, state, publications, publisher=publisher, preflight=preflight)
+
+    assert resumed["status"] == "OPENED" and len(publisher.calls) == 1
+    assert step(world, items, state, publications, publisher=publisher, preflight=preflight)["status"] == "ALREADY_OPEN"
+    assert len(publisher.calls) == 1 and len(preflight.spawned) == 1  # nothing re-verified or re-published
+
+
+def test_an_existing_pull_request_is_adopted_not_duplicated(world: dict) -> None:
+    items, state, publications = merged_item(world)
     publisher = Publisher()
+    existing = {"url": f"https://github.com/{REPO}/pull/55", "state": "OPEN"}
+    step(world, items, state, publications, publisher=publisher)
 
-    result = record(world, [], {}, {}, publisher)
+    result = step(world, items, state, publications, publisher=publisher, lookup=lambda _r, _b: existing)
 
-    assert result["status"] == "NOTHING_TO_RECORD" and publisher.calls == []
+    assert result["status"] == "OPENED" and result["pr"].endswith("/pull/55") and publisher.calls == []
 
 
-def test_a_non_canonical_graph_is_a_blocker_and_publishes_nothing(world: dict) -> None:
+def test_an_unanswered_pull_request_lookup_never_creates_a_duplicate(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    publisher = Publisher()
+    step(world, items, state, publications, publisher=publisher)
+
+    def unreachable(_repo: str, _branch: str):
+        raise RuntimeError("PROGRESS_PR_LOOKUP_FAILED")
+
+    with pytest.raises(RuntimeError, match="LOOKUP_FAILED"):
+        step(world, items, state, publications, publisher=publisher, lookup=unreachable)
+    assert publisher.calls == []
+
+
+def test_a_verified_commit_that_changed_is_never_pushed(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    preflight = Preflight()
+    step(world, items, state, publications, preflight=preflight)
+    tree = preflight.spawned[0][0]
+    (tree / "pkg").mkdir(exist_ok=True)
+    (tree / "pkg" / "sneaky.py").write_text("x = 2\n", encoding="utf-8")
+    run(tree, "add", ".")
+    run(tree, "-c", "user.name=x", "-c", "user.email=x@y", "commit", "-q", "-m", "tamper after verification")
+
+    result = step(world, items, state, publications, preflight=preflight)
+
+    assert result == {"status": "BLOCKED", "reason": "VERIFIED_COMMIT_CHANGED", "branch": result["branch"],
+                      "detail": ""} and remote_branches(world) == ["main"]
+
+
+def test_one_unfinished_job_per_repository_is_resumed_before_anything_newer(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    preflight = Preflight(finish=False)
+    first = step(world, items, state, publications, preflight=preflight)
+
+    second = step(world, [], {}, {}, preflight=preflight)  # even with nothing newer to record, the open job is served
+
+    assert first["status"] == "VERIFYING" and second["status"] == "VERIFYING" and len(preflight.spawned) == 1
+
+
+def test_nothing_merged_means_nothing_is_started(world: dict) -> None:
+    publisher, preflight = Publisher(), Preflight()
+
+    result = step(world, [], {}, {}, publisher=publisher, preflight=preflight)
+
+    assert result["status"] == "NOTHING_TO_RECORD" and publisher.calls == [] and preflight.spawned == []
+
+
+def test_a_non_canonical_graph_is_a_blocker_and_starts_nothing(world: dict) -> None:
     items, state, publications = merged_item(world)
     (world["clone"] / SOURCE).write_text(json.dumps(graph_payload()) + "\n", encoding="utf-8", newline="\n")
     run(world["clone"], "commit", "-qam", "compact graph")
@@ -196,25 +331,25 @@ def test_a_non_canonical_graph_is_a_blocker_and_publishes_nothing(world: dict) -
     world["head"] = run(world["clone"], "rev-parse", "HEAD")
     refill.refill_repository(world["lane"], world["state_root"], REPO, world["clone"], world["head"], items=[], state={},
                              reserved=set(), max_level=2)
-    publisher = Publisher()
+    preflight = Preflight()
 
-    result = record(world, items, state, publications, publisher)
+    result = step(world, items, state, publications, preflight=preflight)
 
-    assert result == {"status": "BLOCKED", "reason": "GRAPH_FORMAT_NOT_CANONICAL"} and publisher.calls == []
+    assert result == {"status": "BLOCKED", "reason": "GRAPH_FORMAT_NOT_CANONICAL"} and preflight.spawned == []
 
 
 def test_a_graph_compiled_for_a_different_head_is_not_used(world: dict) -> None:
     items, state, publications = merged_item(world)
     world["head"] = "f" * 40
 
-    assert record(world, items, state, publications)["status"] == "GRAPH_NOT_AT_HEAD"
+    assert step(world, items, state, publications)["status"] == "GRAPH_NOT_AT_HEAD"
 
 
 def test_a_missing_compiled_graph_is_reported_not_guessed(world: dict) -> None:
     for path in (world["state_root"] / "capability-graphs").glob("*.json"):
         path.unlink()
 
-    assert record(world, [], {}, {})["status"] == "NO_COMPILED_GRAPH"
+    assert step(world, [], {}, {})["status"] == "NO_COMPILED_GRAPH"
 
 
 def test_the_writer_never_merges_or_touches_owner_controls() -> None:

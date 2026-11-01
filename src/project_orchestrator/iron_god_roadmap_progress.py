@@ -14,6 +14,17 @@ The edit is mechanical and checked before anything is published:
   result must still pass the capability-graph validator;
 * a capability is never marked complete here: that needs product-level evidence.
 
+Publication follows the repository's own rule (exact-head native preflight BEFORE a pull request exists) as a
+persisted, resumable sequence, one small job file per branch::
+
+    PREPARED -> VERIFYING -> VERIFIED -> PUSHED -> PUBLISHED        (or FAILED, with the reason)
+
+The heavy preflight runs in a separate process (``scripts/iron_god_progress_preflight.py``, the product worker's own
+environment and supervised runtime) so the supervisor heartbeat never stalls, and only when the lane is idle. Nothing
+is pushed until the preflight passed for the exact commit that will be pushed. A step interrupted by a crash, an
+outage or a failed ``gh`` call resumes from where it stopped, and an existing branch is never taken as proof of a
+pull request: ``PUSHED`` always asks GitHub whether the pull request exists before creating it.
+
 The pull request is an ordinary one authored by the owner's ``gh`` login; the existing portfolio green-PR merger
 merges it once the repository's checks pass. No new merge path is introduced.
 """
@@ -23,6 +34,8 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -30,9 +43,12 @@ from scripts.project_capability_graph import validate
 
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_roadmap_refill as refill
+from .state_io import atomic_json
 
 BRANCH_PREFIX = "iron-god/roadmap-progress/"
 TITLE_PREFIX = "Iron God roadmap progress"
+PREFLIGHT_TIMEOUT_S = 7200
+FINAL = {"PUBLISHED", "FAILED"}
 
 
 def _publications_for(item_row: dict[str, Any], publications: dict[str, Any]) -> list[str]:
@@ -52,7 +68,8 @@ def completed_slices(repository: str, payload: dict[str, Any], items: list[dict[
         capable_builder.dispatch_state(lane_root)) if row.get("pr_state") == "MERGED"}
     found = []
     for capability in payload.get("capabilities", []):
-        for row in capability.get("slices", []) if isinstance(capability, dict) else []:
+        slices = capability.get("slices") if isinstance(capability, dict) else None
+        for row in slices if isinstance(slices, list) else []:
             if not isinstance(row, dict) or row.get("state") == "VERIFIED_COMPLETE":
                 continue
             base = refill.item_id(repository, str(capability.get("id")), str(row.get("id")))
@@ -107,9 +124,10 @@ def apply_completions(graph_text: str, completions: list[dict[str, Any]]) -> str
     return (json.dumps(edited, indent=2) + "\n").replace("\n", newline)
 
 
-def branch_name(repository: str, completions: list[dict[str, Any]]) -> str:
+def branch_name(repository: str, completions: list[dict[str, Any]], head: str) -> str:
+    """Stable per completion set and base commit: a retry on a newer main is a new branch, never a clobber."""
     digest = hashlib.sha256(json.dumps(sorted((c["capability"], c["slice"]) for c in completions)).encode()).hexdigest()[:10]
-    return f"{BRANCH_PREFIX}{repository.split('/', 1)[-1].lower()}-{digest}"
+    return f"{BRANCH_PREFIX}{repository.split('/', 1)[-1].lower()}-{digest}-{head[:8]}"
 
 
 def render_body(completions: list[dict[str, Any]], source: str, head: str) -> str:
@@ -118,8 +136,8 @@ def render_body(completions: list[dict[str, Any]], source: str, head: str) -> st
     for c in completions:
         lines.append(f"- `{c['capability']}` / `{c['slice']}`: " + "; ".join(c["evidence"]))
     lines += ["", "Only `state` and `verification` of the listed slices changed; the file was verified to be in canonical "
-              "form before and after, and the graph still passes the capability-graph validator. No capability is marked "
-              "complete here."]
+              "form before and after, the graph still passes the capability-graph validator, and the repository's native "
+              "preflight passed at this exact commit before it was pushed. No capability is marked complete here."]
     return "\n".join(lines)
 
 
@@ -131,15 +149,117 @@ def gh_publisher(repository: str, branch: str, title: str, body: str) -> str:
     return out.stdout.strip().splitlines()[-1]
 
 
+def gh_pr_lookup(repository: str, branch: str) -> dict[str, Any] | None:
+    """The pull request for ``branch`` (any state), None if GitHub says there is none. An unanswered query raises:
+    not knowing is never treated as 'no pull request' (that would duplicate) or as 'published' (that would hide a gap)."""
+    out = subprocess.run(["gh", "pr", "list", "--repo", repository, "--head", branch, "--state", "all", "--json",
+                          "url,state", "--limit", "1"], capture_output=True, text=True, check=False, timeout=60)
+    if out.returncode != 0:
+        raise RuntimeError("PROGRESS_PR_LOOKUP_FAILED: " + out.stderr[-200:])
+    rows = json.loads(out.stdout or "[]")
+    return rows[0] if rows else None
+
+
+def spawn_preflight(worktree: Path, result: Path) -> int | None:
+    """Default launcher: the native-preflight runner in its own process. The lane supplies a release-bound variant."""
+    runner = Path(__file__).resolve().parents[2] / "scripts" / "iron_god_progress_preflight.py"
+    result.parent.mkdir(parents=True, exist_ok=True)
+    with result.with_suffix(".log").open("ab") as log:
+        process = subprocess.Popen([sys.executable, str(runner), "--worktree", str(worktree), "--result", str(result)],
+                                   stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+    return process.pid
+
+
 def _git(clone: Path, *args: str, timeout: int = 300) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(clone), *args], capture_output=True, text=True, check=False, timeout=timeout)
+
+
+def _job_file(workspace: Path, branch: str) -> Path:
+    return Path(workspace) / "jobs" / (branch.replace("/", "-") + ".json")
+
+
+def _jobs(workspace: Path) -> list[dict[str, Any]]:
+    rows = []
+    for path in sorted((Path(workspace) / "jobs").glob("*.json")) if (Path(workspace) / "jobs").is_dir() else []:
+        try:
+            row = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(row, dict) and "branch" in row:
+            rows.append(row)
+    return rows
+
+
+def _save(workspace: Path, job: dict[str, Any]) -> None:
+    atomic_json(_job_file(workspace, job["branch"]), job)
+
+
+def _fail(workspace: Path, job: dict[str, Any], reason: str, detail: str = "") -> dict[str, Any]:
+    job.update(stage="FAILED", reason=reason, detail=detail[-400:])
+    _save(workspace, job)
+    return {"status": "BLOCKED", "reason": reason, "branch": job["branch"], "detail": detail[-400:]}
+
+
+def _advance(job: dict[str, Any], *, workspace: Path, publisher: Callable[[str, str, str, str], str],
+             pr_lookup: Callable[[str, str], dict[str, Any] | None], spawn: Callable[[Path, Path], int | None],
+             may_start: bool, now: Callable[[], float]) -> dict[str, Any]:
+    tree, branch, repository = Path(job["worktree"]), job["branch"], job["repository"]
+    while True:
+        stage = job["stage"]
+        if stage == "PREPARED":
+            if not may_start:  # the lane is busy with a worker; heavy checks run serially
+                return {"status": "WAITING_FOR_IDLE", "branch": branch}
+            result = Path(workspace) / "results" / (branch.replace("/", "-") + ".json")
+            result.unlink(missing_ok=True)
+            job.update(stage="VERIFYING", started_at=now(), pid=spawn(tree, result), result=str(result))
+            _save(workspace, job)
+            return {"status": "VERIFYING", "branch": branch}
+        if stage == "VERIFYING":
+            result_path = Path(job["result"])
+            if not result_path.is_file():
+                if now() - float(job.get("started_at", 0)) > PREFLIGHT_TIMEOUT_S + 600:
+                    return _fail(workspace, job, "PREFLIGHT_TIMED_OUT")
+                return {"status": "VERIFYING", "branch": branch}
+            try:
+                verdict = json.loads(result_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return _fail(workspace, job, "PREFLIGHT_RESULT_UNREADABLE")
+            if verdict.get("ok") is not True or verdict.get("head") != job["commit_sha"]:
+                return _fail(workspace, job, "PREFLIGHT_FAILED", str(verdict.get("output_tail", "")))
+            job["stage"] = "VERIFIED"
+            _save(workspace, job)
+            continue
+        if stage == "VERIFIED":
+            if _git(tree, "rev-parse", "HEAD").stdout.strip() != job["commit_sha"]:
+                return _fail(workspace, job, "VERIFIED_COMMIT_CHANGED")  # only the verified commit may ever be pushed
+            pushed = _git(tree, "push", "origin", f"{branch}:refs/heads/{branch}")
+            if pushed.returncode != 0:
+                return {"status": "BLOCKED", "reason": "PUSH_FAILED", "branch": branch, "detail": pushed.stderr[-200:]}
+            job["stage"] = "PUSHED"  # persisted BEFORE publishing so an interrupted publish resumes here
+            _save(workspace, job)
+            continue
+        if stage == "PUSHED":
+            existing = pr_lookup(repository, branch)  # a branch is not proof of a pull request, and vice versa
+            url = existing["url"] if existing else publisher(repository, branch, job["title"], job["body"])
+            job.update(stage="PUBLISHED", pr=url)
+            _save(workspace, job)
+            _git(Path(job["clone"]), "worktree", "remove", str(tree))  # our own scratch worktree; failure leaves it
+            return {"status": "OPENED", "branch": branch, "pr": url, "slices": job["slices"]}
+        return {"status": "BLOCKED", "reason": f"UNKNOWN_STAGE_{stage}", "branch": branch}
 
 
 def record_progress(lane_root: Path, state_root: Path, repository: str, clone: Path, head: str, *,
                     items: list[dict[str, Any]], state: dict[str, Any], publications: dict[str, Any],
                     workspace: Path, publisher: Callable[[str, str, str, str], str] = gh_publisher,
-                    remote_has_branch: Callable[[Path, str], bool] | None = None) -> dict[str, Any]:
-    """Open at most one progress pull request for ``repository``; returns what happened (never raises on refusal)."""
+                    pr_lookup: Callable[[str, str], dict[str, Any] | None] = gh_pr_lookup,
+                    spawn: Callable[[Path, Path], int | None] = spawn_preflight, may_start: bool = True,
+                    now: Callable[[], float] = time.time) -> dict[str, Any]:
+    """Advance (or start) the single progress job for ``repository``; never raises on a refusal."""
+    context = {"workspace": Path(workspace), "publisher": publisher, "pr_lookup": pr_lookup, "spawn": spawn,
+               "may_start": may_start, "now": now}
+    unfinished = [job for job in _jobs(workspace) if job["repository"] == repository and job["stage"] not in FINAL]
+    if unfinished:  # one open progress job per repository: finish it before looking at anything newer
+        return _advance(unfinished[0], **context)
     graph_file = Path(state_root) / "capability-graphs" / f"{repository.replace('/', '__')}.json"
     try:
         compiled = json.loads(graph_file.read_text(encoding="utf-8"))
@@ -151,10 +271,12 @@ def record_progress(lane_root: Path, state_root: Path, repository: str, clone: P
     completions = completed_slices(repository, compiled, items, state, publications, lane_root)
     if not completions:
         return {"status": "NOTHING_TO_RECORD"}
-    branch = branch_name(repository, completions)
-    exists = remote_has_branch or (lambda repo_clone, name: bool(_git(repo_clone, "ls-remote", "--heads", "origin", name).stdout.strip()))
-    if exists(clone, branch):
-        return {"status": "ALREADY_OPEN", "branch": branch}
+    branch = branch_name(repository, completions, head)
+    prior = next((job for job in _jobs(workspace) if job["branch"] == branch), None)
+    if prior is not None:  # a final job for this exact set and base: published already, or failed for a recorded reason
+        if prior["stage"] == "PUBLISHED":
+            return {"status": "ALREADY_OPEN", "branch": branch, "pr": prior.get("pr")}
+        return {"status": "BLOCKED", "reason": prior.get("reason", "PRIOR_ATTEMPT_FAILED"), "branch": branch}
     shown = _git(clone, "show", f"{head}:{source}")
     if shown.returncode != 0:
         return {"status": "BLOCKED", "reason": "GRAPH_FILE_UNAVAILABLE"}
@@ -162,25 +284,22 @@ def record_progress(lane_root: Path, state_root: Path, repository: str, clone: P
         text = apply_completions(shown.stdout, completions)
     except ProgressRefused as exc:
         return {"status": "BLOCKED", "reason": str(exc)}
-    tree = Path(workspace) / branch.replace("/", "-")
+    tree = Path(workspace) / "trees" / branch.replace("/", "-")
     added = _git(clone, "worktree", "add", "-b", branch, str(tree), head)
     if added.returncode != 0:
         return {"status": "BLOCKED", "reason": "WORKTREE_PROVISION_FAILED", "detail": added.stderr[-200:]}
-    try:
-        (tree / source).write_text(text, encoding="utf-8", newline="")
-        changed = _git(tree, "diff", "--name-only").stdout.split()
-        if changed != [source]:
-            return {"status": "BLOCKED", "reason": "UNEXPECTED_FILES_CHANGED", "files": changed}
-        _git(tree, "add", source)
-        committed = _git(tree, "-c", "user.name=Iron God", "-c", "user.email=iron-god@users.noreply.github.com",
-                         "commit", "-q", "-m", f"{TITLE_PREFIX}: record {len(completions)} merged slice(s)")
-        if committed.returncode != 0:
-            return {"status": "BLOCKED", "reason": "COMMIT_FAILED", "detail": committed.stderr[-200:]}
-        pushed = _git(tree, "push", "origin", f"{branch}:refs/heads/{branch}")
-        if pushed.returncode != 0:
-            return {"status": "BLOCKED", "reason": "PUSH_FAILED", "detail": pushed.stderr[-200:]}
-        url = publisher(repository, branch, f"{TITLE_PREFIX}: record {len(completions)} merged slice(s)",
-                        render_body(completions, source, head))
-        return {"status": "OPENED", "branch": branch, "pr": url, "slices": [c["slice"] for c in completions]}
-    finally:
-        _git(clone, "worktree", "remove", str(tree))  # our own scratch worktree; a failure just leaves it behind
+    (tree / source).write_text(text, encoding="utf-8", newline="")
+    changed = _git(tree, "diff", "--name-only").stdout.split()
+    if changed != [source]:
+        return {"status": "BLOCKED", "reason": "UNEXPECTED_FILES_CHANGED", "files": changed}
+    title = f"{TITLE_PREFIX}: record {len(completions)} merged slice(s)"
+    _git(tree, "add", source)
+    committed = _git(tree, "-c", "user.name=Iron God", "-c", "user.email=iron-god@users.noreply.github.com",
+                     "commit", "-q", "-m", title)
+    if committed.returncode != 0:
+        return {"status": "BLOCKED", "reason": "COMMIT_FAILED", "detail": committed.stderr[-200:]}
+    job = {"repository": repository, "branch": branch, "base": head, "source": source, "clone": str(clone),
+           "worktree": str(tree), "commit_sha": _git(tree, "rev-parse", "HEAD").stdout.strip(), "stage": "PREPARED",
+           "slices": [c["slice"] for c in completions], "title": title, "body": render_body(completions, source, head)}
+    _save(workspace, job)
+    return _advance(job, **context)
