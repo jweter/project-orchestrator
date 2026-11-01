@@ -1588,6 +1588,8 @@ def test_an_empty_backlog_is_refilled_from_the_roadmap_and_the_item_merges_throu
     from project_orchestrator import iron_god_roadmap_refill as refill_mod
 
     backlog_env(env, [])
+    # this test supplies the draft by hand (as an external planner would), so the local drafter stays out of it
+    env.policy = {**env.policy, "portfolio_rotation": {**env.policy["portfolio_rotation"], "local_draft_author": False}}
     repo = REPOS[1]
     publish_graph(env, repo)
     write_calibration(env)
@@ -1764,3 +1766,53 @@ def test_progress_is_not_started_without_a_release_identity_and_waits_for_an_idl
 
     assert seen == [True, False]  # idle lane may start verification; an active worker keeps it waiting
     assert launched[0][0] == env.release and launched[0][1] == "b" * 40  # bound to the release identity
+
+
+def test_no_builder_is_dispatched_while_the_local_model_is_drafting_a_roadmap_slice(env):
+    import time as time_mod
+
+    from project_orchestrator import iron_god_local_drafter as drafter_mod
+
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    lane = pl.ProductLane(env.state)
+    job = lane.root / drafter_mod.JOBS / "RM-x.a0.json"
+    job.parent.mkdir(parents=True, exist_ok=True)
+    job.write_text(json.dumps({"id": "RM-x", "attempt": 0, "stage": "DRAFTING", "started_at": time_mod.time(),
+                               "result": str(lane.root / "never.json")}), encoding="utf-8")
+    runner = Runner(plan=never_plans)
+
+    held = step(env, runner, FakeGitHub(("pass",)))
+
+    assert held["status"] == "WAITING_FOR_LOCAL_DRAFT" and runner.spawned == 0
+    job.unlink()
+    assert step(env, runner, FakeGitHub(("pass",)))["status"] == "DISPATCHED"  # released as soon as the job is gone
+
+
+def test_local_draft_outcomes_are_logged_and_a_drafter_error_never_stops_the_rotation(env, monkeypatch):
+    from project_orchestrator import iron_god_local_drafter as drafter_mod
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+    calls = []
+
+    def fake(root, requests, clone, head, **kwargs):
+        calls.append(kwargs["may_start"])
+        if len(calls) == 3:
+            raise OSError("ollama gone")
+        return [{"id": "RM-a", "status": "STARTED", "attempt": 0}, {"id": "RM-b", "status": "FAILED", "reason": "PLAN_PATH_INVALID"}]
+
+    monkeypatch.setattr(drafter_mod, "advance", fake)
+    report = {"local_requests": []}
+    pl.draft_with_local_builder(lane, REPOS[1], report, env.tmp, "a" * 40, None)  # no release identity: nothing runs
+    assert calls == []
+    pl.draft_with_local_builder(lane, REPOS[1], report, env.tmp, "a" * 40, (env.release, "b" * 40))
+    pl.draft_with_local_builder(lane, REPOS[1], report, env.tmp, "a" * 40, (env.release, "b" * 40))
+    pl.draft_with_local_builder(lane, REPOS[1], report, env.tmp, "a" * 40, (env.release, "b" * 40))
+
+    kinds = [e["kind"] for e in refill_mod.load_store(lane.root)["ledger"]]
+    assert kinds == ["LOCAL_DRAFT_STARTED", "LOCAL_DRAFT_FAILED"] * 2 + ["LOCAL_DRAFT_ERROR"]
+    assert "LOCAL_DRAFT_FAILED" in json.dumps(wm.load(env.state))
+
+
+def test_the_shipped_policy_enables_the_local_draft_author():
+    assert POLICY["portfolio_rotation"]["local_draft_author"] is True

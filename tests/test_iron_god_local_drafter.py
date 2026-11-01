@@ -1,0 +1,298 @@
+"""The local builder drafts Level 1 roadmap slices; the strict admission still decides (issue #594)."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from project_orchestrator import iron_god_backlog as backlog
+from project_orchestrator import iron_god_calibration as calibration
+from project_orchestrator import iron_god_local_drafter as drafter
+from project_orchestrator import iron_god_roadmap_refill as refill
+from scripts import iron_god_draft_author as author
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("worker_for_drafter_tests", ROOT / "scripts" / "iron_god_product_worker.py")
+WORKER = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(WORKER)
+
+REPO = "jweter/VoiceStudio"
+SOURCE = "engineering/capability-graph.json"
+GOOD_PLAN = {
+    "function_name": "newest_entries", "signature": "def newest_entries(items: list, limit: int) -> list:",
+    "module_path": "pkg/newest_entries.py",
+    "objective": "Return the last `limit` items of the list in their original order; return an empty list when limit is not positive.",
+    "examples": [{"call": "newest_entries([1, 2, 3, 4], 2)", "why": "the last two items are 3 and 4", "expected": [3, 4]},
+                 {"call": "newest_entries([1, 2], 5)", "why": "fewer items than the limit returns all of them", "expected": [1, 2]},
+                 {"call": "newest_entries([1, 2, 3], 0)", "why": "a non-positive limit returns nothing", "expected": []}],
+    "note": "Added pkg.newest_entries.newest_entries; next: wire it to the cache pruner.",
+}
+
+
+def graph(level: int | None = 1) -> dict:
+    row = {"id": "s1", "state": "PLANNED", "objective": "Keep only the newest entries of a list.",
+           "acceptance": ["returns the last N items in order", "a non-positive N returns an empty list"],
+           "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"]}
+    if level is not None:
+        row["capability_level"] = level
+    return {"schema_version": 1, "repository": REPO, "roadmap": ["cap-a"], "capabilities": [{
+        "id": "cap-a", "capability": "Cap A", "state": "PLANNED", "depends_on": [], "completion_evidence": ["docs/x.md"],
+        "slices": [row]}]}
+
+
+def run_git(cwd: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+
+@pytest.fixture
+def world(tmp_path: Path):
+    clone = tmp_path / "clone"
+    (clone / "pkg").mkdir(parents=True)
+    (clone / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (clone / "pkg" / "core.py").write_text("def one():\n    return 1\n", encoding="utf-8")
+    (clone / "pkg" / "secret").mkdir()  # a real package the slice nevertheless forbids
+    (clone / "pkg" / "secret" / "__init__.py").write_text("", encoding="utf-8")
+    (clone / "engineering").mkdir()
+    (clone / SOURCE).write_text(json.dumps(graph(), indent=2) + "\n", encoding="utf-8", newline="\n")
+    plane = {"schema_version": 1, "capability_graph": SOURCE, "authoritative_documents": [SOURCE]}
+    (clone / "engineering" / "control-plane.json").write_text(json.dumps(plane), encoding="utf-8")
+    subprocess.run(["git", "init", "-q", "-b", "main", str(clone)], check=True)
+    run_git(clone, "config", "user.email", "o@example.com")
+    run_git(clone, "config", "user.name", "Owner")
+    run_git(clone, "add", ".")
+    run_git(clone, "commit", "-q", "-m", "seed")
+    head = run_git(clone, "rev-parse", "HEAD")
+    lane, state_root = tmp_path / "lane", tmp_path / "flow-state"
+    lane.mkdir()
+    state_root.mkdir()
+    calibration.profile_path(state_root).write_text(json.dumps({
+        "schema_version": 1, "ladder_version": calibration.LADDER_VERSION, "model": calibration.DEFAULT_MODEL,
+        "hardware": calibration.hardware_fingerprint(), "max_passing_level": 3, "levels": {}}), encoding="utf-8")
+    return {"clone": clone, "head": head, "lane": lane, "state_root": state_root, "tmp": tmp_path}
+
+
+def refill_pass(world: dict, **kw) -> dict:
+    return refill.refill_repository(world["lane"], world["state_root"], REPO, world["clone"], world["head"], items=[],
+                                    state={}, reserved=set(), max_level=2, **kw)
+
+
+def request_of(world: dict, **over) -> dict:
+    (request,) = refill_pass(world)["local_requests"]
+    request.update(over)
+    return request
+
+
+class Spawner:
+    """Records launches; with `finish` it plays the runner in-process using a fake planner and the REAL validator."""
+
+    def __init__(self, world: dict | None = None, plan: object = GOOD_PLAN, finish: bool = False) -> None:
+        self.world, self.plan, self.finish = world, plan, finish
+        self.launched: list[tuple[Path, Path, str, Path]] = []
+
+    def __call__(self, request_file: Path, clone: Path, base: str, result: Path) -> int:
+        self.launched.append((request_file, clone, base, result))
+        if self.finish:
+            request = json.loads(request_file.read_text(encoding="utf-8"))
+            author.run(request, clone, base, result, planner=lambda *_a: self.plan, validator=WORKER.validate_plan,
+                       authority=lambda: True, roots=["pkg/"], forbidden=[".github/", "engineering/", "docs/"],
+                       attempted=request.get("attempted_functions", []))
+        return 31337
+
+
+# --- the plan becomes an ordinary backlog draft ------------------------------------------------------------------
+
+
+def validated_good(world: dict, request: dict) -> dict:
+    packet = author.build_packet(request, ["pkg/"], world["head"], [".github/", "engineering/", "docs/"], [])
+    return WORKER.validate_plan(GOOD_PLAN, world["clone"], world["head"], packet)
+
+
+def test_a_validated_plan_becomes_a_draft_the_unchanged_admission_accepts(world: dict) -> None:
+    request = request_of(world)
+
+    draft = drafter.plan_to_draft(request, GOOD_PLAN, validated_good(world, request))
+
+    assert backlog.item_problems({**draft, "status": "approved", "assignee": backlog.AGENT_ID}) == []
+    assert draft["id"] == request["id"] and draft["roadmap_ref"] == request["roadmap_ref"] and draft["level"] == 1
+    assert draft["build"]["module_path"] == "pkg/newest_entries.py" and len(draft["build"]["examples"]) == 3
+    assert refill.draft_problems(draft, request, items=[], reserved=set(), head=world["head"],
+                                 changed_since=lambda *_a: set(), max_level=2) == []
+
+
+def test_examples_the_validator_dropped_are_not_carried_into_the_draft(world: dict) -> None:
+    request = request_of(world)
+    validated = validated_good(world, request)
+    plan = {**GOOD_PLAN, "examples": [*GOOD_PLAN["examples"], {"call": "newest_entries(NOT_LITERAL, 1)", "why": "x", "expected": []}]}
+
+    draft = drafter.plan_to_draft(request, plan, validated)
+
+    assert [e["call"] for e in draft["build"]["examples"]] == [e["call"] for e in GOOD_PLAN["examples"]]
+
+
+# --- who may be drafted -------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("route,level,expected", [
+    ({"builder": "LOCAL"}, 1, True), ({"builder": "LOCAL"}, 2, False),  # level 2 needs approved failing tests
+    ({"builder": "CAPABLE"}, 1, False), ({"builder": "NONE"}, 1, False), (None, 1, False)])
+def test_only_local_routed_level_one_requests_are_drafted(route, level, expected) -> None:
+    assert drafter.eligible({"route": route, "capability_level": level}) is expected
+
+
+# --- jobs ---------------------------------------------------------------------------------------------------------
+
+
+def test_one_job_starts_with_the_roadmap_request_and_nothing_else_runs_beside_it(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner()
+
+    first = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    second = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert first == [{"id": request["id"], "status": "STARTED", "attempt": 0}] and second == []
+    assert len(spawner.launched) == 1 and drafter.drafting_in_progress(world["lane"])
+    copy = json.loads(spawner.launched[0][0].read_text(encoding="utf-8"))
+    assert copy["objective"] == "Keep only the newest entries of a list." and copy["roadmap_ref"] == request["roadmap_ref"]
+
+
+def test_nothing_starts_while_a_worker_is_active(world: dict) -> None:
+    spawner = Spawner()
+
+    outcomes = drafter.advance(world["lane"], [request_of(world)], world["clone"], world["head"], spawn=spawner,
+                               may_start=False)
+
+    assert outcomes == [] and spawner.launched == [] and not drafter.drafting_in_progress(world["lane"])
+
+
+def test_only_one_job_runs_at_a_time_across_requests(world: dict) -> None:
+    one = request_of(world)
+    two = {**one, "id": one["id"] + "-other"}
+    spawner = Spawner()
+
+    outcomes = drafter.advance(world["lane"], [one, two], world["clone"], world["head"], spawn=spawner)
+
+    assert [o["status"] for o in outcomes] == ["STARTED"] and len(spawner.launched) == 1
+
+
+def test_a_finished_job_writes_the_draft_for_admission(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner(finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    outcomes = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert outcomes == [{"id": request["id"], "status": "DRAFTED"}]
+    written = json.loads((world["lane"] / refill.DRAFTS / f"{request['id']}.json").read_text(encoding="utf-8"))
+    assert written["build"]["function_name"] == "newest_entries" and not drafter.drafting_in_progress(world["lane"])
+
+
+def test_a_rejected_plan_is_a_recorded_failure_and_writes_no_draft(world: dict) -> None:
+    request = request_of(world)
+    bad = {**GOOD_PLAN, "module_path": "other/outside.py"}  # outside the allowed package envelope
+    spawner = Spawner(plan=bad, finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    outcomes = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+
+    assert outcomes[0]["status"] == "FAILED" and "PLAN_PATH_OUTSIDE_ENVELOPE" in outcomes[0]["reason"]
+    assert not (world["lane"] / refill.DRAFTS).exists()
+
+
+def test_two_failed_attempts_end_local_drafting_for_that_request(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner(plan={"function_name": "x"}, finish=True)
+    for _ in range(drafter.MAX_ATTEMPTS):
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)  # start
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)  # harvest
+
+    third = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert third == [] and len(spawner.launched) == drafter.MAX_ATTEMPTS
+
+
+def test_a_hung_job_is_failed_by_age(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner()
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, now=lambda: 0.0)
+
+    waiting = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, now=lambda: 60.0)
+    timed_out = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner,
+                                now=lambda: drafter.DRAFT_TIMEOUT_S + 1.0, may_start=False)
+
+    assert waiting == [] and timed_out[0]["reason"] == "DRAFT_TIMED_OUT" and not drafter.drafting_in_progress(world["lane"])
+
+
+def test_a_result_for_a_request_that_is_no_longer_current_writes_nothing(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner(finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    outcomes = drafter.advance(world["lane"], [], world["clone"], world["head"], spawn=spawner)
+
+    assert outcomes[0]["reason"] == "REQUEST_NO_LONGER_CURRENT" and not (world["lane"] / refill.DRAFTS).exists()
+
+
+def test_an_unjudged_draft_is_waited_for_and_a_rejected_one_is_retried_with_the_reasons(world: dict) -> None:
+    request = request_of(world)
+    drafts = world["lane"] / refill.DRAFTS
+    drafts.mkdir(parents=True)
+    (drafts / f"{request['id']}.json").write_text("{}", encoding="utf-8")
+    spawner = Spawner()
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []  # unjudged
+
+    import hashlib
+    digest = hashlib.sha256((drafts / f"{request['id']}.json").read_bytes()).hexdigest()
+    refill._mutate(world["lane"], lambda store: (store["processed"].update({request["id"]: digest}),
+                                                refill._log(store, "REJECTED", REPO, request["id"],
+                                                            {"problems": ["PATH_OUTSIDE_ROADMAP_SCOPE"]})))
+    retried = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert retried[0]["status"] == "STARTED"
+    copy = json.loads(spawner.launched[0][0].read_text(encoding="utf-8"))
+    assert copy["planner_feedback"] == "PATH_OUTSIDE_ROADMAP_SCOPE"
+
+
+def test_a_ready_result_is_noticed_without_waiting_for_the_interval(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner(finish=True)
+    assert drafter.has_result_ready(world["lane"]) is False
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert drafter.has_result_ready(world["lane"]) is True
+
+
+# --- end to end: request -> local draft -> unchanged admission -> a dispatchable approved item ------------------------
+
+
+def test_the_local_draft_is_admitted_and_becomes_a_dispatchable_level_one_item(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner(finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+
+    report = refill_pass(world)
+
+    assert report["admitted"] == [request["id"]]
+    (item,) = refill.admitted_items(world["lane"])
+    assert backlog.item_problems(item) == [] and item["origin"] == "roadmap-derived" and item["level"] == 1
+    assert backlog.next_item([item], {}, REPO, max_level=2) == item  # the existing dispatcher accepts it
+    assert item["authorization"]["declared_capability_level"] == 1 and item["authorization"]["route"] == refill.LOCAL
+
+
+def test_a_plan_that_escapes_the_roadmap_scope_is_rejected_by_admission_even_if_the_worker_accepts_it(world: dict) -> None:
+    request = request_of(world)
+    forbidden = {**GOOD_PLAN, "module_path": "pkg/secret/newest_entries.py"}  # inside the package, but forbidden by the slice
+    spawner = Spawner(plan=forbidden, finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+
+    report = refill_pass(world)
+
+    assert report["admitted"] == [] and refill.admitted_items(world["lane"]) == [] and report["rejected"] == [request["id"]]
+    problems = refill.load_store(world["lane"])["ledger"][-1]["detail"]["problems"]
+    assert "PATH_OUTSIDE_ROADMAP_SCOPE" in problems  # the slice's own forbidden path, enforced by admission, not the worker

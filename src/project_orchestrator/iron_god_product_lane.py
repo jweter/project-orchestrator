@@ -44,6 +44,7 @@ from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
+from . import iron_god_local_drafter as local_drafter
 from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
@@ -910,13 +911,17 @@ def advance_product_lane(
                 lane, repos, busy, approved, state, level, sync, owned_paths,
                 capable={"enabled": config.get("capable_builder") is True,
                          "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT))},
-                record_progress=config.get("roadmap_progress", True) is True, release=(release_repo, release_sha))
+                record_progress=config.get("roadmap_progress", True) is True, release=(release_repo, release_sha),
+                draft_locally=config.get("local_draft_author", True) is True)
         for name in repos:
             chosen = backlog.next_item(approved, state, name, max_level=level)
             if chosen is not None:
                 items[name] = chosen
         busy |= {name for name in repos if name not in items}
     repo = next_repository(lane, repos, busy, rng)
+    if repo is not None and local_drafter.drafting_in_progress(lane.root):
+        # the single local model is planning a roadmap slice; start no builder beside it
+        return _report(lane, {"status": "WAITING_FOR_LOCAL_DRAFT", "repository": repo})
     if repo is None:
         idle = "IDLE_NO_APPROVED_BACKLOG_ITEM" if config.get("planning") == "backlog" and not items else (
             "IDLE_ALL_REPOSITORIES_AWAITING_CI")
@@ -959,6 +964,43 @@ def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any]
                                  {key: value for key, value in result.items() if key != "dispatched"})
         working_memory.record(lane.state_root, name, kind, detail=f"{request['id']}: {result.get('reason')}",
                               outcome=None if result.get("dispatched") else "BLOCKED")
+
+
+def spawn_draft_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str, result: Path,
+                       log_path: Path) -> int:
+    """Launch the local draft author like a product worker: release-bound, its own process."""
+    env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    with log_path.open("ab") as log:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_draft_author.py"), "--request",
+             str(request_file), "--clone", str(clone), "--base", base, "--result", str(result)],
+            cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            creationflags=flags)
+    return process.pid
+
+
+def draft_with_local_builder(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
+                             release: tuple[Path, str] | None) -> None:
+    """Harvest and start local draft jobs for LOCAL-routed Level 1 requests; outcomes are logged, never fatal."""
+    if release is None:
+        return
+    release_repo, release_sha = release
+    try:
+        outcomes = local_drafter.advance(
+            lane.root, report.get("local_requests", []), clone, head,
+            spawn=lambda request_file, tree, base, out: spawn_draft_author(
+                release_repo, release_sha, request_file, tree, base, out, lane.reports / f"draft-{out.stem}.log"),
+            may_start=lane.active() is None,
+            extra={"attempted_functions": sorted(working_memory.attempted_functions(lane.state_root, name))})
+    except Exception as exc:  # drafting is best-effort; other repositories and the rotation continue
+        outcomes = [{"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
+    for outcome in outcomes:
+        roadmap_refill.log_event(lane.root, "LOCAL_DRAFT_" + outcome["status"], name, outcome["id"], outcome)
+        working_memory.record(lane.state_root, name, "LOCAL_DRAFT_" + outcome["status"],
+                              detail=f"{outcome['id']}: {outcome.get('reason', '')}"[:200],
+                              outcome="BLOCKED" if outcome["status"] in {"FAILED", "ERROR"} else None)
 
 
 def spawn_progress_preflight(release_repo: Path, release_sha: str, worktree: Path, result: Path,
@@ -1006,7 +1048,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
                          state: dict[str, Any], level: int, sync: Callable[[ProductLane, str], tuple[Path, str]],
                          owned_paths: Callable[[str], list[str]],
                          capable: dict[str, Any] | None = None, record_progress: bool = False,
-                         release: tuple[Path, str] | None = None) -> list[dict[str, Any]]:
+                         release: tuple[Path, str] | None = None, draft_locally: bool = False) -> list[dict[str, Any]]:
     """Backlog plus runtime-admitted roadmap items; a repository with no dispatchable item gets one planning pass.
 
     Owner delegation 2026-11-01 (issue #594): the owner-approved roadmap authorizes development, so an
@@ -1023,7 +1065,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     for name in repos:
         if name in busy or backlog.next_item(approved, state, name, max_level=level) is not None:
             continue
-        if not roadmap_refill.due(lane.root, name):
+        if not roadmap_refill.due(lane.root, name) and not (draft_locally and local_drafter.has_result_ready(lane.root)):
             continue
         try:
             clone, head = sync(lane, name)
@@ -1036,6 +1078,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
         hand_to_capable_builder(lane, name, report, capable)
+        if draft_locally:
+            draft_with_local_builder(lane, name, report, clone, head, release)
         if record_progress:
             record_roadmap_progress(lane, name, clone, head, approved, state, release)
         working_memory.record(lane.state_root, name, "ROADMAP_REFILL", detail=roadmap_refill.summarize(report),

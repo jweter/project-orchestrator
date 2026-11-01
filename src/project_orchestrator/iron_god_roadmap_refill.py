@@ -495,6 +495,7 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         # Open pull requests own files; a capable slice may touch anything its allowed paths cover.
         request["reserved_conflicts"] = sorted(path for path in reserved if _matches(path, request["allowed_paths"]))
     report["capable_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == CAPABLE]
+    report["local_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == LOCAL]
     report["direction_required"], report["skipped"] = derived["direction_required"], derived["skipped"]
     report["requests"] = [request["id"] for request in derived["requests"]]
     requests_dir = Path(lane_root) / REQUESTS
