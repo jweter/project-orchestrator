@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
+from . import iron_god_capable_builder as capable_builder
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
@@ -904,7 +905,10 @@ def advance_product_lane(
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
         if config.get("roadmap_refill", True):
-            approved = refill_from_roadmaps(lane, repos, busy, approved, state, level, sync, owned_paths)
+            approved = refill_from_roadmaps(
+                lane, repos, busy, approved, state, level, sync, owned_paths,
+                capable={"enabled": config.get("capable_builder") is True,
+                         "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT))})
         for name in repos:
             chosen = backlog.next_item(approved, state, name, max_level=level)
             if chosen is not None:
@@ -940,15 +944,38 @@ def repository_unsupported(clone: Path, head: str) -> str | None:
     return None if roots and python_packages(clone, head, roots) else "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
 
 
+def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any], capable: dict[str, Any]) -> None:
+    """Dispatch CAPABLE-routed requests within budget and record every outcome; failures never stop the rotation."""
+    for request in report.get("capable_requests", []):
+        try:
+            result = capable_builder.dispatch_request(request, lane_root=lane.root, enabled=capable["enabled"],
+                                                      daily_limit=capable["daily_limit"])
+        except Exception as exc:  # a routine API error is a recorded blocker, not a crash
+            result = {"dispatched": False, "reason": f"CAPABLE_BUILDER_ERROR: {type(exc).__name__}"}
+        kind = "CAPABLE_DISPATCHED" if result.get("dispatched") else "CAPABLE_NOT_DISPATCHED"
+        roadmap_refill.log_event(lane.root, kind, name, request["id"],
+                                 {key: value for key, value in result.items() if key != "dispatched"})
+        working_memory.record(lane.state_root, name, kind, detail=f"{request['id']}: {result.get('reason')}",
+                              outcome=None if result.get("dispatched") else "BLOCKED")
+
+
 def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], static: list[dict[str, Any]],
                          state: dict[str, Any], level: int, sync: Callable[[ProductLane, str], tuple[Path, str]],
-                         owned_paths: Callable[[str], list[str]]) -> list[dict[str, Any]]:
+                         owned_paths: Callable[[str], list[str]],
+                         capable: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Backlog plus runtime-admitted roadmap items; a repository with no dispatchable item gets one planning pass.
 
     Owner delegation 2026-11-01 (issue #594): the owner-approved roadmap authorizes development, so an
     exhausted backlog is refilled from it instead of idling. A failure here never stops the rotation.
     """
     approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
+    capable = capable or {"enabled": False, "daily_limit": capable_builder.DEFAULT_DAILY_LIMIT}
+    if capable["enabled"]:
+        try:
+            capable_builder.reconcile(lane.root)
+        except Exception as exc:  # observing GitHub is best-effort; the attempt cap still bounds retries
+            working_memory.record(lane.state_root, "<portfolio>", "CAPABLE_RECONCILE_FAILED", outcome="SKIPPED",
+                                  blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
     for name in repos:
         if name in busy or backlog.next_item(approved, state, name, max_level=level) is not None:
             continue
@@ -964,6 +991,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
+        hand_to_capable_builder(lane, name, report, capable)
         working_memory.record(lane.state_root, name, "ROADMAP_REFILL", detail=roadmap_refill.summarize(report),
                               outcome="DIRECTION_REQUIRED" if report["direction_required"] and not report["requests"] else None)
         approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]

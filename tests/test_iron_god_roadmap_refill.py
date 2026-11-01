@@ -735,3 +735,40 @@ def test_an_unreadable_repository_tree_is_a_blocker_not_a_crash(tmp_path: Path) 
 
     assert report["routed"][refill.NONE]
     assert "REPOSITORY_UNREADABLE" in json.dumps(refill.load_store(tmp_path / "lane")["ledger"])
+
+
+def test_a_request_with_a_live_capable_dispatch_is_pending_not_requested_again() -> None:
+    first = request_for()
+    derived = refill.derive(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=[], state={},
+                            external_pending=frozenset({first["id"]}))
+
+    assert derived["requests"] == [] and derived["skipped"][0]["reason"] == "PENDING_CAPABLE_BUILDER"
+
+
+def test_the_refill_report_hands_only_capable_routed_requests_to_the_adapter(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    clone, head = product(tmp_path, repository, level_graph(repository, 4))
+
+    report = run_refill(tmp_path, repository, clone, head)
+
+    assert [r["id"] for r in report["capable_requests"]] == report["requests"]
+    assert report["capable_requests"][0]["route"]["builder"] == refill.CAPABLE
+    clone2, head2 = product(tmp_path / "local", PORTFOLIO[1], level_graph(PORTFOLIO[1], 1))
+    local = refill.refill_repository(tmp_path / "lane", tmp_path / "flow-state", PORTFOLIO[1], clone2, head2, items=[],
+                                     state={}, reserved=set(), max_level=2)
+    assert local["capable_requests"] == [] and local["routed"][refill.LOCAL]
+
+
+def test_log_event_appends_to_the_same_bounded_ledger(tmp_path: Path) -> None:
+    refill.log_event(tmp_path, "CAPABLE_DISPATCHED", PORTFOLIO[0], "RM-x", {"reason": "DISPATCHED"})
+
+    (row,) = refill.load_store(tmp_path)["ledger"]
+    assert row["kind"] == "CAPABLE_DISPATCHED" and row["id"] == "RM-x"
+
+
+def test_the_first_ledger_write_creates_a_missing_lane_directory(tmp_path: Path) -> None:
+    fresh = tmp_path / "does" / "not" / "exist"
+
+    refill.log_event(fresh, "GENERATED", PORTFOLIO[0], "RM-z", {})
+
+    assert refill.load_store(fresh)["ledger"][0]["id"] == "RM-z"
