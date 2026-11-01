@@ -224,6 +224,45 @@ def _fail(workspace: Path, job: dict[str, Any], reason: str, detail: str = "",
     return {"status": "BLOCKED", "reason": reason, "branch": job["branch"], "detail": detail[-400:]}
 
 
+def settle_verification(workspace: Path, job: dict[str, Any], *, now: Callable[[], float],
+                        release: Callable[[str], None] | None) -> dict[str, Any] | None:
+    """VERIFYING -> VERIFIED or FAILED once the result is in or the run hung; None means settled and still going.
+
+    Needs neither the repository clone nor GitHub, so it can run for every job on every turn.
+    """
+    branch = job["branch"]
+    result_path = Path(job["result"])
+    if not result_path.is_file():
+        if now() - float(job.get("started_at", 0)) > PREFLIGHT_TIMEOUT_S + 600:
+            return _fail(workspace, job, "PREFLIGHT_TIMED_OUT", release=release)
+        return {"status": "VERIFYING", "branch": branch}
+    try:
+        verdict = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return _fail(workspace, job, "PREFLIGHT_RESULT_UNREADABLE", release=release)
+    if verdict.get("ok") is not True or verdict.get("head") != job["commit_sha"]:
+        return _fail(workspace, job, "PREFLIGHT_FAILED", str(verdict.get("output_tail", "")), release=release)
+    _return_lease(job, release)  # the heavy part is over; pushing and publishing need no model
+    job["stage"] = "VERIFIED"
+    _save(workspace, job)
+    return None
+
+
+def harvest(workspace: Path, *, now: Callable[[], float] = time.time,
+            release: Callable[[str], None] | None = None) -> list[dict[str, Any]]:
+    """Settle every verifying job (result in, or hung) whatever happens to its repository; returns the failures.
+
+    A repository that cannot be synced must not leave a finished or hung job holding the shared runtime lease and the
+    portfolio-wide exclusion: that would suppress executable work everywhere else.
+    """
+    failures = []
+    for job in [row for row in _jobs(workspace) if row["stage"] == "VERIFYING"]:
+        outcome = settle_verification(workspace, job, now=now, release=release)
+        if outcome is not None and outcome["status"] == "BLOCKED":
+            failures.append({**outcome, "repository": job["repository"]})
+    return failures
+
+
 def _advance(job: dict[str, Any], *, workspace: Path, publisher: Callable[[str, str, str, str], str],
              pr_lookup: Callable[[str, str], dict[str, Any] | None], spawn: Callable[[Path, Path], int | None],
              may_start: bool, now: Callable[[], float], reserve: Callable[[], str | None] | None = None,
@@ -249,20 +288,9 @@ def _advance(job: dict[str, Any], *, workspace: Path, publisher: Callable[[str, 
             _save(workspace, job)
             return {"status": "VERIFYING", "branch": branch}
         if stage == "VERIFYING":
-            result_path = Path(job["result"])
-            if not result_path.is_file():
-                if now() - float(job.get("started_at", 0)) > PREFLIGHT_TIMEOUT_S + 600:
-                    return _fail(workspace, job, "PREFLIGHT_TIMED_OUT", release=release)
-                return {"status": "VERIFYING", "branch": branch}
-            try:
-                verdict = json.loads(result_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                return _fail(workspace, job, "PREFLIGHT_RESULT_UNREADABLE", release=release)
-            if verdict.get("ok") is not True or verdict.get("head") != job["commit_sha"]:
-                return _fail(workspace, job, "PREFLIGHT_FAILED", str(verdict.get("output_tail", "")), release=release)
-            _return_lease(job, release)  # the heavy part is over; pushing and publishing need no model
-            job["stage"] = "VERIFIED"
-            _save(workspace, job)
+            outcome = settle_verification(workspace, job, now=now, release=release)
+            if outcome is not None:
+                return outcome
             continue
         if stage == "VERIFIED":
             if _git(tree, "rev-parse", "HEAD").stdout.strip() != job["commit_sha"]:

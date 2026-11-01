@@ -2049,3 +2049,31 @@ def test_a_harvested_draft_is_logged_against_its_own_repository_not_the_one_bein
 
     ledger = {e["id"]: e["repository"] for e in refill_mod.load_store(lane.root)["ledger"]}
     assert ledger == {"RM-a": REPOS[1], "RM-b": REPOS[2]}  # an outcome without its own repository falls back to the pass
+
+
+def test_an_unreachable_repository_cannot_leave_a_settled_preflight_blocking_the_rest(env, monkeypatch):
+    """Review P2 on #609: a sync failure skipped progress harvesting, so a stale VERIFYING job suppressed drafting everywhere."""
+    import time as time_mod
+
+    from project_orchestrator import iron_god_roadmap_progress as progress_mod
+
+    backlog_env(env, [])
+    lane = pl.ProductLane(env.state)
+    workspace = lane.workspaces / "progress"
+    (workspace / "jobs").mkdir(parents=True, exist_ok=True)
+    result = workspace / "results" / "x.json"
+    result.parent.mkdir(parents=True, exist_ok=True)
+    result.write_text(json.dumps({"ok": True, "head": "c" * 40}), encoding="utf-8")
+    job = {"repository": REPOS[1], "branch": "iron-god/roadmap-progress/x", "stage": "VERIFYING", "started_at": time_mod.time(),
+           "result": str(result), "commit_sha": "c" * 40, "lease_id": None, "worktree": str(workspace / "t"),
+           "clone": str(workspace / "c")}
+    progress_mod._job_file(workspace, job["branch"]).write_text(json.dumps(job), encoding="utf-8")  # the writer's own name
+    assert progress_mod.verifying(workspace)
+
+    def unreachable(_lane, repo):
+        raise OSError("PRODUCT_FETCH_FAILED")
+
+    pl.refill_from_roadmaps(lane, REPOS, set(), [], {}, 1, unreachable, lambda repo: [], record_progress=True,
+                            draft_locally=True, lease_pool=env.pool)
+
+    assert not progress_mod.verifying(workspace)  # settled before any repository was synced

@@ -1103,6 +1103,13 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     """
     approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
     capable = capable or {"enabled": False, "daily_limit": capable_builder.DEFAULT_DAILY_LIMIT}
+    for failure in roadmap_progress.harvest(lane.workspaces / "progress", release=runtime_lease(lease_pool)[1]
+                                            if lease_pool is not None else None):
+        # every turn, before any repository is synced: a finished or hung preflight must not hold the lease and the
+        # portfolio-wide exclusion just because its repository cannot be reached
+        roadmap_refill.log_event(lane.root, "PROGRESS_BLOCKED", failure["repository"], failure.get("branch", ""), failure)
+        working_memory.record(lane.state_root, failure["repository"], "ROADMAP_PROGRESS_BLOCKED",
+                              detail=str(failure.get("reason", "")), outcome="BLOCKED")
     if draft_locally:  # finished draft jobs are harvested every turn, whichever repository is being refilled
         log_draft_outcomes(lane, None, local_drafter.harvest(
             lane.root, release=(lambda lease_id: lease_pool.release(WORKER_LEASE_ID, lease_id))
