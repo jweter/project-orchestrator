@@ -106,6 +106,9 @@ def admitted_items(lane_root: Path, existing: list[dict[str, Any]] | None = None
     for item in load_store(lane_root)["items"]:
         if str(item.get("id")) in taken or backlog.item_problems(item) or item.get("origin") != ORIGIN:
             continue  # a tampered or colliding entry is never dispatched
+        declared = (item.get("authorization") or {}).get("declared_capability_level")
+        if type(declared) is not int or item["level"] < declared:
+            continue  # the item must prove the slice's declared level and never understate it
         taken.add(str(item["id"]))
         kept.append(item)
     return kept
@@ -296,6 +299,14 @@ def draft_problems(draft: Any, request: dict[str, Any], *, items: list[dict[str,
         problems.append("NOT_TRACEABLE_TO_ROADMAP_OUTCOME")
     if type(draft.get("level")) is int and (draft["level"] not in backlog.BUILDABLE_LEVELS or draft["level"] > max_level):
         problems.append("LEVEL_BEYOND_LOCAL_BUILDER")
+    # Admission feeds the LOCAL builder's queue, so the request itself must have been routed there, and the draft
+    # may not understate the slice's declared level (that would be silently simplifying the work).
+    route = request.get("route")
+    if not isinstance(route, dict) or route.get("builder") != LOCAL:
+        problems.append("REQUEST_NOT_ROUTED_TO_LOCAL_BUILDER")
+    declared_level = request.get("capability_level")
+    if type(draft.get("level")) is int and (type(declared_level) is not int or draft["level"] < declared_level):
+        problems.append("DRAFT_UNDERSTATES_DECLARED_LEVEL")
     files = backlog.edit_files(candidate)
     if not files:
         problems.append("NO_EDIT_FILES")
@@ -335,7 +346,9 @@ def stamp(draft: dict[str, Any], request: dict[str, Any], source: str) -> dict[s
     item["authorization"] = {
         "basis": "standing owner-approved roadmap (development-scope delegation 2026-11-01, issue #594)",
         "authority": source, "exact_head": request["exact_head"], "capability": request["capability"],
-        "slice": request["slice"], "grants": "development only; no execution, release or control authority"}
+        "slice": request["slice"], "declared_capability_level": request.get("capability_level"),
+        "route": (request.get("route") or {}).get("builder"),
+        "grants": "development only; no execution, release or control authority"}
     return item
 
 
