@@ -17,7 +17,12 @@ function ParseJson([string]$path,[string]$code) {
   if ($null -eq $parsed) {throw "${code}_CORRUPT: $path"}
   return $parsed
 }
-function Hash([string]$path) {return (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash}
+# .NET hashing: the Microsoft.PowerShell.Utility module is not always loadable in a minimal host.
+function Hash([string]$path) {
+  $sha=[Security.Cryptography.SHA256]::Create()
+  $stream=[IO.File]::OpenRead($path)
+  try {return [BitConverter]::ToString($sha.ComputeHash($stream))} finally {$stream.Dispose();$sha.Dispose()}
+}
 function SameFile([string]$a,[string]$b) {
   return (Test-Path -LiteralPath $b -PathType Leaf) -and ((Hash $a) -ceq (Hash $b))
 }
@@ -66,7 +71,8 @@ function RequireDisabled([string]$name) {
   if ((TaskState $name) -ne 'Disabled') {throw "TASK_NOT_DISABLED: $name"}
 }
 function RequireOwnerHeld {
-  if ((Get-IronGodOwnerStatus $state (Join-Path $release 'src')) -ceq 'AUTHORIZED') {
+  # Affirmative evidence only: a missing, corrupt or unreadable owner record (UNVERIFIED) is not "the owner holds control".
+  if ((Get-IronGodOwnerStatus $state (Join-Path $release 'src')) -cne 'OWNER_CONTROL_ACTIVE') {
     throw 'OWNER_MUST_KEEP_CONTROL_DURING_RESTORE'
   }
 }
@@ -167,6 +173,7 @@ if (-not $Apply) {$plan|ConvertTo-Json -Depth 5;exit 0}
 $snap=Join-Path $state ('pre-restore-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $snap -ErrorAction Stop|Out-Null
 $snapDesktop=Join-Path $snap 'desktop-controls'
+$absentBefore=New-Object 'System.Collections.Generic.List[string]'
 New-Item -ItemType Directory -Path $snapDesktop -ErrorAction Stop|Out-Null
 Copy-Item -LiteralPath $pinFile -Destination (Join-Path $snap 'supervisor-pinned-release.json') -ErrorAction Stop
 Copy-Item -LiteralPath $actorPinFile -Destination (Join-Path $snap 'actor-local-promotion.json') -ErrorAction Stop
@@ -174,6 +181,7 @@ foreach($n in $names) {WriteText (Join-Path $snap ($n+'.xml')) (TaskXml $n)}
 foreach($f in $desktopFiles) {
   $installed=Join-Path $Base $f.Name
   if (Test-Path -LiteralPath $installed -PathType Leaf) {Copy-Item -LiteralPath $installed -Destination (Join-Path $snapDesktop $f.Name) -ErrorAction Stop}
+  else {$absentBefore.Add($f.Name)}
 }
 WriteText (Join-Path $snap 'restore-in-progress.json') (([ordered]@{restore_sha=$ExpectedSha;backup=$BackupDir;
   started_at_utc=[DateTimeOffset]::UtcNow.ToString('o')})|ConvertTo-Json)
@@ -223,6 +231,11 @@ try {
   foreach($f in @(Get-ChildItem -LiteralPath $snapDesktop -File)) {
     try {Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $Base $f.Name) -Force -ErrorAction Stop}
     catch {$failures.Add('DESKTOP '+$f.Name+': '+$_.Exception.Message)}
+  }
+  # A control file the restore created (it was absent before) must not outlive a failed restore.
+  foreach($name in $absentBefore) {
+    try {Remove-Item -LiteralPath (Join-Path $Base $name) -Force -ErrorAction SilentlyContinue}
+    catch {$failures.Add('DESKTOP '+$name+': '+$_.Exception.Message)}
   }
   WriteText (Join-Path $snap 'restore-failed.json') (([ordered]@{error=$errorText;revert_errors=@($failures)})|ConvertTo-Json)
   throw ('PINNED_RELEASE_RESTORE_FAILED_REVERTED: '+$errorText+'; REVERT_ERRORS='+($failures -join '; ')+'; SNAPSHOT='+$snap)

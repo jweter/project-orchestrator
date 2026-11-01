@@ -253,6 +253,22 @@ def test_owner_control_must_be_held_and_is_never_changed(install):
     assert tree_hash(install["state"] / "IronGodControl") == control_before
 
 
+def test_unverified_owner_state_is_not_evidence_that_the_owner_holds_control(install):
+    shutil.rmtree(install["state"] / "IronGodControl")  # no owner record at all: status is UNVERIFIED
+    for apply in (False, True):
+        proc = run(install, apply=apply)
+        assert proc.returncode != 0 and "OWNER_MUST_KEEP_CONTROL_DURING_RESTORE" in (proc.stderr + proc.stdout)
+    assert not restored(install)
+
+
+def test_a_desktop_control_the_restore_created_is_removed_when_it_fails(install):
+    (install["base"] / DESKTOP[1]).unlink()  # absent before the restore
+    proc = run(install, "-InjectFailure", "AfterDesktop", apply=True)
+    assert proc.returncode != 0
+    assert not (install["base"] / DESKTOP[1]).exists()
+    assert (install["base"] / DESKTOP[0]).read_text(encoding="utf-8") == f"new {DESKTOP[0]}\n"
+
+
 def test_an_enabled_task_blocks_the_restore(install):
     (install["base"] / "task-sandbox" / f"{ACTOR}.state").write_text("Ready", encoding="utf-8")
     proc = run(install, apply=True)
@@ -310,7 +326,7 @@ def test_the_script_never_starts_enables_or_stops_anything_and_has_a_valid_parse
     for forbidden in ("Start-ScheduledTask", "Enable-ScheduledTask", "Disable-ScheduledTask", "Stop-Process",
                       "Unregister-ScheduledTask", "human-mode.json"):
         assert forbidden not in text
-    assert "(Get-IronGodOwnerStatus $state (Join-Path $release 'src')) -ceq 'AUTHORIZED'" in text
+    assert "(Get-IronGodOwnerStatus $state (Join-Path $release 'src')) -cne 'OWNER_CONTROL_ACTIVE'" in text
     # dry-run exits before the first write of any kind
     assert text.index("if (-not $Apply) {$plan|ConvertTo-Json -Depth 5;exit 0}") < text.index("New-Item -ItemType Directory")
     assert text.index("restore-result.json") > text.index("RESTORED_DESKTOP_CONTROL_UNVERIFIED")
