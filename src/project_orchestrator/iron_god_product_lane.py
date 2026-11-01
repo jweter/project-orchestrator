@@ -1005,7 +1005,8 @@ def draft_with_local_builder(lane: ProductLane, name: str, report: dict[str, Any
             lane.root, report.get("local_requests", []), clone, head,
             spawn=lambda request_file, tree, base, out: spawn_draft_author(
                 release_repo, release_sha, request_file, tree, base, out, lane.reports / f"draft-{out.stem}.log"),
-            may_start=lane.active() is None, reserve=reserve_model, release=release_model,
+            may_start=lane.active() is None and not roadmap_progress.verifying(lane.workspaces / "progress"),
+            reserve=reserve_model, release=release_model,
             extra={"attempted_functions": sorted(working_memory.attempted_functions(lane.state_root, name))})
     except Exception as exc:  # drafting is best-effort; other repositories and the rotation continue
         outcomes = [{"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
@@ -1016,7 +1017,7 @@ def log_draft_outcomes(lane: ProductLane, name: str | None, outcomes: list[dict[
     """Ledger + working memory for draft outcomes; ``name`` None means each outcome names its own repository."""
     recent = roadmap_refill.load_store(lane.root)["ledger"][-100:]
     for outcome in outcomes:
-        repository = name or outcome.get("repository") or "<portfolio>"
+        repository = outcome.get("repository") or name or "<portfolio>"  # a harvested job belongs to ITS repository
         kind = "LOCAL_DRAFT_" + outcome["status"]
         if outcome["status"] == "NEEDS_ACCEPTANCE_EXAMPLES" and any(
                 e["kind"] == kind and e["id"] == outcome["id"] and e["detail"].get("reason") == outcome.get("reason")
@@ -1043,8 +1044,26 @@ def spawn_progress_preflight(release_repo: Path, release_sha: str, worktree: Pat
     return process.pid
 
 
+def runtime_lease(lease_pool: Any) -> tuple[Callable[[], str | None], Callable[[str], None]]:
+    """Reserve/release callables for the shared runtime lease a worker uses (reserve gives None if it is taken)."""
+
+    def reserve() -> str | None:
+        if lease_pool is None:
+            return None
+        try:
+            return lease_pool.acquire(WORKER_LEASE_RUNTIME, WORKER_LEASE_ID, owner_pid=os.getpid()).lease_id
+        except Exception:
+            return None
+
+    def release(lease_id: str) -> None:
+        lease_pool.release(WORKER_LEASE_ID, lease_id)
+
+    return reserve, release
+
+
 def record_roadmap_progress(lane: ProductLane, name: str, clone: Path, head: str, items: list[dict[str, Any]],
-                            state: dict[str, Any], release: tuple[Path, str] | None = None) -> None:
+                            state: dict[str, Any], release: tuple[Path, str] | None = None,
+                            lease_pool: Any = None) -> None:
     """Advance the mechanical graph-progress job for ``name``; outcomes are logged, never fatal.
 
     The repository's native preflight runs in its own process and only while no worker is active, so the supervisor
@@ -1053,13 +1072,15 @@ def record_roadmap_progress(lane: ProductLane, name: str, clone: Path, head: str
     if release is None:
         return
     release_repo, release_sha = release
+    reserve, give_back = runtime_lease(lease_pool)
     try:
         result = roadmap_progress.record_progress(
             lane.root, lane.state_root, name, clone, head, items=items, state=state,
             publications=lane.publications()["items"], workspace=lane.workspaces / "progress",
             spawn=lambda tree, out: spawn_progress_preflight(release_repo, release_sha, tree, out,
                                                              lane.reports / f"progress-{out.stem}.log"),
-            may_start=lane.active() is None)
+            may_start=lane.active() is None and not local_drafter.drafting_in_progress(lane.root),
+            reserve=reserve if lease_pool is not None else None, release=give_back)
     except Exception as exc:  # recording progress is best-effort; the overlay already lets the engine continue
         result = {"status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}
     if result["status"] in {"OPENED", "BLOCKED", "ERROR"}:
@@ -1111,7 +1132,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
         if record_progress:
-            record_roadmap_progress(lane, name, clone, head, approved, state, release)
+            record_roadmap_progress(lane, name, clone, head, approved, state, release, lease_pool)
         working_memory.record(lane.state_root, name, "ROADMAP_REFILL", detail=roadmap_refill.summarize(report),
                               outcome="DIRECTION_REQUIRED" if report["direction_required"] and not report["requests"] else None)
         approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
