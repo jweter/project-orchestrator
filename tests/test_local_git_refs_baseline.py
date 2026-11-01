@@ -106,3 +106,41 @@ def test_the_new_baseline_is_inside_the_protection_policy_and_cannot_be_deleted_
     assert protection.check_ref_operation(BASELINE_REF, "delete").allowed is False
     assert protection.check_ref_operation(BASELINE_REF, "force-update").allowed is False
     assert protection.check_ref_operation(BASELINE_REF, "fast-forward").allowed is True
+
+
+def advance_during_check(refs: LocalGitRefs, working: Path, interloper_sha: str):
+    """Make another acceptance land between the caller's validation and its write (the review's race)."""
+    original = refs._owner_check
+    calls = {"n": 0}
+
+    def hooked() -> None:
+        calls["n"] += 1
+        original()
+        if calls["n"] == 2:  # after the fast-forward check, just before the compare-and-swap
+            git(working, "update-ref", BASELINE_REF, interloper_sha)
+
+    refs._owner_check = hooked  # type: ignore[method-assign]
+
+
+def test_a_concurrent_acceptance_is_never_overwritten_by_a_stale_caller(repo) -> None:
+    """Review P1 on #610: A->C landed while a paused A->B caller was about to write; B must not replace C."""
+    working, refs, (a, b, c) = repo
+    refs.bootstrap_accepted(a)
+    advance_during_check(refs, working, c)
+
+    with pytest.raises(LocalGitRefError, match="ACCEPTED_COMPARE_AND_SWAP_FAILED"):
+        refs.advance_accepted(expected_sha=a, new_sha=b)
+
+    assert git(working, "rev-parse", BASELINE_REF).stdout.strip() == c  # the later acceptance survives
+
+
+def test_a_new_ref_created_concurrently_beats_a_caller_that_saw_only_the_legacy_baseline(repo) -> None:
+    working, refs, (a, b, c) = repo
+    git(working, "update-ref", LEGACY_BASELINE_REF, a)
+    advance_during_check(refs, working, c)  # another process creates the new ref from nothing first
+
+    with pytest.raises(LocalGitRefError, match="ACCEPTED_COMPARE_AND_SWAP_FAILED"):
+        refs.advance_accepted(expected_sha=a, new_sha=b)
+
+    assert git(working, "rev-parse", BASELINE_REF).stdout.strip() == c
+    assert git(working, "rev-parse", LEGACY_BASELINE_REF).stdout.strip() == a  # legacy still untouched

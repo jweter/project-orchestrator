@@ -157,7 +157,10 @@ class LocalGitRefs:
         self._commit_exists(new_sha)
         if expected_sha == new_sha:
             raise LocalGitRefError("NO_ACCEPTED_ADVANCEMENT")
-        current = self.accepted()
+        # Capture what is stored at the NEW name once, before validating: that value is the compare-and-swap's expected old
+        # value. Re-reading it at write time would let a stale caller overwrite an acceptance that landed in between.
+        stored = self._read(BASELINE_REF)
+        current = stored or self._read(LEGACY_BASELINE_REF)
         if current != expected_sha:
             raise LocalGitRefError("ACCEPTED_BASE_CHANGED")
         ff = self._run(
@@ -168,11 +171,11 @@ class LocalGitRefs:
             raise LocalGitRefError("NON_FAST_FORWARD_ACCEPTANCE")
         self._owner_check()
         try:
-            # Compare-and-swap against what is actually stored at the new name: a repository that only has the legacy
-            # baseline starts the new ref from nothing (old value zero) and the legacy ref is left untouched.
+            # A repository that only has the legacy baseline starts the new ref from nothing (old value zero), so a
+            # concurrent creation of the new ref fails the swap; the legacy ref is left untouched.
             self._run(
                 "update-ref", "--create-reflog",
-                BASELINE_REF, new_sha, self._read(BASELINE_REF) or _ZERO,
+                BASELINE_REF, new_sha, stored or _ZERO,
             )
         except LocalGitRefError as exc:
             raise LocalGitRefError("ACCEPTED_COMPARE_AND_SWAP_FAILED") from exc
