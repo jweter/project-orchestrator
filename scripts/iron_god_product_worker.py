@@ -569,6 +569,65 @@ def production_format(worktree: Path, files: list[str], check: Callable[[], None
     return tool
 
 
+BUILTIN_TYPES = frozenset({"str", "int", "float", "bool", "bytes", "complex", "list", "dict", "set", "frozenset",
+                           "tuple", "object", "type"})
+
+
+def drop_builtin_typing_imports(source: str) -> tuple[str, list[str]]:
+    """Remove builtin names the model imported from ``typing`` (``from typing import Dict, str`` cannot import).
+
+    A mechanical repair of one measured model slip (VoiceStudio S2, every attempt). It is only applied when it is
+    demonstrably behaviour-preserving, and otherwise the source is returned untouched for the normal gates to judge:
+
+    * none of these names exists in ``typing``, so no import that could succeed is ever altered;
+    * an aliased import (``from typing import str as S``) is never repaired - ``S`` would become undefined;
+    * the statement must be alone on its lines (no ``;`` neighbours) so nothing else is lost;
+    * the repaired module must still parse, which rules out emptying a block (``if X:`` / ``try:`` / ``def``) that held
+      the import as its only statement.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return source, []
+    lines = source.split("\n")
+    plan: list[tuple[ast.ImportFrom, list[ast.alias]]] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.ImportFrom) and node.module == "typing" and node.level == 0):
+            continue
+        bad = [a for a in node.names if a.name in BUILTIN_TYPES]
+        if not bad:
+            continue
+        if any(a.asname for a in bad):
+            return source, []  # a referenced alias would be left undefined: not demonstrably safe
+        end_line = node.end_lineno or node.lineno
+        before = lines[node.lineno - 1][: node.col_offset]
+        after = lines[end_line - 1][(node.end_col_offset or 0):]
+        if before.strip() or (after.strip() and not after.strip().startswith("#")):
+            return source, []  # shares its line with other code
+        plan.append((node, bad))
+    if not plan:
+        return source, []
+    removed: list[str] = []
+    for node, bad in sorted(plan, key=lambda item: -item[0].lineno):
+        removed += [a.name for a in bad]
+        keep = [a for a in node.names if a.name not in BUILTIN_TYPES]
+        end_line = node.end_lineno or node.lineno
+        indent = lines[node.lineno - 1][: node.col_offset]
+        comment = lines[end_line - 1][(node.end_col_offset or 0):].strip()
+        replacement = ([indent + "from typing import " + ", ".join(
+            a.name + (f" as {a.asname}" if a.asname else "") for a in keep) + (("  " + comment) if comment else "")]
+            if keep else [])
+        lines[node.lineno - 1:end_line] = replacement
+    repaired = "\n".join(lines)
+    try:
+        ast.parse(repaired)
+    except SyntaxError:
+        return source, []  # the removal broke the module (e.g. emptied a block): leave it for the gates
+    return repaired, sorted(removed)
+
+
 def settle_changes(worktree: Path, base: str, plan: dict[str, Any], handback: dict[str, Any]) -> list[str]:
     """Keep only the planned module and the worker's own tests; everything else the model emitted is discarded.
 
@@ -591,6 +650,9 @@ def settle_changes(worktree: Path, base: str, plan: dict[str, Any], handback: di
             _git(worktree, "checkout", base, "--", *tracked)
         untracked = [p for p in stray if p not in tracked]
         if untracked:
+            # aider stages a file it creates (2026-11-02, VoiceStudio S2: "AM singing_project.py"); `git clean` never
+            # removes an indexed path, so unstage first or the stray survives every retry and fails the scope gate
+            _git(worktree, "rm", "--cached", "-f", "-q", "--ignore-unmatch", "--", *untracked)
             _git(worktree, "clean", "-fdq", "--", *untracked)
         stray = [p for p in changed_paths(worktree) if p not in (module, test)]
         if not stray:
@@ -856,6 +918,10 @@ def execute_product_packet(
     handback["changed_paths"] = changed
     if module not in changed or not (worktree / module).is_file():
         return finish("FAIL", "PLANNED_MODULE_NOT_PRODUCED")
+    fixed, dropped = drop_builtin_typing_imports((worktree / module).read_text(encoding="utf-8"))
+    if dropped:
+        (worktree / module).write_text(fixed, encoding="utf-8", newline="\n")
+        handback["sanitized_typing_imports"] = dropped
     if set(changed) != {module, test}:
         return finish("REVIEW_REQUIRED", "CHANGES_OUTSIDE_PLAN: " + ", ".join(sorted(set(changed) - {module, test})))
     foreign = stdlib_only_failure(worktree, module)
