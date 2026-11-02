@@ -644,3 +644,29 @@ def test_the_proven_base_travels_inside_the_directed_specification_the_worker_re
     assert item["approved_base"] == world["head"] == item["direct"]["approved_base"]
     packet = author.build_packet(request, ["pkg/"], world["head"], [], [])
     assert WORKER.validate_direct(item["direct"], world["clone"], world["head"], packet)["approved_base"] == world["head"]
+
+def test_no_second_draft_is_launched_once_a_valid_draft_has_been_admitted(world: dict) -> None:
+    """2026-11-02 VoiceStudio S2: attempt 1 started the moment attempt 0 was admitted and spent 5 minutes of RAM."""
+    request = request_of(world)
+    spawner = Spawner(finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+    assert refill_pass(world)["admitted"] == [request["id"]]
+    launched = len(spawner.launched)
+
+    again = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert again == [] and len(spawner.launched) == launched  # the approved request is not drafted again
+
+
+def test_a_rejected_draft_is_still_retried_because_nothing_was_admitted(world: dict) -> None:
+    request = request_of(world)
+    drafts = world["lane"] / refill.DRAFTS
+    drafts.mkdir(parents=True)
+    (drafts / f"{request['id']}.json").write_text("{}", encoding="utf-8")
+    import hashlib
+    digest = hashlib.sha256((drafts / f"{request['id']}.json").read_bytes()).hexdigest()
+    refill._mutate(world["lane"], lambda store: store["processed"].update({request["id"]: digest}))
+    spawner = Spawner()
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)[0]["status"] == "STARTED"

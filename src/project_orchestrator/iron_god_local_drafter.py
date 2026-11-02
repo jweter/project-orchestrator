@@ -336,9 +336,12 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
                                        f"{request['slice']} so the local builder can be verified independently"})
     if not may_start or drafting_in_progress(lane_root, now=now()):
         return outcomes
+    admitted = {str(item.get("id")) for item in refill.load_store(lane_root)["items"]}
     for request in requests:
         if not eligible(request) or _draft_state(lane_root, request["id"]) == "UNJUDGED":
             continue
+        if request["id"] in admitted:
+            continue  # a valid draft is already admitted for this request: a second model run only burns RAM and time
         attempt = sum(1 for row in _jobs(lane_root) if row["id"] == request["id"])
         if attempt >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
             # a directed draft is assembled mechanically: running it again would only repeat the verdict
