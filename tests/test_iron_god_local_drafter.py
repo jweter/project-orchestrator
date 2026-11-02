@@ -344,8 +344,8 @@ def test_the_roadmap_acceptance_examples_are_injected_for_the_chosen_function_na
     assert len(draft["build"]["objective"]) <= 600 and draft["build"]["objective"] == draft["objective"]
 
 
-def test_a_plan_that_contradicts_the_roadmap_is_failed_and_never_written(world: dict) -> None:
-    """Review P1 reproduction: the planner returns the FIRST N items, with matching examples of its own."""
+def test_a_plan_that_contradicts_the_roadmap_is_replaced_by_the_roadmap_not_trusted(world: dict) -> None:
+    """Review P1 reproduction (the planner returns the FIRST N items) and S2-r1: the roadmap alone defines the draft."""
     request = request_of(world)
     first_n = {**GOOD_PLAN, "objective": "Return the first `limit` items of the list in their original order, empty if limit < 1.",
                "examples": [{"call": "newest_entries([1, 2, 3, 4], 2)", "why": "the first two are 1 and 2", "expected": [1, 2]},
@@ -356,8 +356,13 @@ def test_a_plan_that_contradicts_the_roadmap_is_failed_and_never_written(world: 
 
     outcomes = drafter.harvest(world["lane"])
 
-    assert outcomes[0]["status"] == "FAILED" and "ContradictsRoadmap" in outcomes[0]["reason"]
-    assert not (world["lane"] / refill.DRAFTS).exists()
+    assert outcomes[0]["status"] == "DRAFTED"
+    draft = json.loads((world["lane"] / refill.DRAFTS / f"{request['id']}.json").read_text(encoding="utf-8"))
+    build = draft["build"]
+    assert "first `limit`" not in build["objective"] and build["objective"].startswith("Roadmap slice goal:")
+    assert all(e["why"].startswith("roadmap acceptance example") for e in build["examples"])  # none of the model's own
+    assert "discarded" in build["note"]
+    assert backlog.item_problems({**draft, "status": "approved", "assignee": backlog.AGENT_ID}) == []
 
 
 def test_a_plan_whose_own_examples_avoid_the_roadmap_calls_still_carries_the_roadmap_tests(world: dict) -> None:

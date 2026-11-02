@@ -192,14 +192,18 @@ def direct_to_draft(request: dict[str, Any], validated: dict[str, Any]) -> dict[
 def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[str, Any]) -> dict[str, Any]:
     """A backlog draft (Level 1 build spec) from a plan the worker's validator accepted.
 
-    The roadmap's acceptance examples are injected for the chosen function name and always win: a plan example with the
-    same call but a different expected value contradicts the roadmap and raises ``ContradictsRoadmap``.
+    The roadmap's acceptance examples are injected for the chosen function name and always win. A plan example with the
+    same call but a different expected value shows the planner misread the slice (VoiceStudio S2-r1, 2026-11-02, and the
+    review-P1 "first N items" plan), so its whole interpretation is discarded - its objective and every example of its
+    own - and the draft is defined by the roadmap alone. The model keeps only what the roadmap leaves open: the module,
+    the signature and the test location, all still checked by the worker's validator and the roadmap's examples.
     """
     name = validated["function_name"]
     given = {" ".join(call.split()): example for example in roadmap_examples(request)
              for call in [example["call"].replace("{fn}", name)]}
     usable = {" ".join(str(e["call"]).split()) for e in validated["examples"]}
     own = []
+    misread = False
     for e in raw.get("examples", []):
         if not (isinstance(e, dict) and "call" in e and "expected" in e):
             continue
@@ -207,16 +211,20 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
         if call not in usable:
             continue
         if call in given and given[call]["expected"] != e["expected"]:
-            raise ContradictsRoadmap(f"{call} expected {e['expected']!r}, roadmap says {given[call]['expected']!r}")
+            misread = True
+            continue
         if call not in given:
             own.append({"call": call, "why": " ".join(str(e.get("why", "")).split()), "expected": e["expected"]})
     injected = [{"call": call, "why": "roadmap acceptance example: " + example["why"], "expected": example["expected"]}
                 for call, example in given.items()]
+    if misread:
+        own = []
     examples = [*injected, *own]
     criteria = [*validated["acceptance_criteria"], *[f"{e['call']} returns {e['expected']!r} (roadmap acceptance)"
                                                       for e in injected]]
     roadmap_part = " ".join(str(request["objective"]).split())[:ROADMAP_OBJECTIVE_CHARS]
-    objective = f"{validated['objective']} Roadmap slice goal: {roadmap_part}"[:600]
+    objective = (f"Roadmap slice goal: {roadmap_part}" if misread
+                 else f"{validated['objective']} Roadmap slice goal: {roadmap_part}")[:600]
     slice_text = f"roadmap slice {request['slice']} of capability {request['capability']}"
     return {
         "id": request["id"], "repository": request["repository"],
@@ -231,7 +239,8 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
         "definition_of_done": "merged with green CI and the roadmap graph updated",
         "build": {"module_path": validated["module_path"], "function_name": name,
                   "signature": validated["signature"], "objective": objective, "examples": examples,
-                  "note": validated.get("note", "")},
+                  "note": ("the planner's own objective and examples contradicted the roadmap and were discarded; "
+                           + str(validated.get("note", ""))).strip() if misread else validated.get("note", "")},
     }
 
 
