@@ -2220,3 +2220,23 @@ def test_a_safe_repair_keeps_valid_aliases_comments_and_surrounding_code() -> No
     assert "from typing import Dict, Optional as Opt  # keep" in fixed and "    from typing import List  # tail" in fixed
     compile(fixed, "m.py", "exec")
     assert fixed.count("def f(") == 1 and "import os" in fixed
+
+
+def test_two_repairs_of_one_publication_in_the_same_second_get_distinct_branches(env, monkeypatch):
+    """Full Preflight flake on PR #622 (2026-11-02): a fast host reused the one-second stamp and the worktree add failed."""
+    backlog_env(env, [backlog_item("RS-1", REPOS[1])])
+    runner, github = Runner(plan=never_plans, agent=build_then_repair_agent), FakeGitHub(("pass",))
+    _packet_id, _item, head = published(env, runner, github)
+    github.threads = [review_thread("T1", head)]
+
+    class Frozen(pl.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 2, 11, 20, 27, tzinfo=tz)
+
+    monkeypatch.setattr(pl, "datetime", Frozen)
+    step(env, runner, github, allow=False)
+    assert step(env, runner, github)["status"] == "DISPATCHED"
+    assert step(env, runner, github, decision=DENY)["status"] == "WORKER_STOPPED_AUTHORITY_REVOKED"
+    again = step(env, runner, github)  # same frozen second: must not collide with the cancelled repair's branch
+    assert again["status"] == "DISPATCHED" and again["repair_of"] == _packet_id

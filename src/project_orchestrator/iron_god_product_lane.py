@@ -1245,6 +1245,21 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
                           "backlog_item": item["id"] if item is not None else None})
 
 
+def _repair_stamp(clone: Path) -> str:
+    """Short unique suffix for a repair's branch and worktree.
+
+    One-second resolution collided when two repairs of the same publication started within a second (a fast CI host:
+    ``worktree add -b`` failed, REVIEW_REPAIR_NOT_DISPATCHED, full Preflight red on PR #622, 2026-11-02), so a second
+    stamp inside the same second gets a counter instead of reusing the name.
+    """
+    base = datetime.now(UTC).strftime("%d%H%M%S")
+    stamp, n = base, 0
+    while _git(clone, "branch", "--list", f"igr/*-{stamp}").stdout.strip():
+        n += 1
+        stamp = f"{base}{n}"
+    return stamp
+
+
 def dispatch_repair(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], publication_id: str,
                     publications: dict[str, Any], *, release_sha: str, spawn: Callable[..., dict[str, Any]],
                     owned_paths: Callable[[str], list[str]], lease_id: str) -> dict[str, Any]:
@@ -1255,7 +1270,7 @@ def dispatch_repair(lane: ProductLane, release_repo: Path, ledger: dict[str, Any
     attempt = int(item.get("repair_attempts", 0)) + 1
     # Unique (a cancelled repair keeps its worktree) but short: the branch already carries the packet id,
     # and a long ref under canon-workspaces/products/<repo>/.git/refs/heads hit Windows MAX_PATH (2026-10-31).
-    stamp = datetime.now(UTC).strftime("%d%H%M%S")
+    stamp = _repair_stamp(clone)
     repair_id = f"{publication_id}-R{attempt}-{stamp}"
     # local-only name: the repaired head is pushed to the pull request's own branch (item["branch"])
     branch = f"igr/{hashlib.sha256(publication_id.encode()).hexdigest()[:8]}-{attempt}-{stamp}"
