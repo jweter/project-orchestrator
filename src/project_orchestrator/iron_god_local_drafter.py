@@ -228,6 +228,22 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
     }
 
 
+def _own_earlier_functions(lane_root: Path, request: dict[str, Any]) -> set[str]:
+    """Function names of the failed items this request re-authors.
+
+    The planner may not repeat a function the repository already tried (measured: it loops on its own ideas). A revision
+    of a failed slice is the same slice: the owner's roadmap names that function, so it must not be refused as a repeat
+    (VoiceStudio S2-r1, 2026-11-02: PLAN_ALREADY_ATTEMPTED: singing_project_paths). Other functions stay blocked.
+    """
+    failed = {str(row.get("id")) for row in request.get("prior_failures") or [] if isinstance(row, dict)}
+    names: set[str] = set()
+    for item in refill.load_store(lane_root)["items"]:
+        build = item.get("build") if isinstance(item, dict) else None
+        if str(item.get("id")) in failed and isinstance(build, dict) and build.get("function_name"):
+            names.add(str(build["function_name"]))
+    return names
+
+
 def _rejection_feedback(lane_root: Path, ident: str) -> str:
     rows = [e for e in refill.load_store(lane_root)["ledger"] if e["kind"] == "REJECTED" and e["id"] == ident]
     return ", ".join(rows[-1]["detail"].get("problems", [])) if rows else ""
@@ -350,6 +366,9 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
         if reserve is not None and lease is None:
             continue  # the shared local model is in use
         guided = {**request, **(extra or {}), "planner_feedback": _rejection_feedback(lane_root, request["id"])}
+        reauthored = _own_earlier_functions(lane_root, request)
+        if reauthored and guided.get("attempted_functions"):
+            guided["attempted_functions"] = [n for n in guided["attempted_functions"] if n not in reauthored]
         request_file = Path(lane_root) / REQUEST_COPIES / f"{request['id']}.a{attempt}.json"
         atomic_json(request_file, guided)
         result = Path(lane_root) / RESULTS / f"{request['id']}.a{attempt}.json"
