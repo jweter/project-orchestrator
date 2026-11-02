@@ -748,3 +748,17 @@ def test_real_failures_still_spend_attempts_and_interruptions_are_bounded(world:
     before = len(spawner.launched)
     drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
     assert len(spawner.launched) == before == drafter.MAX_ATTEMPTS  # two genuine failures: no third attempt
+
+
+def test_a_legacy_failed_record_that_was_really_a_takeover_does_not_spend_an_attempt(world: dict) -> None:
+    """S2-r1 a0 was written as FAILED by the release before INTERRUPTED existed; no runtime file may need editing."""
+    request = request_of(world)
+    legacy = Path(world["lane"]) / drafter.JOBS / f"{request['id']}.a0.json"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text(json.dumps({"id": request["id"], "attempt": 0, "stage": "FAILED",
+                                  "reason": "RuntimeError: EXECUTION_AUTHORITY_REVOKED"}), encoding="utf-8")
+    spawner = Spawner()
+
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert len(spawner.launched) == 1 and legacy.is_file()  # a fresh attempt a1, the old record untouched

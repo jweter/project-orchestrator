@@ -72,6 +72,11 @@ def _jobs(lane_root: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _interrupted(row: dict[str, Any]) -> bool:
+    """An owner takeover cut the draft short. Records written before INTERRUPTED existed say so in their reason."""
+    return row.get("stage") == "INTERRUPTED" or INTERRUPTED_MARK in str(row.get("reason", ""))
+
+
 def _job_path(lane_root: Path, ident: str, attempt: int) -> Path:
     return Path(lane_root) / JOBS / f"{ident}.a{attempt}.json"
 
@@ -367,7 +372,7 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
             continue  # a valid draft is already admitted for this request: a second model run only burns RAM and time
         rows = [row for row in _jobs(lane_root) if row["id"] == request["id"]]
         attempt = len(rows)  # the next free record number: interrupted attempts keep their files
-        spent = sum(1 for row in rows if row.get("stage") != "INTERRUPTED")
+        spent = sum(1 for row in rows if not _interrupted(row))
         if attempt - spent >= MAX_INTERRUPTIONS:
             continue
         if spent >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
