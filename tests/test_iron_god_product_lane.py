@@ -2179,3 +2179,33 @@ def test_a_module_that_imports_a_builtin_from_typing_still_has_to_pass_its_tests
     # the sanitiser repairs the import, the module is then judged only by the worker's own spec tests (it returns a dict
     # where the spec expects an int), so the turn must fail rather than pass on the strength of the repair
     assert result["status"] != "ACCEPTED_LOCAL", result
+
+
+def test_no_builtin_name_the_sanitiser_removes_can_actually_be_imported_from_typing() -> None:
+    import typing
+
+    assert not [name for name in WORKER.BUILTIN_TYPES if hasattr(typing, name)]  # so a valid import is never altered
+
+
+@pytest.mark.parametrize("source", [
+    "from typing import str as S\n\n\ndef f(x: S) -> S:\n    return x\n",  # the alias is referenced: removal leaves S undefined
+    "from typing import Dict, str as S, int\n\n\nx: S = 'a'\n",  # one aliased builtin makes the whole repair unsafe
+    "from typing import str; x = 1\n",  # another statement shares the line
+    "if True:\n    from typing import str\n",  # removing the only statement would empty the block
+    "def f():\n    from typing import int\n",
+    "try:\n    from typing import str\nexcept ImportError:\n    pass\n",
+])
+def test_the_typing_sanitiser_fails_closed_unless_the_repair_is_demonstrably_safe(source: str) -> None:
+    assert WORKER.drop_builtin_typing_imports(source) == (source, [])
+
+
+def test_a_safe_repair_keeps_valid_aliases_comments_and_surrounding_code() -> None:
+    source = ("import os\nfrom typing import (\n    Dict,\n    str,\n    Optional as Opt,\n)  # keep\n"
+              "if os.name:\n    from typing import int, List  # tail\n\n\ndef f(x: Opt[int]) -> Dict[str, int]:\n    return {}\n")
+
+    fixed, removed = WORKER.drop_builtin_typing_imports(source)
+
+    assert removed == ["int", "str"]
+    assert "from typing import Dict, Optional as Opt  # keep" in fixed and "    from typing import List  # tail" in fixed
+    compile(fixed, "m.py", "exec")
+    assert fixed.count("def f(") == 1 and "import os" in fixed

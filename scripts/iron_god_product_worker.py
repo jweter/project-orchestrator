@@ -576,8 +576,14 @@ BUILTIN_TYPES = frozenset({"str", "int", "float", "bool", "bytes", "complex", "l
 def drop_builtin_typing_imports(source: str) -> tuple[str, list[str]]:
     """Remove builtin names the model imported from ``typing`` (``from typing import Dict, str`` cannot import).
 
-    A mechanical repair of one measured model slip (VoiceStudio S2, both attempts): the builtin is already in scope, so
-    dropping the name changes no behaviour. Anything unparseable is returned untouched for the normal gates to judge.
+    A mechanical repair of one measured model slip (VoiceStudio S2, every attempt). It is only applied when it is
+    demonstrably behaviour-preserving, and otherwise the source is returned untouched for the normal gates to judge:
+
+    * none of these names exists in ``typing``, so no import that could succeed is ever altered;
+    * an aliased import (``from typing import str as S``) is never repaired - ``S`` would become undefined;
+    * the statement must be alone on its lines (no ``;`` neighbours) so nothing else is lost;
+    * the repaired module must still parse, which rules out emptying a block (``if X:`` / ``try:`` / ``def``) that held
+      the import as its only statement.
     """
     import ast
 
@@ -586,19 +592,40 @@ def drop_builtin_typing_imports(source: str) -> tuple[str, list[str]]:
     except SyntaxError:
         return source, []
     lines = source.split("\n")
-    removed: list[str] = []
-    for node in sorted((n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module == "typing"
-                        and n.level == 0), key=lambda n: -n.lineno):
+    plan: list[tuple[ast.ImportFrom, list[ast.alias]]] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.ImportFrom) and node.module == "typing" and node.level == 0):
+            continue
         bad = [a for a in node.names if a.name in BUILTIN_TYPES]
         if not bad:
             continue
+        if any(a.asname for a in bad):
+            return source, []  # a referenced alias would be left undefined: not demonstrably safe
+        end_line = node.end_lineno or node.lineno
+        before = lines[node.lineno - 1][: node.col_offset]
+        after = lines[end_line - 1][(node.end_col_offset or 0):]
+        if before.strip() or (after.strip() and not after.strip().startswith("#")):
+            return source, []  # shares its line with other code
+        plan.append((node, bad))
+    if not plan:
+        return source, []
+    removed: list[str] = []
+    for node, bad in sorted(plan, key=lambda item: -item[0].lineno):
         removed += [a.name for a in bad]
         keep = [a for a in node.names if a.name not in BUILTIN_TYPES]
+        end_line = node.end_lineno or node.lineno
         indent = lines[node.lineno - 1][: node.col_offset]
+        comment = lines[end_line - 1][(node.end_col_offset or 0):].strip()
         replacement = ([indent + "from typing import " + ", ".join(
-            a.name + (f" as {a.asname}" if a.asname else "") for a in keep)] if keep else [])
-        lines[node.lineno - 1:node.end_lineno] = replacement
-    return ("\n".join(lines) if removed else source), sorted(removed)
+            a.name + (f" as {a.asname}" if a.asname else "") for a in keep) + (("  " + comment) if comment else "")]
+            if keep else [])
+        lines[node.lineno - 1:end_line] = replacement
+    repaired = "\n".join(lines)
+    try:
+        ast.parse(repaired)
+    except SyntaxError:
+        return source, []  # the removal broke the module (e.g. emptied a block): leave it for the gates
+    return repaired, sorted(removed)
 
 
 def settle_changes(worktree: Path, base: str, plan: dict[str, Any], handback: dict[str, Any]) -> list[str]:
