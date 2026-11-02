@@ -31,7 +31,7 @@ TASK_XML = (
 
 def git(path: Path, *args: str) -> str:
     done = subprocess.run(
-        ["git", "-C", str(path), *args], capture_output=True, text=True, check=True, timeout=60,
+        ["git", "-c", "core.longpaths=true", "-C", str(path), *args], capture_output=True, text=True, check=True, timeout=60,
         env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
              "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"},
     )
@@ -61,6 +61,7 @@ def install(tmp_path: Path):
                 release_src / "scripts" / "desktop-control")
     shutil.copytree(ROOT / "src", release_src / "src", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     git(release_src, "init", "-q")
+    git(release_src, "config", "core.longpaths", "true")
     git(release_src, "add", "-A")
     git(release_src, "commit", "-qm", "old release")
     old = git(release_src, "rev-parse", "HEAD")
@@ -69,7 +70,8 @@ def install(tmp_path: Path):
     shutil.move(str(release_src), str(release))
     actor = base / "runtime-actors" / old
     actor.parent.mkdir()
-    subprocess.run(["git", "clone", "-q", str(release), str(actor)], check=True, capture_output=True, timeout=120)
+    subprocess.run(["git", "-c", "core.longpaths=true", "clone", "-q", str(release), str(actor)], check=True, capture_output=True, timeout=120)
+    git(actor, "config", "core.longpaths", "true")
     tree = git(release, "rev-parse", "HEAD^{tree}")
     (base / "release-receipts").mkdir()
     (base / "release-receipts" / f"{old}.json").write_text(
