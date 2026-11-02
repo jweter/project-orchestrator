@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import sqlite3
 import subprocess
 import sys
@@ -252,9 +253,12 @@ def python_packages(clone: Path, base: str, roots: list[str]) -> list[str]:
 
 def remote_main_head(repo: str) -> str:
     """The repository's current GitHub ``main`` SHA, or "" when it cannot be established."""
-    proc = subprocess.run(["gh", "api", f"repos/{repo}/commits/main", "-q", ".sha"],
-                          capture_output=True, text=True, check=False, timeout=60)
-    head = proc.stdout.strip()
+    try:
+        proc = subprocess.run(["gh", "api", f"repos/{repo}/commits/main", "-q", ".sha"],
+                              capture_output=True, text=True, check=False, timeout=60)
+    except (subprocess.SubprocessError, OSError, ValueError):  # timeout, missing gh, undecodable output
+        return ""
+    head = (proc.stdout or "").strip()
     return head if proc.returncode == 0 and len(head) == 40 else ""
 
 
@@ -271,7 +275,11 @@ def unready_repositories(rows: dict[str, Any], head_of: Callable[[str], str]) ->
         if not isinstance(row, dict) or row.get("ready") is not False:
             continue
         base = str(row.get("base_sha") or "")
-        if base and head_of(repo) not in {"", base}:
+        try:
+            head = head_of(repo) if base else ""
+        except Exception:  # a lookup failure concerns this repository only; it stays blocked, the lane carries on
+            head = ""
+        if re.fullmatch(r"[0-9a-f]{40}", head or "") and head != base:
             continue  # main moved on: the old verdict has expired, the next exact-head preflight decides
         blocked.add(repo)
     return blocked
