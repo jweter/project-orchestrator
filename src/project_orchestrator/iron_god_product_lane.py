@@ -34,6 +34,7 @@ import hashlib
 import json
 import os
 import random
+import re
 import sqlite3
 import subprocess
 import sys
@@ -248,6 +249,40 @@ def python_packages(clone: Path, base: str, roots: list[str]) -> list[str]:
     listed = _git(clone, "ls-tree", "-r", "--name-only", base).stdout.splitlines()
     return sorted({p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith("/__init__.py") and under(p, roots)
                    and not any(part in {"tests", "test"} for part in p.split("/"))})
+
+
+def remote_main_head(repo: str) -> str:
+    """The repository's current GitHub ``main`` SHA, or "" when it cannot be established."""
+    try:
+        proc = subprocess.run(["gh", "api", f"repos/{repo}/commits/main", "-q", ".sha"],
+                              capture_output=True, text=True, check=False, timeout=60)
+    except (subprocess.SubprocessError, OSError, ValueError):  # timeout, missing gh, undecodable output
+        return ""
+    head = (proc.stdout or "").strip()
+    return head if proc.returncode == 0 and len(head) == 40 else ""
+
+
+def unready_repositories(rows: dict[str, Any], head_of: Callable[[str], str]) -> set[str]:
+    """Repositories whose base preflight verdict is not-ready *for the commit it was judged on*.
+
+    A verdict describes one base commit. Once the repository's main has moved the verdict no longer says
+    anything about it (2026-11-02: VoiceStudio and the Web repository stayed excluded for a week on verdicts
+    from 2026-10-27, so their approved roadmap slices were never considered). Whenever main cannot be read,
+    or the verdict names no base, it keeps blocking: unknown is not ready.
+    """
+    blocked: set[str] = set()
+    for repo, row in rows.items():
+        if not isinstance(row, dict) or row.get("ready") is not False:
+            continue
+        base = str(row.get("base_sha") or "")
+        try:
+            head = head_of(repo) if base else ""
+        except Exception:  # a lookup failure concerns this repository only; it stays blocked, the lane carries on
+            head = ""
+        if re.fullmatch(r"[0-9a-f]{40}", head or "") and head != base:
+            continue  # main moved on: the old verdict has expired, the next exact-head preflight decides
+        blocked.add(repo)
+    return blocked
 
 
 def record_readiness(lane: ProductLane, repo: str, base: str, *, ready: bool, reason: str = "") -> None:
@@ -797,6 +832,7 @@ def advance_product_lane(
     capability: Callable[[dict[str, Any]], str | None] | None = None,
     github: GitHub | None = None,
     sync: Callable[[ProductLane, str], tuple[Path, str]] = sync_clone,
+    remote_head: Callable[[str], str] | None = None,
     owned_paths: Callable[[str], list[str]] = open_pr_paths,
     gates: Callable[[Path, str, list[str]], str | None] | None = None,
     memory_root: Path | None = None,
@@ -900,7 +936,7 @@ def advance_product_lane(
     # A repository whose own preflight fails on unchanged main cannot judge a slice; it waits
     # until an owner-held readiness check (product trial --preflight-only) passes again.
     repo_readiness = lane._json(lane.root / "readiness.json", {"repositories": {}}).get("repositories", {})
-    busy |= {repo for repo, row in repo_readiness.items() if row.get("ready") is False}
+    busy |= unready_repositories(repo_readiness, remote_head or remote_main_head)
     items: dict[str, dict[str, Any]] = {}
     if config.get("planning") == "backlog":  # roadmap-driven: only approved slices, never self-invented ones
         approved, _rejected = backlog.load_backlog(release_repo)

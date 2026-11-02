@@ -2077,3 +2077,64 @@ def test_an_unreachable_repository_cannot_leave_a_settled_preflight_blocking_the
                             draft_locally=True, lease_pool=env.pool)
 
     assert not progress_mod.verifying(workspace)  # settled before any repository was synced
+
+
+def test_a_not_ready_verdict_expires_when_main_moves_but_never_when_main_is_unknown(env):
+    """2026-11-02: verdicts from 2026-10-27 kept VoiceStudio and Web out of the rotation after their main moved."""
+    rows = {
+        REPOS[0]: {"ready": False, "base_sha": "a" * 40},  # main moved on
+        REPOS[1]: {"ready": False, "base_sha": "b" * 40},  # main unchanged
+        REPOS[2]: {"ready": False, "base_sha": "c" * 40},  # main cannot be read
+        "x/no-base": {"ready": False},  # a verdict that names no commit
+        "x/ready": {"ready": True, "base_sha": "d" * 40},
+    }
+    heads = {REPOS[0]: "e" * 40, REPOS[1]: "b" * 40, REPOS[2]: "", "x/no-base": "f" * 40}
+    assert pl.unready_repositories(rows, heads.get) == {REPOS[1], REPOS[2], "x/no-base"}
+
+
+def block_every_repository(env, base: str) -> None:
+    lane = pl.ProductLane(env.state)
+    lane.root.mkdir(parents=True, exist_ok=True)
+    rows = {r: {"ready": False, "base_sha": base} for r in REPOS}
+    (lane.root / "readiness.json").write_text(json.dumps({"repositories": rows}), encoding="utf-8")
+
+
+def test_verdicts_that_still_describe_main_keep_every_repository_out_of_the_rotation(env):
+    block_every_repository(env, "a" * 40)
+    result = step(env, Runner(), remote_head=lambda _r: "a" * 40)
+    assert result["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" or "repository" not in result, result
+
+
+def test_the_rotation_considers_a_repository_whose_old_not_ready_verdict_has_expired(env):
+    block_every_repository(env, "a" * 40)
+    result = step(env, Runner(), remote_head=lambda _r: "9" * 40)
+    assert result.get("repository") in REPOS, result
+
+
+def test_a_head_lookup_timeout_or_failure_blocks_only_that_repository(monkeypatch):
+    import subprocess as sp
+
+    def fake_run(argv, **_kw):
+        repo = argv[2].split("/")[2]
+        if repo == "slow":
+            raise sp.TimeoutExpired(argv, 60)
+        if repo == "missing":
+            raise FileNotFoundError("gh")
+        if repo == "garbled":
+            return sp.CompletedProcess(argv, 0, stdout="<html>not a sha</html>", stderr="")
+        if repo == "failing":
+            return sp.CompletedProcess(argv, 1, stdout="", stderr="HTTP 502")
+        return sp.CompletedProcess(argv, 0, stdout="e" * 40 + "\n", stderr="")
+
+    monkeypatch.setattr(pl.subprocess, "run", fake_run)
+    rows = {f"jweter/{n}": {"ready": False, "base_sha": "a" * 40} for n in ("slow", "missing", "garbled", "failing", "moved")}
+    blocked = pl.unready_repositories(rows, pl.remote_main_head)
+    assert blocked == {"jweter/slow", "jweter/missing", "jweter/garbled", "jweter/failing"}  # only "moved" expired
+
+
+def test_a_raising_head_lookup_never_aborts_the_lane():
+    def boom(_repo):
+        raise RuntimeError("lookup exploded")
+
+    rows = {"x/a": {"ready": False, "base_sha": "a" * 40}, "x/b": {"ready": False, "base_sha": "b" * 40}}
+    assert pl.unready_repositories(rows, boom) == {"x/a", "x/b"}
