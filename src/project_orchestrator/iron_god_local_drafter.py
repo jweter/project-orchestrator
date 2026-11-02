@@ -21,7 +21,12 @@ non-negotiable examples, so the builder's tests - and the merge that marks the s
 owner-approved behavior, and a plan whose own examples contradict them is rejected. A slice without such examples is not
 drafted locally: it records what is missing and waits for an external draft or a stronger builder.
 
-Level 2 slices (directed edits with approved failing tests) are never drafted here and never simplified into Level 1.
+Level 2 slices are directed edits of existing code. The owner's graph declares the edit (``directed_edit``: the module,
+the named units, the approved failing test and its path); the draft is assembled mechanically from that declaration -
+no model is involved - and the draft author executes the approved test at the exact base commit and accepts the draft
+only if it FAILS there for the right reason (an assertion, not an import or collection error). The unchanged worker then
+re-checks that before it calls the model, builds the edit, and requires the same test to pass plus the repository's
+canonical preflight. A Level 2 slice is never simplified into Level 1.
 """
 
 from __future__ import annotations
@@ -98,10 +103,50 @@ def roadmap_examples(request: dict[str, Any]) -> list[dict[str, Any]]:
     return usable
 
 
+DIRECTED_LEVEL = 2
+DIRECTED_UNITS = 3  # the worker bounds a directed edit at a few units; more is a decomposition problem
+
+
+def directed_spec(request: dict[str, Any]) -> dict[str, Any] | None:
+    """The owner's declared directed edit when it is complete and well formed, else None."""
+    spec = request.get("directed_edit")
+    if not isinstance(spec, dict):
+        return None
+    texts = ("module_path", "test_path", "test_source")
+    targets = spec.get("targets")
+    if (any(not isinstance(spec.get(name), str) or not spec[name].strip() for name in texts)
+            or not isinstance(targets, list) or not targets or len(targets) > DIRECTED_UNITS
+            or any(not isinstance(t, str) or not t.isidentifier() for t in targets)):
+        return None
+    try:
+        tree = ast.parse(spec["test_source"])
+    except SyntaxError:
+        return None
+    if not any(isinstance(n, ast.FunctionDef) and n.name.startswith("test_") for n in tree.body):
+        return None
+    mentioned = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} | {
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+    if not mentioned & set(targets):
+        return None  # a test that never touches a named unit cannot approve an edit of it
+    if not any(isinstance(n, ast.Assert) for n in ast.walk(tree)) and "raises" not in spec["test_source"]:
+        return None
+    return spec
+
+
 def eligible(request: dict[str, Any]) -> bool:
     route = request.get("route") or {}
-    return (route.get("builder") == refill.LOCAL and request.get("capability_level") == SUPPORTED_LEVEL
-            and len(roadmap_examples(request)) >= MIN_ROADMAP_EXAMPLES)
+    if route.get("builder") != refill.LOCAL:
+        return False
+    if request.get("capability_level") == DIRECTED_LEVEL:
+        return directed_spec(request) is not None
+    return request.get("capability_level") == SUPPORTED_LEVEL and len(roadmap_examples(request)) >= MIN_ROADMAP_EXAMPLES
+
+
+def missing_directed_edit(request: dict[str, Any]) -> bool:
+    """A LOCAL Level 2 request that could be built locally but for the owner's declared directed edit and approved test."""
+    route = request.get("route") or {}
+    return (route.get("builder") == refill.LOCAL and request.get("capability_level") == DIRECTED_LEVEL
+            and directed_spec(request) is None)
 
 
 def missing_examples(request: dict[str, Any]) -> bool:
@@ -109,6 +154,32 @@ def missing_examples(request: dict[str, Any]) -> bool:
     route = request.get("route") or {}
     return (route.get("builder") == refill.LOCAL and request.get("capability_level") == SUPPORTED_LEVEL
             and len(roadmap_examples(request)) < MIN_ROADMAP_EXAMPLES)
+
+
+def direct_to_draft(request: dict[str, Any], validated: dict[str, Any]) -> dict[str, Any]:
+    """A backlog draft (Level 2 directed edit) from the owner's declared edit that the worker's validator accepted."""
+    slice_text = f"roadmap slice {request['slice']} of capability {request['capability']}"
+    direction = validated["direction"]
+    objective = " ".join(str(request["objective"]).split())[:ROADMAP_OBJECTIVE_CHARS]
+    return {
+        "id": request["id"], "repository": request["repository"],
+        "title": f"{', '.join(validated['targets'])} for {request['slice']}"[:120],
+        "roadmap_ref": request["roadmap_ref"], "addresses": f"{request['capability']}: {request['slice']}",
+        "why": f"The owner-approved {slice_text} requires it: {request['objective']}"[:1000],
+        "consumer": f"the {slice_text} and the product code that builds on it ({request['objective'][:100]})",
+        "objective": f"{direction} Roadmap slice goal: {objective}"[:600],
+        "interfaces": [validated["module_path"]], "depends_on": [],
+        "acceptance_criteria": [*request.get("slice_acceptance", [])][:8] or [direction],
+        "tests": [validated["test_path"]], "level": DIRECTED_LEVEL, "complexity": "low",
+        "verification": "the owner-approved test fails at the exact base, passes after the edit; canonical preflight and CI",
+        "definition_of_done": "merged with green CI and the roadmap graph updated",
+        "approved_base": validated["approved_base"],
+        "direct": {"module_path": validated["module_path"], "targets": validated["targets"],
+                   "approved_base": validated["approved_base"],  # the worker reads it from here, not from the item
+                   "direction": direction, "test_path": validated["test_path"],
+                   "test_source": validated["test_source"],
+                   **({"add": validated["add"]} if validated.get("add") else {})},
+    }
 
 
 def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[str, Any]) -> dict[str, Any]:
@@ -227,7 +298,8 @@ def harvest(lane_root: Path, *, now: Callable[[], float] = time.time,
             outcomes.append({"id": job["id"], "status": "FAILED", "reason": reason, "repository": job.get("repository")})
             continue
         try:
-            draft = plan_to_draft(request, result["plan"], result["validated"])
+            draft = (direct_to_draft(request, result["validated"]) if request.get("capability_level") == DIRECTED_LEVEL
+                     else plan_to_draft(request, result["plan"], result["validated"]))
         except (ContradictsRoadmap, KeyError, TypeError, ValueError) as exc:
             reason = f"{type(exc).__name__}: {str(exc)[:240]}"
             _finish(lane_root, job, release, stage="FAILED", reason=reason)
@@ -253,6 +325,11 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
     """
     outcomes = harvest(lane_root, now=now, release=release)
     for request in requests:
+        if missing_directed_edit(request):
+            outcomes.append({"id": request["id"], "status": "NEEDS_ACCEPTANCE_EXAMPLES",
+                             "reason": f"declare directed_edit on Level 2 slice {request['slice']} (module_path, named "
+                                       "targets, test_path and an approved test_source that exercises them) so the local "
+                                       "builder can be verified independently"})
         if missing_examples(request):
             outcomes.append({"id": request["id"], "status": "NEEDS_ACCEPTANCE_EXAMPLES",
                              "reason": f"declare at least {MIN_ROADMAP_EXAMPLES} acceptance_examples on slice "
@@ -266,7 +343,8 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
         if request["id"] in admitted:
             continue  # a valid draft is already admitted for this request: a second model run only burns RAM and time
         attempt = sum(1 for row in _jobs(lane_root) if row["id"] == request["id"])
-        if attempt >= MAX_ATTEMPTS:
+        if attempt >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
+            # a directed draft is assembled mechanically: running it again would only repeat the verdict
             continue  # two local attempts failed or were rejected: a stronger builder or a human decides next
         lease = reserve() if reserve is not None else None
         if reserve is not None and lease is None:

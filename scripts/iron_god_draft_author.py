@@ -17,6 +17,8 @@ import argparse
 import importlib.util
 import json
 import os
+import re
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -47,6 +49,84 @@ def guide_text(request: dict[str, Any]) -> str:
     if request.get("planner_feedback"):
         lines.append("Previous draft was rejected for: " + str(request["planner_feedback"])[:600])
     return "\n".join(lines)
+
+
+BROKEN_BEFORE_THE_TEST_RAN = re.compile(r"ImportError|ModuleNotFoundError|SyntaxError|NameError|ERROR collecting|"
+                                        r"fixture '.*' not found|no tests ran", re.IGNORECASE)
+
+
+def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, timeout=600, check=False)
+
+
+def verification_worktree(clone: Path, base: str) -> Path:
+    """One persistent detached worktree of the lane clone, positioned at ``base``, for proving an approved test fails.
+
+    It must belong to the lane clone (same common Git directory): the worker finds the repository's installed
+    Poetry/uv environment through that directory, so a standalone checkout would rebuild every dependency. The
+    worktree is created once and only ever re-positioned afterwards - never deleted - and holds nothing but the
+    approved test file, which is removed again before the next use.
+    """
+    path = clone.parent / "draft-check" / clone.name
+    if (path / ".git").exists():
+        _git(path, "reset", "--quiet", "--hard")
+        _git(path, "clean", "-fdq")
+        moved = _git(path, "checkout", "--quiet", "--detach", "--force", base)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        moved = _git(clone, "worktree", "add", "--quiet", "--detach", str(path), base)
+    if moved.returncode != 0:
+        raise RuntimeError("DIRECTED_BASE_CHECKOUT_FAILED: " + (moved.stderr or "")[-200:])
+    return path
+
+
+def directed_direction(request: dict[str, Any], spec: dict[str, Any]) -> str:
+    """The behavioural requirement the worker's model is given: the owner's own words, never invented here."""
+    stated = " ".join(str(spec.get("direction") or "").split())
+    if stated:
+        return stated
+    criteria = "; ".join(str(item) for item in request.get("slice_acceptance", []))
+    return " ".join(f"{request['objective']} Acceptance: {criteria}".split())[:1000]
+
+
+def directed_validator(worker: Any, authority: Callable[[], bool], execute: Callable[..., dict[str, Any]] | None = None
+                       ) -> Callable[..., dict[str, Any]]:
+    """Validate the owner's declared directed edit and PROVE its approved test fails at the exact base.
+
+    The edit is checked by the worker's own ``validate_direct``; then, in a private checkout of the exact base, the
+    approved test is run in the repository's own environment. The draft is accepted only when pytest reports failing
+    assertions (exit 1) - not when the test passes already (it would approve nothing) and not when it cannot run
+    (an import or collection error is a broken test, not a failing requirement). The worker repeats the check later.
+    """
+    run_tests = execute or worker.repository_test
+
+    def check() -> None:
+        if not authority():
+            raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
+
+    def validate(raw: dict[str, Any], clone: Path, base: str, packet: dict[str, Any]) -> dict[str, Any]:
+        directed = dict(raw)
+        tree = verification_worktree(clone, base)
+        try:
+            validated = worker.validate_direct(directed, tree, base, packet)
+            if not validated["test_on_main"]:
+                target = tree / validated["test_path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(validated["test_source"], encoding="utf-8")
+            before = run_tests(tree, validated["test_path"], check)
+            tail = str(before.get("output_tail", ""))
+            if before.get("ok") or before.get("returncode") == 0:
+                raise RuntimeError("APPROVED_TEST_ALREADY_PASSES_AT_BASE")
+            if before.get("returncode") != 1 or BROKEN_BEFORE_THE_TEST_RAN.search(tail):
+                raise RuntimeError("APPROVED_TEST_DOES_NOT_RUN_AT_BASE: " + tail[-300:])
+            validated["approved_base"] = base
+            validated["verified_failing"] = {"returncode": before.get("returncode"), "tail": tail[-1200:]}
+            return validated
+        finally:
+            _git(tree, "reset", "--quiet", "--hard")  # the approved test file is the only thing ever written here
+            _git(tree, "clean", "-fdq")
+
+    return validate
 
 
 def planning_roots(allowed_paths: list[str]) -> list[str]:
@@ -119,7 +199,12 @@ def main(argv: list[str] | None = None) -> int:
 
     request = json.loads(args.request.read_text(encoding="utf-8"))
     roots = planning_roots(request["allowed_paths"])
-    run(request, args.clone, args.base, args.result, planner=worker.production_planner, validator=worker.validate_plan,
+    planner, validator = worker.production_planner, worker.validate_plan
+    if request.get("capability_level") == 2:  # a directed edit: the owner declared it, no model plans anything
+        declared = dict(request["directed_edit"])
+        declared["direction"] = directed_direction(request, declared)
+        planner, validator = (lambda *_a: declared), directed_validator(worker, authority)
+    run(request, args.clone, args.base, args.result, planner=planner, validator=validator,
         authority=authority, roots=roots, forbidden=[*ALWAYS_FORBIDDEN, *request["forbidden_paths"]],
         attempted=request.get("attempted_functions", []))
     return 0

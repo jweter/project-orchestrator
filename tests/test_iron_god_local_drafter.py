@@ -461,6 +461,190 @@ def test_a_hung_job_gives_its_lease_back(world: dict) -> None:
     assert pool.held is None
 
 
+# --- Level 2: the owner's declared directed edit, proven to fail at the exact base before it is admitted ---------------
+
+DIRECTED_TEST = "from pkg.core import one\n\n\ndef test_one_is_two():\n    assert one() == 2\n"
+DIRECTED = {"module_path": "pkg/core.py", "targets": ["one"], "test_path": "tests/test_core_one.py",
+            "test_source": DIRECTED_TEST, "direction": "Change one() so that it returns 2 instead of 1; keep its name and signature."}
+
+
+def directed_world(world: dict, spec: dict | None = None) -> dict:
+    """The clone's graph declares one Level 2 slice carrying the owner's directed edit; HEAD moves to that commit."""
+    payload = graph(level=2)
+    payload["capabilities"][0]["slices"][0]["directed_edit"] = DIRECTED if spec is None else spec
+    del payload["capabilities"][0]["slices"][0]["acceptance_examples"]
+    (world["clone"] / SOURCE).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8", newline="\n")
+    run_git(world["clone"], "commit", "-q", "-am", "declare directed edit")
+    world["head"] = run_git(world["clone"], "rev-parse", "HEAD")
+    return world
+
+
+def fake_tests(returncode: int, tail: str = "E   assert 1 == 2\nFAILED tests/test_core_one.py::test_one_is_two"):
+    return lambda _tree, _test, _check: {"ok": returncode == 0, "returncode": returncode, "output_tail": tail}
+
+
+class DirectedSpawner(Spawner):
+    """Plays the draft-author process for a Level 2 request: no planner, the real validate_direct, a fake test run."""
+
+    def __init__(self, execute) -> None:
+        super().__init__()
+        self.execute = execute
+
+    def __call__(self, request_file: Path, clone: Path, base: str, result: Path) -> int:
+        self.launched.append((request_file, clone, base, result))
+        request = json.loads(request_file.read_text(encoding="utf-8"))
+        declared = dict(request["directed_edit"])
+        declared["direction"] = author.directed_direction(request, declared)
+        author.run(request, clone, base, result, planner=lambda *_a: declared,
+                   validator=author.directed_validator(WORKER, lambda: True, execute=self.execute),
+                   authority=lambda: True, roots=["pkg/"], forbidden=[".github/", "engineering/", "docs/"], attempted=[])
+        return 31337
+
+
+@pytest.mark.parametrize("change,usable", [
+    ({}, True),
+    ({"module_path": ""}, False),
+    ({"test_path": None}, False),
+    ({"targets": []}, False),
+    ({"targets": ["a", "b", "c", "d"]}, False),
+    ({"targets": ["not an identifier"]}, False),
+    ({"test_source": "def test_x(:\n"}, False),
+    ({"test_source": "def helper():\n    assert True\n"}, False),  # no test function
+    ({"test_source": "def test_x():\n    assert 1 == 2\n"}, False),  # never touches the named unit
+    ({"test_source": "from pkg.core import one\n\n\ndef test_x():\n    one()\n"}, False),  # asserts nothing
+])
+def test_only_a_complete_directed_edit_whose_test_exercises_its_targets_is_usable(change, usable) -> None:
+    request = {"route": {"builder": refill.LOCAL}, "capability_level": 2, "directed_edit": {**DIRECTED, **change}}
+
+    assert (drafter.directed_spec(request) is not None) is usable
+    assert drafter.eligible(request) is usable
+    assert drafter.missing_directed_edit(request) is (not usable)
+
+
+def test_a_level_two_request_not_routed_to_the_local_builder_is_never_drafted_locally() -> None:
+    request = {"route": {"builder": refill.CAPABLE}, "capability_level": 2, "directed_edit": DIRECTED}
+    assert drafter.eligible(request) is False and drafter.missing_directed_edit(request) is False
+
+
+def test_a_level_two_slice_without_a_declared_edit_asks_for_it_and_starts_nothing(world: dict) -> None:
+    directed_world(world, spec={})
+    (request,) = refill_pass(world)["local_requests"]
+    spawner = Spawner()
+
+    outcomes = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    assert [o["status"] for o in outcomes] == ["NEEDS_ACCEPTANCE_EXAMPLES"] and "directed_edit" in outcomes[0]["reason"]
+    assert spawner.launched == []
+
+
+def test_a_proven_failing_directed_edit_becomes_a_dispatchable_level_two_item_through_the_unchanged_admission(
+        world: dict) -> None:
+    directed_world(world)
+    (request,) = refill_pass(world)["local_requests"]
+    spawner = DirectedSpawner(fake_tests(1))
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+
+    report = refill_pass(world)
+
+    assert report["admitted"] == [request["id"]], report
+    (item,) = refill.admitted_items(world["lane"])
+    assert item["level"] == 2 and item["approved_base"] == world["head"] and backlog.item_problems(item) == []
+    assert item["direct"]["targets"] == ["one"] and item["direct"]["test_source"] == DIRECTED_TEST
+    assert item["authorization"]["declared_capability_level"] == 2 and item["authorization"]["route"] == refill.LOCAL
+    assert backlog.next_item([item], {}, REPO, max_level=2) == item  # the existing dispatcher accepts it
+    assert backlog.edit_files(item) == {"pkg/core.py", "tests/test_core_one.py"}  # exactly the declared scope
+
+
+@pytest.mark.parametrize("execute,reason", [
+    (fake_tests(0, "1 passed"), "APPROVED_TEST_ALREADY_PASSES_AT_BASE"),  # approves nothing
+    (fake_tests(2, "ERROR collecting tests/test_core_one.py"), "APPROVED_TEST_DOES_NOT_RUN_AT_BASE"),
+    (fake_tests(1, "E   ModuleNotFoundError: No module named 'pkg.missing'"), "APPROVED_TEST_DOES_NOT_RUN_AT_BASE"),
+    (fake_tests(5, "no tests ran"), "APPROVED_TEST_DOES_NOT_RUN_AT_BASE"),
+])
+def test_a_test_that_does_not_fail_for_the_right_reason_at_the_base_is_never_drafted(world: dict, execute, reason) -> None:
+    directed_world(world)
+    (request,) = refill_pass(world)["local_requests"]
+    spawner = DirectedSpawner(execute)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    (outcome,) = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+
+    assert outcome["status"] == "FAILED" and reason in outcome["reason"]
+    assert not (world["lane"] / refill.DRAFTS / f"{request['id']}.json").exists()
+
+
+@pytest.mark.parametrize("change,reason", [
+    ({"targets": ["one", "missing_unit"]}, "DIRECT_UNITS_UNKNOWN"),
+    ({"module_path": "pkg/absent.py"}, "DIRECT_MODULE_MISSING"),
+    ({"test_path": "pkg/test_core_one.py"}, "DIRECT_TEST_PATH_INVALID"),
+    ({"direction": "too short"}, "DIRECT_DIRECTION_INCOMPLETE"),
+])
+def test_the_workers_own_validator_still_rejects_an_unsound_declared_edit(world: dict, change, reason) -> None:
+    directed_world(world, spec={**DIRECTED, **change})
+    (request,) = refill_pass(world)["local_requests"]
+    spawner = DirectedSpawner(fake_tests(1))
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+
+    (outcome,) = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+
+    assert outcome["status"] == "FAILED" and reason in outcome["reason"]
+
+
+def test_a_rejected_directed_draft_is_not_retried_because_the_assembly_is_deterministic(world: dict) -> None:
+    directed_world(world)
+    (request,) = refill_pass(world)["local_requests"]
+    spawner = DirectedSpawner(fake_tests(0, "1 passed"))
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+    assert len(spawner.launched) == 1
+
+
+def test_a_directed_draft_that_escapes_the_roadmap_scope_is_rejected_by_admission(world: dict) -> None:
+    directed_world(world)
+    (request,) = refill_pass(world)["local_requests"]
+    request = {**request, "allowed_paths": ["pkg/other/**", "tests/**"]}  # the declared module lies outside the slice scope
+    validated = WORKER.validate_direct(dict(DIRECTED), world["clone"], world["head"],
+                                       author.build_packet(request, ["pkg/"], world["head"], [], []))
+    draft = drafter.direct_to_draft(request, {**validated, "approved_base": world["head"]})
+
+    problems = refill.draft_problems(draft, request, items=[], reserved=set(), head=world["head"],
+                                     changed_since=lambda *_a: set(), max_level=2)
+
+    assert "PATH_OUTSIDE_ROADMAP_SCOPE" in problems
+
+
+def test_the_verification_checkout_belongs_to_the_lane_clone_so_its_installed_environment_is_reused(world: dict) -> None:
+    """Review (#616): a standalone checkout made the worker rebuild every dependency for each directed draft."""
+    tree = author.verification_worktree(world["clone"], world["head"])
+    (tree / "tests").mkdir(exist_ok=True)
+    (tree / "tests" / "test_leftover.py").write_text("x = 1\n", encoding="utf-8")
+
+    common = run_git(tree, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    assert Path(common).resolve() == (world["clone"] / ".git").resolve()  # the worker derives the environment from this
+    again = author.verification_worktree(world["clone"], world["head"])
+
+    assert again == tree and not (tree / "tests" / "test_leftover.py").exists()  # reused, never deleted, cleaned
+    assert run_git(tree, "rev-parse", "HEAD") == world["head"]
+    assert run_git(world["clone"], "worktree", "list").count("draft-check") == 1
+
+
+def test_the_proven_base_travels_inside_the_directed_specification_the_worker_receives(world: dict) -> None:
+    """Review (#616): `validate_direct` reads approved_base from the nested spec, so completion elsewhere is recognised."""
+    directed_world(world)
+    (request,) = refill_pass(world)["local_requests"]
+    spawner = DirectedSpawner(fake_tests(1))
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+    refill_pass(world)
+    (item,) = refill.admitted_items(world["lane"])
+
+    assert item["approved_base"] == world["head"] == item["direct"]["approved_base"]
+    packet = author.build_packet(request, ["pkg/"], world["head"], [], [])
+    assert WORKER.validate_direct(item["direct"], world["clone"], world["head"], packet)["approved_base"] == world["head"]
+
 def test_no_second_draft_is_launched_once_a_valid_draft_has_been_admitted(world: dict) -> None:
     """2026-11-02 VoiceStudio S2: attempt 1 started the moment attempt 0 was admitted and spent 5 minutes of RAM."""
     request = request_of(world)
