@@ -994,7 +994,49 @@ def test_a_slice_is_re_authored_a_bounded_number_of_times_and_then_waits_for_the
     assert (status, ident) == ("FAILED", f"{base}-r{refill.MAX_ITEMS_PER_SLICE - 1}")
 
     (stopped, last), base = _status(S2_OUTCOME, 3, chain=refill.MAX_ITEMS_PER_SLICE)
-    assert (stopped, last) == ("PENDING", f"{base}-r{refill.MAX_ITEMS_PER_SLICE - 1}")  # no endless loop of attempts
+    assert (stopped, last) == ("EXHAUSTED", f"{base}-r{refill.MAX_ITEMS_PER_SLICE - 1}")
+
+
+def test_exhausted_revision_chain_requests_one_stable_owner_decision_without_restarting(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    base = refill.item_id(repository, "cap-cache", "s1")
+    items = [
+        {"id": base if n == 0 else f"{base}-r{n}", "status": "approved"}
+        for n in range(refill.MAX_ITEMS_PER_SLICE)
+    ]
+    state = {"items": {
+        item["id"]: {"attempts": backlog.MAX_ITEM_ATTEMPTS,
+                     "outcome": "REVIEW_REQUIRED: private diagnostic text"}
+        for item in items
+    }}
+    before = copy.deepcopy(state)
+
+    first = derive_routed(repository, HEAD, graph(repository), SOURCE, items=items, state=state)
+    repeated = derive_routed(repository, HEAD, graph(repository), SOURCE, items=items, state=state)
+
+    assert first == repeated and state == before
+    assert first["requests"] == [] and first["skipped"] == []
+    (decision,) = first["direction_required"]
+    assert decision["reason"] == "REAUTHOR_LIMIT_REACHED"
+    assert decision["id"] == items[-1]["id"] and decision["slice"] == "s1"
+    assert len(decision["evidence"]) == refill.MAX_ITEMS_PER_SLICE
+    assert all("REVIEW_REQUIRED" in entry and "private diagnostic text" not in entry
+               for entry in decision["evidence"])
+    assert "retired" in decision["question"]
+
+    clone, head = product(tmp_path, repository, graph(repository))
+    first_run = run_refill(tmp_path, repository, clone, head, items=items, state=state)
+    second_run = run_refill(tmp_path, repository, clone, head, items=items, state=state)
+    assert first_run["requests"] == second_run["requests"] == []
+    assert first_run["direction_required"] == second_run["direction_required"]
+    events = refill.load_store(tmp_path / "lane")["ledger"]
+    assert [event["kind"] for event in events] == ["DIRECTION_REQUIRED"]
+    assert events[0]["detail"]["reason"] == "REAUTHOR_LIMIT_REACHED"
+
+    state["items"][items[-1]["id"]]["attempts"] = backlog.MAX_ITEM_ATTEMPTS - 1
+    pending = derive_routed(repository, HEAD, graph(repository), SOURCE, items=items, state=state)
+    assert pending["direction_required"] == [] and pending["requests"] == []
+    assert pending["skipped"][0]["reason"] == "PENDING"
 
 
 def test_the_s2_state_yields_a_revised_request_that_carries_the_failure_history_and_resets_nothing() -> None:

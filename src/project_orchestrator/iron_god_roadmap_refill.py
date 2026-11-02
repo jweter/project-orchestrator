@@ -162,7 +162,7 @@ MAX_ITEMS_PER_SLICE = 4  # the original item plus three re-authorings; after tha
 
 def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, Any],
                   delivered: frozenset[str] = frozenset()) -> tuple[str, str]:
-    """(NEW|PENDING|DONE|FAILED, id to author next), from the lane's own record and never from the graph.
+    """(NEW|PENDING|DONE|FAILED|EXHAUSTED, id), from the lane's own record and never from the graph.
 
     ``delivered`` are request ids whose capable-builder pull request was merged; that is completion too.
     """
@@ -181,7 +181,7 @@ def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, An
     # in-flight or conflict-held item is not finished; the old item's record is never touched or reset.
     failed = str(row.get("outcome", "")).startswith(RE_AUTHORABLE) and row.get("attempts", 0) >= limit
     if failed and len(chain) >= MAX_ITEMS_PER_SLICE:
-        return "PENDING", latest["id"]  # re-authored often enough: stop and wait for the owner instead of looping
+        return "EXHAUSTED", latest["id"]  # terminal failure must reach the durable owner-decision ledger
     if failed or latest.get("status") == "retired":
         return "FAILED", f"{base_id}-r{len(chain)}"
     return "PENDING", latest["id"]
@@ -271,6 +271,24 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
     for chosen in derived["slices"]:
         base_id = item_id(repository, capability_id, str(chosen["slice_id"]))
         status, expected = _slice_status(base_id, items, state, external_done)
+        if status == "EXHAUSTED":
+            chain = revisions(base_id, items)
+            failures = []
+            for item in chain:
+                row = state.get("items", {}).get(item["id"], {})
+                # Only the outcome class is safe to persist in the owner-decision ledger.
+                outcome = str(row.get("outcome", ""))
+                outcome_class = "REVIEW_REQUIRED" if outcome.startswith("REVIEW_REQUIRED") else "FAIL"
+                attempts = row.get("attempts", 0)
+                safe_attempts = attempts if type(attempts) is int else 0
+                failures.append(f"{item['id']}: {outcome_class} after {safe_attempts} attempts")
+            result["direction_required"].append({
+                "capability": capability_id, "slice": chosen["slice_id"],
+                "reason": "REAUTHOR_LIMIT_REACHED", "id": expected, "evidence": failures,
+                "question": f"Slice {chosen['slice_id']} exhausted {len(chain)} revisions; "
+                            "should its scope change, a different builder be used, or the slice be retired?",
+            })
+            continue
         if status in {"PENDING", "DONE"}:
             result["skipped"].append({"capability": capability_id, "slice": chosen["slice_id"], "reason": status, "id": expected})
             continue
