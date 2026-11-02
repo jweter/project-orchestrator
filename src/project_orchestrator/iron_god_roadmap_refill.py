@@ -156,6 +156,10 @@ def revisions(base_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]
     return [item for item in items if item.get("id") == base_id or str(item.get("id", "")).startswith(base_id + "-r")]
 
 
+RE_AUTHORABLE = ("FAIL", "REVIEW_REQUIRED")  # outcomes of a worker that ended without delivering the slice
+MAX_ITEMS_PER_SLICE = 4  # the original item plus three re-authorings; after that the owner decides
+
+
 def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, Any],
                   delivered: frozenset[str] = frozenset()) -> tuple[str, str]:
     """(NEW|PENDING|DONE|FAILED, id to author next), from the lane's own record and never from the graph.
@@ -172,7 +176,12 @@ def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, An
     if backlog.is_done(latest, state):
         return "DONE", latest["id"]
     limit = backlog.DIRECT_ATTEMPTS if latest.get("direct") else backlog.MAX_ITEM_ATTEMPTS
-    failed = str(row.get("outcome", "")).startswith("FAIL") and row.get("attempts", 0) >= limit
+    # 2026-11-02 (VoiceStudio S2): an item that spent every attempt on REVIEW_REQUIRED stayed PENDING forever, because only
+    # a FAIL outcome counted as failed. An environment failure is not re-authored (the plan was not at fault), and an
+    # in-flight or conflict-held item is not finished; the old item's record is never touched or reset.
+    failed = str(row.get("outcome", "")).startswith(RE_AUTHORABLE) and row.get("attempts", 0) >= limit
+    if failed and len(chain) >= MAX_ITEMS_PER_SLICE:
+        return "PENDING", latest["id"]  # re-authored often enough: stop and wait for the owner instead of looping
     if failed or latest.get("status") == "retired":
         return "FAILED", f"{base_id}-r{len(chain)}"
     return "PENDING", latest["id"]
@@ -287,7 +296,8 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
         if verdict.status == SUPPRESSED:
             result["skipped"].append({"capability": spec.capability_id, "reason": "DUPLICATE", "id": spec.slice_id})
             continue
-        failures = [{"id": item["id"], "outcome": state.get("items", {}).get(item["id"], {}).get("outcome")}
+        failures = [{"id": item["id"], "outcome": state.get("items", {}).get(item["id"], {}).get("outcome"),
+                     "attempts": state.get("items", {}).get(item["id"], {}).get("attempts")}
                     for item in revisions(base_id, items)] if status == "FAILED" else []
         result["requests"].append({
             "schema_version": 1, "id": spec.slice_id, "repository": repository, "exact_head": head,
