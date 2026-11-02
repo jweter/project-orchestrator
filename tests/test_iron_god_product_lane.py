@@ -2138,3 +2138,44 @@ def test_a_raising_head_lookup_never_aborts_the_lane():
 
     rows = {"x/a": {"ready": False, "base_sha": "a" * 40}, "x/b": {"ready": False, "base_sha": "b" * 40}}
     assert pl.unready_repositories(rows, boom) == {"x/a", "x/b"}
+
+
+def test_a_stray_file_the_agent_staged_is_unstaged_and_removed_and_the_turn_is_accepted(env):
+    """2026-11-02 VoiceStudio S2: aider left `AM singing_project.py` (staged); `git clean` ignores indexed paths."""
+    def stages_a_stray(worktree, message, files, check):
+        check()
+        (worktree / "pkg" / "extra.py").write_text(GOOD_MODULE, encoding="utf-8")
+        (worktree / "extra.py").write_text(GOOD_MODULE, encoding="utf-8")  # the bare-name copy ...
+        git(worktree, "add", "--", "extra.py")  # ... which the agent also stages
+    runner = Runner(agent=stages_a_stray)
+    dispatched = step(env, runner)
+    accepted = step(env, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    clone = pl.ProductLane(env.state).clone(dispatched["repository"])
+    assert git(clone, "diff", "--name-only", dispatched["base_sha"], accepted["head_sha"]).splitlines() == [
+        "pkg/extra.py", "tests/test_extra.py"]  # the strict scope held: only the planned module and its test
+
+
+def test_builtin_names_imported_from_typing_are_dropped_and_other_imports_kept() -> None:
+    source = "from typing import Dict, str\nfrom typing import int, Optional as Opt\n\n\ndef f(x: str) -> Dict[str, str]:\n    return {}\n"
+
+    fixed, removed = WORKER.drop_builtin_typing_imports(source)
+
+    assert removed == ["int", "str"]
+    assert fixed.splitlines()[:2] == ["from typing import Dict", "from typing import Optional as Opt"]
+    compile(fixed, "m.py", "exec")  # the repaired module can actually be imported
+    only, dropped = WORKER.drop_builtin_typing_imports("from typing import str\nx = 1\n")
+    assert dropped == ["str"] and only == "x = 1\n"
+    for untouched in ("import typing\n", "from collections import str_\n", "from typing import List\n", "def broken(:\n"):
+        assert WORKER.drop_builtin_typing_imports(untouched) == (untouched, [])
+
+
+def test_a_module_that_imports_a_builtin_from_typing_still_has_to_pass_its_tests_after_the_repair(env):
+    module = ('from typing import Dict, int\n\n\ndef add_two(value: int) -> Dict[str, int]:\n    """Return value plus two."""\n'
+              '    return {"v": value + 2}\n')
+    runner = Runner(agent=lambda w, m, f, c: good_agent(w, m, f, c, source=module))
+    step(env, runner)
+    result = step(env, runner)
+    # the sanitiser repairs the import, the module is then judged only by the worker's own spec tests (it returns a dict
+    # where the spec expects an int), so the turn must fail rather than pass on the strength of the repair
+    assert result["status"] != "ACCEPTED_LOCAL", result
