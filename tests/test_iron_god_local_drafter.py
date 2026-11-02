@@ -670,3 +670,38 @@ def test_a_rejected_draft_is_still_retried_because_nothing_was_admitted(world: d
     spawner = Spawner()
 
     assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)[0]["status"] == "STARTED"
+
+
+def test_a_revision_may_reuse_its_own_failed_function_but_other_attempted_functions_stay_blocked(world: dict) -> None:
+    """VoiceStudio S2-r1 (2026-11-02): PLAN_ALREADY_ATTEMPTED refused the very function the owner's roadmap names."""
+    request = request_of(world)
+    spawner = Spawner(finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+    assert refill_pass(world)["admitted"] == [request["id"]]
+    (item,) = refill.admitted_items(world["lane"])
+    assert item["build"]["function_name"] == "newest_entries"
+    state = {"items": {item["id"]: {"attempts": 3, "outcome": "REVIEW_REQUIRED: CHANGES_OUTSIDE_PLAN: x.py"}}}
+
+    report = refill.refill_repository(world["lane"], world["state_root"], REPO, world["clone"], world["head"],
+                                      items=[item], state=state, reserved=set(), max_level=2)
+    (revision,) = report["local_requests"]
+    assert revision["id"] == item["id"] + "-r1" and revision["prior_failures"][0]["id"] == item["id"]
+    recorder = Spawner()
+
+    drafter.advance(world["lane"], [revision], world["clone"], world["head"], spawn=recorder,
+                    extra={"attempted_functions": ["newest_entries", "something_else"]})
+
+    sent = json.loads(recorder.launched[0][0].read_text(encoding="utf-8"))
+    assert sent["attempted_functions"] == ["something_else"]  # only the function this slice itself tried is released
+
+
+def test_a_first_request_keeps_every_attempted_function_blocked(world: dict) -> None:
+    request = request_of(world)
+    recorder = Spawner()
+
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=recorder,
+                    extra={"attempted_functions": ["newest_entries", "something_else"]})
+
+    sent = json.loads(recorder.launched[0][0].read_text(encoding="utf-8"))
+    assert sent["attempted_functions"] == ["newest_entries", "something_else"]
