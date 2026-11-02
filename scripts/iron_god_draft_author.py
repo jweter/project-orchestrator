@@ -18,10 +18,8 @@ import importlib.util
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -61,6 +59,27 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, timeout=600, check=False)
 
 
+def verification_worktree(clone: Path, base: str) -> Path:
+    """One persistent detached worktree of the lane clone, positioned at ``base``, for proving an approved test fails.
+
+    It must belong to the lane clone (same common Git directory): the worker finds the repository's installed
+    Poetry/uv environment through that directory, so a standalone checkout would rebuild every dependency. The
+    worktree is created once and only ever re-positioned afterwards - never deleted - and holds nothing but the
+    approved test file, which is removed again before the next use.
+    """
+    path = clone.parent / "draft-check" / clone.name
+    if (path / ".git").exists():
+        _git(path, "reset", "--quiet", "--hard")
+        _git(path, "clean", "-fdq")
+        moved = _git(path, "checkout", "--quiet", "--detach", "--force", base)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        moved = _git(clone, "worktree", "add", "--quiet", "--detach", str(path), base)
+    if moved.returncode != 0:
+        raise RuntimeError("DIRECTED_BASE_CHECKOUT_FAILED: " + (moved.stderr or "")[-200:])
+    return path
+
+
 def directed_direction(request: dict[str, Any], spec: dict[str, Any]) -> str:
     """The behavioural requirement the worker's model is given: the owner's own words, never invented here."""
     stated = " ".join(str(spec.get("direction") or "").split())
@@ -87,15 +106,8 @@ def directed_validator(worker: Any, authority: Callable[[], bool], execute: Call
 
     def validate(raw: dict[str, Any], clone: Path, base: str, packet: dict[str, Any]) -> dict[str, Any]:
         directed = dict(raw)
-        scratch = Path(tempfile.mkdtemp(prefix="ig-directed-"))
+        tree = verification_worktree(clone, base)
         try:
-            tree = scratch / "tree"
-            for step in (("clone", "--quiet", "--shared", "--no-checkout", str(clone), str(tree)),):
-                done = subprocess.run(["git", *step], capture_output=True, text=True, timeout=600, check=False)
-                if done.returncode != 0:
-                    raise RuntimeError("DIRECTED_BASE_CHECKOUT_FAILED: " + done.stderr[-200:])
-            if _git(tree, "checkout", "--quiet", "--detach", base).returncode != 0:
-                raise RuntimeError("DIRECTED_BASE_CHECKOUT_FAILED: exact base unavailable")
             validated = worker.validate_direct(directed, tree, base, packet)
             if not validated["test_on_main"]:
                 target = tree / validated["test_path"]
@@ -111,7 +123,8 @@ def directed_validator(worker: Any, authority: Callable[[], bool], execute: Call
             validated["verified_failing"] = {"returncode": before.get("returncode"), "tail": tail[-1200:]}
             return validated
         finally:
-            shutil.rmtree(scratch, ignore_errors=True)
+            _git(tree, "reset", "--quiet", "--hard")  # the approved test file is the only thing ever written here
+            _git(tree, "clean", "-fdq")
 
     return validate
 

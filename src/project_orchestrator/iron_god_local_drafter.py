@@ -175,6 +175,7 @@ def direct_to_draft(request: dict[str, Any], validated: dict[str, Any]) -> dict[
         "definition_of_done": "merged with green CI and the roadmap graph updated",
         "approved_base": validated["approved_base"],
         "direct": {"module_path": validated["module_path"], "targets": validated["targets"],
+                   "approved_base": validated["approved_base"],  # the worker reads it from here, not from the item
                    "direction": direction, "test_path": validated["test_path"],
                    "test_source": validated["test_source"],
                    **({"add": validated["add"]} if validated.get("add") else {})},

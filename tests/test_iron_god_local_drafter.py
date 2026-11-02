@@ -614,3 +614,33 @@ def test_a_directed_draft_that_escapes_the_roadmap_scope_is_rejected_by_admissio
                                      changed_since=lambda *_a: set(), max_level=2)
 
     assert "PATH_OUTSIDE_ROADMAP_SCOPE" in problems
+
+
+def test_the_verification_checkout_belongs_to_the_lane_clone_so_its_installed_environment_is_reused(world: dict) -> None:
+    """Review (#616): a standalone checkout made the worker rebuild every dependency for each directed draft."""
+    tree = author.verification_worktree(world["clone"], world["head"])
+    (tree / "tests").mkdir(exist_ok=True)
+    (tree / "tests" / "test_leftover.py").write_text("x = 1\n", encoding="utf-8")
+
+    common = run_git(tree, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    assert Path(common).resolve() == (world["clone"] / ".git").resolve()  # the worker derives the environment from this
+    again = author.verification_worktree(world["clone"], world["head"])
+
+    assert again == tree and not (tree / "tests" / "test_leftover.py").exists()  # reused, never deleted, cleaned
+    assert run_git(tree, "rev-parse", "HEAD") == world["head"]
+    assert run_git(world["clone"], "worktree", "list").count("draft-check") == 1
+
+
+def test_the_proven_base_travels_inside_the_directed_specification_the_worker_receives(world: dict) -> None:
+    """Review (#616): `validate_direct` reads approved_base from the nested spec, so completion elsewhere is recognised."""
+    directed_world(world)
+    (request,) = refill_pass(world)["local_requests"]
+    spawner = DirectedSpawner(fake_tests(1))
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner, may_start=False)
+    refill_pass(world)
+    (item,) = refill.admitted_items(world["lane"])
+
+    assert item["approved_base"] == world["head"] == item["direct"]["approved_base"]
+    packet = author.build_packet(request, ["pkg/"], world["head"], [], [])
+    assert WORKER.validate_direct(item["direct"], world["clone"], world["head"], packet)["approved_base"] == world["head"]
