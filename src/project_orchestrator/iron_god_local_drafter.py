@@ -47,6 +47,8 @@ JOBS = "draft-jobs"
 RESULTS = "draft-results"
 REQUEST_COPIES = "draft-requests"
 MAX_ATTEMPTS = 2
+INTERRUPTED_MARK = "EXECUTION_AUTHORITY_REVOKED"  # owner takeover mid-draft (routine: it never spends an attempt)
+MAX_INTERRUPTIONS = 20  # a bound, so a request that is always interrupted cannot loop forever
 DRAFT_TIMEOUT_S = 30 * 60
 SUPPORTED_LEVEL = 1
 MIN_ROADMAP_EXAMPLES = 2
@@ -310,6 +312,11 @@ def harvest(lane_root: Path, *, now: Callable[[], float] = time.time,
             continue
         if not result.get("ok"):
             reason = str(result.get("reason", "DRAFT_FAILED"))[:300]
+            if INTERRUPTED_MARK in reason:  # the owner took the laptop back: not the slice's or the model's failure
+                _finish(lane_root, job, release, stage="INTERRUPTED", reason=reason)
+                outcomes.append({"id": job["id"], "status": "INTERRUPTED", "reason": reason,
+                                 "repository": job.get("repository")})
+                continue
             _finish(lane_root, job, release, stage="FAILED", reason=reason)
             outcomes.append({"id": job["id"], "status": "FAILED", "reason": reason, "repository": job.get("repository")})
             continue
@@ -358,8 +365,12 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
             continue
         if request["id"] in admitted:
             continue  # a valid draft is already admitted for this request: a second model run only burns RAM and time
-        attempt = sum(1 for row in _jobs(lane_root) if row["id"] == request["id"])
-        if attempt >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
+        rows = [row for row in _jobs(lane_root) if row["id"] == request["id"]]
+        attempt = len(rows)  # the next free record number: interrupted attempts keep their files
+        spent = sum(1 for row in rows if row.get("stage") != "INTERRUPTED")
+        if attempt - spent >= MAX_INTERRUPTIONS:
+            continue
+        if spent >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
             # a directed draft is assembled mechanically: running it again would only repeat the verdict
             continue  # two local attempts failed or were rejected: a stronger builder or a human decides next
         lease = reserve() if reserve is not None else None

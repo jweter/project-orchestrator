@@ -705,3 +705,46 @@ def test_a_first_request_keeps_every_attempted_function_blocked(world: dict) -> 
 
     sent = json.loads(recorder.launched[0][0].read_text(encoding="utf-8"))
     assert sent["attempted_functions"] == ["newest_entries", "something_else"]
+
+
+def _finish_pending(world: dict, reason: str) -> None:
+    for job in (Path(world["lane"]) / drafter.JOBS).glob("*.json"):
+        row = json.loads(job.read_text(encoding="utf-8"))
+        if row["stage"] == "DRAFTING":
+            result = Path(row["result"])
+            result.parent.mkdir(parents=True, exist_ok=True)
+            result.write_text(json.dumps({"ok": False, "reason": reason}), encoding="utf-8")
+
+
+def test_an_owner_takeover_mid_draft_does_not_spend_an_attempt_and_keeps_its_record(world: dict) -> None:
+    """Owner takeover is routine (2026-11-02: it consumed S2-r1's first of two attempts)."""
+    request = request_of(world)
+    spawner = Spawner()
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    _finish_pending(world, "PlanRejected: a real failure")  # attempt 0 genuinely fails
+    drafter.harvest(world["lane"])
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    _finish_pending(world, "RuntimeError: EXECUTION_AUTHORITY_REVOKED")  # attempt 1 is cut short by the owner
+    (outcome,) = drafter.harvest(world["lane"])
+    assert outcome["status"] == "INTERRUPTED"
+
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)  # authority is back
+
+    stages = sorted(json.loads(p.read_text(encoding="utf-8"))["stage"] for p in (Path(world["lane"]) / drafter.JOBS).glob("*.json"))
+    assert stages == ["DRAFTING", "FAILED", "INTERRUPTED"] and len(spawner.launched) == 3  # the record is kept
+
+
+def test_real_failures_still_spend_attempts_and_interruptions_are_bounded(world: dict) -> None:
+    request = request_of(world)
+    spawner = Spawner()
+    for _ in range(drafter.MAX_ATTEMPTS):
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+        for job in (Path(world["lane"]) / drafter.JOBS).glob("*.json"):
+            row = json.loads(job.read_text(encoding="utf-8"))
+            if row["stage"] == "DRAFTING":
+                Path(row["result"]).parent.mkdir(parents=True, exist_ok=True)
+                Path(row["result"]).write_text(json.dumps({"ok": False, "reason": "PlanRejected: nope"}), encoding="utf-8")
+        drafter.harvest(world["lane"])
+    before = len(spawner.launched)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    assert len(spawner.launched) == before == drafter.MAX_ATTEMPTS  # two genuine failures: no third attempt
