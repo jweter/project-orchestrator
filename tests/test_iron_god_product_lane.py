@@ -124,8 +124,7 @@ def review_thread(thread_id, head, body="P1 incorrect result for negative input"
             "comments": [{"body": body, "commit": head}]}
 
 
-@pytest.fixture
-def env(tmp_path):
+def make_env(tmp_path):
     release = tmp_path / "release"
     (release / "engineering").mkdir(parents=True)
     # Real product project ids: Canon only accepts handbacks for portfolio product projects.
@@ -149,6 +148,17 @@ def env(tmp_path):
     policy = {**POLICY, "portfolio_rotation": {**POLICY["portfolio_rotation"], "planning": "self"}}
     return SimpleNamespace(release=release, state=state, pool=pool, sync=sync, remotes=remotes, tmp=tmp_path,
                            memory=tmp_path / "shared-memory", policy=policy)
+
+
+@pytest.fixture
+def env(tmp_path):
+    return make_env(tmp_path)
+
+
+@pytest.fixture
+def compact_env(tmp_path_factory):
+    """Keep nested Git worktrees below Windows Git's internal path limit."""
+    return make_env(tmp_path_factory.mktemp("ig"))
 
 
 GOOD_PLAN = {
@@ -1916,7 +1926,7 @@ def module_agent(worktree, message, files, check, source=None):
     (worktree / files[0]).write_text(MODULES[files[0]], encoding="utf-8")
 
 
-def test_the_whole_roadmap_loop_runs_across_repositories_continues_after_a_merge_and_survives_restarts(env, monkeypatch):
+def test_the_whole_roadmap_loop_runs_across_repositories_continues_after_a_merge_and_survives_restarts(compact_env, monkeypatch):
     """Read roadmap -> next slice -> route -> draft -> admit -> build -> verify -> accept -> PR -> CI -> merge ->
     continue with the dependent slice -> record the progress, across three repositories and mid-flight restarts."""
     import functools
@@ -1927,6 +1937,7 @@ def test_the_whole_roadmap_loop_runs_across_repositories_continues_after_a_merge
     from project_orchestrator import iron_god_roadmap_refill as refill_mod
     from scripts import iron_god_draft_author as author_mod
 
+    env = compact_env
     backlog_env(env, [])
     monkeypatch.setattr(refill_mod, "CHECK_INTERVAL_SECONDS", 0)
     main_repo, beyond_repo, undeclared_repo = REPOS[1], REPOS[0], REPOS[2]
