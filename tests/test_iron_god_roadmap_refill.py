@@ -193,7 +193,7 @@ def test_in_flight_and_finished_slices_are_skipped_and_a_failed_one_asks_for_a_n
     failed = derive_with({"items": {item["id"]: {"attempts": 1, "outcome": "FAIL: canonical preflight failed"}}})
     (again,) = failed["requests"]
     assert again["id"] == item["id"] + "-r1"  # a failed directed edit is re-authored under a new id
-    assert again["prior_failures"] == [{"id": item["id"], "outcome": "FAIL: canonical preflight failed"}]
+    assert again["prior_failures"] == [{"id": item["id"], "outcome": "FAIL: canonical preflight failed", "attempts": 1}]
 
 
 # --- admission gate ------------------------------------------------------------------------------------------
@@ -952,3 +952,60 @@ def test_a_non_list_slice_collection_keeps_its_direction_request_instead_of_cras
     derived = derive_routed(PORTFOLIO[0], HEAD, payload, SOURCE, items=[], state={})
 
     assert derived["requests"] == [] and derived["direction_required"][0]["reason"] == "EXECUTION_SLICE_REQUIRED"
+
+
+# --- exhausted unsuccessful outcomes other than FAIL (VoiceStudio S2, 2026-11-02) ---------------------------------------
+
+S2_OUTCOME = "REVIEW_REQUIRED: CHANGES_OUTSIDE_PLAN: singing_project.py"
+
+
+def _status(outcome: str, attempts: int, *, chain: int = 1, direct: bool = False, status: str = "approved"):
+    base = refill.item_id(PORTFOLIO[0], "cap-a", "s1")
+    items = [{"id": base if n == 0 else f"{base}-r{n}", "status": status, **({"direct": {"x": 1}} if direct else {})}
+             for n in range(chain)]
+    return refill._slice_status(base, items, {"items": {items[-1]["id"]: {"attempts": attempts, "outcome": outcome}}}), base
+
+
+def test_an_item_that_spent_every_attempt_on_review_required_is_re_authored_not_left_pending() -> None:
+    (status, ident), base = _status(S2_OUTCOME, 3)
+
+    assert (status, ident) == ("FAILED", base + "-r1")
+
+
+@pytest.mark.parametrize("outcome,attempts,direct,expected", [
+    (S2_OUTCOME, 2, False, "PENDING"),  # an attempt is left: the existing retry handles it
+    ("ENVIRONMENT_FAILURE: AGENT_FAILED", 3, False, "PENDING"),  # the plan was not at fault
+    ("DISPATCHED", 3, False, "PENDING"),  # still running
+    ("BLOCKED_CONFLICT: open pull request on a.py", 3, False, "PENDING"),  # waiting, not failed
+    ("ACCEPTED_LOCAL", 3, False, "PENDING"),
+    ("", 3, False, "PENDING"),
+    ("FAIL: canonical preflight failed", 3, False, "FAILED"),  # unchanged behaviour
+    (S2_OUTCOME, 1, True, "FAILED"),  # a directed edit has a single attempt
+    ("DIRECTED_REPLY_REJECTED", 1, True, "PENDING"),  # unknown vocabulary is never guessed into a revision
+])
+def test_only_exhausted_fail_and_review_required_outcomes_trigger_a_revision(outcome, attempts, direct, expected) -> None:
+    (status, _ident), _base = _status(outcome, attempts, direct=direct)
+
+    assert status == expected
+
+
+def test_a_slice_is_re_authored_a_bounded_number_of_times_and_then_waits_for_the_owner() -> None:
+    (status, ident), base = _status(S2_OUTCOME, 3, chain=refill.MAX_ITEMS_PER_SLICE - 1)
+    assert (status, ident) == ("FAILED", f"{base}-r{refill.MAX_ITEMS_PER_SLICE - 1}")
+
+    (stopped, last), base = _status(S2_OUTCOME, 3, chain=refill.MAX_ITEMS_PER_SLICE)
+    assert (stopped, last) == ("PENDING", f"{base}-r{refill.MAX_ITEMS_PER_SLICE - 1}")  # no endless loop of attempts
+
+
+def test_the_s2_state_yields_a_revised_request_that_carries_the_failure_history_and_resets_nothing() -> None:
+    first = request_for()
+    items = [seeded_item(first)]
+    state = {"items": {items[0]["id"]: {"attempts": 3, "outcome": S2_OUTCOME, "packets": ["p1", "p2", "p3"]}}}
+    before = copy.deepcopy(state)
+
+    derived = derive_routed(PORTFOLIO[0], HEAD, graph(PORTFOLIO[0]), SOURCE, items=items, state=state)
+
+    (request,) = derived["requests"]
+    assert request["id"] == first["id"] + "-r1"
+    assert request["prior_failures"] == [{"id": first["id"], "outcome": S2_OUTCOME, "attempts": 3}]
+    assert state == before  # the failed item's attempts, packets and outcome are evidence and are never reset
