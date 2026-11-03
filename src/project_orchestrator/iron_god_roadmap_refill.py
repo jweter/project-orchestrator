@@ -179,7 +179,10 @@ def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, An
     # 2026-11-02 (VoiceStudio S2): an item that spent every attempt on REVIEW_REQUIRED stayed PENDING forever, because only
     # a FAIL outcome counted as failed. An environment failure is not re-authored (the plan was not at fault), and an
     # in-flight or conflict-held item is not finished; the old item's record is never touched or reset.
-    failed = str(row.get("outcome", "")).startswith(RE_AUTHORABLE) and row.get("attempts", 0) >= limit
+    # An item whose last two attempts failed on byte-identical source is never dispatched again (backlog.next_item), so
+    # it is as finished as an item with no attempts left (VoiceStudio S2-r1, 2026-11-03: stuck at 2 of 3 attempts).
+    out_of_attempts = row.get("attempts", 0) >= limit or row.get("repeated_failed_source") is True
+    failed = str(row.get("outcome", "")).startswith(RE_AUTHORABLE) and out_of_attempts
     if failed and len(chain) >= MAX_ITEMS_PER_SLICE:
         return "EXHAUSTED", latest["id"]  # terminal failure must reach the durable owner-decision ledger
     if failed or latest.get("status") == "retired":

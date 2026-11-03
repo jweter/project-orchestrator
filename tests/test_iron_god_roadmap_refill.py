@@ -1051,3 +1051,16 @@ def test_the_s2_state_yields_a_revised_request_that_carries_the_failure_history_
     assert request["id"] == first["id"] + "-r1"
     assert request["prior_failures"] == [{"id": first["id"], "outcome": S2_OUTCOME, "attempts": 3}]
     assert state == before  # the failed item's attempts, packets and outcome are evidence and are never reset
+
+
+def test_an_item_blocked_by_a_repeated_failed_source_is_re_authored_not_left_pending() -> None:
+    """VoiceStudio S2-r1 (2026-11-03): two identical failures stop dispatch at 2 of 3 attempts, which stayed PENDING."""
+    base = "RM-x-s-1"
+    items = [{"id": base, "status": "approved", "build": {"function_name": "f"}}]
+    state = {"items": {base: {"attempts": 2, "outcome": "FAIL: SLICE_TESTS_FAILED", "repeated_failed_source": True}}}
+
+    assert refill._slice_status(base, items, state) == ("FAILED", base + "-r1")
+    state["items"][base]["repeated_failed_source"] = False
+    assert refill._slice_status(base, items, state)[0] == "PENDING"  # an attempt is genuinely left
+    state["items"][base].update(repeated_failed_source=True, outcome="ENVIRONMENT_FAILURE: X")
+    assert refill._slice_status(base, items, state)[0] == "PENDING"  # not the plan's fault: never re-authored
