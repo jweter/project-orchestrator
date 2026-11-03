@@ -157,6 +157,7 @@ def revisions(base_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 RE_AUTHORABLE = ("FAIL", "REVIEW_REQUIRED")  # outcomes of a worker that ended without delivering the slice
+NO_LOCAL_BUILDER_PREFIX = "NO_PYTHON_PACKAGE"  # matches lane NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER
 MAX_ITEMS_PER_SLICE = 4  # the original item plus three re-authorings; after that the owner decides
 
 
@@ -343,7 +344,10 @@ def route(request: dict[str, Any], *, profile: dict[str, Any] | None, max_level:
     """
     level = request.get("capability_level")
     if unsupported:
-        return {"builder": NONE, "reason": unsupported, "level": level}
+        # A repository the local builder cannot build at all (no Python package: Everward, 2026-11-03) is exactly what
+        # the stronger builder is for; only a repository nobody can build for stays unassigned.
+        builder = CAPABLE if unsupported.startswith(NO_LOCAL_BUILDER_PREFIX) else NONE
+        return {"builder": builder, "reason": unsupported, "level": level}
     gate = capability_gate(profile, {"capability_level": level})
     if gate is not None:
         # An undeclared or uncalibrated level is not evidence the local builder can do it.

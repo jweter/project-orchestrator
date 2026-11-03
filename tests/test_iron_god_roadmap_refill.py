@@ -675,13 +675,16 @@ def test_a_missing_or_stale_calibration_is_not_evidence_of_local_capability(prof
     assert result["builder"] == refill.CAPABLE and result["reason"] == reason
 
 
-def test_a_repository_the_local_lane_cannot_build_routes_to_nobody() -> None:
+def test_a_repository_the_local_lane_cannot_build_routes_to_the_stronger_builder() -> None:
+    """Owner 2026-11-03: include Everward (no Python package) - the stronger builder is for what the local lane cannot do."""
     request = {**request_for(), "capability_level": 1}
 
     result = refill.route(request, profile=write_profile(tempdir()), max_level=2,
                           unsupported="NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER")
 
-    assert result["builder"] == refill.NONE and result["reason"] == "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
+    assert result["builder"] == refill.CAPABLE and result["reason"] == "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
+    assert refill.route(request, profile=write_profile(tempdir()), max_level=2, unsupported="REPO_UNREADABLE")[
+        "builder"] == refill.NONE  # any other reason nobody can build stays unassigned
 
 
 def test_the_declared_capability_level_travels_into_the_request() -> None:
@@ -728,7 +731,7 @@ def test_an_unsupported_repository_is_a_blocker_while_other_repositories_keep_ge
             lane, state, repository, clone, head, items=[], state={}, reserved=set(), max_level=2,
             unsupported=lambda _clone, _head, reason=reason: reason)
 
-    assert results[PORTFOLIO[4]]["routed"][refill.NONE] and not results[PORTFOLIO[4]]["routed"][refill.LOCAL]
+    assert results[PORTFOLIO[4]]["routed"][refill.CAPABLE] and not results[PORTFOLIO[4]]["routed"][refill.LOCAL]
     assert results[PORTFOLIO[5]]["routed"][refill.LOCAL]
     kinds = {(e["repository"], e["kind"]) for e in refill.load_store(lane)["ledger"]}
     assert (PORTFOLIO[4], "CAPABILITY_BLOCKER") in kinds and (PORTFOLIO[5], "CAPABILITY_BLOCKER") not in kinds

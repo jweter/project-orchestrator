@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import json
 import time
 from pathlib import Path
@@ -272,3 +274,19 @@ def test_pull_request_state_accepts_only_the_three_real_states(monkeypatch: pyte
     for raw, expected in (("OPEN\n", "OPEN"), ("MERGED\n", "MERGED"), ("CLOSED\n", "CLOSED"), ("DRAFT\n", None), ("", None)):
         monkeypatch.setattr(cb.subprocess, "run", lambda *a, _raw=raw, **k: Run(_raw))
         assert cb.pull_request_state("https://github.com/x/y/pull/1") == expected
+
+
+def test_the_usage_report_counts_sessions_in_the_rolling_day_against_the_budget(tmp_path):
+
+    spec = importlib.util.spec_from_file_location(
+        "report_capable_usage", Path(__file__).resolve().parents[1] / "scripts" / "report_capable_usage.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    directory = cb.dispatch_state(tmp_path)
+    directory.mkdir(parents=True)
+    for n, age in enumerate((100, 3600, 30 * 3600)):
+        (directory / f"{n}.json").write_text(json.dumps({"started_at": 1_000_000 - age, "status": "DISPATCHED"}))
+
+    report = module.summarize(tmp_path, 4, now=1_000_000)
+
+    assert report["sessions_last_24h"] == 2 and report["remaining_today"] == 2 and report["sessions_total"] == 3
