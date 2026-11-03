@@ -767,3 +767,53 @@ def test_a_legacy_failed_record_that_was_really_a_takeover_does_not_spend_an_att
     drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
 
     assert len(spawner.launched) == 1 and legacy.is_file()  # a fresh attempt a1, the old record untouched
+
+
+def _app_dir_repo(tmp_path: Path) -> tuple[Path, str]:
+    """A repo shaped like VoiceStudio: backend/ is an app dir (not a package) and tests/backend/ mirrors it."""
+    import subprocess
+
+    repo = tmp_path / "appdir"
+    for rel in ("backend/services/__init__.py", "tests/backend/__init__.py", "tests/backend/services/__init__.py"):
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("", encoding="utf-8")
+    for args in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+    return repo, head
+
+
+def test_an_app_dir_repository_gets_the_roadmaps_test_path_and_its_real_import_root(tmp_path: Path) -> None:
+    """VoiceStudio S2-r1 (2026-11-02): the worker wrote tests/test_x.py importing backend.services.x - uncollectable."""
+    repo, head = _app_dir_repo(tmp_path)
+    packet = {"paths": ["backend/", "tests/"], "planning": {"forbidden_paths": []}, "attempted_functions": [],
+              "declared_tests": ["tests/backend/services/test_singing_project.py", "docs/x.md"]}
+    plan = {"function_name": "singing_project_paths", "signature": "def singing_project_paths(project_id: str) -> dict:",
+            "module_path": "backend/services/singing_project.py", "objective": "Return the layout paths.",
+            "examples": [{"call": "singing_project_paths('a')", "why": "valid", "expected": {"a": 1}},
+                         {"call": "singing_project_paths('')", "why": "empty", "expected": {}},
+                         {"call": "singing_project_paths('..')", "why": "dots", "expected": {}}]}
+
+    validated = WORKER.validate_plan(plan, repo, head, packet)
+
+    assert validated["test_path"] == "tests/backend/services/test_singing_project.py"
+    assert validated["import_path"] == "services.singing_project"
+
+
+def test_an_ordinary_package_repository_keeps_the_default_test_path_and_dotted_import(world: dict) -> None:
+    packet = author.build_packet(request_of(world), ["pkg/"], world["head"], [".github/"], [])
+
+    validated = WORKER.validate_plan(GOOD_PLAN, world["clone"], world["head"], packet)
+
+    assert validated["test_path"].startswith("tests/test_") and validated["import_path"].startswith("pkg.")
+
+
+def test_standalone_evaluation_uses_the_app_dir_import_root(tmp_path: Path) -> None:
+    """Review P2 on #627: actual_result() runs without pytest's conftest path setup."""
+    repo, head = _app_dir_repo(tmp_path)
+    (repo / "backend" / "services" / "demo.py").write_text("def demo(x):\n    return {'x': x}\n", encoding="utf-8")
+    plan = {"module_path": "backend/services/demo.py", "function_name": "demo", "import_path": "services.demo"}
+
+    assert WORKER.actual_result(repo, plan, "demo(1)") == "{'x': 1}"
+    ordinary = {"module_path": "backend/services/demo.py", "function_name": "demo", "import_path": "backend.services.demo"}
+    assert WORKER.actual_result(repo, ordinary, "demo(1)") == "{'x': 1}"  # the default form still resolves

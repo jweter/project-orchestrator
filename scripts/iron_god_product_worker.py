@@ -170,10 +170,26 @@ def release_builder_model(timeout: float = 15.0) -> bool:
         shutil.rmtree(lock, ignore_errors=True)
 
 
-def import_path(module: str) -> str:
-    """Dotted import path for a module file, honouring a src/ layout."""
+def import_path(module: str, worktree: Path | None = None) -> str:
+    """Dotted import path for a module file, honouring a src/ layout and an app-dir import root.
+
+    A repository whose top directory is not a package (no ``__init__.py``) while ``tests/<top>/__init__.py`` exists
+    runs its code with that directory on ``sys.path`` (VoiceStudio: ``--app-dir backend``, ``from services.x import``);
+    ``from backend.services.x`` would resolve to the tests package instead (VoiceStudio S2-r1, 2026-11-02).
+    """
     parts = module[:-3].split("/")
+    if worktree is not None and len(parts) > 2 and parts[0] != "src" and not (worktree / parts[0] / "__init__.py").is_file()             and (worktree / "tests" / parts[0] / "__init__.py").is_file():
+        return ".".join(parts[1:])
     return ".".join(parts[1:] if parts[0] == "src" else parts)
+
+
+def declared_test(packet: dict[str, Any], module: str) -> str | None:
+    """The one test file the owner's roadmap (or the approved slice) names for this module, if any."""
+    wanted = f"test_{module.rsplit('/', 1)[-1]}"
+    declared = [*(packet.get("declared_tests") or []), *((packet.get("slice") or {}).get("tests") or [])]
+    found = sorted({str(t).replace("\\", "/") for t in declared
+                    if str(t).startswith("tests/") and str(t).rsplit("/", 1)[-1] == wanted})
+    return found[0] if len(found) == 1 else None
 
 
 def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) -> dict[str, Any]:
@@ -191,14 +207,14 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
         raise PlanRejected(f"PLAN_PATH_INVALID: {module[:120]}")
     if not _under(module, packet["paths"]) or module.startswith("tests/"):
         raise PlanRejected("PLAN_PATH_OUTSIDE_ENVELOPE")
-    test = f"tests/test_{module.rsplit('/', 1)[-1]}"
+    test = declared_test(packet, module) or f"tests/test_{module.rsplit('/', 1)[-1]}"
 
     def exists(path: str) -> bool:
         return _git(worktree, "cat-file", "-e", f"{base}:{path}").returncode == 0
 
     if exists(module):  # the function is new: give it its own module named after it
         module = f"{module.rsplit('/', 1)[0]}/{name}.py"
-        test = f"tests/test_{name}.py"
+        test = declared_test(packet, module) or f"tests/test_{name}.py"
     forbidden = [*packet["planning"]["forbidden_paths"], *(packet.get("avoid_paths") or [])]
     if _under(module, forbidden) or _under(test, forbidden):
         raise PlanRejected("PLAN_PATH_FORBIDDEN_OR_UNDER_REVIEW")
@@ -256,7 +272,8 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
     if any(len(text) > MAX_TEXT for text in [task, *criteria]):
         raise PlanRejected("PLAN_TEXT_UNBOUNDED")
     return {"function_name": name, "signature": signature, "objective": objective, "task": task,
-            "module_path": module, "test_path": test, "import_path": import_path(module),
+            "module_path": module, "test_path": test,
+            "import_path": import_path(module, worktree),
             "examples": examples, "acceptance_criteria": criteria,
             "note": " ".join(str(plan.get("note") or "").split())[:NOTE_CHARS]}
 
@@ -319,7 +336,7 @@ def stdlib_only_failure(worktree: Path, module: str) -> str | None:
         tree = ast.parse((worktree / module).read_text(encoding="utf-8"))
     except (OSError, SyntaxError, ValueError):
         return "MODULE_UNPARSEABLE"
-    own = import_path(module).split(".")[0]
+    own = import_path(module, worktree).split(".")[0]
     for node in ast.walk(tree):
         names = [a.name for a in node.names] if isinstance(node, ast.Import) else (
             [node.module or ""] if isinstance(node, ast.ImportFrom) and node.level == 0 else [])
@@ -400,8 +417,11 @@ def actual_result(worktree: Path, plan: dict[str, Any], call: str) -> str | None
 
     code = (f"from {plan['import_path']} import {plan['function_name']}\n"
             f"print(repr({call}))")
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)]),
-           "PYTHONDONTWRITEBYTECODE": "1"}
+    roots = [str(worktree / "src"), str(worktree)]
+    parts = str(plan.get("module_path") or "").removesuffix(".py").split("/")
+    if len(parts) > 2 and parts[0] != "src" and plan["import_path"] == ".".join(parts[1:]):
+        roots.insert(0, str(worktree / parts[0]))  # an app-dir import root (pytest gets it from the repo's conftest)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(roots), "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         proc = subprocess.run([sys.executable, "-c", code], cwd=worktree, env=env, capture_output=True, text=True,
                               check=False, timeout=30)
