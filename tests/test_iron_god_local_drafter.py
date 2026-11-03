@@ -806,3 +806,14 @@ def test_an_ordinary_package_repository_keeps_the_default_test_path_and_dotted_i
     validated = WORKER.validate_plan(GOOD_PLAN, world["clone"], world["head"], packet)
 
     assert validated["test_path"].startswith("tests/test_") and validated["import_path"].startswith("pkg.")
+
+
+def test_standalone_evaluation_uses_the_app_dir_import_root(tmp_path: Path) -> None:
+    """Review P2 on #627: actual_result() runs without pytest's conftest path setup."""
+    repo, head = _app_dir_repo(tmp_path)
+    (repo / "backend" / "services" / "demo.py").write_text("def demo(x):\n    return {'x': x}\n", encoding="utf-8")
+    plan = {"module_path": "backend/services/demo.py", "function_name": "demo", "import_path": "services.demo"}
+
+    assert WORKER.actual_result(repo, plan, "demo(1)") == "{'x': 1}"
+    ordinary = {"module_path": "backend/services/demo.py", "function_name": "demo", "import_path": "backend.services.demo"}
+    assert WORKER.actual_result(repo, ordinary, "demo(1)") == "{'x': 1}"  # the default form still resolves

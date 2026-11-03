@@ -417,8 +417,11 @@ def actual_result(worktree: Path, plan: dict[str, Any], call: str) -> str | None
 
     code = (f"from {plan['import_path']} import {plan['function_name']}\n"
             f"print(repr({call}))")
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)]),
-           "PYTHONDONTWRITEBYTECODE": "1"}
+    roots = [str(worktree / "src"), str(worktree)]
+    parts = str(plan.get("module_path") or "").removesuffix(".py").split("/")
+    if len(parts) > 2 and parts[0] != "src" and plan["import_path"] == ".".join(parts[1:]):
+        roots.insert(0, str(worktree / parts[0]))  # an app-dir import root (pytest gets it from the repo's conftest)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(roots), "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         proc = subprocess.run([sys.executable, "-c", code], cwd=worktree, env=env, capture_output=True, text=True,
                               check=False, timeout=30)
