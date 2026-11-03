@@ -2241,3 +2241,43 @@ def test_two_repairs_of_one_publication_in_the_same_second_get_distinct_branches
     assert step(env, runner, github, decision=DENY)["status"] == "WORKER_STOPPED_AUTHORITY_REVOKED"
     again = step(env, runner, github)  # same frozen second: must not collide with the cancelled repair's branch
     assert again["status"] == "DISPATCHED" and again["repair_of"] == _packet_id
+
+
+def _script_repo(tmp_path, files):
+    repo = tmp_path / "scripts-repo"
+    for rel in files:
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text("", encoding="utf-8")
+    for args in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"]):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+    return repo, head
+
+
+def test_a_repository_with_only_loose_scripts_counts_its_script_directories(tmp_path):
+    """Project-Everward (2026-11-03): ~134 Python files in tools/ and prototypes/, none in an __init__ package."""
+    repo, head = _script_repo(tmp_path, ["tools/a.py", "tools/b.py", "prototypes/x/y.py", "tests/test_a.py", "src/game.cpp"])
+
+    assert pl.python_packages(repo, head, ["tools/", "prototypes/", "tests/"]) == ["prototypes/x/", "tools/"]
+
+
+def test_a_repository_with_real_packages_ignores_loose_script_directories(tmp_path):
+    repo, head = _script_repo(tmp_path, ["pkg/__init__.py", "pkg/a.py", "tools/loose.py"])
+
+    assert pl.python_packages(repo, head, ["pkg/", "tools/"]) == ["pkg/"]
+    assert WORKER.python_packages(["pkg/__init__.py", "pkg/a.py", "tools/loose.py"], ["pkg/", "tools/"]) == ["pkg/"]
+    assert WORKER.python_packages(["tools/loose.py", "tests/test_x.py"], ["tools/", "tests/"]) == ["tools/"]
+
+
+def test_the_worker_accepts_a_new_module_in_a_script_directory_but_not_in_an_empty_one(tmp_path):
+    repo, head = _script_repo(tmp_path, ["tools/a.py", "docs/readme.md"])
+    packet = {"paths": ["tools/", "docs/"], "planning": {"forbidden_paths": []}, "attempted_functions": []}
+
+    def plan(module):
+        return {"function_name": "double", "signature": "def double(x: int) -> int:", "module_path": module,
+                "objective": "Return the argument multiplied by two.", "examples": [{"call": f"double({n})", "why": "twice", "expected": 2 * n}
+                                                       for n in (1, 2, 3)]}
+
+    assert WORKER.validate_plan(plan("tools/double.py"), repo, head, packet)["test_path"] == "tests/test_double.py"
+    with pytest.raises(WORKER.PlanRejected, match="PLAN_PACKAGE_MISSING"):
+        WORKER.validate_plan(plan("docs/double.py"), repo, head, packet)

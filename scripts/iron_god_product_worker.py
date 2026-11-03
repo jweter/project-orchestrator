@@ -87,9 +87,18 @@ def repository_brief(worktree: Path, base: str, roots: list[str]) -> str:
 
 
 def python_packages(listed: list[str], roots: list[str]) -> list[str]:
-    """Real packages (directories with ``__init__.py``) inside the envelope, excluding tests."""
-    return sorted({p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith("/__init__.py") and _under(p, roots)
-                   and not any(part in {"tests", "test"} for part in p.split("/"))})
+    """Real packages (directories with ``__init__.py``) inside the envelope, excluding tests.
+
+    A repository with no real package at all (Project-Everward: loose tooling scripts) falls back to its script
+    directories - directories holding Python modules, imported as namespace packages from the repository root.
+    """
+    def usable(path: str) -> bool:
+        return _under(path, roots) and not any(part in {"tests", "test"} for part in path.split("/"))
+
+    real = {p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith("/__init__.py") and usable(p)}
+    if real:
+        return sorted(real)
+    return sorted({p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith(".py") and "/" in p and usable(p)})
 
 
 def planning_prompt(packet: dict[str, Any], brief: str) -> str:
@@ -223,7 +232,9 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
             raise PlanRejected(f"PLAN_WOULD_EDIT_EXISTING_FILE: {path}")
     package = module.rsplit("/", 1)[0]
     if _git(worktree, "cat-file", "-e", f"{base}:{package}/__init__.py").returncode != 0:
-        raise PlanRejected(f"PLAN_PACKAGE_MISSING: {package}")
+        listed = _git(worktree, "ls-tree", "-r", "--name-only", base).stdout.splitlines()
+        if f"{package}/" not in python_packages(listed, packet["paths"]):  # not even a script directory
+            raise PlanRejected(f"PLAN_PACKAGE_MISSING: {package}")
     signature = " ".join(str(plan.get("signature") or "").split())
     if not signature.startswith(f"def {name}(") or len(signature) > 300:
         raise PlanRejected("PLAN_SIGNATURE_INVALID")

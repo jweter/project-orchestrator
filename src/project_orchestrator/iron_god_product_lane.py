@@ -245,10 +245,18 @@ def scope_envelope(clone: Path, base: str) -> list[str]:
 
 
 def python_packages(clone: Path, base: str, roots: list[str]) -> list[str]:
-    """Real packages (``__init__.py`` directories) inside the envelope, excluding tests."""
+    """Real packages (``__init__.py`` directories) inside the envelope, excluding tests; script directories if none."""
     listed = _git(clone, "ls-tree", "-r", "--name-only", base).stdout.splitlines()
-    return sorted({p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith("/__init__.py") and under(p, roots)
-                   and not any(part in {"tests", "test"} for part in p.split("/"))})
+
+    def usable(path: str) -> bool:
+        return under(path, roots) and not any(part in {"tests", "test"} for part in path.split("/"))
+
+    real = {p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith("/__init__.py") and usable(p)}
+    if real:
+        return sorted(real)
+    # No real package anywhere in the envelope (Project-Everward: loose tooling scripts): script directories count,
+    # imported as namespace packages from the repository root. Repositories that have packages are unchanged.
+    return sorted({p.rsplit("/", 1)[0] + "/" for p in listed if p.endswith(".py") and "/" in p and usable(p)})
 
 
 def remote_main_head(repo: str) -> str:
