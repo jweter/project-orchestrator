@@ -292,23 +292,21 @@ def slice_state(item: dict[str, Any], row: dict[str, Any], *, done: set[str], co
     return "READY"
 
 
+def repeated_failed_source(row: dict[str, Any]) -> bool:
+    """Two distinct packets failed on byte-identical source. Derived from the packet evidence, never the cached flag."""
+    packet_fingerprints = row.get("failed_source_by_packet", {})
+    fingerprints = ([f for f in packet_fingerprints.values() if isinstance(f, str)]
+                    if isinstance(packet_fingerprints, dict) else [])
+    return len(fingerprints) != len(set(fingerprints))
+
+
 def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
               max_level: int) -> dict[str, Any] | None:
     """The first dispatchable item for ``repo`` in backlog order, or None."""
     done = {item["id"] for item in items if is_done(item, state)}
     for item in items:
         row = state.get("items", {}).get(item["id"], {})
-        packet_fingerprints = row.get("failed_source_by_packet", {})
-        fingerprints = (
-            [
-                fingerprint
-                for fingerprint in packet_fingerprints.values()
-                if isinstance(fingerprint, str)
-            ]
-            if isinstance(packet_fingerprints, dict)
-            else []
-        )
-        has_repeated_source = len(fingerprints) != len(set(fingerprints))
+        has_repeated_source = repeated_failed_source(row)
         if (item["repository"] == repo and item["status"] == "approved" and item["level"] <= max_level
                 and item.get("assignee") == AGENT_ID and not conflicts(item, items)
                 and item["level"] in BUILDABLE_LEVELS and item["id"] not in done
