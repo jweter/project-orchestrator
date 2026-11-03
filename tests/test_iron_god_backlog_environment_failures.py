@@ -18,7 +18,7 @@ def test_environment_failures_do_not_spend_attempts(tmp_path: Path) -> None:
 
 def test_a_real_failure_still_spends_an_attempt_and_environment_failures_do_not_hide_it(tmp_path: Path) -> None:
     _record(tmp_path, "p1", "DISPATCHED")
-    _record(tmp_path, "p1", "ENVIRONMENT_FAILURE: X")
+    _record(tmp_path, "p1", "ENVIRONMENT_FAILURE: EXECUTION_AUTHORITY_REVOKED_BEFORE_COMMIT")
     _record(tmp_path, "p2", "DISPATCHED")
     row = _record(tmp_path, "p2", "FAIL: SLICE_TESTS_FAILED")
     assert row["attempts"] == 1
@@ -27,11 +27,17 @@ def test_a_real_failure_still_spends_an_attempt_and_environment_failures_do_not_
 def test_environment_failures_are_bounded_so_a_persistent_fault_cannot_loop(tmp_path: Path) -> None:
     for n in range(backlog.MAX_ENVIRONMENT_RETRIES + 3):
         _record(tmp_path, f"p{n}", "DISPATCHED")
-        row = _record(tmp_path, f"p{n}", "ENVIRONMENT_FAILURE: X")
+        row = _record(tmp_path, f"p{n}", "ENVIRONMENT_FAILURE: EXECUTION_AUTHORITY_REVOKED_BEFORE_COMMIT")
     assert row["attempts"] == 3
 
 
 def test_a_packet_that_later_succeeds_is_not_counted_as_environmental(tmp_path: Path) -> None:
-    _record(tmp_path, "p1", "ENVIRONMENT_FAILURE: X")
+    _record(tmp_path, "p1", "ENVIRONMENT_FAILURE: EXECUTION_AUTHORITY_REVOKED_BEFORE_COMMIT")
     row = _record(tmp_path, "p1", "FAIL: SLICE_TESTS_FAILED")
+    assert row["attempts"] == 1
+
+
+def test_other_environment_failures_still_spend_attempts(tmp_path: Path) -> None:
+    _record(tmp_path, "p1", "DISPATCHED")
+    row = _record(tmp_path, "p1", "ENVIRONMENT_FAILURE: TIMEOUT")
     assert row["attempts"] == 1

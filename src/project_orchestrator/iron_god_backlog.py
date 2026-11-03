@@ -194,10 +194,11 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
         return row
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
-    # An environment failure (an owner takeover revoking authority, a vanished worker) is not the slice's or the
-    # model's failure, so it does not spend the retry budget - bounded, so a persistent fault cannot loop forever.
+    # An owner takeover revoking authority is not the slice's or the model's failure, so it does not spend the retry
+    # budget - bounded, so a persistent fault cannot loop forever. Other environment failures (a timeout, a vanished
+    # worker) keep spending attempts, as before.
     environmental = [p for p in row.get("environment_packets", []) if p != packet_id]
-    if outcome.startswith("ENVIRONMENT_FAILURE"):
+    if outcome.startswith("ENVIRONMENT_FAILURE") and "AUTHORITY_REVOKED" in outcome:
         environmental.append(packet_id)
     row["environment_packets"] = environmental
     row["attempts"] = len(row["packets"]) - min(len(environmental), MAX_ENVIRONMENT_RETRIES)
