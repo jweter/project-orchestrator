@@ -144,7 +144,8 @@ def planning_roots(allowed_paths: list[str]) -> list[str]:
 def build_packet(request: dict[str, Any], roots: list[str], base: str, forbidden: list[str], attempted: list[str]) -> dict[str, Any]:
     return {"repository": request["repository"], "base_sha": base, "paths": roots,
             "planning": {"forbidden_paths": forbidden}, "avoid_paths": request.get("reserved_conflicts", []),
-            "attempted_functions": attempted, "working_memory": ""}
+            "attempted_functions": attempted, "working_memory": "",
+            "declared_tests": [p for p in request.get("allowed_paths", []) if str(p).startswith("tests/")]}
 
 
 def run(request: dict[str, Any], clone: Path, base: str, result_path: Path, *, planner: Callable[..., Any],
