@@ -61,6 +61,7 @@ REQUIRED_LISTS = ("interfaces", "depends_on", "acceptance_criteria", "tests")
 BUILD_FIELDS = ("module_path", "function_name", "signature", "objective", "examples")
 DIRECT_FIELDS = ("module_path", "targets", "direction", "test_path", "test_source")
 MAX_ITEM_ATTEMPTS = 3
+MAX_ENVIRONMENT_RETRIES = 10  # environment failures that do not spend an item's attempts
 MAX_TEXT = 1100  # Canon bounds handoff text at 1200 characters; the packet adds an id prefix
 BUILDABLE_LEVELS = {1, 2}  # the levels the local product worker can build (measured)
 DIRECT_ATTEMPTS = 1  # measured: a repeated directed edit re-emits the same answer; a failure goes back to planning
@@ -193,7 +194,14 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
         return row
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
-        row["attempts"] = len(row["packets"])
+    # An owner takeover revoking authority is not the slice's or the model's failure, so it does not spend the retry
+    # budget - bounded, so a persistent fault cannot loop forever. Other environment failures (a timeout, a vanished
+    # worker) keep spending attempts, as before.
+    environmental = [p for p in row.get("environment_packets", []) if p != packet_id]
+    if outcome.startswith("ENVIRONMENT_FAILURE") and "AUTHORITY_REVOKED" in outcome:
+        environmental.append(packet_id)
+    row["environment_packets"] = environmental
+    row["attempts"] = len(row["packets"]) - min(len(environmental), MAX_ENVIRONMENT_RETRIES)
     if failed_source_fingerprint and outcome.startswith("FAIL"):
         # Packet identity matters: replaying the same failed packet is not a
         # second failure. This is passive evidence, never a retry-budget reset.

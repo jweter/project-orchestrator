@@ -47,6 +47,8 @@ JOBS = "draft-jobs"
 RESULTS = "draft-results"
 REQUEST_COPIES = "draft-requests"
 MAX_ATTEMPTS = 2
+INTERRUPTED_MARK = "EXECUTION_AUTHORITY_REVOKED"  # owner takeover mid-draft (routine: it never spends an attempt)
+MAX_INTERRUPTIONS = 20  # a bound, so a request that is always interrupted cannot loop forever
 DRAFT_TIMEOUT_S = 30 * 60
 SUPPORTED_LEVEL = 1
 MIN_ROADMAP_EXAMPLES = 2
@@ -68,6 +70,11 @@ def _jobs(lane_root: Path) -> list[dict[str, Any]]:
         if isinstance(row, dict) and "id" in row:
             rows.append(row)
     return rows
+
+
+def _interrupted(row: dict[str, Any]) -> bool:
+    """An owner takeover cut the draft short. Records written before INTERRUPTED existed say so in their reason."""
+    return row.get("stage") == "INTERRUPTED" or INTERRUPTED_MARK in str(row.get("reason", ""))
 
 
 def _job_path(lane_root: Path, ident: str, attempt: int) -> Path:
@@ -185,14 +192,18 @@ def direct_to_draft(request: dict[str, Any], validated: dict[str, Any]) -> dict[
 def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[str, Any]) -> dict[str, Any]:
     """A backlog draft (Level 1 build spec) from a plan the worker's validator accepted.
 
-    The roadmap's acceptance examples are injected for the chosen function name and always win: a plan example with the
-    same call but a different expected value contradicts the roadmap and raises ``ContradictsRoadmap``.
+    The roadmap's acceptance examples are injected for the chosen function name and always win. A plan example with the
+    same call but a different expected value shows the planner misread the slice (VoiceStudio S2-r1, 2026-11-02, and the
+    review-P1 "first N items" plan), so its whole interpretation is discarded - its objective and every example of its
+    own - and the draft is defined by the roadmap alone. The model keeps only what the roadmap leaves open: the module,
+    the signature and the test location, all still checked by the worker's validator and the roadmap's examples.
     """
     name = validated["function_name"]
     given = {" ".join(call.split()): example for example in roadmap_examples(request)
              for call in [example["call"].replace("{fn}", name)]}
     usable = {" ".join(str(e["call"]).split()) for e in validated["examples"]}
     own = []
+    misread = False
     for e in raw.get("examples", []):
         if not (isinstance(e, dict) and "call" in e and "expected" in e):
             continue
@@ -200,16 +211,20 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
         if call not in usable:
             continue
         if call in given and given[call]["expected"] != e["expected"]:
-            raise ContradictsRoadmap(f"{call} expected {e['expected']!r}, roadmap says {given[call]['expected']!r}")
+            misread = True
+            continue
         if call not in given:
             own.append({"call": call, "why": " ".join(str(e.get("why", "")).split()), "expected": e["expected"]})
     injected = [{"call": call, "why": "roadmap acceptance example: " + example["why"], "expected": example["expected"]}
                 for call, example in given.items()]
+    if misread:
+        own = []
     examples = [*injected, *own]
     criteria = [*validated["acceptance_criteria"], *[f"{e['call']} returns {e['expected']!r} (roadmap acceptance)"
                                                       for e in injected]]
     roadmap_part = " ".join(str(request["objective"]).split())[:ROADMAP_OBJECTIVE_CHARS]
-    objective = f"{validated['objective']} Roadmap slice goal: {roadmap_part}"[:600]
+    objective = (f"Roadmap slice goal: {roadmap_part}" if misread
+                 else f"{validated['objective']} Roadmap slice goal: {roadmap_part}")[:600]
     slice_text = f"roadmap slice {request['slice']} of capability {request['capability']}"
     return {
         "id": request["id"], "repository": request["repository"],
@@ -224,7 +239,8 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
         "definition_of_done": "merged with green CI and the roadmap graph updated",
         "build": {"module_path": validated["module_path"], "function_name": name,
                   "signature": validated["signature"], "objective": objective, "examples": examples,
-                  "note": validated.get("note", "")},
+                  "note": ("the planner's own objective and examples contradicted the roadmap and were discarded; "
+                           + str(validated.get("note", ""))).strip() if misread else validated.get("note", "")},
     }
 
 
@@ -310,6 +326,11 @@ def harvest(lane_root: Path, *, now: Callable[[], float] = time.time,
             continue
         if not result.get("ok"):
             reason = str(result.get("reason", "DRAFT_FAILED"))[:300]
+            if INTERRUPTED_MARK in reason:  # the owner took the laptop back: not the slice's or the model's failure
+                _finish(lane_root, job, release, stage="INTERRUPTED", reason=reason)
+                outcomes.append({"id": job["id"], "status": "INTERRUPTED", "reason": reason,
+                                 "repository": job.get("repository")})
+                continue
             _finish(lane_root, job, release, stage="FAILED", reason=reason)
             outcomes.append({"id": job["id"], "status": "FAILED", "reason": reason, "repository": job.get("repository")})
             continue
@@ -358,8 +379,12 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
             continue
         if request["id"] in admitted:
             continue  # a valid draft is already admitted for this request: a second model run only burns RAM and time
-        attempt = sum(1 for row in _jobs(lane_root) if row["id"] == request["id"])
-        if attempt >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
+        rows = [row for row in _jobs(lane_root) if row["id"] == request["id"]]
+        attempt = len(rows)  # the next free record number: interrupted attempts keep their files
+        spent = sum(1 for row in rows if not _interrupted(row))
+        if attempt - spent >= MAX_INTERRUPTIONS:
+            continue
+        if spent >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
             # a directed draft is assembled mechanically: running it again would only repeat the verdict
             continue  # two local attempts failed or were rejected: a stronger builder or a human decides next
         lease = reserve() if reserve is not None else None
