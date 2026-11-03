@@ -1057,10 +1057,14 @@ def test_an_item_blocked_by_a_repeated_failed_source_is_re_authored_not_left_pen
     """VoiceStudio S2-r1 (2026-11-03): two identical failures stop dispatch at 2 of 3 attempts, which stayed PENDING."""
     base = "RM-x-s-1"
     items = [{"id": base, "status": "approved", "build": {"function_name": "f"}}]
-    state = {"items": {base: {"attempts": 2, "outcome": "FAIL: SLICE_TESTS_FAILED", "repeated_failed_source": True}}}
+    same = {"failed_source_by_packet": {"p1": "abc", "p2": "abc"}}
+    row = {"attempts": 2, "outcome": "FAIL: SLICE_TESTS_FAILED", **same}
 
-    assert refill._slice_status(base, items, state) == ("FAILED", base + "-r1")
-    state["items"][base]["repeated_failed_source"] = False
-    assert refill._slice_status(base, items, state)[0] == "PENDING"  # an attempt is genuinely left
-    state["items"][base].update(repeated_failed_source=True, outcome="ENVIRONMENT_FAILURE: X")
-    assert refill._slice_status(base, items, state)[0] == "PENDING"  # not the plan's fault: never re-authored
+    assert refill._slice_status(base, items, {"items": {base: row}}) == ("FAILED", base + "-r1")
+    # the cached flag is ignored, exactly as the dispatcher ignores it (review P2 on #628)
+    flag_only = {**row, "failed_source_by_packet": {"p1": "abc"}, "repeated_failed_source": True}
+    assert refill._slice_status(base, items, {"items": {base: flag_only}})[0] == "PENDING"
+    distinct = {**row, "failed_source_by_packet": {"p1": "abc", "p2": "def"}, "repeated_failed_source": False}
+    assert refill._slice_status(base, items, {"items": {base: distinct}})[0] == "PENDING"  # an attempt is left
+    env = {**row, "outcome": "ENVIRONMENT_FAILURE: X"}
+    assert refill._slice_status(base, items, {"items": {base: env}})[0] == "PENDING"  # not the plan's fault
