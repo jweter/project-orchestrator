@@ -1719,8 +1719,9 @@ def test_a_routine_api_error_is_a_recorded_blocker_not_a_crash(env, monkeypatch)
     assert row["kind"] == "CAPABLE_NOT_DISPATCHED" and "CAPABLE_BUILDER_ERROR: OSError" in row["detail"]["reason"]
 
 
-def test_the_shipped_policy_keeps_the_capable_builder_off():
-    assert POLICY["portfolio_rotation"]["capable_builder"] is False
+def test_the_shipped_policy_has_the_capable_builder_on_within_the_owners_daily_budget():
+    """Owner turned it on 2026-11-02; the budget stays bounded and dispatch still needs the owner's routine token."""
+    assert POLICY["portfolio_rotation"]["capable_builder"] is True
     assert POLICY["portfolio_rotation"]["capable_builder_daily_limit"] == 2
 
 
