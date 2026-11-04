@@ -670,11 +670,14 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         repo_problem = f"REPOSITORY_UNREADABLE: {type(exc).__name__}"
     for request in derived["requests"]:
         request["development_rules"] = rules
+        request["graph_path"] = source  # the declared graph: the one file any capable session may also edit to record delivery
         request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem)
         report["routed"][request["route"]["builder"]].append(request["id"])
     for request in derived["requests"]:
         # Open pull requests own files; a capable slice may touch anything its allowed paths cover.
-        request["reserved_conflicts"] = sorted(path for path in reserved if _matches(path, request["allowed_paths"]))
+        # The graph is part of the effective scope: a capable session may edit it to record an already-delivered slice.
+        scope = [*request["allowed_paths"], *([source] if source else [])]
+        request["reserved_conflicts"] = sorted(path for path in reserved if _matches(path, scope))
     report["capable_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == CAPABLE]
     report["local_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == LOCAL]
     report["direction_required"], report["skipped"] = derived["direction_required"], derived["skipped"]

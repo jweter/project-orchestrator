@@ -77,11 +77,12 @@ def render_prompt(request: dict[str, Any], *, prior_no_pr: int = 0) -> str:
         lines.append("Earlier attempts failed - do not repeat them: " + json.dumps(request["prior_failures"]))
     if request.get("development_rules"):
         lines.append("Verified development rules: " + json.dumps(request["development_rules"])[:1500])
+    graph_path = str(request.get("graph_path") or GRAPH_PATH)  # the repository's declared graph, carried by the refill
     lines.append(
         "Before building, check whether this slice is ALREADY delivered at the baseline: read the merged history, the files the "
         "objective names, and the tests that satisfy each acceptance criterion. Other agents merge work into these repositories "
         "and the graph can lag behind. If it is delivered, do not rebuild it: open ONE pull request whose title starts with "
-        f"'Iron God [{request['id']}]' that changes only {GRAPH_PATH} (permitted for this purpose even where it is outside the "
+        f"'Iron God [{request['id']}]' that changes only {graph_path} (permitted for this purpose even where it is outside the "
         "allowed paths), setting this slice's state to VERIFIED_COMPLETE and adding a verification list that cites the merged "
         "pull requests, their merge commits, and the files and tests that satisfy each acceptance criterion. A session that "
         "opens no pull request is recorded as a failed attempt and spends the daily budget.")

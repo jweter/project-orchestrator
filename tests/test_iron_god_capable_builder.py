@@ -329,3 +329,10 @@ def test_a_graph_only_evidence_pull_request_completes_the_request_when_merged(tm
     cb.reconcile(tmp_path, now=NOW + 60, lookup=lambda repo, _id: f"https://github.com/{repo}/pull/4", state_of=lambda _u: "OPEN")
     cb.reconcile(tmp_path, now=NOW + 120, lookup=lambda *_a: None, state_of=lambda _u: "MERGED")
     assert cb.merged_request_ids(tmp_path) == {"RM-demo-1"}
+
+
+def test_the_evidence_pull_request_targets_the_repositorys_declared_graph_path() -> None:
+    declared = dict(request(), graph_path="docs/roadmap/graph.json")
+    prompt = cb.render_prompt(declared)
+    assert "changes only docs/roadmap/graph.json" in prompt and "changes only engineering/capability-graph.json" not in prompt
+    assert "changes only engineering/capability-graph.json" in cb.render_prompt(request())  # the conventional default
