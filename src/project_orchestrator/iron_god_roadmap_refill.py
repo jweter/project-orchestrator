@@ -535,17 +535,22 @@ def planning_request(repository: str, head: str, source: str, payload: dict[str,
         "authorization; no per-slice approval is required) still lists unfinished outcomes. Plan the next work from "
         f"evidence: read {path}, the current source and merged history at the baseline. Its 'Next slices' are starting "
         f"points, not a ceiling: {_next_slices(text)}. Skip any item already delivered (cite the merged evidence). "
-        f"Append one new capability to {source} (and to its roadmap list) with bounded, dependency-ordered slices, each "
-        "with objective, acceptance, allowed_paths, forbidden_paths, runner_requirements and a truthful capability_level "
-        "(1 = one function with examples, 2 = directed edit with failing approved tests, 3+ = anything larger; never "
-        "understate to reach a cheaper builder). Choose free, local libraries already used by the repository. Change only "
+        f"Edit {source} so the next work becomes executable, choosing by the graph's shape. If a capability is still PLANNED but "
+        "all its slices are VERIFIED_COMPLETE (its outcome is not achieved), append the new slices to THAT capability; the "
+        "compiler selects the first unfinished capability in roadmap order and ignores later ones. Only if every capability "
+        "is VERIFIED_COMPLETE with verification evidence, append a new capability and set the roadmap list to it. Never mark a "
+        "capability complete without evidence, and never edit or remove an existing slice or its evidence. Each new slice has "
+        "objective, acceptance, allowed_paths, forbidden_paths, runner_requirements, depends_on where ordered, and a truthful "
+        "capability_level (1 = one function with examples, 2 = directed edit with failing approved tests, 3+ = anything larger; "
+        "never understate to reach a cheaper builder). Choose free, local libraries already used by the repository. Change only "
         f"{source}. If the roadmap cannot be decomposed without a decision with significant consequences, open no "
         "pull request and report one focused question.")
     return {"schema_version": 1, "id": ident, "repository": repository, "exact_head": head,
             "roadmap_ref": f"{path}#next-slices", "capability": "roadmap-planning", "slice": PLANNING_SLICE,
             "objective": objective,
-            "slice_acceptance": [f"{source} validates and gains at least one dependency-ready PLANNED slice traceable to {path}",
-                                 "no existing slice, state or evidence is edited or removed",
+            "slice_acceptance": [f"{source} validates and, run through the capability compiler, yields at least one executable slice "
+                                 f"traceable to {path}",
+                                 "no existing slice or evidence is edited or removed, and no capability is marked complete without evidence",
                                  "every new slice declares an honest capability_level and inherits the forbidden paths"],
             "completion_evidence": [f"merged pull request changing only {source}"],
             "allowed_paths": [source], "forbidden_paths": forbidden, "runtime_requirements": [],

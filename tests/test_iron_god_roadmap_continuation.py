@@ -216,3 +216,42 @@ def test_undeclared_levels_go_to_the_capable_builder_and_declared_simple_levels_
     assert refill.route(undeclared, profile=profile, max_level=2)["builder"] == refill.CAPABLE
     assert refill.route({"capability_level": 3}, profile=profile, max_level=2)["builder"] == refill.CAPABLE
     assert refill.route({"capability_level": 1}, profile=profile, max_level=2)["builder"] == refill.LOCAL
+
+
+# --- the instruction the planner is given must produce a graph the compiler can execute (Codex review of #634) --------
+
+def _appended(payload: dict, *, into_open_capability: bool, replace_roadmap: bool = True) -> dict:
+    import copy
+
+    plan = copy.deepcopy(payload)
+    new_slice = {"id": "next", "state": "PLANNED", "capability_level": 3, "objective": "Do the next bounded thing.",
+                 "acceptance": ["it works"], "allowed_paths": ["pkg/**"], "forbidden_paths": [], "runner_requirements": ["code"]}
+    if into_open_capability:
+        plan["capabilities"][0]["slices"].append(new_slice)
+    else:
+        plan["capabilities"].append({"id": "cap-next", "capability": "next", "state": "PLANNED", "depends_on": [],
+                                     "completion_evidence": ["docs/ROADMAP.md"], "slices": [new_slice]})
+        plan["roadmap"] = ["cap-next"] if replace_roadmap else [*plan["roadmap"], "cap-next"]
+    return plan
+
+
+def test_both_graph_shapes_have_a_planned_edit_the_compiler_actually_executes() -> None:
+    repository = PORTFOLIO[4]
+    open_capability = complete_graph(repository, planned_capability=True)  # Everward: PLANNED capability, all slices done
+    done = complete_graph(repository, planned_capability=False)  # VoiceStudio: every capability complete with evidence
+
+    # Why the instruction is shape-dependent: an appended capability behind an unfinished one is never selected.
+    ignored = refill.derive(repository, "a" * 40, _appended(open_capability, into_open_capability=False, replace_roadmap=False), SOURCE, items=[], state={})
+    assert ignored["requests"] == [] and ignored["direction_required"][0]["reason"] == "NO_EXECUTABLE_SLICE"
+
+    for payload, into_open in ((open_capability, True), (done, False)):
+        derived = refill.derive(repository, "a" * 40, _appended(payload, into_open_capability=into_open), SOURCE, items=[], state={})
+        assert [r["slice"] for r in derived["requests"]] == ["next"] and derived["direction_required"] == []
+
+
+def test_the_planning_instruction_names_both_edits_and_forbids_false_completion() -> None:
+    request = refill.planning_request(PORTFOLIO[4], "a" * 40, SOURCE, complete_graph(PORTFOLIO[4], planned_capability=True), ROADMAP, GRANT)
+    text = request["objective"]
+    assert "append the new slices to THAT capability" in text and "append a new capability" in text
+    assert "without evidence" in text and "never edit or remove an existing slice" in text
+    assert any("executable slice" in item for item in request["slice_acceptance"])
