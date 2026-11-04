@@ -255,3 +255,19 @@ def test_the_planning_instruction_names_both_edits_and_forbids_false_completion(
     assert "append the new slices to THAT capability" in text and "append a new capability" in text
     assert "without evidence" in text and "never edit or remove an existing slice" in text
     assert any("executable slice" in item for item in request["slice_acceptance"])
+
+
+def test_an_open_pull_request_that_owns_the_graph_blocks_every_request_because_a_session_may_edit_it(tmp_path: Path) -> None:
+    """A capable session may record an already-delivered slice in the graph, so the graph is part of the conflict scope."""
+    repository = PORTFOLIO[4]
+    clone, head = with_roadmap(tmp_path, repository, graph(repository))
+
+    report = run_refill(tmp_path, repository, clone, head, reserved={SOURCE})
+
+    (ident,) = report["requests"]
+    request = json.loads((tmp_path / "lane" / refill.REQUESTS / f"{ident}.json").read_text("utf-8"))
+    assert SOURCE not in request["allowed_paths"]  # the slice itself never allowed the graph...
+    assert request["reserved_conflicts"] == [SOURCE]  # ...yet its ownership blocks dispatch
+    assert request["graph_path"] == SOURCE
+    unowned = run_refill(tmp_path, repository, clone, head, reserved=set())["requests"][0]
+    assert json.loads((tmp_path / "lane" / refill.REQUESTS / f"{unowned}.json").read_text("utf-8"))["reserved_conflicts"] == []
