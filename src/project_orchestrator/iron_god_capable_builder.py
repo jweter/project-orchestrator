@@ -80,6 +80,15 @@ def attempts_for(state_dir: Path, request_id: str) -> int:
     return sum(1 for row in _rows(state_dir) if str(row.get("task_key", "")).split("#a")[0] == request_id)
 
 
+def spent_request_ids(lane_root: Path) -> set[str]:
+    """Request ids whose capable attempts are used up: they need a human decision, not another try."""
+    counts: dict[str, int] = {}
+    for row in _rows(dispatch_state(lane_root)):
+        key = str(row.get("task_key", "")).split("#a")[0]
+        counts[key] = counts.get(key, 0) + 1
+    return {key for key, count in counts.items() if count >= MAX_ATTEMPTS}
+
+
 def decide(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_limit: int = DEFAULT_DAILY_LIMIT,
            now: float | None = None, environ: dict[str, str] | None = None) -> dict[str, Any]:
     """Whether this request may be dispatched right now, and if not exactly why (no side effects)."""

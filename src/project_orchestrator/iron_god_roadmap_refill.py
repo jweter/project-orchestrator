@@ -158,6 +158,11 @@ def revisions(base_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 RE_AUTHORABLE = ("FAIL", "REVIEW_REQUIRED")  # outcomes of a worker that ended without delivering the slice
 NO_LOCAL_BUILDER_PREFIX = "NO_PYTHON_PACKAGE"  # matches lane NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER
+ESCALATION_SUFFIX = "-cap"
+PLANNING_SLICE = "extend-capability-graph"
+EXHAUSTED_GRAPH = frozenset({"PRODUCT_COMPLETION_EVIDENCE_REQUIRED", "NO_EXECUTABLE_SLICE"})
+OWNER_ROADMAP = re.compile(r"^docs/OWNER_APPROVED_ROADMAP_[A-Za-z0-9._-]+\.md$")
+DEFAULT_FORBIDDEN = (".github/**", "private/**", ".env", "**/*.pem", "**/*.key")
 MAX_ITEMS_PER_SLICE = 4  # the original item plus three re-authorings; after that the owner decides
 
 
@@ -167,6 +172,8 @@ def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, An
 
     ``delivered`` are request ids whose capable-builder pull request was merged; that is completion too.
     """
+    if f"{base_id}{ESCALATION_SUFFIX}" in delivered:  # the capable builder's escalation of an exhausted slice merged
+        return "DONE", f"{base_id}{ESCALATION_SUFFIX}"
     chain = revisions(base_id, items)
     if not chain:
         if any(ident == base_id or ident.startswith(base_id + "-r") for ident in delivered):
@@ -351,6 +358,8 @@ def route(request: dict[str, Any], *, profile: dict[str, Any] | None, max_level:
         # the stronger builder is for; only a repository nobody can build for stays unassigned.
         builder = CAPABLE if unsupported.startswith(NO_LOCAL_BUILDER_PREFIX) else NONE
         return {"builder": builder, "reason": unsupported, "level": level}
+    if request.get("force_builder") == CAPABLE:  # an exhausted local slice or a planning task: a stronger builder only
+        return {"builder": CAPABLE, "reason": str(request.get("force_reason") or "STRONGER_BUILDER_REQUIRED"), "level": level}
     gate = capability_gate(profile, {"capability_level": level})
     if gate is not None:
         # An undeclared or uncalibrated level is not evidence the local builder can do it.
@@ -483,6 +492,125 @@ def process_drafts(lane_root: Path, repository: str, requests: list[dict[str, An
     return outcome
 
 
+def owner_roadmap(show: Callable[[str, str, str], str], listing: list[str]) -> tuple[str, str] | None:
+    """(path, text) of the repository's owner-approved roadmap at the exact head when it carries the standing grant.
+
+    The grant is read from the document itself: an OWNER-APPROVED status line and the standing-authorization section.
+    Anything less is not authority, and the caller keeps asking the owner.
+    """
+    for path in sorted((p for p in listing if OWNER_ROADMAP.fullmatch(p)), reverse=True):
+        try:
+            text = show("", "", path)
+        except Exception:  # an unreadable roadmap is not authority
+            continue
+        if re.search(r"^Status:\s*OWNER-APPROVED", text, re.M) and "standing development authorization" in text.lower():
+            return path, text
+    return None
+
+
+def _next_slices(text: str) -> str:
+    match = re.search(r"^##\s+Next slices\s*$(.*?)(?=^##\s|\Z)", text, re.M | re.S)
+    return " ".join(match.group(1).split())[:1200] if match else ""
+
+
+def _graph_shape(payload: dict[str, Any]) -> list[str]:
+    return sorted(f"{cap.get('id')}:{cap.get('state')}:" + ",".join(
+        f"{row.get('id')}={row.get('state')}" for row in cap.get("slices") or [] if isinstance(row, dict))
+        for cap in payload.get("capabilities", []) if isinstance(cap, dict))
+
+
+def planning_request(repository: str, head: str, source: str, payload: dict[str, Any], path: str, text: str) -> dict[str, Any]:
+    """Ask the capable builder to extend the capability graph from the owner roadmap instead of asking the owner.
+
+    The id changes only when the graph's shape or the roadmap text changes, so one open plan owns the repository until
+    its pull request lands (which changes the graph). Fences are inherited from the graph's own slices, never widened.
+    """
+    forbidden = sorted({str(p) for cap in payload.get("capabilities", []) if isinstance(cap, dict)
+                        for row in cap.get("slices") or [] if isinstance(row, dict) for p in row.get("forbidden_paths") or []}
+                       | set(DEFAULT_FORBIDDEN))
+    digest = hashlib.sha256(json.dumps([path, hashlib.sha256(text.encode()).hexdigest(), _graph_shape(payload)]).encode()).hexdigest()[:8]
+    ident = f"{id_prefix(repository)}plan-{digest}"
+    objective = (
+        f"Every slice in {source} is complete, but the owner-approved roadmap {path} (standing development "
+        "authorization; no per-slice approval is required) still lists unfinished outcomes. Plan the next work from "
+        f"evidence: read {path}, the current source and merged history at the baseline. Its 'Next slices' are starting "
+        f"points, not a ceiling: {_next_slices(text)}. Skip any item already delivered (cite the merged evidence). "
+        f"Edit {source} so the next work becomes executable, choosing by the graph's shape. If a capability is still PLANNED but "
+        "all its slices are VERIFIED_COMPLETE (its outcome is not achieved), append the new slices to THAT capability; the "
+        "compiler selects the first unfinished capability in roadmap order and ignores later ones. Only if every capability "
+        "is VERIFIED_COMPLETE with verification evidence, append a new capability and set the roadmap list to it. Never mark a "
+        "capability complete without evidence, and never edit or remove an existing slice or its evidence. Each new slice has "
+        "objective, acceptance, allowed_paths, forbidden_paths, runner_requirements, depends_on where ordered, and a truthful "
+        "capability_level (1 = one function with examples, 2 = directed edit with failing approved tests, 3+ = anything larger; "
+        "never understate to reach a cheaper builder). Choose free, local libraries already used by the repository. Change only "
+        f"{source}. If the roadmap cannot be decomposed without a decision with significant consequences, open no "
+        "pull request and report one focused question.")
+    return {"schema_version": 1, "id": ident, "repository": repository, "exact_head": head,
+            "roadmap_ref": f"{path}#next-slices", "capability": "roadmap-planning", "slice": PLANNING_SLICE,
+            "objective": objective,
+            "slice_acceptance": [f"{source} validates and, run through the capability compiler, yields at least one executable slice "
+                                 f"traceable to {path}",
+                                 "no existing slice or evidence is edited or removed, and no capability is marked complete without evidence",
+                                 "every new slice declares an honest capability_level and inherits the forbidden paths"],
+            "completion_evidence": [f"merged pull request changing only {source}"],
+            "allowed_paths": [source], "forbidden_paths": forbidden, "runtime_requirements": [],
+            "runner_requirements": ["code", "local", "offline"], "prior_failures": [], "capability_level": None,
+            "acceptance_examples": [], "directed_edit": None, "max_builder_level": max(backlog.BUILDABLE_LEVELS),
+            "force_builder": CAPABLE, "force_reason": "ROADMAP_PLANNING_TASK"}
+
+
+def escalation_request(repository: str, head: str, source: str, payload: dict[str, Any], row: dict[str, Any],
+                       failures: list[Any]) -> dict[str, Any] | None:
+    """One capable-builder request for a slice whose local revisions are all spent (None if the graph lost the slice)."""
+    declared = next((s for cap in payload.get("capabilities", []) if isinstance(cap, dict) and cap.get("id") == row.get("capability")
+                     for s in cap.get("slices") or [] if isinstance(s, dict) and s.get("id") == row.get("slice")), None)
+    if not declared or not declared.get("allowed_paths"):
+        return None
+    base = item_id(repository, str(row["capability"]), str(row["slice"]))
+    return {"schema_version": 1, "id": f"{base}{ESCALATION_SUFFIX}", "repository": repository, "exact_head": head,
+            "roadmap_ref": f"{source}#{row['capability']}/{row['slice']}", "capability": row["capability"], "slice": row["slice"],
+            "objective": f"{declared.get('objective', '')} (Escalated: the local builder spent every revision on this slice; "
+                         "take a materially different approach from prior_failures.)",
+            "slice_acceptance": list(declared.get("acceptance") or []),
+            "completion_evidence": list(declared.get("acceptance") or []),
+            "allowed_paths": list(declared["allowed_paths"]), "forbidden_paths": list(declared.get("forbidden_paths") or []),
+            "runtime_requirements": list(declared.get("runtime_requirements") or []),
+            "runner_requirements": list(declared.get("runner_requirements") or []),
+            "prior_failures": [{"id": str(text).split(":")[0], "outcome": str(text)} for text in failures],
+            "capability_level": declared.get("capability_level"), "acceptance_examples": [], "directed_edit": None,
+            "max_builder_level": max(backlog.BUILDABLE_LEVELS), "force_builder": CAPABLE,
+            "force_reason": "LOCAL_BUILDER_EXHAUSTED"}
+
+
+def continue_without_owner(rows: list[dict[str, Any]], *, repository: str, head: str, source: str, payload: dict[str, Any],
+                           roadmap: tuple[str, str] | None, pending: frozenset[str], done: frozenset[str],
+                           spent: frozenset[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """(new requests, questions that still need the owner, notes) for direction rows the roadmap already answers.
+
+    Only two situations are answerable from approved scope: the graph ran out of slices while the owner roadmap
+    (carrying the standing grant) is unfinished, and a slice used every local revision. Everything else, and every
+    case where the capable attempts are spent, stays an owner question: nothing is invented and no gate is skipped.
+    """
+    requests: list[dict[str, Any]] = []
+    remaining: list[dict[str, Any]] = []
+    notes: list[dict[str, Any]] = []
+    for row in rows:
+        request = None
+        if row.get("reason") in EXHAUSTED_GRAPH and roadmap:
+            request = planning_request(repository, head, source, payload, *roadmap)
+        elif row.get("reason") == "REAUTHOR_LIMIT_REACHED" and row.get("slice"):
+            request = escalation_request(repository, head, source, payload, row, list(row.get("evidence") or []))
+        if request is None:
+            remaining.append(row)
+        elif request["id"] in done or request["id"] in pending:
+            notes.append({"id": request["id"], "reason": "DONE" if request["id"] in done else "PENDING_CAPABLE_BUILDER"})
+        elif request["id"] in spent:
+            remaining.append({**row, "evidence": [*(row.get("evidence") or []), f"{request['id']}: capable attempts spent"]})
+        else:
+            requests.append(request)
+    return requests, remaining, notes
+
+
 def refill_repository(lane_root: Path, state_root: Path, repository: str, clone: Path, head: str, *,
                       items: list[dict[str, Any]], state: dict[str, Any], reserved: set[str], max_level: int,
                       changed_since: Callable[[str, str], set[str]] | None = None,
@@ -501,10 +629,12 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
                               "rejected": [], "blocked": [], "direction_required": [], "skipped": [],
                               "routed": {LOCAL: [], CAPABLE: [], NONE: []}}
     source = ""
+    payload: dict[str, Any] | None = None
     try:
         control_plane = json.loads(show(repository, head, "engineering/control-plane.json"))
         compiled = compile_capability_authority(state_root, repository, head, control_plane, read_authoritative_file=show)
         source = compiled["graph"]["authority"]["source"]
+        payload = compiled["graph"]
         derived = derive(repository, head, compiled["graph"], source, items=items, state=state,
                          external_pending=frozenset(capable_builder.open_request_ids(lane_root)),
                          external_done=frozenset(capable_builder.merged_request_ids(lane_root)))
@@ -515,6 +645,20 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
             "question": "Declare this repository's machine-readable capability graph (engineering/control-plane.json "
                         "capability_graph, listed in authoritative_documents) from its owner-approved roadmap, or say "
                         "which document is the authority."}]}
+    if payload is not None and derived["direction_required"]:
+        try:
+            listing = subprocess.run(["git", "ls-tree", "--name-only", head, "docs/"], cwd=clone, capture_output=True,
+                                     text=True, check=False, timeout=60).stdout.split()
+            roadmap = owner_roadmap(show, listing)
+            extra, derived["direction_required"], notes = continue_without_owner(
+                derived["direction_required"], repository=repository, head=head, source=source, payload=payload,
+                roadmap=roadmap, pending=frozenset(capable_builder.open_request_ids(lane_root)),
+                done=frozenset(capable_builder.merged_request_ids(lane_root)),
+                spent=frozenset(capable_builder.spent_request_ids(lane_root)))
+            derived["requests"].extend(extra)
+            derived["skipped"].extend(notes)
+        except Exception:  # continuing is an optimisation; failing it leaves the owner question exactly as it was
+            pass
     try:
         rules = development_memory.rules_for(lane_root, repository)
     except Exception:  # memory is advisory evidence for the planner, never a gate
