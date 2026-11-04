@@ -946,8 +946,10 @@ def advance_product_lane(
     repo_readiness = lane._json(lane.root / "readiness.json", {"repositories": {}}).get("repositories", {})
     busy |= unready_repositories(repo_readiness, remote_head or remote_main_head)
     items: dict[str, dict[str, Any]] = {}
+    rejected: dict[str, list[str]] = {}
+    explained: list[dict[str, Any]] = []
     if config.get("planning") == "backlog":  # roadmap-driven: only approved slices, never self-invented ones
-        approved, _rejected = backlog.load_backlog(release_repo)
+        approved, rejected = backlog.load_backlog(release_repo)
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
         if config.get("roadmap_refill", True):
@@ -962,6 +964,7 @@ def advance_product_lane(
             if chosen is not None:
                 items[name] = chosen
         busy |= {name for name in repos if name not in items}
+        explained = backlog.explain_candidates(approved, state, max_level=level)
     repo = next_repository(lane, repos, busy, rng)
     if repo is not None and local_drafter.drafting_in_progress(lane.root):
         # the single local model is planning a roadmap slice; start no builder beside it
@@ -969,7 +972,7 @@ def advance_product_lane(
     if repo is None:
         idle = "IDLE_NO_APPROVED_BACKLOG_ITEM" if config.get("planning") == "backlog" and not items else (
             "IDLE_ALL_REPOSITORIES_AWAITING_CI")
-        return _report(lane, {"status": idle, "publications": published})
+        return _report(lane, {"status": idle, "publications": published, **idle_diagnostics(lane, explained, rejected)})
     admission = resources()
     if not admission.get("admitted"):
         return _report(lane, {"status": "WAITING_FOR_RESOURCES", "repository": repo, "admission": admission})
@@ -987,6 +990,25 @@ def advance_product_lane(
     if result["status"] != "DISPATCHED":
         pool.release(WORKER_LEASE_ID, lease.lease_id)
     return result
+
+
+def idle_diagnostics(lane: ProductLane, explained: list[dict[str, Any]], rejected: dict[str, list[str]]) -> dict[str, Any]:
+    """Why every candidate is excluded, written beside the lane status so an idle lane is never opaque.
+
+    The full per-item and per-request tables go to ``eligibility.json``; the status itself carries per-repository counts.
+    A failure to gather them is recorded, never raised: diagnostics must not stop the rotation.
+    """
+    try:
+        requests = roadmap_refill.request_status(lane.root)
+        atomic_json(lane.root / "eligibility.json", {
+            "schema_version": 1, "observed_at_utc": _now(), "items": explained, "requests": requests,
+            "malformed_backlog_items": rejected})
+        return {"eligibility_file": "eligibility.json", "exclusions": backlog.summarize_exclusions(explained),
+                "requests_waiting": [{key: row[key] for key in ("id", "repository", "builder", "blocked_by")}
+                                     for row in requests if row.get("blocked_by")][:12],
+                "malformed_backlog_items": sorted(rejected)[:12]}
+    except Exception as exc:  # diagnostics are best effort
+        return {"diagnostics_error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
 
 def repository_unsupported(clone: Path, head: str) -> str | None:

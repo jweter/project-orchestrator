@@ -2281,3 +2281,54 @@ def test_the_worker_accepts_a_new_module_in_a_script_directory_but_not_in_an_emp
     assert WORKER.validate_plan(plan("tools/double.py"), repo, head, packet)["test_path"] == "tests/test_double.py"
     with pytest.raises(WORKER.PlanRejected, match="PLAN_PACKAGE_MISSING"):
         WORKER.validate_plan(plan("docs/double.py"), repo, head, packet)
+
+
+# --- an idle lane explains itself, recovers, and still obeys the owner ------------------------------------------------
+
+def test_an_idle_lane_says_why_each_candidate_is_excluded_and_writes_the_full_table(env):
+    backlog_env(env, [backlog_item("P-1", REPOS[0], status="proposed"),
+                      backlog_item("L2-1", REPOS[2], level=2, build=False)])  # an approved level-2 item without a direction
+    result = step(env, Runner(plan=never_plans))
+    assert result["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"
+    assert result["exclusions"] == {REPOS[0]: {"eligible": [], "excluded": {"NOT_APPROVED": 1}}}
+    assert result["malformed_backlog_items"] == ["L2-1"]  # excluded, and now said so rather than silently dropped
+    assert result["eligibility_file"] == "eligibility.json"
+    table = json.loads((pl.ProductLane(env.state).root / "eligibility.json").read_text(encoding="utf-8"))
+    assert {row["id"]: row["reason"] for row in table["items"]} == {"P-1": "NOT_APPROVED"}
+    assert table["malformed_backlog_items"]["L2-1"] == ["APPROVED_ITEM_WITHOUT_DIRECTION"] and table["requests"] == []
+
+
+def test_a_malformed_backlog_item_is_named_in_the_idle_report_instead_of_vanishing(env):
+    broken = backlog_item("BAD-1", REPOS[1])
+    del broken["objective"]
+    backlog_env(env, [broken])
+    result = step(env, Runner(plan=never_plans))
+    assert result["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" and result["malformed_backlog_items"] == ["BAD-1"]
+
+
+def test_an_idle_lane_recovers_when_an_approved_item_appears_without_a_restart(env):
+    backlog_env(env, [backlog_item("A-1", REPOS[1], status="proposed")])
+    runner = Runner(plan=never_plans)
+    assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" and runner.spawned == 0
+    backlog_env(env, [backlog_item("A-1", REPOS[1])])  # the owner approves it; nothing is restarted
+    dispatched = step(env, runner)
+    assert dispatched["status"] == "DISPATCHED" and dispatched["backlog_item"] == "A-1" and runner.spawned == 1
+
+
+def test_owner_revocation_and_commissioning_stop_dispatch_of_an_eligible_item_until_authority_returns(env):
+    backlog_env(env, [backlog_item("A-1", REPOS[1])])
+    runner = Runner(plan=never_plans)
+    assert step(env, runner, decision=DENY)["status"] == "WAITING_FOR_OWNER_AUTHORITY" and runner.spawned == 0
+    assert step(env, runner, allow=False)["status"] == "WAITING_FOR_COMMISSIONING_LANE" and runner.spawned == 0
+    assert step(env, runner)["status"] == "DISPATCHED" and runner.spawned == 1
+
+
+def test_a_diagnostics_failure_never_stops_the_rotation(env, monkeypatch):
+    backlog_env(env, [backlog_item("A-1", REPOS[1], status="proposed")])
+
+    def explode(*_a, **_k):
+        raise RuntimeError("table unavailable")
+
+    monkeypatch.setattr(pl.roadmap_refill, "request_status", explode)
+    result = step(env, Runner(plan=never_plans))
+    assert result["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" and "RuntimeError" in result["diagnostics_error"]

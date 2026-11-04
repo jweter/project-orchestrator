@@ -179,7 +179,10 @@ def spawn_preflight(worktree: Path, result: Path) -> int | None:
 
 
 def _git(clone: Path, *args: str, timeout: int = 300) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", "-C", str(clone), *args], capture_output=True, text=True, check=False, timeout=timeout)
+    # core.longpaths: a repository with deep tracked paths (Project-Everward's prototype captures) cannot otherwise be
+    # checked out below a long workspace path on Windows ("Filename too long").
+    return subprocess.run(["git", "-C", str(clone), "-c", "core.longpaths=true", *args], capture_output=True, text=True,
+                          check=False, timeout=timeout)
 
 
 def _job_file(workspace: Path, branch: str) -> Path:
@@ -311,6 +314,47 @@ def _advance(job: dict[str, Any], *, workspace: Path, publisher: Callable[[str, 
         return {"status": "BLOCKED", "reason": f"UNKNOWN_STAGE_{stage}", "branch": branch}
 
 
+MAX_BRANCH_VARIANTS = 4  # the planned branch plus up to three numbered variants; never more
+
+
+def tree_path(workspace: Path, branch: str) -> Path:
+    """A short, stable scratch path for a branch: the full branch name would push deep repositories past MAX_PATH."""
+    return Path(workspace) / "trees" / ("t-" + hashlib.sha256(branch.encode()).hexdigest()[:12])
+
+
+def branch_variants(branch: str) -> list[str]:
+    return [branch, *(f"{branch}-{n}" for n in range(2, MAX_BRANCH_VARIANTS + 1))]
+
+
+def is_variant_of(candidate: str, branch: str) -> bool:
+    suffix = candidate[len(branch) + 1:]
+    return candidate == branch or (candidate.startswith(branch + "-") and suffix.isdigit())
+
+
+def provision_worktree(clone: Path, workspace: Path, branch: str, head: str) -> tuple[str | None, Path | None, str]:
+    """Create the scratch worktree for ``branch`` at ``head``; returns (branch used, tree, detail on failure).
+
+    A failed earlier attempt can leave the branch behind (git creates the ref before it checks files out), and the
+    engine used to retry the same name forever (Project-Everward, 2026-11-03: 31 identical refusals). A leftover branch
+    that still points exactly at ``head`` holds no work, so it is reused; one that holds anything else is never touched
+    and the next numbered variant is tried. Nothing is deleted or reset.
+    """
+    detail = "no branch variant could be provisioned"
+    for name in branch_variants(branch):
+        tree = tree_path(workspace, name)
+        if tree.exists():
+            continue  # an earlier attempt's scratch directory: left alone
+        tip = _git(clone, "rev-parse", "--verify", "-q", f"refs/heads/{name}")
+        if tip.returncode == 0 and tip.stdout.strip() != head:
+            continue  # a branch with its own history: never reused, never touched
+        args = ("worktree", "add", str(tree), name) if tip.returncode == 0 else ("worktree", "add", "-b", name, str(tree), head)
+        added = _git(clone, *args)
+        if added.returncode == 0:
+            return name, tree, ""
+        detail = added.stderr[-200:]
+    return None, None, detail
+
+
 def record_progress(lane_root: Path, state_root: Path, repository: str, clone: Path, head: str, *,
                     items: list[dict[str, Any]], state: dict[str, Any], publications: dict[str, Any],
                     workspace: Path, publisher: Callable[[str, str, str, str], str] = gh_publisher,
@@ -345,7 +389,7 @@ def record_progress(lane_root: Path, state_root: Path, repository: str, clone: P
     if not completions:
         return {"status": "NOTHING_TO_RECORD"}
     branch = branch_name(repository, completions, head)
-    prior = next((job for job in _jobs(workspace) if job["branch"] == branch), None)
+    prior = next((job for job in _jobs(workspace) if is_variant_of(str(job["branch"]), branch)), None)
     if prior is not None:  # a final job for this exact set and base: published already, or failed for a recorded reason
         if prior["stage"] == "PUBLISHED":
             return {"status": "ALREADY_OPEN", "branch": branch, "pr": prior.get("pr")}
@@ -357,10 +401,10 @@ def record_progress(lane_root: Path, state_root: Path, repository: str, clone: P
         text = apply_completions(shown.stdout, completions)
     except ProgressRefused as exc:
         return {"status": "BLOCKED", "reason": str(exc)}
-    tree = Path(workspace) / "trees" / branch.replace("/", "-")
-    added = _git(clone, "worktree", "add", "-b", branch, str(tree), head)
-    if added.returncode != 0:
-        return {"status": "BLOCKED", "reason": "WORKTREE_PROVISION_FAILED", "detail": added.stderr[-200:]}
+    used, tree, detail = provision_worktree(clone, workspace, branch, head)
+    if used is None or tree is None:
+        return {"status": "BLOCKED", "reason": "WORKTREE_PROVISION_FAILED", "branch": branch, "detail": detail}
+    branch = used
     (tree / source).write_text(text, encoding="utf-8", newline="")
     changed = _git(tree, "diff", "--name-only").stdout.split()
     if changed != [source]:
