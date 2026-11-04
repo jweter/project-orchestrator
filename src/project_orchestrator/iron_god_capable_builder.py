@@ -53,8 +53,18 @@ def _rows(state_dir: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def render_prompt(request: dict[str, Any]) -> str:
-    """The self-contained task for the routine: the roadmap slice, its fences and how to deliver it."""
+NO_PR_NOTE = "STALE_NO_PULL_REQUEST_OBSERVED"
+GRAPH_PATH = "engineering/capability-graph.json"
+
+
+def render_prompt(request: dict[str, Any], *, prior_no_pr: int = 0) -> str:
+    """The self-contained task for the routine: the roadmap slice, its fences and how to deliver it.
+
+    ``prior_no_pr`` is how many earlier attempts at this very request ended with no pull request. Such an outcome used to
+    look like a plain failure and the retry repeated the identical prompt (Knowledge Engine core/web/ai, 2026-11-03: all
+    three slices had already been merged by another agent, the sessions found nothing to open, and a second attempt spent
+    more of the daily budget). Now "already delivered" has an observable outcome and a retry says what happened before.
+    """
     lines = [
         f"Iron God roadmap slice {request['id']} for {request['repository']} (baseline {request['exact_head']}).",
         f"Roadmap traceability: {request['roadmap_ref']}",
@@ -67,6 +77,18 @@ def render_prompt(request: dict[str, Any]) -> str:
         lines.append("Earlier attempts failed - do not repeat them: " + json.dumps(request["prior_failures"]))
     if request.get("development_rules"):
         lines.append("Verified development rules: " + json.dumps(request["development_rules"])[:1500])
+    lines.append(
+        "Before building, check whether this slice is ALREADY delivered at the baseline: read the merged history, the files the "
+        "objective names, and the tests that satisfy each acceptance criterion. Other agents merge work into these repositories "
+        "and the graph can lag behind. If it is delivered, do not rebuild it: open ONE pull request whose title starts with "
+        f"'Iron God [{request['id']}]' that changes only {GRAPH_PATH} (permitted for this purpose even where it is outside the "
+        "allowed paths), setting this slice's state to VERIFIED_COMPLETE and adding a verification list that cites the merged "
+        "pull requests, their merge commits, and the files and tests that satisfy each acceptance criterion. A session that "
+        "opens no pull request is recorded as a failed attempt and spends the daily budget.")
+    if prior_no_pr:
+        lines.append(
+            f"Earlier attempt(s) at this request ({prior_no_pr}) ended with no pull request. Unless there is a genuine blocker, "
+            "that usually means the slice was already delivered: verify that first and record it with the evidence pull request above.")
     lines += [
         "Delivery: implement exactly this slice, with repository-native tests, and open ONE pull request whose title "
         f"starts with 'Iron God [{request['id']}]'. Run the repository's canonical preflight before opening it. "
@@ -74,6 +96,10 @@ def render_prompt(request: dict[str, Any]) -> str:
         "If the slice is materially ambiguous or cannot be done within the allowed paths, open no pull request and "
         "report the exact question or blocker instead."]
     return "\n".join(lines)
+
+
+def no_pr_attempts(state_dir: Path, request_id: str) -> int:
+    return sum(1 for row in _rows(state_dir) if request_of(row) == request_id and row.get("notes") == NO_PR_NOTE)
 
 
 def attempts_for(state_dir: Path, request_id: str) -> int:
@@ -127,7 +153,8 @@ def dispatch_request(request: dict[str, Any], *, lane_root: Path, enabled: bool,
     state_dir = dispatch_state(lane_root)
     task = {"kind": "PRODUCT_SLICE", "repository": request["repository"],
             "task_key": f"{request['id']}#a{attempts_for(state_dir, request['id'])}",
-            "prompt": render_prompt(request), "local_capability_verified": False}
+            "prompt": render_prompt(request, prior_no_pr=no_pr_attempts(state_dir, request["id"])),
+            "local_capability_verified": False}
     result = dispatch_if_warranted(task, state_dir, scorecard=specialist_scorecard(state_dir), opener=opener)
     if not result.get("dispatched"):
         return {"dispatched": False, "reason": "ROUTINE_DEMOTED", "detail": result.get("reason")}
@@ -210,6 +237,6 @@ def reconcile(lane_root: Path, *, now: float | None = None,
             changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "PRODUCT_PR", "pr_url": url})
         elif now - float(row.get("started_at", 0)) >= STALE_SECONDS:
             ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL",
-                                  notes="STALE_NO_PULL_REQUEST_OBSERVED")
+                                  notes=NO_PR_NOTE)
             changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL"})
     return changed

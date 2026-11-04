@@ -290,3 +290,42 @@ def test_the_usage_report_counts_sessions_in_the_rolling_day_against_the_budget(
     report = module.summarize(tmp_path, 4, now=1_000_000)
 
     assert report["sessions_last_24h"] == 2 and report["remaining_today"] == 2 and report["sessions_total"] == 3
+
+
+# --- an already-delivered slice has an observable outcome, and a retry learns from a no-PR attempt (KE core/web/ai, 2026-11-03) ---
+
+def test_the_prompt_gives_an_already_delivered_slice_a_pull_request_outcome_instead_of_silence() -> None:
+    prompt = cb.render_prompt(request())
+    assert "ALREADY delivered" in prompt and "do not rebuild it" in prompt
+    assert "changes only engineering/capability-graph.json" in prompt and "VERIFIED_COMPLETE" in prompt
+    assert "title starts with 'Iron God [RM-demo-1]'" in prompt
+    assert "spends the daily budget" in prompt
+    assert "Earlier attempt" not in prompt  # a first attempt carries no history
+
+
+def test_a_retry_after_a_no_pull_request_attempt_says_so_and_differs_from_the_first_prompt(tmp_path: Path, configured: None) -> None:
+    opener = Opener()
+    go(tmp_path, opener, daily_limit=10)
+    moment = NOW + cb.STALE_SECONDS + 1
+    cb.reconcile(tmp_path, now=moment, lookup=lambda _repo, _id: None)  # the session opened no pull request
+
+    assert cb.no_pr_attempts(cb.dispatch_state(tmp_path), "RM-demo-1") == 1
+    go(tmp_path, opener, now=moment, daily_limit=10)
+
+    first, second = (fired["body"]["text"] for fired in opener.fired)
+    assert first != second and "Earlier attempt" not in first
+    assert "Earlier attempt(s) at this request (1) ended with no pull request" in second
+    assert "already delivered" in second
+
+
+def test_failed_attempts_that_did_open_a_pull_request_are_not_counted_as_no_pr(tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener())
+    cb.reconcile(tmp_path, now=NOW + 60, lookup=lambda repo, _id: f"https://github.com/{repo}/pull/3", state_of=lambda _u: "CLOSED")
+    assert cb.no_pr_attempts(cb.dispatch_state(tmp_path), "RM-demo-1") == 0
+
+
+def test_a_graph_only_evidence_pull_request_completes_the_request_when_merged(tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener())
+    cb.reconcile(tmp_path, now=NOW + 60, lookup=lambda repo, _id: f"https://github.com/{repo}/pull/4", state_of=lambda _u: "OPEN")
+    cb.reconcile(tmp_path, now=NOW + 120, lookup=lambda *_a: None, state_of=lambda _u: "MERGED")
+    assert cb.merged_request_ids(tmp_path) == {"RM-demo-1"}
