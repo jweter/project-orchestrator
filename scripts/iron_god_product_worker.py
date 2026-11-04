@@ -815,11 +815,54 @@ def production_preflight(worktree: Path, check: Callable[[], None], timeout: int
         result = NativeWindowsRuntime().execute_supervised(
             RuntimeRequest((environment["python"], *PREFLIGHT_COMMAND), worktree, env, timeout), check, interval=2.0,
         )
-        return {"command": "python engineering/preflight.py", "returncode": result.returncode,
-                "ok": result.returncode == 0, "environment": f"{environment['kind']}:{environment.get('status', '-')}",
-                "output_tail": _tail((result.stdout or "") + "\n" + (result.stderr or ""))}
+        record: dict[str, Any] = {
+            "command": "python engineering/preflight.py", "returncode": result.returncode,
+            "ok": result.returncode == 0, "environment": f"{environment['kind']}:{environment.get('status', '-')}",
+            "output_tail": _tail((result.stdout or "") + "\n" + (result.stderr or ""))}
+        if result.returncode != 0:
+            record["baseline"] = baseline_after_failure(worktree, env, check)
+            if record["baseline"]["ok"]:
+                record["ok"] = True
+                record["baseline_match"] = True
+        return record
     finally:
         remove_tree(temp)
+
+
+def baseline_after_failure(worktree: Path, env: dict[str, str], check: Callable[[], None]) -> dict[str, Any]:
+    """Continue the repository's own gate past failures that the untouched base commit already has (fail closed)."""
+    import io
+    import subprocess
+    import tarfile
+
+    from project_orchestrator import iron_god_preflight_baseline as baseline
+
+    parent = _git(worktree, "rev-parse", "HEAD^")
+    if parent.returncode != 0:
+        return {"ok": False, "verdict": "BASE_COMMIT_UNKNOWN", "checks": []}
+    base_copy = worktree.parent / f"{worktree.name}.base"
+    remove_tree(base_copy)
+    try:
+        archived = subprocess.run(["git", "archive", "--format=tar", parent.stdout.strip()], cwd=worktree,
+                                  capture_output=True, check=True, timeout=600).stdout
+        base_copy.mkdir(parents=True)
+        with tarfile.open(fileobj=io.BytesIO(archived), mode="r:") as tar:
+            tar.extractall(base_copy, filter="data")
+    except (OSError, subprocess.SubprocessError, tarfile.TarError):
+        remove_tree(base_copy)
+        return {"ok": False, "verdict": "BASE_COPY_FAILED", "checks": []}
+
+    def run(argv: list[str], cwd: Path, timeout: int) -> tuple[int, str]:
+        here = {**env, "PYTHONPATH": os.pathsep.join([str(cwd / "src"), str(cwd), os.environ.get("PYTHONPATH", "")])}
+        done = NativeWindowsRuntime().execute_supervised(RuntimeRequest(tuple(argv), cwd, here, timeout), check,
+                                                         interval=2.0)
+        return done.returncode, (done.stdout or "") + "\n" + (done.stderr or "")
+
+    try:
+        return baseline.continue_preflight(
+            worktree, base_copy, run, clean=lambda: _git(worktree, "status", "--porcelain").stdout.strip() == "")
+    finally:
+        remove_tree(base_copy)
 
 
 def execute_product_packet(
@@ -1085,6 +1128,8 @@ def commit_and_verify(packet: dict[str, Any], worktree: Path, base: str, changed
             return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_PREFLIGHT")
         return finish("ENVIRONMENT_FAILURE", f"PREFLIGHT_FAILED_TO_RUN: {str(exc)[:300]}")
     handback["verification"] = [quick, result]
+    if result["ok"] and result.get("baseline_match"):
+        return finish("PASS", "canonical preflight matched the base commit: only failures already present at the base")
     return finish("PASS" if result["ok"] else "FAIL",
                   "canonical preflight passed at the exact head" if result["ok"] else "canonical preflight failed")
 
