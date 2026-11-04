@@ -521,3 +521,108 @@ def test_a_verified_job_published_later_still_pushes_only_the_verified_commit(wo
     result = step(world, items, state, publications, publisher=publisher, preflight=preflight)
 
     assert result["status"] == "OPENED" and len(publisher.calls) == 1 and len(preflight.spawned) == 1
+
+
+# --- provisioning must survive what a failed attempt leaves behind (Project-Everward, 2026-11-03: 31 identical refusals) ---
+
+def planned_branch(world: dict) -> str:
+    return progress.branch_name(REPO, [{"capability": "cap-a", "slice": "s1"}], world["head"])
+
+
+def test_a_branch_left_behind_at_the_base_commit_is_reused_not_a_permanent_block(world: dict) -> None:
+    """git creates the branch before it checks files out, so a failed checkout leaves it with no job record."""
+    items, state, publications = merged_item(world)
+    branch = planned_branch(world)
+    run(world["clone"], "branch", branch, world["head"])  # the leftover
+
+    result = step(world, items, state, publications, preflight=Preflight(finish=False))
+
+    assert result["status"] == "VERIFYING" and result["branch"] == branch
+    # the branch was extended by exactly the one graph-update commit on top of the base; nothing was reset or rewritten
+    assert run(world["clone"], "rev-parse", f"refs/heads/{branch}~1") == world["head"]
+    assert run(world["clone"], "diff", "--name-only", world["head"], branch).split() == [SOURCE]
+
+
+def test_a_branch_that_holds_its_own_work_is_never_touched_and_a_numbered_variant_is_used(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    branch = planned_branch(world)
+    run(world["clone"], "branch", branch, world["head"])
+    run(world["clone"], "checkout", "-q", branch)
+    (world["clone"] / "extra.txt").write_text("someone's work\n", encoding="utf-8")
+    run(world["clone"], "add", "extra.txt")
+    run(world["clone"], "commit", "-q", "-m", "work that must survive")
+    own = run(world["clone"], "rev-parse", branch)
+    run(world["clone"], "checkout", "-q", "main")
+
+    result = step(world, items, state, publications, preflight=Preflight(finish=False))
+
+    assert result["status"] == "VERIFYING" and result["branch"] == f"{branch}-2"
+    assert run(world["clone"], "rev-parse", branch) == own  # the existing branch is exactly as it was
+    assert (world["clone"] / "extra.txt").exists() is False  # main's working tree was never disturbed
+
+
+def test_a_retry_after_a_variant_was_used_resumes_it_instead_of_provisioning_another(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    branch = planned_branch(world)
+    run(world["clone"], "branch", branch, world["head"])
+    run(world["clone"], "checkout", "-q", branch)
+    (world["clone"] / "extra.txt").write_text("x\n", encoding="utf-8")
+    run(world["clone"], "add", "extra.txt")
+    run(world["clone"], "commit", "-q", "-m", "occupied")
+    run(world["clone"], "checkout", "-q", "main")
+    preflight = Preflight(finish=False)
+
+    first = step(world, items, state, publications, preflight=preflight)
+    second = step(world, items, state, publications, preflight=preflight, now=lambda: 1500.0)
+
+    assert first["branch"] == second["branch"] == f"{branch}-2"
+    assert len(preflight.spawned) == 1
+    assert not any(b.endswith("-3") for b in run(world["clone"], "branch", "--format=%(refname:short)").split())
+
+
+def test_when_every_variant_is_unusable_it_blocks_with_a_reason_and_deletes_nothing(world: dict) -> None:
+    items, state, publications = merged_item(world)
+    branch = planned_branch(world)
+    for name in progress.branch_variants(branch):
+        run(world["clone"], "checkout", "-q", "-b", name, "main")
+        (world["clone"] / f"{name.replace('/', '_')}.txt").write_text("w\n", encoding="utf-8")
+        run(world["clone"], "add", ".")
+        run(world["clone"], "commit", "-q", "-m", f"work on {name}")
+        run(world["clone"], "checkout", "-q", "main")
+    before = {name: run(world["clone"], "rev-parse", name) for name in progress.branch_variants(branch)}
+
+    result = step(world, items, state, publications)
+
+    assert result["status"] == "BLOCKED" and result["reason"] == "WORKTREE_PROVISION_FAILED"
+    assert before == {name: run(world["clone"], "rev-parse", name) for name in progress.branch_variants(branch)}
+
+
+def test_the_scratch_worktree_path_is_short_whatever_the_branch_name(world: dict) -> None:
+    """The long branch name used to be the directory name, which pushed deep repositories past Windows MAX_PATH."""
+    items, state, publications = merged_item(world)
+    result = step(world, items, state, publications, preflight=Preflight(finish=False))
+    (job,) = [j for j in progress._jobs(world["tmp"] / "scratch") if j["branch"] == result["branch"]]
+    tree = Path(job["worktree"])
+    assert tree.name.startswith("t-") and len(tree.name) == 14
+    assert tree == progress.tree_path(world["tmp"] / "scratch", result["branch"])
+    assert len(result["branch"]) > 50 > len(tree.name)
+
+
+def test_every_progress_git_call_enables_long_paths(world: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[list[str]] = []
+    real = subprocess.run
+
+    def spy(args, *a, **k):
+        seen.append(list(args))
+        return real(args, *a, **k)
+
+    monkeypatch.setattr(progress.subprocess, "run", spy)
+    progress._git(world["clone"], "status")
+    assert seen and seen[0][:5] == ["git", "-C", str(world["clone"]), "-c", "core.longpaths=true"]
+
+
+def test_variants_of_a_branch_are_recognised_but_unrelated_branches_are_not() -> None:
+    base = "iron-god/roadmap-progress/x-abc-12345678"
+    assert progress.is_variant_of(base, base) and progress.is_variant_of(base + "-2", base) and progress.is_variant_of(base + "-4", base)
+    assert not progress.is_variant_of(base + "-beta", base) and not progress.is_variant_of(base + "9", base)
+    assert not progress.is_variant_of("iron-god/roadmap-progress/y-abc-12345678", base)

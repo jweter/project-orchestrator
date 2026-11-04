@@ -590,6 +590,44 @@ def due(lane_root: Path, repository: str, *, now: datetime | None = None) -> boo
     return elapsed >= CHECK_INTERVAL_SECONDS
 
 
+BLOCKING_EVENTS = {"CAPABLE_NOT_DISPATCHED", "CAPABILITY_BLOCKER", "PROGRESS_BLOCKED", "DIRECTION_REQUIRED", "LOCAL_DRAFT_FAILED"}
+
+
+def request_status(lane_root: Path) -> list[dict[str, Any]]:
+    """One row per open roadmap request: who must build it, and the latest recorded reason it is not being built.
+
+    Read-only. The request files hold the routing decision; the bounded ledger holds the latest outcome per request, so
+    the lane's idle report can say "waiting for the capable builder's daily budget" instead of only "idle".
+    """
+    root = Path(lane_root) / REQUESTS
+    store = load_store(lane_root)
+    latest: dict[str, dict[str, Any]] = {}
+    for event in store["ledger"]:
+        if isinstance(event, dict) and event.get("kind") in BLOCKING_EVENTS | {"CAPABLE_DISPATCHED", "ADMITTED", "GENERATED"}:
+            latest[str(event.get("id"))] = event
+    rows = []
+    for path in sorted(root.glob("*.json")) if root.is_dir() else []:
+        try:
+            request = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(request, dict):
+            continue
+        route = request.get("route") if isinstance(request.get("route"), dict) else {}
+        event = latest.get(str(request.get("id")), {})
+        detail = event.get("detail") if isinstance(event.get("detail"), dict) else {}
+        checked = store["checked"].get(str(request.get("repository")))
+        checked_head = checked.get("head") if isinstance(checked, dict) else None
+        rows.append({"id": request.get("id"), "repository": request.get("repository"),
+                     "exact_head": str(request.get("exact_head", ""))[:12],
+                     # False: the repository has moved on since this request was authorized; it is re-derived, not built
+                     "head_is_current": None if checked_head is None else checked_head == request.get("exact_head"),
+                     "builder": route.get("builder"),
+                     "route_reason": route.get("reason"), "last_event": event.get("kind"),
+                     "blocked_by": detail.get("reason") if event.get("kind") in BLOCKING_EVENTS else None})
+    return rows
+
+
 def summarize(report: dict[str, Any]) -> str:
     return (f"requests {len(report['requests'])}; admitted {len(report['admitted'])}; rejected {len(report['rejected'])}; "
             f"capability blockers {len(report['blocked'])}; direction required {len(report['direction_required'])}; "

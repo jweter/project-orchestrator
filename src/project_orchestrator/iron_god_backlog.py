@@ -300,28 +300,80 @@ def repeated_failed_source(row: dict[str, Any]) -> bool:
     return len(fingerprints) != len(set(fingerprints))
 
 
+def exclusion(item: dict[str, Any], state: dict[str, Any], *, items: list[dict[str, Any]], done: set[str],
+              max_level: int) -> tuple[str, str] | None:
+    """Why ``item`` may not be dispatched now, as (reason code, detail), or None when it may.
+
+    This is the single statement of dispatch eligibility: ``next_item`` dispatches exactly the items for which this
+    returns None, and the lane's idle report quotes these reasons, so the two can never disagree.
+    """
+    row = state.get("items", {}).get(item["id"], {})
+    outcome = str(row.get("outcome", ""))
+    attempts = row.get("attempts", 0)
+    if item["id"] in done:
+        return "ALREADY_COMPLETE", outcome or str(item.get("status"))
+    if item["status"] != "approved":
+        return "NOT_APPROVED", str(item["status"])
+    if item.get("assignee") != AGENT_ID:
+        return "ASSIGNED_ELSEWHERE", str(item.get("assignee"))
+    other = conflicts(item, items)
+    if other:
+        return "FILES_RESERVED_BY_OTHER_DEVELOPER", ",".join(other)
+    if item["level"] > max_level:
+        return "LEVEL_ABOVE_MEASURED_CAPABILITY", f"level {item['level']} > {max_level}"
+    if item["level"] not in BUILDABLE_LEVELS:
+        return "LEVEL_NOT_BUILDABLE_LOCALLY", f"level {item['level']}"
+    if attempts >= MAX_ITEM_ATTEMPTS:
+        return "ATTEMPTS_EXHAUSTED", f"{attempts} of {MAX_ITEM_ATTEMPTS}: {outcome}"
+    if repeated_failed_source(row):
+        return "REPEATED_FAILED_SOURCE", outcome  # byte-identical failed source: a new revision must change the source
+    # a directed slice that the model failed is not retried: it needs decomposition (an interrupted or
+    # environment-failed attempt is not a model failure)
+    if item.get("direct") and attempts >= DIRECT_ATTEMPTS and not outcome.startswith("ENVIRONMENT_FAILURE"):
+        return "DIRECTED_ATTEMPT_SPENT", outcome
+    # An existing dispatched packet retains ownership until it is harvested.
+    # Never dispatch it again after an active-worker record is lost or restarted.
+    if row.get("outcome") in IN_FLIGHT:
+        return "IN_FLIGHT", outcome
+    waiting = [dep for dep in item["depends_on"] if dep not in done]
+    if waiting:
+        return "WAITING_ON_DEPENDENCY", ",".join(waiting)
+    return None
+
+
 def next_item(items: list[dict[str, Any]], state: dict[str, Any], repo: str, *,
               max_level: int) -> dict[str, Any] | None:
     """The first dispatchable item for ``repo`` in backlog order, or None."""
     done = {item["id"] for item in items if is_done(item, state)}
     for item in items:
-        row = state.get("items", {}).get(item["id"], {})
-        has_repeated_source = repeated_failed_source(row)
-        if (item["repository"] == repo and item["status"] == "approved" and item["level"] <= max_level
-                and item.get("assignee") == AGENT_ID and not conflicts(item, items)
-                and item["level"] in BUILDABLE_LEVELS and item["id"] not in done
-                and row.get("attempts", 0) < MAX_ITEM_ATTEMPTS
-                and not has_repeated_source
-                # a directed slice that the model failed is not retried: it needs decomposition (an
-                # interrupted or environment-failed attempt is not a model failure)
-                and not (item.get("direct") and row.get("attempts", 0) >= DIRECT_ATTEMPTS
-                         and not str(row.get("outcome", "")).startswith("ENVIRONMENT_FAILURE"))
-                # An existing dispatched packet retains ownership until it is harvested.
-                # Never dispatch it again after an active-worker record is lost or restarted.
-                and row.get("outcome") not in IN_FLIGHT
-                and all(dep in done for dep in item["depends_on"])):
+        if item["repository"] == repo and exclusion(item, state, items=items, done=done, max_level=max_level) is None:
             return item
     return None
+
+
+def explain_candidates(items: list[dict[str, Any]], state: dict[str, Any], *, max_level: int) -> list[dict[str, Any]]:
+    """One row per backlog item: eligible, or exactly why not (read-only; the same rules ``next_item`` applies)."""
+    done = {item["id"] for item in items if is_done(item, state)}
+    rows = []
+    for item in items:
+        why = exclusion(item, state, items=items, done=done, max_level=max_level)
+        row = state.get("items", {}).get(item["id"], {})
+        rows.append({"id": item["id"], "repository": item["repository"], "eligible": why is None,
+                     "reason": "ELIGIBLE" if why is None else why[0], "detail": "" if why is None else why[1],
+                     "attempts": row.get("attempts", 0)})
+    return rows
+
+
+def summarize_exclusions(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Per repository: how many items are eligible and a count of each exclusion reason (retired/complete omitted)."""
+    summary: dict[str, Any] = {}
+    for row in rows:
+        entry = summary.setdefault(row["repository"], {"eligible": [], "excluded": {}})
+        if row["eligible"]:
+            entry["eligible"].append(row["id"])
+        elif row["reason"] not in {"ALREADY_COMPLETE"} and not (row["reason"] == "NOT_APPROVED" and row["detail"] == "retired"):
+            entry["excluded"][row["reason"]] = entry["excluded"].get(row["reason"], 0) + 1
+    return summary
 
 
 def ownership(items: list[dict[str, Any]], state: dict[str, Any], *, repository: str | None = None,
