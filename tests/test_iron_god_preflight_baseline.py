@@ -23,7 +23,7 @@ def make_repo(tmp_path: Path, failed: str = "backend_tests", ran: tuple[str, ...
 
 
 def failures(*ids: str) -> str:
-    return "\n".join(f"FAILED {i} - AssertionError" for i in ids) + f"\n{len(ids)} failed\n"
+    return "\n".join(f"FAILED {i} - AssertionError" for i in ids) + f"\n{len(ids)} failed, 9 passed in 1.20s\n"
 
 
 class Fake:
@@ -37,7 +37,8 @@ class Fake:
         self.calls.append((argv, cwd))
         if argv[:4] == PYTEST[:4] and argv[4] not in ("tests/", "backend/tests/"):
             ids = set(argv[4:argv.index("-q")])
-            return (1, failures(*sorted(ids & set(self.base_failures))))
+            hit = sorted(ids & set(self.base_failures))
+            return (1 if hit else 0, failures(*hit) if hit else "9 passed in 0.5s")
         if argv == PYTEST:
             return (1, failures(*self.post)) if self.post else (0, "ok")
         for check in CHECKS:
@@ -111,4 +112,32 @@ def test_base_run_only_receives_the_failing_ids() -> None:
 
 
 def test_collection_errors_count_as_failing_ids() -> None:
-    assert baseline.failing_ids("ERROR tests/x.py - ImportError\nFAILED tests/y.py::t - boom\n") == {"tests/x.py", "tests/y.py::t"}
+    text = "ERROR tests/x.py - ImportError\nFAILED tests/y.py::t - boom\n1 failed, 1 error in 0.3s\n"
+    assert baseline.failing_ids(text) == {"tests/x.py", "tests/y.py::t"}
+
+
+def test_node_ids_with_spaces_are_kept_whole_and_a_new_one_is_caught(tmp_path: Path) -> None:
+    text = "FAILED tests/a.py::t[with spaces] - boom\nFAILED tests/a.py::known - boom\n2 failed in 1s\n"
+    assert baseline.failing_ids(text) == {"tests/a.py::t[with spaces]", "tests/a.py::known"}
+    repo = make_repo(tmp_path)
+    fake = Fake(tmp_path, post=("tests/a.py::known", "tests/a.py::new[with spaces]"), base=("tests/a.py::known",))
+    result = run(repo, fake)
+    assert not result["ok"] and result["checks"][0]["new_failures"] == ["tests/a.py::new[with spaces]"]
+
+
+def test_failures_that_do_not_match_the_summary_count_are_not_accounted_for() -> None:
+    assert baseline.failing_ids("FAILED tests/a.py::t - x\n2 failed in 1s\n") is None
+    assert baseline.failing_ids("FAILED tests/a.py::t - x\n") is None  # no final summary line
+
+
+def test_an_interrupted_pytest_run_never_matches_the_base(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+
+    class Interrupted(Fake):
+        def __call__(self, argv, cwd, timeout):  # type: ignore[no-untyped-def]
+            if argv == PYTEST:
+                return (2, failures("tests/a.py::known"))  # KeyboardInterrupt: the rest never ran
+            return super().__call__(argv, cwd, timeout)
+
+    result = run(repo, Interrupted(tmp_path, ("tests/a.py::known",), ("tests/a.py::known",)))
+    assert not result["ok"] and result["checks"][0]["baseline"] == "PYTEST_DID_NOT_COMPLETE"

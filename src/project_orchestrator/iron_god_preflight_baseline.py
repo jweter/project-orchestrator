@@ -22,15 +22,28 @@ from typing import Any, Callable
 
 MAX_IDS = 400
 UNEXCUSABLE_IDS = frozenset({"control_plane", "exact_head_fence", "worktree_fence", "python_environment"})
-_ID = re.compile(r"^(?:FAILED|ERROR) (\S+?)(?: - .*)?\s*$", re.MULTILINE)
+_ID = re.compile(r"^(?:FAILED|ERROR) (.+?)(?: - .*)?\s*$", re.MULTILINE)
+_SUMMARY = re.compile(r"\b(?:passed|failed|errors?|skipped|deselected|xfailed|xpassed|warnings?)\b.* in \d+(?:\.\d+)?s(?: \(\d+:\d{2}:\d{2}\))?[ =]*$")
+_COUNT = re.compile(r"\b(\d+) (failed|errors?)\b")
 
 #: ``run(argv, cwd, timeout_s) -> (returncode, full_output)``
 Runner = Callable[[list[str], Path, int], tuple[int, str]]
 
 
-def failing_ids(output: str) -> set[str]:
-    """Test ids from pytest's short summary (``FAILED``/``ERROR`` lines), uncapped output required."""
-    return set(_ID.findall(output))
+def failing_ids(output: str) -> set[str] | None:
+    """Complete failing node ids from pytest's short summary, or ``None`` when they cannot all be accounted for.
+
+    Node ids may contain spaces (``test_x[with spaces]``), so the whole id up to pytest's `` - reason`` is taken, and the
+    number of ``FAILED``/``ERROR`` lines must equal the failed + error counts in pytest's own final summary line.
+    """
+    found = _ID.findall(output)
+    summary = [line for line in output.splitlines() if _SUMMARY.search(line)]
+    if not summary:
+        return None
+    counted = sum(int(n) for n, _ in _COUNT.findall(summary[-1]))
+    if counted != len(found) or len(set(found)) != len(found):
+        return None
+    return set(found)
 
 
 def is_pytest(argv: list[str]) -> bool:
@@ -49,15 +62,21 @@ def judge_pytest(check: dict[str, Any], worktree: Path, base: Path, run: Runner)
     timeout = int(check.get("timeout_seconds", 3600))
     record: dict[str, Any] = {"id": check.get("id"), "baseline": "NOT_COMPARED", "ok": False}
     code, output = run(argv, worktree, timeout)
-    post = failing_ids(output)
     if code == 0:
         return {**record, "baseline": "PASSED_ON_RERUN", "ok": True, "post_failures": 0}
+    if code != 1:  # pytest: 1 = tests failed; 2 interrupted, 3 internal error, 4 usage, 5 none collected
+        return {**record, "baseline": "PYTEST_DID_NOT_COMPLETE", "returncode": code}
+    post = failing_ids(output)
     if not post:
         return {**record, "baseline": "NO_FAILING_IDS_PARSED"}
     if len(post) > MAX_IDS:
         return {**record, "baseline": "TOO_MANY_FAILURES", "post_failures": len(post)}
     base_code, base_output = run(ids_argv(argv, list(post)), base, timeout)
-    at_base = failing_ids(base_output)
+    if base_code not in (0, 1):
+        return {**record, "baseline": "BASE_PYTEST_DID_NOT_COMPLETE", "base_returncode": base_code}
+    at_base = failing_ids(base_output) if base_code == 1 else set()
+    if at_base is None:
+        return {**record, "baseline": "BASE_FAILURES_NOT_ACCOUNTED_FOR", "base_returncode": base_code}
     new = sorted(post - at_base)
     record.update(post_failures=len(post), base_failures=len(post & at_base), new_failures=new[:25],
                   base_returncode=base_code)
