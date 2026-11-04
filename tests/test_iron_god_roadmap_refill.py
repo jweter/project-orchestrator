@@ -1030,11 +1030,24 @@ def test_exhausted_revision_chain_requests_one_stable_owner_decision_without_res
     clone, head = product(tmp_path, repository, graph(repository))
     first_run = run_refill(tmp_path, repository, clone, head, items=items, state=state)
     second_run = run_refill(tmp_path, repository, clone, head, items=items, state=state)
-    assert first_run["requests"] == second_run["requests"] == []
-    assert first_run["direction_required"] == second_run["direction_required"]
-    events = refill.load_store(tmp_path / "lane")["ledger"]
-    assert [event["kind"] for event in events] == ["DIRECTION_REQUIRED"]
-    assert events[0]["detail"]["reason"] == "REAUTHOR_LIMIT_REACHED"
+    # The owner is not asked while a stronger builder has not tried: the slice is escalated, identically on every pass.
+    escalation = base + refill.ESCALATION_SUFFIX
+    assert first_run["requests"] == second_run["requests"] == [escalation]
+    assert first_run["direction_required"] == second_run["direction_required"] == []
+    assert "DIRECTION_REQUIRED" not in [event["kind"] for event in refill.load_store(tmp_path / "lane")["ledger"]]
+
+    # Both builders spent their attempts: now (and only now) the owner decision is recorded, once.
+    dispatches = tmp_path / "lane" / "capable-dispatches"
+    dispatches.mkdir()
+    for attempt in range(2):
+        (dispatches / f"d{attempt}.json").write_text(json.dumps({"task_key": f"{escalation}#a{attempt}", "status": "FAILED",
+                                                                  "repository": repository, "started_at": 1.0}), encoding="utf-8")
+    third_run = run_refill(tmp_path, repository, clone, head, items=items, state=state)
+    fourth_run = run_refill(tmp_path, repository, clone, head, items=items, state=state)
+    assert third_run["requests"] == fourth_run["requests"] == []
+    assert third_run["direction_required"] == fourth_run["direction_required"] and third_run["direction_required"]
+    events = [event for event in refill.load_store(tmp_path / "lane")["ledger"] if event["kind"] == "DIRECTION_REQUIRED"]
+    assert len(events) == 1 and events[0]["detail"]["reason"] == "REAUTHOR_LIMIT_REACHED"
 
     state["items"][items[-1]["id"]]["attempts"] = backlog.MAX_ITEM_ATTEMPTS - 1
     pending = derive_routed(repository, HEAD, graph(repository), SOURCE, items=items, state=state)
