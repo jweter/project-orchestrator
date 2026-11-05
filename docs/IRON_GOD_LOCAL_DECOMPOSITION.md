@@ -39,7 +39,41 @@ Claude, ChatGPT or any paid service, by splitting it into Level 1 subtasks the l
 * The model's examples are not an independent oracle (`oracle: SELF_AUTHORED` is recorded). The unchanged gates remain
   the verification: the worker's re-derivation, canonical preflight, repository CI and review. A decomposition never
   lowers them.
-* Only slices whose behavior is fully deliverable as new pure functions decompose. Slices that edit existing code,
-  integrate subprocesses, GUIs or engines report `RESIDUAL_NOT_LOCAL` and stay with the stronger builder until
-  Level 2 children (directed edits with approved failing tests) are supported by the decomposer.
+* Only slices fully deliverable as new pure functions or directed edits of existing units decompose. Slices that integrate
+  subprocesses, GUIs or engines, or whose proof tests pass today, report `RESIDUAL_NOT_LOCAL` and stay with the stronger builder.
 * Coverage is checked structurally (every criterion has an owner subtask), not semantically.
+
+## Level 2 edit subtasks
+
+The existing Level 2 pilot (`IRON_GOD_LEVEL2_CALIBRATION_20261028.md`) measured the directed-edit contract at 9/12 first-pass
+and a 50 s median, but its planner (names the units, writes the acceptance test, proves it fails on main) was Claude. A plan
+step of `kind: "edit"` now carries that planner work locally:
+
+* the outline names one existing module and at most three existing units; the repository at the exact base is the
+  authority (`iron_god_directed_edit.units`), not the model: a missing module or unit rejects the plan with the exact name;
+* the model sees the target units' current source and the rest of the module as signatures only, and writes a pytest file that
+  must fail now and pass after the change; the test path is assembled by code from the slice's allowed test paths and must
+  be a new file;
+* the step becomes an ordinary Level 2 request (`directed_edit`: module, targets, test path, test source) and the
+  UNCHANGED draft author runs the test at the exact base and accepts it only if it FAILS there for the right reason (an
+  assertion, not an import error); the unchanged worker then re-checks that, splices only the named units, and requires the
+  same test to pass plus mypy, ruff and canonical preflight. A directed slice is attempted once;
+* two edits of one module must be ordered by `depends_on`.
+
+A proof or characterization slice (tests that pass today) cannot be a Level 2 edit, because the gate requires the test to fail
+at the base. Such slices still report a residual and stay with the stronger builder until a test-only step exists.
+
+## How the engine works now versus the documented goal (2026-11-05)
+
+| Goal (HANDS_OFF_EVOLUTION, owner-approved roadmap) | Today |
+|---|---|
+| Owner governs, observes, realigns; never a routine participant | The owner still clicks Give Me Control / Take the Wheel for every install and takeover (intended reserved boundary), but also stands between sessions of a human-supervised Claude |
+| OBSERVE -> SELECT -> RESERVE -> BUILD -> VERIFY -> PR/CI -> PROMOTE -> RECORD -> LEARN -> NEXT | Implemented end to end for Level 1 and approved Level 2 slices: refill, drafter, admission, worker, preflight, PR, CI, merge, graph progress |
+| Roadmap prose becomes executable slices | A *capable builder* (paid Claude, 4/day) writes new graph slices ("extend-capability-graph"), declares levels, acceptance examples and directed edits |
+| Complex slices are built | Level 3-4 slices wait for the capable builder; the local 7B is measured only for Level 1-2 |
+| Merged feedback and review findings are repaired | Review-finding repair and engine-defect diagnosis are done by Claude sessions |
+| Phases 1-7 of Hands-Off Evolution | All unchecked; the control loop runs, but unattended multi-product advancement is not proven |
+
+Claude is therefore currently required at five points: graph planning, acceptance-example/test authoring for Level 1-2,
+Level 3-4 implementation, review-finding repair, and engine-defect diagnosis. This document's decomposer replaces the second
+and (partly) third; planning, review repair and diagnosis remain the next replacements, in that order of feasibility.

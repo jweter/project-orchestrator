@@ -4,8 +4,10 @@ The product lane routes every roadmap slice by its declared capability level. Th
 Level 1 (one new pure function with literal acceptance examples) and Level 2 (a directed edit with an approved failing
 test); a Level 3-4 slice used to wait for the capped capable builder. This module is the missing step in between:
 
-* a *plan* is a short list of Level 1 subtasks (new module, signature, literal examples), their dependencies, and a map
-  from each of the parent slice's acceptance criteria to the subtasks that deliver it;
+* a *plan* is a short list of subtasks, their dependencies, and a map from each of the parent slice's acceptance
+  criteria to the subtasks that deliver it. A subtask is either Level 1 (``new``: a new module with one pure function and
+  literal examples) or Level 2 (``edit``: a directed edit of named units of an EXISTING module, with a test the model
+  wrote that the unchanged draft author proves FAILS at the exact base for the right reason before anything is built);
 * the plan is proposed by the local model (``propose`` / ``scripts/iron_god_decompose_author.py``, one bounded job, no
   Claude, no ChatGPT) and is **accepted only by deterministic validation** (``validate_plan``): scope inside the parent's
   allowed paths, forbidden paths untouched, new modules only, examples that parse as literals and bind to the signature,
@@ -36,6 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from . import iron_god_directed_edit as directed_edit
 from . import iron_god_local_drafter as drafter
 from . import iron_god_roadmap_refill as refill
 from .state_io import atomic_json
@@ -152,8 +155,83 @@ def _example_problems(sub: dict[str, Any]) -> list[str]:
     return problems
 
 
+def _edit_subtask(
+    sub: dict[str, Any],
+    key: str,
+    request: dict[str, Any],
+    exists: Callable[[str], bool],
+    read: Callable[[str], str | None] | None,
+    taken_tests: set[str],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Validate one Level 2 directed-edit subtask against the repository at the exact base."""
+    allowed, forbidden = list(request["allowed_paths"]), list(request.get("forbidden_paths") or [])
+    if sub.get("unresolved"):
+        return None, [f"{key}: {sub['unresolved']}"]
+    texts = ("title", "module_path", "test_path", "test_source", "done_when")
+    if any(not isinstance(sub.get(name), str) or not sub[name].strip() for name in texts):
+        return None, [f"{key}: {', '.join(texts)} must be non-empty strings for an edit"]
+    problems: list[str] = []
+    module, test = _normal_path(sub["module_path"]), _normal_path(sub["test_path"])
+    if module is None or test is None:
+        return None, [f"{key}: module_path and test_path must be relative POSIX .py paths"]
+    if module.startswith("tests/") or not _under(module, allowed) or _under(module, forbidden):
+        problems.append(f"{key}: {module} is outside the slice's allowed paths, a test file, or forbidden")
+    if not test.startswith("tests/") or not test.rsplit("/", 1)[-1].startswith("test_"):
+        problems.append(f"{key}: the test must be a new tests/**/test_*.py file")
+    if not _under(test, allowed) or _under(test, forbidden):
+        problems.append(f"{key}: {test} is outside the slice's allowed paths or forbidden")
+    if exists(test) or test in taken_tests:
+        problems.append(f"{key}: {test} already exists (an approved test is a new file)")
+    taken_tests.add(test)
+    targets = sub.get("targets")
+    if (
+        not isinstance(targets, list)
+        or not targets
+        or len(targets) > drafter.DIRECTED_UNITS
+        or any(not isinstance(t, str) or not t.isidentifier() for t in targets)
+    ):
+        return None, [*problems, f"{key}: targets must name 1..{drafter.DIRECTED_UNITS} existing units"]
+    if read is None:
+        return None, [*problems, f"{key}: edit subtasks need repository access to verify the named units"]
+    source = read(module) if exists(module) else None
+    if source is None:
+        return None, [*problems, f"{key}: {module} does not exist at the base (an edit changes existing code)"]
+    try:
+        found = directed_edit.units(source)
+    except SyntaxError:
+        return None, [*problems, f"{key}: {module} does not parse"]
+    missing = [t for t in targets if t not in found]
+    if missing:
+        problems.append(f"{key}: units {missing} do not exist in {module}; existing units: {sorted(found)[:15]}")
+    declared = {
+        "module_path": module,
+        "test_path": test,
+        "test_source": sub["test_source"],
+        "targets": list(targets),
+    }
+    if drafter.directed_spec({"directed_edit": declared}) is None:
+        problems.append(f"{key}: the test must parse, define test_*, assert, and exercise a named unit")
+    if len(sub["done_when"].strip()) < 20:
+        problems.append(f"{key}: done_when must state the required behaviour (20+ characters)")
+    if problems:
+        return None, problems
+    return {
+        "kind": "edit",
+        "module_path": module,
+        "test_path": test,
+        "test_source": sub["test_source"],
+        "targets": list(targets),
+        "done_when": sub["done_when"].strip()[:600],
+        "title": sub["title"].strip()[:120],
+    }, []
+
+
 def validate_plan(
-    raw: Any, request: dict[str, Any], *, exists: Callable[[str], bool]
+    raw: Any,
+    request: dict[str, Any],
+    *,
+    exists: Callable[[str], bool],
+    read: Callable[[str], str | None] | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     """(normalized plan, []) when the proposal is acceptable, else (None, every reason it is not)."""
     if not isinstance(raw, dict):
@@ -177,6 +255,8 @@ def validate_plan(
     )
     keys: list[str] = []
     modules: set[str] = set()
+    taken_tests: set[str] = set()
+    edited: dict[str, str] = {}
     clean: list[dict[str, Any]] = []
     for index, sub in enumerate(subs, start=1):
         if not isinstance(sub, dict):
@@ -185,6 +265,28 @@ def validate_plan(
         key = sub.get("key")
         if key != f"t{index}" or not KEY.match(str(key)):
             problems.append(f"subtask {index}: key must be exactly 't{index}'")
+            continue
+        if sub.get("kind") == "edit":
+            edit, issues = _edit_subtask(sub, key, request, exists, read, taken_tests)
+            problems += issues
+            deps = sub.get("depends_on", [])
+            if (
+                not isinstance(deps, list)
+                or len(deps) > MAX_DEPENDENCIES
+                or any(d not in keys for d in deps)
+                or len(set(deps)) != len(deps)
+            ):
+                problems.append(f"{key}: depends_on must name up to {MAX_DEPENDENCIES} EARLIER subtasks")
+                deps = []
+            if edit is not None:
+                earlier = edited.get(edit["module_path"])
+                if earlier is not None and earlier not in deps:
+                    problems.append(
+                        f"{key}: edits {edit['module_path']} already edited by {earlier}; it must depend on {earlier}"
+                    )
+                edited[edit["module_path"]] = key
+                clean.append({"key": key, **edit, "depends_on": list(deps)})
+            keys.append(key)
             continue
         texts = ("title", "module_path", "function_name", "signature", "done_when")
         if any(
@@ -427,6 +529,43 @@ def block(
 # ---- subtasks as ordinary requests ------------------------------------------------------------------------------------
 
 
+def _edit_child_request(
+    plan: dict[str, Any], sub: dict[str, Any], head: str, ident: str, failures: list[Any]
+) -> dict[str, Any]:
+    objective = (
+        f"{sub['done_when']} (subtask {sub['key']} of roadmap slice {plan['slice']}: {plan['objective'][:200]})"
+    )
+    return {
+        "schema_version": 1,
+        "id": ident,
+        "repository": plan["repository"],
+        "exact_head": head,
+        "roadmap_ref": f"{plan['roadmap_ref']}.{sub['key']}",
+        "capability": plan["capability"],
+        "slice": f"{plan['slice']}.{sub['key']}",
+        "objective": objective[:600],
+        "slice_acceptance": [sub["done_when"]],
+        "completion_evidence": [sub["done_when"]],
+        "allowed_paths": [sub["module_path"], sub["test_path"]],
+        "forbidden_paths": list(plan["forbidden_paths"]),
+        "runtime_requirements": [],
+        "runner_requirements": ["code", "local", "offline"],
+        "prior_failures": failures,
+        "capability_level": drafter.DIRECTED_LEVEL,
+        "acceptance_examples": [],
+        "directed_edit": {
+            "module_path": sub["module_path"],
+            "targets": list(sub["targets"]),
+            "test_path": sub["test_path"],
+            "test_source": sub["test_source"],
+        },
+        "max_builder_level": 2,
+        "graph_path": plan.get("graph_path", ""),
+        "decomposition": {"parent": plan["parent_id"], "key": sub["key"], "oracle": plan.get("oracle")},
+        "needs": "a backlog item (level 2 directed edit) whose id and roadmap_ref equal this request's",
+    }
+
+
 def _child_request(
     plan: dict[str, Any],
     sub: dict[str, Any],
@@ -434,6 +573,8 @@ def _child_request(
     ident: str,
     failures: list[Any],
 ) -> dict[str, Any]:
+    if sub.get("kind") == "edit":
+        return _edit_child_request(plan, sub, head, ident, failures)
     tests = [p for p in plan["allowed_paths"] if "test" in p.lower()]
     objective = (
         f"Add {sub['module_path']} with one pure function: {sub['signature']}. {sub['title']}. "
@@ -493,8 +634,10 @@ def child_requests(
             status_of[sub["key"]] = (base, *refill._slice_status(base, items, state))
         for sub in plan["subtasks"]:
             base, status, ident = status_of[sub["key"]]
-            if status in {"DONE", "PENDING", "EXHAUSTED"} or drafting_exhausted(lane_root, ident) or any(
-                status_of[d][1] != "DONE" for d in sub["depends_on"]
+            if (
+                status in {"DONE", "PENDING", "EXHAUSTED"}
+                or drafting_exhausted(lane_root, ident, directed=sub.get("kind") == "edit")
+                or any(status_of[d][1] != "DONE" for d in sub["depends_on"])
             ):
                 continue
             failures = (
@@ -526,13 +669,16 @@ def local_work_waiting(lane_root: Path, requests: list[dict[str, Any]]) -> bool:
     return False
 
 
-def drafting_exhausted(lane_root: Path, ident: str) -> bool:
-    """True when every local drafting attempt for this request is spent and none is running or awaiting admission."""
+def drafting_exhausted(lane_root: Path, ident: str, *, directed: bool = False) -> bool:
+    """True when every local drafting attempt is spent and none is running or awaiting admission.
+
+    A Level 2 directed edit is attempted once (the drafter stops after one), so ``directed`` lowers the limit to match."""
     rows = [r for r in drafter._jobs(lane_root) if r.get("id") == ident]
     if any(r.get("stage") == "DRAFTING" for r in rows):
         return False
     spent = sum(1 for r in rows if not drafter._interrupted(r))
-    return spent >= drafter.MAX_ATTEMPTS and drafter._draft_state(lane_root, ident) != "UNJUDGED"
+    limit = 1 if directed else drafter.MAX_ATTEMPTS
+    return spent >= limit and drafter._draft_state(lane_root, ident) != "UNJUDGED"
 
 
 def settle(
@@ -547,8 +693,13 @@ def settle(
             s["key"]: refill._slice_status(f"{plan['parent_id']}-{s['key']}", items, state)
             for s in plan["subtasks"]
         }
+        kinds = {s["key"]: s.get("kind") == "edit" for s in plan["subtasks"]}
         statuses = {
-            key: ("EXHAUSTED" if status in {"NEW", "FAILED"} and drafting_exhausted(lane_root, ident) else status)
+            key: (
+                "EXHAUSTED"
+                if status in {"NEW", "FAILED"} and drafting_exhausted(lane_root, ident, directed=kinds[key])
+                else status
+            )
             for key, (status, ident) in rows.items()
         }
         if all(v == "DONE" for v in statuses.values()):
@@ -629,6 +780,17 @@ def spawn_author(
             stdin=subprocess.DEVNULL,
         )
     return process.pid
+
+
+def _read_at(clone: Path, base: str) -> Callable[[str], str | None]:
+    def read(path: str) -> str | None:
+        done = subprocess.run(
+            ["git", "-C", str(clone), "show", f"{base}:{path}"],
+            capture_output=True, text=True, check=False, timeout=60,
+        )
+        return done.stdout.replace("\r\n", "\n") if done.returncode == 0 else None
+
+    return read
 
 
 def _exists_at(clone: Path, base: str) -> Callable[[str], bool]:
@@ -727,6 +889,7 @@ def harvest(
             result.get("raw"),
             request,
             exists=_exists_at(Path(job["clone"]), job["base"]),
+            read=_read_at(Path(job["clone"]), job["base"]),
         )
         if plan is None:
             _finish(
@@ -868,13 +1031,16 @@ def outline_prompt(request: dict[str, Any], brief: str, feedback: str = "") -> s
         f"{i}. {c}" for i, c in enumerate(request["slice_acceptance"], start=1) if not is_gate_line(str(c))
     )
     return (
-        f"Split this software slice into at most {MAX_SUBTASKS} small PURE functions (no I/O, no globals), each in its "
-        f"own new module, that together deliver every numbered criterion.\nSLICE: {request['objective'][:900]}\n"
-        f"CRITERIA:\n{criteria}\n{brief[:500]}\n"
-        "If part of the slice cannot be a new pure function (it edits existing code, runs a program, touches files, a UI "
-        "or the network), list it in residual instead of inventing a function for it.\n"
-        'Answer JSON only: {"functions":[{"name":"snake_case_name","purpose":"one sentence","criteria":[1],'
-        '"depends_on":[]}],"residual":[]}' + (f"\nYour previous answer was rejected: {feedback[:300]}" if feedback else "")
+        f"Split this software slice into at most {MAX_SUBTASKS} small steps that together deliver every numbered "
+        f"criterion.\nSLICE: {request['objective'][:900]}\nCRITERIA:\n{criteria}\n{brief[:500]}\n"
+        'Each step is kind "new" (a new module with ONE pure function, no I/O, no globals) or kind "edit" (change at '
+        'most 3 named units, functions or classes, of ONE existing module listed above; give "module" and "targets"). '
+        "If part of the slice is neither (a program run, a UI, the network, many files), list it in residual instead of "
+        "inventing a step for it.\n"
+        'Answer JSON only: {"functions":[{"name":"snake_case_label","kind":"new","purpose":"one sentence",'
+        '"criteria":[1],"depends_on":[]},{"name":"other_label","kind":"edit","module":"pkg/existing.py",'
+        '"targets":["existing_function"],"purpose":"required behaviour","criteria":[2],"depends_on":[]}],"residual":[]}'
+        + (f"\nYour previous answer was rejected: {feedback[:300]}" if feedback else "")
     )
 
 
@@ -890,6 +1056,62 @@ def function_prompt(request: dict[str, Any], entry: dict[str, Any], feedback: st
     )
 
 
+def normalize_signature(signature: Any) -> str:
+    """Strip the model's whitespace and add the trailing colon it commonly omits (the only repair made to a def line)."""
+    text = " ".join(str(signature or "").split())
+    return text if not text or text.endswith(":") else text + ":"
+
+
+def import_hint(module_path: str) -> str:
+    """The dotted module a test would import (a leading src/ is a layout directory, not a package)."""
+    parts = module_path[:-3].split("/")
+    return ".".join(parts[1:] if parts[0] == "src" and len(parts) > 1 else parts)
+
+
+def edit_prompt(
+    request: dict[str, Any], entry: dict[str, Any], source: str, feedback: str = ""
+) -> str:
+    units = directed_edit.units(source)
+    shown = "\n\n".join(directed_edit.unit_source(source, units[t]) for t in entry["targets"] if t in units)
+    rest = directed_edit.outline(source, set(entry["targets"]))
+    return (
+        f"Slice context: {request['objective'][:300]}\nRequired behaviour change in {entry['module']} "
+        f"(units {', '.join(entry['targets'])}): {entry['purpose']}\n"
+        f"CURRENT CODE OF THE UNITS:\n{shown[:2200]}\nREST OF THE MODULE (signatures only):\n{rest[:900]}\n"
+        f"Write a pytest test file that FAILS on the current code and passes once the behaviour is implemented. Import "
+        f"with `from {import_hint(entry['module'])} import ...`. Use plain asserts on exact values, no mocks of the "
+        "units under test, no file or network access. Give a done_when sentence stating the behaviour.\n"
+        'Answer JSON only: {"test_source":"import ...\\n\\ndef test_x():\\n    assert ...","done_when":"..."}'
+        + (f"\nYour previous answer was rejected: {feedback[:300]}" if feedback else "")
+    )
+
+
+def test_for(request: dict[str, Any], stem: str, taken: set[str], exists: Callable[[str], bool]) -> str | None:
+    """A new test path under the slice's allowed test paths (assembled by code, never chosen by the model)."""
+    for pattern in request["allowed_paths"]:
+        pattern = pattern.replace("\\", "/")
+        if "test" not in pattern.lower() or pattern.endswith((".md", ".json")):
+            continue
+        if pattern.endswith("/**") or pattern.endswith("/*"):
+            candidate = pattern.rsplit("/", 1)[0] + f"/test_{stem}.py"
+        elif "*" in pattern:
+            candidate = pattern.replace("**", stem).replace("*", stem, 1)
+        else:
+            continue
+        base_name = candidate.rsplit("/", 1)[-1]
+        if not base_name.startswith("test_"):
+            candidate = candidate.rsplit("/", 1)[0] + "/test_" + base_name
+        if (
+            _normal_path(candidate)
+            and _under(candidate, request["allowed_paths"])
+            and candidate not in taken
+            and not _under(candidate, list(request.get("forbidden_paths") or []))
+            and not exists(candidate)
+        ):
+            return candidate
+    return None
+
+
 def _outline_entries(outline: Any) -> list[dict[str, Any]] | None:
     entries = outline.get("functions") if isinstance(outline, dict) else None
     if isinstance(entries, list) and entries and all(isinstance(e, dict) for e in entries):
@@ -897,16 +1119,99 @@ def _outline_entries(outline: Any) -> list[dict[str, Any]] | None:
     return None
 
 
+def _staged_new(request, entry, index, path, ask, trail):
+    name = str(entry["name"])
+    purpose = str(entry.get("purpose", name))[:200]
+    detail: Any = {}
+    feedback = ""
+    for _try in range(MAX_FUNCTION_TRIES):
+        detail = ask(function_prompt(request, {"name": name, "purpose": purpose}, feedback))
+        if not isinstance(detail, dict):
+            bad = ["answer is not a JSON object"]
+        else:
+            detail["signature"] = normalize_signature(detail.get("signature"))
+            probe = {
+                "key": f"t{index}",
+                "signature": detail["signature"],
+                "acceptance_examples": detail.get("acceptance_examples"),
+            }
+            bad = _example_problems(probe)
+            if not SIGNATURE.match(probe["signature"].strip()):
+                bad.append("signature must be a def line")
+        trail.append({"function": name, "problems": bad})
+        if not bad:
+            break
+        feedback = "; ".join(bad)
+    detail = detail if isinstance(detail, dict) else {}
+    return {
+        "key": f"t{index}",
+        "title": purpose[:120],
+        "module_path": path,
+        "function_name": name,
+        "signature": str(detail.get("signature", "")),
+        "done_when": str(detail.get("done_when") or purpose),
+        "acceptance_examples": detail.get("acceptance_examples") or [],
+    }
+
+
+def _staged_edit(request, entry, index, taken_tests, ask, exists, read, trail):
+    module = str(entry.get("module", ""))
+    targets = entry.get("targets") if isinstance(entry.get("targets"), list) else []
+    purpose = str(entry.get("purpose", entry["name"]))[:300]
+    sub: dict[str, Any] = {"key": f"t{index}", "kind": "edit", "title": purpose[:120], "module_path": module,
+                           "targets": [str(t) for t in targets], "done_when": purpose, "test_source": "", "test_path": ""}
+    source = read(module) if read is not None and _normal_path(module) and exists(module) else None
+    if source is None or not targets:
+        sub["unresolved"] = f"{module or '(no module)'} does not exist at the base or no units were named"
+        return sub  # validation reports exactly what is missing
+    try:
+        found = directed_edit.units(source)
+    except SyntaxError:
+        return sub
+    if any(t not in found for t in sub["targets"]):
+        sub["unresolved"] = f"units {[t for t in sub['targets'] if t not in found]} do not exist in {module}"
+        return sub
+    stem = f"{module.rsplit('/', 1)[-1][:-3]}_{sub['targets'][0].lstrip('_').lower()}"
+    path = test_for(request, stem, taken_tests, exists)
+    if path is None:
+        sub["unresolved"] = "no free allowed path for the test file"
+        return sub
+    taken_tests.add(path)
+    sub["test_path"] = path
+    feedback = ""
+    for _try in range(MAX_FUNCTION_TRIES):
+        detail = ask(edit_prompt(request, {"name": entry["name"], "module": module, "targets": sub["targets"],
+                                           "purpose": purpose}, source, feedback))
+        detail = detail if isinstance(detail, dict) else {}
+        sub["test_source"] = str(detail.get("test_source", ""))
+        sub["done_when"] = str(detail.get("done_when") or purpose)
+        bad: list[str] = []
+        declared = {"module_path": module, "test_path": path, "test_source": sub["test_source"],
+                    "targets": sub["targets"]}
+        if drafter.directed_spec({"directed_edit": declared}) is None:
+            bad.append("the test must parse, define test_*, assert, and exercise a named unit")
+        trail.append({"edit": module, "problems": bad})
+        if not bad:
+            break
+        feedback = "; ".join(bad)
+    return sub
+
+
 def propose_staged(
-    request: dict[str, Any], brief: str, ask: Callable[[str], Any], *, exists: Callable[[str], bool]
+    request: dict[str, Any],
+    brief: str,
+    ask: Callable[[str], Any],
+    *,
+    exists: Callable[[str], bool],
+    read: Callable[[str], str | None] | None = None,
 ) -> dict[str, Any]:
-    """Outline, then one small call per function; assemble; validate. Same result shape as ``propose``."""
+    """Outline, then one small call per step; assemble; validate. Same result shape as ``propose``."""
     trail: list[dict[str, Any]] = []
     try:
         outline = ask(outline_prompt(request, brief))
         entries = _outline_entries(outline)
         if entries is None:
-            outline = ask(outline_prompt(request, brief, 'answer {"functions":[...],"residual":[...]} with a function'))
+            outline = ask(outline_prompt(request, brief, 'answer {"functions":[...],"residual":[...]} with a step'))
             entries = _outline_entries(outline)
         if entries is None:
             return {"ok": False, "reason": "PLAN_REJECTED: the outline lists no functions", "trail": trail}
@@ -923,48 +1228,21 @@ def propose_staged(
             }
         subtasks: list[dict[str, Any]] = []
         taken: set[str] = set()
+        taken_tests: set[str] = set()
         for index, entry in enumerate(entries, start=1):
-            name = str(entry["name"])
-            path = module_for(request, name, taken, exists)
-            if path is None:
-                return {"ok": False, "reason": f"PLAN_REJECTED: no free allowed path for {name}", "trail": trail}
-            taken.add(path)
-            purpose = str(entry.get("purpose", name))[:200]
-            detail: Any = {}
-            feedback = ""
-            for _try in range(MAX_FUNCTION_TRIES):
-                detail = ask(function_prompt(request, {"name": name, "purpose": purpose}, feedback))
-                if not isinstance(detail, dict):
-                    bad = ["answer is not a JSON object"]
-                else:
-                    probe = {
-                        "key": f"t{index}",
-                        "signature": str(detail.get("signature", "")),
-                        "acceptance_examples": detail.get("acceptance_examples"),
-                    }
-                    bad = _example_problems(probe)
-                    if not SIGNATURE.match(probe["signature"].strip()):
-                        bad.append("signature must be a def line")
-                trail.append({"function": name, "problems": bad})
-                if not bad:
-                    break
-                feedback = "; ".join(bad)
-            detail = detail if isinstance(detail, dict) else {}
+            if entry.get("kind") == "edit":
+                made = _staged_edit(request, entry, index, taken_tests, ask, exists, read, trail)
+            else:
+                path = module_for(request, str(entry["name"]), taken, exists)
+                if path is None:
+                    return {"ok": False, "reason": f"PLAN_REJECTED: no free allowed path for {entry['name']}",
+                            "trail": trail}
+                taken.add(path)
+                made = _staged_new(request, entry, index, path, ask, trail)
             earlier = names[: index - 1]
             wanted = entry.get("depends_on") if isinstance(entry.get("depends_on"), list) else []
-            deps = [f"t{names.index(d) + 1}" for d in wanted if d in earlier][:MAX_DEPENDENCIES]
-            subtasks.append(
-                {
-                    "key": f"t{index}",
-                    "title": purpose[:120],
-                    "depends_on": deps,
-                    "module_path": path,
-                    "function_name": name,
-                    "signature": str(detail.get("signature", "")),
-                    "done_when": str(detail.get("done_when") or purpose),
-                    "acceptance_examples": detail.get("acceptance_examples") or [],
-                }
-            )
+            made["depends_on"] = [f"t{names.index(d) + 1}" for d in wanted if d in earlier][:MAX_DEPENDENCIES]
+            subtasks.append(made)
         coverage: dict[str, list[str]] = {}
         for index, entry in enumerate(entries, start=1):
             numbers = entry.get("criteria") if isinstance(entry.get("criteria"), list) else []
@@ -973,7 +1251,7 @@ def propose_staged(
         raw = {"subtasks": subtasks, "coverage": coverage, "residual": residual}
     except Exception as exc:  # an unreachable model is a blocker to record, not a reason to crash the lane
         return {"ok": False, "reason": f"MODEL_UNAVAILABLE: {type(exc).__name__}: {str(exc)[:160]}", "trail": trail}
-    plan, problems = validate_plan(raw, request, exists=exists)
+    plan, problems = validate_plan(raw, request, exists=exists, read=read)
     trail.append({"assembled": True, "problems": problems})
     if plan is None:
         return {"ok": False, "reason": "PLAN_REJECTED: " + problems[0][:240], "trail": trail, "raw": raw}
