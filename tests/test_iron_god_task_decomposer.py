@@ -815,3 +815,161 @@ def test_a_reauthored_subtask_with_spent_drafting_also_releases_the_parent(tmp_p
     _draft_job(lane, t1 + "-r1", 1, "FAILED", "b")
     (change,) = td.settle(lane, [failed], state)
     assert change["status"] == "BLOCKED"
+
+
+# ---- Level 2 edit subtasks ------------------------------------------------------------------------------------------------
+
+CORE = "def one():\n    return 1\n\n\ndef clean(text):\n    return text.strip()\n"
+FILES = {"pkg/core.py": CORE}
+TEST = "from pkg.core import one\n\n\ndef test_one_is_two():\n    assert one() == 2\n"
+
+
+def file_exists(path: str) -> bool:
+    return path in FILES
+
+
+def file_read(path: str) -> str | None:
+    return FILES.get(path)
+
+
+EDIT = {"key": "t1", "kind": "edit", "title": "make one return two", "depends_on": [], "module_path": "pkg/core.py",
+        "targets": ["one"], "test_path": "tests/test_core_one.py", "test_source": TEST,
+        "done_when": "one() returns 2 instead of 1 so callers get the new constant"}
+EDIT_PLAN = {"subtasks": [EDIT, {**GOOD["subtasks"][0], "key": "t2", "depends_on": ["t1"]}],
+             "coverage": {"1": ["t2"], "2": ["t1"]}, "residual": []}
+
+
+def edit_check(raw: Any, **kw):
+    return td.validate_plan(raw, PARENT, exists=kw.get("exists", file_exists), read=kw.get("read", file_read))
+
+
+def test_a_level_two_edit_subtask_is_accepted_when_the_units_exist_and_the_test_is_well_formed() -> None:
+    plan, problems = edit_check(EDIT_PLAN)
+    assert problems == [] and plan is not None
+    assert plan["subtasks"][0]["kind"] == "edit" and plan["subtasks"][0]["targets"] == ["one"]
+    assert plan["subtasks"][1]["function_name"] == "slugify"  # a Level 1 step can sit beside it
+
+
+def edit_variant(**change: Any) -> dict:
+    return {**EDIT_PLAN, "subtasks": [{**EDIT, **change}, EDIT_PLAN["subtasks"][1]]}
+
+
+@pytest.mark.parametrize("change, fragment", [
+    ({"targets": ["missing_unit"]}, "do not exist in pkg/core.py"),
+    ({"targets": ["one", "clean", "one", "clean"]}, "targets must name"),
+    ({"module_path": "pkg/other.py"}, "does not exist at the base"),
+    ({"module_path": "docs/core.py"}, "outside the slice's allowed paths"),
+    ({"module_path": "tests/test_core.py"}, "outside the slice's allowed paths, a test file"),
+    ({"test_path": "pkg/test_core_one.py"}, "new tests/**/test_*.py"),
+    ({"test_path": "tests/core_one.py"}, "new tests/**/test_*.py"),
+    ({"test_source": "def test_x():\n    pass\n"}, "must parse, define test_"),
+    ({"test_source": "from pkg.core import one\n\ndef helper():\n    assert one()\n"}, "must parse, define test_"),
+    ({"test_source": "def test_x(:\n"}, "must parse, define test_"),
+    ({"test_source": "def test_x():\n    assert 1 == 1\n"}, "must parse, define test_"),
+    ({"done_when": "short"}, "20+ characters"),
+])
+def test_an_edit_subtask_that_breaks_a_rule_is_rejected(change: dict, fragment: str) -> None:
+    plan, problems = edit_check(edit_variant(**change))
+    assert plan is None and any(fragment in p for p in problems), problems
+
+
+def test_an_edit_needs_repository_access_and_a_new_test_file() -> None:
+    plan, problems = edit_check(EDIT_PLAN, read=None)
+    assert plan is None and any("repository access" in p for p in problems)
+    plan, problems = edit_check(EDIT_PLAN, exists=lambda p: p in {*FILES, "tests/test_core_one.py"})
+    assert plan is None and any("already exists" in p for p in problems)
+
+
+def test_two_edits_of_one_module_must_be_ordered() -> None:
+    second = {**EDIT, "key": "t2", "targets": ["clean"], "test_path": "tests/test_core_clean.py",
+              "test_source": "from pkg.core import clean\n\n\ndef test_clean():\n    assert clean(' a ') == 'a'\n"}
+    raw = {"subtasks": [EDIT, second], "coverage": {"1": ["t1"], "2": ["t2"]}, "residual": []}
+    plan, problems = edit_check(raw)
+    assert plan is None and any("must depend on t1" in p for p in problems)
+    second["depends_on"] = ["t1"]
+    plan, problems = edit_check(raw)
+    assert problems == [] and plan is not None
+
+
+def test_an_edit_subtask_becomes_a_level_two_directed_request_the_unchanged_drafter_takes(tmp_path: Path) -> None:
+    lane = tmp_path / "lane"
+    plan, _ = edit_check(EDIT_PLAN)
+    td.write_plan(lane, PARENT, plan, planner="qwen2.5-coder:7b")
+    (first,) = td.child_requests(lane, REPO, "b" * 40, [], {})
+    assert first["id"] == PARENT["id"] + "-t1" and first["capability_level"] == 2
+    assert first["directed_edit"]["targets"] == ["one"] and first["directed_edit"]["test_path"] == "tests/test_core_one.py"
+    assert first["allowed_paths"] == ["pkg/core.py", "tests/test_core_one.py"] and first["acceptance_examples"] == []
+    first["route"] = {"builder": refill.LOCAL}
+    assert drafter.eligible(first) and drafter.directed_spec(first) is not None
+
+
+def test_the_test_path_is_assembled_by_code_from_the_allowed_test_paths() -> None:
+    free = lambda _p: False  # noqa: E731
+    assert td.test_for(PARENT, "core_one", set(), free) == "tests/test_core_one.py"
+    assert td.test_for(PARENT, "core_one", {"tests/test_core_one.py"}, free) is None
+    assert td.test_for(PARENT, "core_one", set(), lambda p: p == "tests/test_core_one.py") is None
+    assert td.test_for({**PARENT, "allowed_paths": ["pkg/**"]}, "x", set(), free) is None
+    assert td.import_hint("src/project_orchestrator/x.py") == "project_orchestrator.x"
+    assert td.import_hint("pkg/core.py") == "pkg.core"
+
+
+def edit_ask(prompts: list | None = None, test_source: str = TEST):
+    def ask(prompt: str) -> Any:
+        if prompts is not None:
+            prompts.append(prompt)
+        if prompt.startswith("Split this") or prompt.startswith("Split"):
+            return {"functions": [
+                {"name": "bump_one", "kind": "edit", "module": "pkg/core.py", "targets": ["one"],
+                 "purpose": "one() returns 2 instead of 1 so callers get the new constant", "criteria": [2],
+                 "depends_on": [], "test_path": "tests/not_chosen_by_the_model.py"},
+                {"name": "slugify", "kind": "new", "purpose": "hyphenate a title", "criteria": [1],
+                 "depends_on": ["bump_one"]}], "residual": []}
+        if "pytest test file" in prompt:
+            return {"test_source": test_source, "done_when": "one() returns 2 instead of 1 for every caller"}
+        return DETAIL["slugify"]
+    return ask
+
+
+def test_the_staged_proposal_writes_the_test_for_an_edit_and_assembles_the_test_path() -> None:
+    prompts: list[str] = []
+    result = td.propose_staged(PARENT, "", edit_ask(prompts), exists=file_exists, read=file_read)
+    assert result["ok"], result
+    edit = result["plan"]["subtasks"][0]
+    assert edit["kind"] == "edit" and edit["test_path"] == "tests/test_core_one.py" and edit["targets"] == ["one"]
+    shown = next(p for p in prompts if "pytest test file" in p)
+    assert "def one():" in shown and "from pkg.core import" in shown and "FAILS on the current code" in shown
+    assert result["plan"]["subtasks"][1]["depends_on"] == ["t1"]
+
+
+def test_an_edit_whose_test_stays_unusable_is_rejected_after_one_retry() -> None:
+    prompts: list[str] = []
+    result = td.propose_staged(PARENT, "", edit_ask(prompts, test_source="def test_x():\n    pass\n"),
+                               exists=file_exists, read=file_read)
+    assert not result["ok"] and result["reason"].startswith("PLAN_REJECTED")
+    assert sum("pytest test file" in p for p in prompts) == td.MAX_FUNCTION_TRIES
+
+
+def test_an_edit_of_a_module_that_is_not_there_is_rejected_not_invented() -> None:
+    result = td.propose_staged(PARENT, "", edit_ask(), exists=lambda p: False, read=lambda p: None)
+    assert not result["ok"] and "does not exist at the base" in result["reason"]
+
+
+def test_a_finished_planning_job_with_an_edit_is_revalidated_against_the_real_repository(tmp_path: Path, clone: Path) -> None:
+    lane, base = tmp_path / "lane", head_of(clone)
+    raw = {"subtasks": [EDIT, {**GOOD["subtasks"][0], "key": "t2", "depends_on": ["t1"]}],
+           "coverage": {"1": ["t2"], "2": ["t1"]}, "residual": []}
+    td.advance(lane, [PARENT], clone, base, spawn=Spawner({"ok": True, "raw": raw}))
+    assert td.harvest(lane)[0] == {"id": PARENT["id"], "status": "PLANNED", "subtasks": 2}
+    bad = {**raw, "subtasks": [{**EDIT, "targets": ["absent"]}, raw["subtasks"][1]]}
+    other = {**PARENT, "id": PARENT["id"] + "y"}
+    td.advance(lane, [other], clone, base, spawn=Spawner({"ok": True, "raw": bad}))
+    assert td.harvest(lane)[0]["reason"] == "PLAN_REJECTED"  # the real clone is the authority, not the model's claim
+
+
+def test_a_def_line_missing_only_its_colon_is_repaired_and_nothing_else_is() -> None:
+    assert td.normalize_signature("def f(x: str) -> str") == "def f(x: str) -> str:"
+    assert td.normalize_signature("  def  f(x)  ->  int:  ") == "def f(x) -> int:"
+    assert td.normalize_signature(None) == "" and td.normalize_signature("not python") == "not python:"
+    detail = {**DETAIL, "slugify": {**DETAIL["slugify"], "signature": "def slugify(title: str) -> str"}}
+    result = td.propose_staged(PARENT, "", staged_ask(detail=detail), exists=lambda _p: False)
+    assert result["ok"] and result["plan"]["subtasks"][0]["signature"] == "def slugify(title: str) -> str:"

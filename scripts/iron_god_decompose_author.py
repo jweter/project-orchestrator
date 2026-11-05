@@ -108,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         brief(args.clone, base, request["allowed_paths"]),
         lambda p: ask_ollama(p, model),
         exists=decomposer._exists_at(args.clone, base),
+        read=decomposer._read_at(args.clone, base),
     )
     return finish({**result, "model": model, "base": base})
 
