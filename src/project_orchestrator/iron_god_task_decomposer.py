@@ -493,7 +493,7 @@ def child_requests(
             status_of[sub["key"]] = (base, *refill._slice_status(base, items, state))
         for sub in plan["subtasks"]:
             base, status, ident = status_of[sub["key"]]
-            if status in {"DONE", "PENDING", "EXHAUSTED"} or any(
+            if status in {"DONE", "PENDING", "EXHAUSTED"} or drafting_exhausted(lane_root, ident) or any(
                 status_of[d][1] != "DONE" for d in sub["depends_on"]
             ):
                 continue
@@ -514,6 +514,27 @@ def child_requests(
     return out
 
 
+def local_work_waiting(lane_root: Path, requests: list[dict[str, Any]]) -> bool:
+    """True when a LOCAL request could still be drafted: planning never takes the model slot from ready local work."""
+    admitted = {str(item.get("id")) for item in refill.load_store(lane_root)["items"]}
+    for request in requests:
+        if not drafter.eligible(request) or request["id"] in admitted:
+            continue
+        spent = sum(1 for r in drafter._jobs(lane_root) if r.get("id") == request["id"] and not drafter._interrupted(r))
+        if spent < (1 if request.get("capability_level") == drafter.DIRECTED_LEVEL else drafter.MAX_ATTEMPTS):
+            return True
+    return False
+
+
+def drafting_exhausted(lane_root: Path, ident: str) -> bool:
+    """True when every local drafting attempt for this request is spent and none is running or awaiting admission."""
+    rows = [r for r in drafter._jobs(lane_root) if r.get("id") == ident]
+    if any(r.get("stage") == "DRAFTING" for r in rows):
+        return False
+    spent = sum(1 for r in rows if not drafter._interrupted(r))
+    return spent >= drafter.MAX_ATTEMPTS and drafter._draft_state(lane_root, ident) != "UNJUDGED"
+
+
 def settle(
     lane_root: Path, items: list[dict[str, Any]], state: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -522,11 +543,13 @@ def settle(
     for plan in load_plans(lane_root):
         if plan.get("status") != "ACTIVE":
             continue
-        statuses = {
-            s["key"]: refill._slice_status(
-                f"{plan['parent_id']}-{s['key']}", items, state
-            )[0]
+        rows = {
+            s["key"]: refill._slice_status(f"{plan['parent_id']}-{s['key']}", items, state)
             for s in plan["subtasks"]
+        }
+        statuses = {
+            key: ("EXHAUSTED" if status in {"NEW", "FAILED"} and drafting_exhausted(lane_root, ident) else status)
+            for key, (status, ident) in rows.items()
         }
         if all(v == "DONE" for v in statuses.values()):
             plan.update(status="DONE", completed_at=_now())
@@ -891,7 +914,13 @@ def propose_staged(
         names = [str(e.get("name", "")) for e in entries]
         if len(set(names)) != len(names) or not all(NAME_OK.match(n) for n in names):
             return {"ok": False, "reason": "PLAN_REJECTED: function names must be unique snake_case", "trail": trail}
-        residual = outline.get("residual") if isinstance(outline.get("residual"), list) else []
+        residual = outline.get("residual")
+        if not isinstance(residual, list):
+            return {
+                "ok": False,
+                "reason": "PLAN_REJECTED: residual must be a list (empty only when nothing is left to do)",
+                "trail": trail,
+            }
         subtasks: list[dict[str, Any]] = []
         taken: set[str] = set()
         for index, entry in enumerate(entries, start=1):

@@ -761,3 +761,57 @@ def test_a_dead_model_is_a_blocker_for_the_staged_proposal_too() -> None:
 
     result = td.propose_staged(PARENT, "", dead, exists=lambda _p: False)
     assert not result["ok"] and result["reason"].startswith("MODEL_UNAVAILABLE")
+
+
+# ---- review findings on #638 ----------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("residual", ["wire the helpers into the existing handler", None, {"a": 1}, 0])
+def test_a_missing_or_mistyped_residual_is_never_read_as_nothing_left(residual: Any) -> None:
+    outline = {"functions": OUTLINE["functions"]}
+    if residual is not None:
+        outline["residual"] = residual
+    result = td.propose_staged(PARENT, "", staged_ask(outline), exists=lambda _p: False)
+    assert not result["ok"] and "residual must be a list" in result["reason"]
+
+
+def _draft_job(lane: Path, ident: str, attempt: int, stage: str, reason: str = "") -> None:
+    path = lane / drafter.JOBS / f"{ident}.a{attempt}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"id": ident, "attempt": attempt, "stage": stage, "reason": reason,
+                                "started_at": 0, "result": str(lane / "r.json")}), encoding="utf-8")
+
+
+def test_a_subtask_whose_drafting_attempts_are_spent_blocks_the_plan_and_releases_the_parent(tmp_path: Path) -> None:
+    lane = tmp_path / "lane"
+    active_plan(lane)
+    t1 = PARENT["id"] + "-t1"
+    _draft_job(lane, t1, 0, "FAILED", "ContradictsRoadmap")
+    assert td.settle(lane, [], {}) == [] and td.active_parent_ids(lane) == {PARENT["id"]}  # one attempt left
+    _draft_job(lane, t1, 1, "FAILED", "PLAN_REJECTED")
+    (change,) = td.settle(lane, [], {})
+    assert change["status"] == "BLOCKED" and "SUBTASK_EXHAUSTED: t1" in change["blocker"]
+    assert td.active_parent_ids(lane) == frozenset()  # the stronger builder may take the parent
+
+
+def test_running_or_interrupted_drafting_does_not_block_the_plan(tmp_path: Path) -> None:
+    lane = tmp_path / "lane"
+    active_plan(lane)
+    t1 = PARENT["id"] + "-t1"
+    _draft_job(lane, t1, 0, "INTERRUPTED", "EXECUTION_AUTHORITY_REVOKED")
+    _draft_job(lane, t1, 1, "FAILED", "x")
+    _draft_job(lane, t1, 2, "DRAFTING")
+    assert td.settle(lane, [], {}) == [] and td.active_parent_ids(lane) == {PARENT["id"]}
+    assert td.child_requests(lane, REPO, "b" * 40, [], {})  # still offered while a draft is running
+
+
+def test_a_reauthored_subtask_with_spent_drafting_also_releases_the_parent(tmp_path: Path) -> None:
+    lane = tmp_path / "lane"
+    active_plan(lane)
+    t1 = PARENT["id"] + "-t1"
+    failed = {"id": t1, "repository": REPO, "status": "approved", "level": 1}
+    state = {"items": {t1: {"outcome": "FAIL", "attempts": 3}}}
+    _draft_job(lane, t1 + "-r1", 0, "FAILED", "a")
+    _draft_job(lane, t1 + "-r1", 1, "FAILED", "b")
+    (change,) = td.settle(lane, [failed], state)
+    assert change["status"] == "BLOCKED"
