@@ -45,7 +45,8 @@ official documentation.
 ## What the engine does meanwhile
 
 - `ACTIVE`: no suspicion. `SUSPECTED_STALE`: no PR and no session-branch commit for 3 h. It blocks the same request and
-  any overlapping files, never causes a retry, and spends no attempt. Unrelated, scoped work in the same repository may
-  proceed. Rows without a recorded scope keep blocking.
+  any work whose files overlap, never causes a retry, and spends no attempt. A session's scope always includes the
+  repository's capability graph, which every session may edit, so in practice a suspected session keeps its whole
+  repository held (other repositories are unaffected). Rows without a recorded scope keep blocking.
 - `CONFIRMED_FAILED`: only the 12 h hard timeout today, and it is the only state that spends an attempt.
 - A pull request that appears after a no-PR failure (for 48 h) is recorded as a delivery, so the slice is not retried.

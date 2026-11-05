@@ -75,6 +75,12 @@ def paths_overlap(left: list[str], right: list[str]) -> bool:
     return False
 
 
+def effective_scope(request: dict[str, Any]) -> list[str]:
+    """Every file a session may touch: its allowed paths plus the capability graph the prompt permits it to edit."""
+    graph = str(request.get("graph_path") or GRAPH_PATH)
+    return [*(request.get("allowed_paths") or []), graph]
+
+
 def releases_repository_for(row: dict[str, Any], request: dict[str, Any]) -> bool:
     """A SUSPECTED_STALE dispatch stops blocking unrelated work, never the same request or overlapping files.
 
@@ -82,7 +88,8 @@ def releases_repository_for(row: dict[str, Any], request: dict[str, Any]) -> boo
     """
     if row.get("suspicion") != SUSPECTED_STALE or request_of(row) == request.get("id"):
         return False
-    held, wanted = row.get("allowed_paths"), request.get("allowed_paths")
+    held = row.get("allowed_paths")  # the dispatched request's effective scope, graph included
+    wanted = effective_scope(request) if request.get("allowed_paths") else None
     return bool(held) and bool(wanted) and not paths_overlap(list(held), list(wanted))
 
 
@@ -210,7 +217,7 @@ def dispatch_request(request: dict[str, Any], *, lane_root: Path, enabled: bool,
     try:  # the scope lets a later SUSPECTED_STALE state release only unrelated work; absent scope keeps blocking
         row_path = state_dir / f"{result['dispatch_id']}.json"
         row = json.loads(row_path.read_text(encoding="utf-8"))
-        row["allowed_paths"] = list(request.get("allowed_paths") or [])
+        row["allowed_paths"] = effective_scope(request) if request.get("allowed_paths") else []
         _write_row(state_dir, row)
     except (OSError, ValueError, KeyError):
         pass

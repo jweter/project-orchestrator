@@ -413,7 +413,7 @@ def test_a_suspected_stale_session_never_gets_a_duplicate_of_its_own_request(tmp
                      now=NOW + cb.QUIET_SECONDS + 2, daily_limit=10)["reason"] == "REQUEST_ALREADY_DELIVERED_OR_PENDING"
 
 
-def test_suspected_stale_blocks_overlapping_work_and_frees_only_provably_unrelated_work(
+def test_suspected_stale_blocks_overlapping_unscoped_and_graph_sharing_work_in_the_same_repository(
         tmp_path: Path, configured: None) -> None:
     opener = Opener()
     go(tmp_path, opener, _scoped("RM-held", ["backend/services/**", "docs/**"]), daily_limit=10)
@@ -432,7 +432,25 @@ def test_suspected_stale_blocks_overlapping_work_and_frees_only_provably_unrelat
 
     assert overlap["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH" and overlap["holders"][0]["state"] == cb.SUSPECTED_STALE
     assert glob["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH" and unscoped["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"
-    assert other_repo["dispatched"] is True and unrelated["dispatched"] is True
+    assert other_repo["dispatched"] is True
+    assert unrelated["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"  # both would edit the shared graph (review P2)
+
+
+def test_the_shared_capability_graph_is_part_of_every_session_scope(tmp_path: Path, configured: None) -> None:
+    """Review P2 on #637: two sessions with disjoint allowed paths may both edit the one capability graph."""
+    opener = Opener()
+    go(tmp_path, opener, _scoped("RM-held", ["backend/**"]), daily_limit=10)
+    assert "engineering/capability-graph.json" in _row(tmp_path)["allowed_paths"]
+    later = NOW + cb.QUIET_SECONDS + 1
+    cb.reconcile(tmp_path, now=later, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
+
+    graph_owner = go(tmp_path, opener, _scoped("RM-graph", ["engineering/**"]), now=later, daily_limit=10)
+    elsewhere = go(tmp_path, opener, _scoped("RM-front", ["frontend/**"]), now=later, daily_limit=10)
+
+    assert graph_owner["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"
+    assert elsewhere["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"  # its own scope includes the graph both would edit
+    custom = {**_scoped("RM-custom", ["frontend/**"]), "graph_path": "docs/graph.json"}
+    assert cb.effective_scope(custom) == ["frontend/**", "docs/graph.json"]  # a declared graph path is honoured
 
 
 def test_a_legacy_row_without_a_recorded_scope_keeps_blocking_even_when_suspected(tmp_path: Path, configured: None) -> None:
