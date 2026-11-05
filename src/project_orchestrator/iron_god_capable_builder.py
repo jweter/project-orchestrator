@@ -25,6 +25,7 @@ import os
 import subprocess
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -34,6 +35,10 @@ DISPATCH_DIR = "capable-dispatches"
 DEFAULT_DAILY_LIMIT = 2
 MAX_ATTEMPTS = 2  # a request that two capable attempts failed needs a human decision, not a third try
 STALE_SECONDS = 12 * 3600
+# Observed sessions open their pull request within minutes (Project-Everward #343 and #348: about 2-3 minutes after
+# dispatch). A session that has produced no pull request and pushed nothing for this long is not working on the request;
+# holding the whole repository for the full STALE_SECONDS only delays the next attempt.
+QUIET_SECONDS = 3 * 3600
 ROUTINE = "portfolio_builder"
 
 
@@ -208,9 +213,35 @@ def find_pull_request(repository: str, request_id: str) -> str | None:
     return None
 
 
+def session_activity_since(repository: str, since: float) -> bool | None:
+    """Whether any ``claude/*`` session branch in the repository has a commit at or after ``since``.
+
+    True/False when GitHub answered, None when it could not be asked: an unknown is never evidence of abandonment.
+    """
+    refs = subprocess.run(["gh", "api", f"repos/{repository}/git/matching-refs/heads/claude/", "--jq", ".[].ref"],
+                          capture_output=True, text=True, check=False, timeout=60)
+    if refs.returncode != 0:
+        return None
+    cutoff = datetime.fromtimestamp(since, tz=timezone.utc)
+    for ref in refs.stdout.split():
+        branch = ref.removeprefix("refs/heads/")
+        out = subprocess.run(["gh", "api", f"repos/{repository}/commits/{branch}", "--jq", ".commit.committer.date"],
+                             capture_output=True, text=True, check=False, timeout=60)
+        if out.returncode != 0:
+            return None
+        try:
+            when = datetime.fromisoformat(out.stdout.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if when >= cutoff:
+            return True
+    return False
+
+
 def reconcile(lane_root: Path, *, now: float | None = None,
               lookup: Callable[[str, str], str | None] = find_pull_request,
-              state_of: Callable[[str], str | None] = pull_request_state) -> list[dict[str, Any]]:
+              state_of: Callable[[str], str | None] = pull_request_state,
+              activity: Callable[[str, float], bool | None] = session_activity_since) -> list[dict[str, Any]]:
     """Fold observed outcomes into the existing measurement ledger; returns what changed.
 
     Also follows each observed pull request to its end (OPEN -> MERGED or CLOSED) so delivery stays pending while it
@@ -240,4 +271,9 @@ def reconcile(lane_root: Path, *, now: float | None = None,
             ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL",
                                   notes=NO_PR_NOTE)
             changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL"})
+        elif now - float(row.get("started_at", 0)) >= QUIET_SECONDS and                 activity(row["repository"], float(row.get("started_at", 0))) is False:
+            # no pull request and no session branch commit since dispatch: release the repository now. The attempt is
+            # spent exactly as a stale one is, so MAX_ATTEMPTS still bounds retries; an unknown answer keeps waiting.
+            ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL", notes=NO_PR_NOTE)
+            changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL", "quiet": True})
     return changed
