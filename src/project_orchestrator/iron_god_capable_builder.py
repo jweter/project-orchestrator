@@ -25,6 +25,7 @@ import os
 import subprocess
 import time
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -34,6 +35,10 @@ DISPATCH_DIR = "capable-dispatches"
 DEFAULT_DAILY_LIMIT = 2
 MAX_ATTEMPTS = 2  # a request that two capable attempts failed needs a human decision, not a third try
 STALE_SECONDS = 12 * 3600
+# Observed sessions open their pull request within minutes (Project-Everward #343 and #348: about 2-3 minutes after
+# dispatch). A session that has produced no pull request and pushed nothing for this long is not working on the request;
+# holding the whole repository for the full STALE_SECONDS only delays the next attempt.
+QUIET_SECONDS = 3 * 3600
 ROUTINE = "portfolio_builder"
 
 
@@ -195,22 +200,59 @@ def pull_request_state(url: str) -> str | None:
     return value if out.returncode == 0 and value in {"OPEN", "MERGED", "CLOSED"} else None
 
 
+class LookupUnavailable(RuntimeError):
+    """GitHub could not be asked about a request's pull request: that is unknown, never proof that none exists."""
+
+
 def find_pull_request(repository: str, request_id: str) -> str | None:
-    """URL of a pull request titled for this request in the product repository, via the owner's gh login."""
-    out = subprocess.run(["gh", "pr", "list", "--repo", repository, "--state", "all", "--search",
-                          f"Iron God [{request_id}] in:title", "--json", "url,title", "--limit", "5"],
-                         capture_output=True, text=True, check=False, timeout=60)
-    if out.returncode != 0:
-        return None
-    for row in json.loads(out.stdout or "[]"):
+    """URL of a pull request titled for this request in the product repository, via the owner's gh login.
+
+    None means GitHub answered and no such pull request exists; ``LookupUnavailable`` means it could not be asked.
+    """
+    try:
+        out = subprocess.run(["gh", "pr", "list", "--repo", repository, "--state", "all", "--search",
+                              f"Iron God [{request_id}] in:title", "--json", "url,title", "--limit", "5"],
+                             capture_output=True, text=True, check=False, timeout=60)
+        rows = json.loads(out.stdout or "[]") if out.returncode == 0 else None
+    except (subprocess.SubprocessError, OSError, ValueError) as exc:
+        raise LookupUnavailable(type(exc).__name__) from exc
+    if rows is None:
+        raise LookupUnavailable(f"gh exit {out.returncode}")
+    for row in rows:
         if str(row.get("title", "")).startswith(f"Iron God [{request_id}]"):
             return str(row["url"])
     return None
 
 
+def session_activity_since(repository: str, since: float) -> bool | None:
+    """Whether any ``claude/*`` session branch in the repository has a commit at or after ``since``.
+
+    True/False when GitHub answered, None when it could not be asked: an unknown is never evidence of abandonment.
+    """
+    refs = subprocess.run(["gh", "api", f"repos/{repository}/git/matching-refs/heads/claude/", "--jq", ".[].ref"],
+                          capture_output=True, text=True, check=False, timeout=60)
+    if refs.returncode != 0:
+        return None
+    cutoff = datetime.fromtimestamp(since, tz=timezone.utc)
+    for ref in refs.stdout.split():
+        branch = ref.removeprefix("refs/heads/")
+        out = subprocess.run(["gh", "api", f"repos/{repository}/commits/{branch}", "--jq", ".commit.committer.date"],
+                             capture_output=True, text=True, check=False, timeout=60)
+        if out.returncode != 0:
+            return None
+        try:
+            when = datetime.fromisoformat(out.stdout.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if when >= cutoff:
+            return True
+    return False
+
+
 def reconcile(lane_root: Path, *, now: float | None = None,
               lookup: Callable[[str, str], str | None] = find_pull_request,
-              state_of: Callable[[str], str | None] = pull_request_state) -> list[dict[str, Any]]:
+              state_of: Callable[[str], str | None] = pull_request_state,
+              activity: Callable[[str, float], bool | None] = session_activity_since) -> list[dict[str, Any]]:
     """Fold observed outcomes into the existing measurement ledger; returns what changed.
 
     Also follows each observed pull request to its end (OPEN -> MERGED or CLOSED) so delivery stays pending while it
@@ -231,7 +273,10 @@ def reconcile(lane_root: Path, *, now: float | None = None,
         if row.get("status") != "DISPATCHED":
             continue
         request_id = str(row.get("task_key", "")).split("#a")[0]
-        url = lookup(row["repository"], request_id)
+        try:
+            url = lookup(row["repository"], request_id)
+        except LookupUnavailable:
+            continue  # unknown is not absent: keep the dispatch until GitHub can answer (never infer missing state)
         if url:
             ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="PRODUCT_PR", pr_url=url,
                                   product_advancement=True, notes="pull request observed on GitHub")
@@ -240,4 +285,9 @@ def reconcile(lane_root: Path, *, now: float | None = None,
             ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL",
                                   notes=NO_PR_NOTE)
             changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL"})
+        elif now - float(row.get("started_at", 0)) >= QUIET_SECONDS and                 activity(row["repository"], float(row.get("started_at", 0))) is False:
+            # no pull request and no session branch commit since dispatch: release the repository now. The attempt is
+            # spent exactly as a stale one is, so MAX_ATTEMPTS still bounds retries; an unknown answer keeps waiting.
+            ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL", notes=NO_PR_NOTE)
+            changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL", "quiet": True})
     return changed

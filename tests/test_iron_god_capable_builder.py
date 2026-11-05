@@ -182,14 +182,37 @@ def test_pull_request_lookup_only_accepts_a_title_that_names_the_request(monkeyp
     assert cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1") == "https://x/pull/2"
 
 
-def test_a_failing_lookup_is_not_a_pull_request(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_failing_lookup_is_unknown_not_a_missing_pull_request(monkeypatch: pytest.MonkeyPatch) -> None:
     class Failed:
         returncode = 1
         stdout = ""
 
     monkeypatch.setattr(cb.subprocess, "run", lambda *a, **k: Failed())
 
-    assert cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1") is None
+    with pytest.raises(cb.LookupUnavailable):
+        cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1")
+
+    class Empty:
+        returncode = 0
+        stdout = "[]"
+
+    monkeypatch.setattr(cb.subprocess, "run", lambda *a, **k: Empty())
+    assert cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1") is None  # answered: there is none
+
+
+def test_an_unavailable_lookup_never_fails_a_dispatch_on_either_path(tmp_path: Path, configured: None) -> None:
+    """Review P1 on #636: a failed PR query plus an empty branch probe must not record FAIL (the PR may exist)."""
+    go(tmp_path, Opener())
+
+    def unavailable(_repo: str, _ident: str) -> str | None:
+        raise cb.LookupUnavailable("down")
+
+    for age in (cb.QUIET_SECONDS + 60, cb.STALE_SECONDS + 60):
+        assert cb.reconcile(tmp_path, now=NOW + age, lookup=unavailable, activity=_quiet_probe(False)) == []
+    assert cb._rows(cb.dispatch_state(tmp_path))[0]["status"] == "DISPATCHED"
+    found = cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 120, lookup=lambda r, _i: f"https://github.com/{r}/pull/7",
+                         state_of=lambda _u: "MERGED", activity=_quiet_probe(False))
+    assert found[0]["outcome"] == "PRODUCT_PR"  # once GitHub answers, the delivery is still recognised
 
 
 def test_the_adapter_never_touches_the_owner_controls_or_merges() -> None:
@@ -336,3 +359,89 @@ def test_the_evidence_pull_request_targets_the_repositorys_declared_graph_path()
     prompt = cb.render_prompt(declared)
     assert "changes only docs/roadmap/graph.json" in prompt and "changes only engineering/capability-graph.json" not in prompt
     assert "changes only engineering/capability-graph.json" in cb.render_prompt(request())  # the conventional default
+
+
+# --- a session that went quiet releases the repository early, without weakening the attempt cap ----------------------
+
+
+def _quiet_probe(answer):
+    calls: list[tuple[str, float]] = []
+
+    def probe(repository: str, since: float):
+        calls.append((repository, since))
+        return answer
+
+    probe.calls = calls  # type: ignore[attr-defined]
+    return probe
+
+
+def test_a_quiet_session_releases_its_repository_after_the_quiet_window_not_after_twelve_hours(
+        tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener())
+    probe = _quiet_probe(False)  # no pull request and no session branch commit since dispatch
+
+    assert cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS - 1, lookup=lambda _r, _i: None, activity=probe) == []
+    assert probe.calls == []  # inside the window GitHub is not even asked
+    changed = cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 1, lookup=lambda _r, _i: None, activity=probe)
+
+    assert changed == [{"dispatch_id": changed[0]["dispatch_id"], "id": "RM-demo-1", "outcome": "FAIL", "quiet": True}]
+    assert cb.QUIET_SECONDS < cb.STALE_SECONDS
+    row = cb._rows(cb.dispatch_state(tmp_path))[0]
+    assert row["status"] == "FAIL" and row["notes"] == cb.NO_PR_NOTE
+    assert cb.no_pr_attempts(cb.dispatch_state(tmp_path), "RM-demo-1") == 1  # the retry prompt still names it
+
+
+def test_a_session_with_branch_activity_or_an_unknown_answer_is_never_released_early(
+        tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener())
+    for answer in (True, None):  # a live session pushed work / GitHub could not be asked
+        assert cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 60, lookup=lambda _r, _i: None,
+                            activity=_quiet_probe(answer)) == []
+    assert cb._rows(cb.dispatch_state(tmp_path))[0]["status"] == "DISPATCHED"
+    other = go(tmp_path, Opener(), request("RM-other", "jweter/VoiceStudio"), now=NOW + cb.QUIET_SECONDS + 60)
+    assert other["dispatched"] is False and other["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"  # still holding the repository
+
+
+def test_a_pull_request_found_late_wins_over_the_quiet_rule(tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener())
+    probe = _quiet_probe(False)
+
+    changed = cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 60, lookup=lambda repo, _i: f"https://github.com/{repo}/pull/5",
+                           state_of=lambda _u: "OPEN", activity=probe)
+
+    assert changed[0]["outcome"] == "PRODUCT_PR" and probe.calls == []
+
+
+def test_quiet_release_spends_the_attempt_so_the_cap_still_ends_retries(tmp_path: Path, configured: None) -> None:
+    opener = Opener()
+    moment = NOW
+    for attempt in range(cb.MAX_ATTEMPTS):
+        assert go(tmp_path, opener, now=moment, daily_limit=10)["task_key"] == f"RM-demo-1#a{attempt}"
+        moment += cb.QUIET_SECONDS + 1
+        cb.reconcile(tmp_path, now=moment, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
+
+    assert go(tmp_path, opener, now=moment, daily_limit=10)["reason"] == "ATTEMPTS_EXHAUSTED"
+    assert len(opener.fired) == cb.MAX_ATTEMPTS
+
+
+def test_session_activity_probe_reads_session_branches_and_fails_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    since = 1_800_000_000.0
+    stamp = lambda delta: __import__("datetime").datetime.fromtimestamp(since + delta, tz=__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+
+    def runner(dates, refs_ok=True):
+        class Done:
+            def __init__(self, out, code=0):
+                self.stdout, self.returncode = out, code
+
+        def run(argv, **_kw):
+            if "matching-refs" in argv[2]:
+                return Done("refs/heads/claude/a\nrefs/heads/claude/b\n" if refs_ok else "", 0 if refs_ok else 1)
+            return Done(dates[argv[2].rsplit("claude/", 1)[1]] + "\n")
+        return run
+
+    monkeypatch.setattr(cb.subprocess, "run", runner({"a": stamp(-86400), "b": stamp(-600)}))
+    assert cb.session_activity_since("o/r", since) is False  # only older session branches
+    monkeypatch.setattr(cb.subprocess, "run", runner({"a": stamp(-86400), "b": stamp(5)}))
+    assert cb.session_activity_since("o/r", since) is True
+    monkeypatch.setattr(cb.subprocess, "run", runner({}, refs_ok=False))
+    assert cb.session_activity_since("o/r", since) is None  # GitHub unreachable is unknown, not abandoned
