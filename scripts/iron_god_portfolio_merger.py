@@ -28,7 +28,13 @@ def run(state_root: Path | None, dry_run: bool) -> tuple[int, dict]:
         status = owner_control_status(state_root)
         if status != "AUTHORIZED":
             return 2, {"status": status, "acted": False}
-    rows = portfolio_merger.cycle(state_root or Path("."), dry_run=dry_run)
+    def guard() -> str | None:  # re-checked before every promotion and merge, like the controller's per-command veto
+        if dry_run or state_root is None:
+            return None
+        status = owner_control_status(state_root)
+        return None if status == "AUTHORIZED" else status
+
+    rows = portfolio_merger.cycle(state_root or Path("."), dry_run=dry_run, guard=guard)
     failed = [r for r in rows if r.get("decision") in {"REPOSITORY_QUERY_FAILED", "PR_PROCESSING_FAILED", "MERGE_FAILED"}]
     return (1 if failed else 0), {"status": "DRY_RUN" if dry_run else "RECONCILED", "acted": not dry_run, "rows": rows}
 

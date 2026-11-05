@@ -521,3 +521,69 @@ def test_a_new_slice_inherits_the_fences_the_graph_already_declares_not_engine_w
     assert pm.graph_change_problems(base, inheriting) == []
     dropping = graph([slice_row(forbidden_paths=fences), slice_row("s2", forbidden_paths=fences[:1])])
     assert any(p.startswith("NEW_SLICE_FORBIDDEN_NOT_INHERITED") for p in pm.graph_change_problems(base, dropping))
+
+
+# ---- review findings: renames, owner veto per mutation, capability dependencies ---------------------------------------
+
+
+def rename(old: str, new: str) -> dict:
+    return {**file_row(new, patch=None, status="renamed", add=0, dele=0), "previous_filename": old}
+
+
+@pytest.mark.parametrize("old, new, fragment", [
+    (".github/workflows/ci.yml", "pkg/config.txt", "SECURITY_SENSITIVE_PATH:.github/workflows/ci.yml"),
+    ("docs/outside.md", "pkg/inside.md", "OUT_OF_SCOPE_PATHS:docs/outside.md"),
+    ("pkg/pyproject.toml", "pkg/renamed.txt", "DEPENDENCY_CHANGE_NEEDS_OWNER:pkg/pyproject.toml"),
+    ("tests/test_cache.py", "pkg/cache_notes.py", "TEST_FILE_DELETED:tests/test_cache.py"),
+])
+def test_a_rename_is_authorized_and_checked_on_both_its_old_and_new_path(old: str, new: str, fragment: str) -> None:
+    result = verdict(files=[file_row("pkg/cache.py"), rename(old, new)])
+    assert result.action == pm.ESCALATE and any(fragment in r for r in result.reasons), result
+
+
+def test_a_rename_inside_the_scope_is_fine_and_changes_the_diff_digest() -> None:
+    inside = rename("pkg/old.py", "pkg/new.py")
+    assert verdict(files=[inside]).action == pm.MERGE
+    assert pm.diff_digest([inside]) != pm.diff_digest([{**inside, "previous_filename": "pkg/other.py"}])
+
+
+def test_the_github_port_keeps_the_previous_filename_of_a_rename(monkeypatch) -> None:
+    page = [{"filename": "pkg/config.txt", "previous_filename": ".github/workflows/ci.yml", "status": "renamed",
+             "additions": 0, "deletions": 0}]
+    monkeypatch.setattr(pm.subprocess, "run", lambda cmd, **k: subprocess.CompletedProcess(cmd, 0, json.dumps([page]), ""))
+    (row,) = pm.GhPort().files(REPO, 7)
+    assert row["previous_filename"] == ".github/workflows/ci.yml" and row["path"] == "pkg/config.txt"
+
+
+def test_owner_control_taken_back_mid_pass_stops_every_later_mutation(tmp_path: Path) -> None:
+    port = FakePort()
+    port.pulls[REPO] = [FakePort.summary(isDraft=True), FakePort.summary(number=8, isDraft=True)]
+    seen: list[str] = []
+
+    def guard() -> str | None:
+        seen.append("call")
+        return None if len(seen) <= 3 else "OWNER_CONTROL_ACTIVE"  # revoked after the first pull request was handled
+
+    rows = pm.cycle(tmp_path, repositories=(REPO,), port=port, clock=lambda: NOW, guard=guard)
+    assert sum(1 for c in port.calls if c[0] == "ready") == 1
+    assert rows[-1]["decision"] == "OWNER_CONTROL_ACTIVE" and rows[-1]["merged"] is False
+
+
+def test_owner_control_taken_back_during_the_reread_prevents_the_merge(tmp_path: Path) -> None:
+    port = FakePort()
+    calls = {"n": 0}
+
+    def guard() -> str | None:
+        calls["n"] += 1
+        return None if calls["n"] <= 2 else "OWNER_CONTROL_ACTIVE"  # allowed before the pass and before the re-read
+
+    (row,) = pm.cycle(tmp_path, repositories=(REPO,), port=port, clock=lambda: NOW, guard=guard)
+    assert row["decision"] == "OWNER_CONTROL_ACTIVE" and not any(c[0] == "merge" for c in port.calls)
+
+
+def test_changing_an_existing_capability_prerequisites_is_not_a_purely_additive_graph_edit() -> None:
+    base = graph()
+    head = copy.deepcopy(base)
+    head["capabilities"][0]["depends_on"] = ["something-else"]
+    assert "CAPABILITY_DEPENDENCIES_EDITED:cap-cache" in pm.graph_change_problems(base, head)
+    assert planning(head).action == pm.REFUSE

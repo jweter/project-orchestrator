@@ -63,6 +63,7 @@ PREFLIGHT_CHECK = re.compile(r"(?i)canonical[ -]preflight|full-preflight")
 TAG = re.compile(r"^Iron God \[(RM-[A-Za-z0-9._-]+)\]")
 SUFFIX = re.compile(r"-(?:r\d+|t\d+|cap)$")
 PLAN_SUFFIX = re.compile(r"^[0-9a-f]{8}$")
+TEST_PATH = re.compile(r"(^|/)(tests?|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.test\.\w+$")
 
 # Never authorized by a roadmap slice: they change how the engine, the repository or its secrets are governed.
 PROTECTED_PATHS = (
@@ -168,6 +169,8 @@ def graph_change_problems(base: dict[str, Any], head: dict[str, Any]) -> list[st
         if new is None:
             problems.append(f"CAPABILITY_REMOVED:{cap_id}")
             continue
+        if cap.get("depends_on") != new.get("depends_on"):
+            problems.append(f"CAPABILITY_DEPENDENCIES_EDITED:{cap_id}")  # changes which work becomes eligible
         old_ev, new_ev = _strings(cap.get("completion_evidence")), _strings(new.get("completion_evidence"))
         if new_ev[:len(old_ev)] != old_ev:
             problems.append(f"EVIDENCE_REWRITTEN:{cap_id}")
@@ -229,16 +232,20 @@ def diff_problems(files: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     added_total = 0
     for row in files:
         path = str(row.get("path") or "")
+        previous = str(row.get("previous_filename") or "")
         status = str(row.get("status") or "")
         added, deleted = int(row.get("additions") or 0), int(row.get("deletions") or 0)
         added_total += added
         patch = row.get("patch")
-        if _any_match(path, PROTECTED_PATHS):
-            escalate.append(f"SECURITY_SENSITIVE_PATH:{path}")
-        if _any_match(path, DEPENDENCY_FILES):
-            escalate.append(f"DEPENDENCY_CHANGE_NEEDS_OWNER:{path}")
-        if status == "removed" and re.search(r"(^|/)(tests?|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.test\.\w+$", path):
+        for touched in sorted({path, previous} - {""}):  # a rename touches both its old and its new path
+            if _any_match(touched, PROTECTED_PATHS):
+                escalate.append(f"SECURITY_SENSITIVE_PATH:{touched}")
+            if _any_match(touched, DEPENDENCY_FILES):
+                escalate.append(f"DEPENDENCY_CHANGE_NEEDS_OWNER:{touched}")
+        if status == "removed" and TEST_PATH.search(path):
             escalate.append(f"TEST_FILE_DELETED:{path}")
+        if previous and TEST_PATH.search(previous) and not TEST_PATH.search(path):
+            escalate.append(f"TEST_FILE_DELETED:{previous}")  # moved out of the tests: no longer a test
         if (added + deleted) > 0 and not isinstance(patch, str):
             escalate.append(f"DIFF_UNAVAILABLE:{path}")
             continue
@@ -254,7 +261,8 @@ def diff_problems(files: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
 def diff_digest(files: list[dict[str, Any]]) -> str:
     digest = hashlib.sha256()
     for row in sorted(files, key=lambda r: str(r.get("path"))):
-        digest.update(json.dumps([row.get("path"), row.get("status"), row.get("patch")], sort_keys=True).encode())
+        digest.update(json.dumps([row.get("path"), row.get("previous_filename"), row.get("status"),
+                                  row.get("patch")], sort_keys=True).encode())
     return digest.hexdigest()
 
 
@@ -313,7 +321,8 @@ def evaluate(facts: dict[str, Any], *, now: datetime) -> Verdict:
         base_graph = None
         escalate.append("AUTHORITY_GRAPH_INVALID")
     files = facts.get("files") or []
-    paths = [str(row.get("path")) for row in files]
+    paths = sorted({str(row.get("path")) for row in files}
+                   | {str(row["previous_filename"]) for row in files if row.get("previous_filename")})
     if base_graph is None:
         if "AUTHORITY_GRAPH_INVALID" not in escalate:
             escalate.append("AUTHORITY_GRAPH_UNAVAILABLE")
@@ -429,8 +438,8 @@ class GhPort:
 
     def files(self, repo: str, number: int) -> list[dict[str, Any]]:
         rows = self._paged(f"repos/{repo}/pulls/{number}/files?per_page=100")
-        return [{"path": r.get("filename"), "status": r.get("status"), "additions": r.get("additions"),
-                 "deletions": r.get("deletions"), "patch": r.get("patch")} for r in rows]
+        return [{"path": r.get("filename"), "previous_filename": r.get("previous_filename"), "status": r.get("status"),
+                 "additions": r.get("additions"), "deletions": r.get("deletions"), "patch": r.get("patch")} for r in rows]
 
     def file_text(self, repo: str, path: str, ref: str) -> str | None:
         return self._gh(["api", "-H", "Accept: application/vnd.github.raw", f"repos/{repo}/contents/{path}?ref={ref}"],
@@ -570,8 +579,11 @@ def _advise(advisor: Advisor | None, facts: dict[str, Any], verdict: Verdict) ->
     return verdict, opinion if isinstance(opinion, dict) else None
 
 
+Guard = Callable[[], "str | None"]  # None while the engine may still act; otherwise the reason it may not
+
+
 def process(port: Port, ledger: Ledger | None, repo: str, summary: dict[str, Any], *, clock: Callable[[], datetime],
-            advisor: Advisor | None, dry_run: bool) -> dict[str, Any]:
+            advisor: Advisor | None, dry_run: bool, guard: Guard | None = None) -> dict[str, Any]:
     facts = gather(port, repo, summary)
     verdict, opinion = _advise(advisor, facts, evaluate(facts, now=clock()))
     row: dict[str, Any] = {"repository": repo, "pr": facts["number"], "head": facts["head"], "decision": verdict.action,
@@ -582,6 +594,9 @@ def process(port: Port, ledger: Ledger | None, repo: str, summary: dict[str, Any
     if dry_run or verdict.action not in {MERGE, PROMOTE}:
         if ledger is not None and not dry_run and verdict.action in {REFUSE, ESCALATE}:
             ledger.record(_entry(facts, verdict, verdict.action, **extra))
+        return row
+    if guard is not None and (vetoed := guard()):
+        row["decision"] = vetoed
         return row
     if verdict.action == PROMOTE:
         try:
@@ -602,6 +617,9 @@ def process(port: Port, ledger: Ledger | None, repo: str, summary: dict[str, Any
         row["decision"] = "HEAD_CHANGED_BEFORE_MERGE"
         return row
     second, _ = _advise(advisor, again, evaluate(again, now=clock()))
+    if guard is not None and (vetoed := guard()):  # owner control may have changed during the re-read
+        row["decision"] = vetoed
+        return row
     if second.action != MERGE:
         row.update(decision=second.action, reasons=list(second.reasons))
         if ledger is not None and second.action in {REFUSE, ESCALATE}:
@@ -627,7 +645,7 @@ def process(port: Port, ledger: Ledger | None, repo: str, summary: dict[str, Any
 
 def cycle(state_root: Path, *, repositories: tuple[str, ...] = PORTFOLIO_REPOS, port: Port | None = None,
           advisor: Advisor | None = None, dry_run: bool = False,
-          clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> list[dict[str, Any]]:
+          clock: Callable[[], datetime] = lambda: datetime.now(UTC), guard: Guard | None = None) -> list[dict[str, Any]]:
     """One pass over the authorized repositories. Rows are compatible with green_pr_watch_loop's receipts."""
     port = port or GhPort()
     ledger = None if dry_run else Ledger(state_root)
@@ -640,8 +658,12 @@ def cycle(state_root: Path, *, repositories: tuple[str, ...] = PORTFOLIO_REPOS, 
                          "error_class": type(exc).__name__})
             continue
         for summary in summaries[:MAX_PULLS_PER_REPOSITORY]:
+            if guard is not None and (vetoed := guard()):
+                rows.append({"repository": repo, "decision": vetoed, "merged": False})
+                return rows
             try:
-                rows.append(process(port, ledger, repo, summary, clock=clock, advisor=advisor, dry_run=dry_run))
+                rows.append(process(port, ledger, repo, summary, clock=clock, advisor=advisor, dry_run=dry_run,
+                                    guard=guard))
             except Exception as exc:  # one broken pull request never stops the others, and is itself recorded
                 rows.append({"repository": repo, "pr": summary.get("number"), "head": summary.get("headRefOid"),
                              "decision": "PR_PROCESSING_FAILED", "merged": False, "error_class": type(exc).__name__})
