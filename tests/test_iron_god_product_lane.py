@@ -1967,9 +1967,16 @@ def test_the_whole_roadmap_loop_runs_across_repositories_continues_after_a_merge
         result.write_text(json.dumps({"ok": True, "head": head, "output_tail": "28 passed"}), encoding="utf-8")
         return 4343
 
+    def fake_decompose_launch(release_repo, release_sha, request_file, clone, base, result, log_path):
+        # the Level 3 repository gets a local planning attempt once nothing else needs the model; no model is installed here
+        result.parent.mkdir(parents=True, exist_ok=True)
+        result.write_text(json.dumps({"ok": False, "reason": "MODEL_UNAVAILABLE: ConnectionRefusedError"}), encoding="utf-8")
+        return 4244
+
     published, pr_state = [], {"value": "OPEN"}
     original = progress_mod.record_progress
     monkeypatch.setattr(pl, "spawn_draft_author", fake_draft_launch)
+    monkeypatch.setattr(pl, "spawn_decompose_author", fake_decompose_launch)
     monkeypatch.setattr(pl, "spawn_progress_preflight", fake_preflight_launch)
     monkeypatch.setattr(progress_mod, "record_progress", functools.partial(
         original, publisher=lambda repo, branch, title, body: published.append((repo, branch, title, body)) or
