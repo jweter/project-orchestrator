@@ -200,14 +200,25 @@ def pull_request_state(url: str) -> str | None:
     return value if out.returncode == 0 and value in {"OPEN", "MERGED", "CLOSED"} else None
 
 
+class LookupUnavailable(RuntimeError):
+    """GitHub could not be asked about a request's pull request: that is unknown, never proof that none exists."""
+
+
 def find_pull_request(repository: str, request_id: str) -> str | None:
-    """URL of a pull request titled for this request in the product repository, via the owner's gh login."""
-    out = subprocess.run(["gh", "pr", "list", "--repo", repository, "--state", "all", "--search",
-                          f"Iron God [{request_id}] in:title", "--json", "url,title", "--limit", "5"],
-                         capture_output=True, text=True, check=False, timeout=60)
-    if out.returncode != 0:
-        return None
-    for row in json.loads(out.stdout or "[]"):
+    """URL of a pull request titled for this request in the product repository, via the owner's gh login.
+
+    None means GitHub answered and no such pull request exists; ``LookupUnavailable`` means it could not be asked.
+    """
+    try:
+        out = subprocess.run(["gh", "pr", "list", "--repo", repository, "--state", "all", "--search",
+                              f"Iron God [{request_id}] in:title", "--json", "url,title", "--limit", "5"],
+                             capture_output=True, text=True, check=False, timeout=60)
+        rows = json.loads(out.stdout or "[]") if out.returncode == 0 else None
+    except (subprocess.SubprocessError, OSError, ValueError) as exc:
+        raise LookupUnavailable(type(exc).__name__) from exc
+    if rows is None:
+        raise LookupUnavailable(f"gh exit {out.returncode}")
+    for row in rows:
         if str(row.get("title", "")).startswith(f"Iron God [{request_id}]"):
             return str(row["url"])
     return None
@@ -262,7 +273,10 @@ def reconcile(lane_root: Path, *, now: float | None = None,
         if row.get("status") != "DISPATCHED":
             continue
         request_id = str(row.get("task_key", "")).split("#a")[0]
-        url = lookup(row["repository"], request_id)
+        try:
+            url = lookup(row["repository"], request_id)
+        except LookupUnavailable:
+            continue  # unknown is not absent: keep the dispatch until GitHub can answer (never infer missing state)
         if url:
             ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="PRODUCT_PR", pr_url=url,
                                   product_advancement=True, notes="pull request observed on GitHub")

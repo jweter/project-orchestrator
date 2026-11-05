@@ -182,14 +182,37 @@ def test_pull_request_lookup_only_accepts_a_title_that_names_the_request(monkeyp
     assert cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1") == "https://x/pull/2"
 
 
-def test_a_failing_lookup_is_not_a_pull_request(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_failing_lookup_is_unknown_not_a_missing_pull_request(monkeypatch: pytest.MonkeyPatch) -> None:
     class Failed:
         returncode = 1
         stdout = ""
 
     monkeypatch.setattr(cb.subprocess, "run", lambda *a, **k: Failed())
 
-    assert cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1") is None
+    with pytest.raises(cb.LookupUnavailable):
+        cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1")
+
+    class Empty:
+        returncode = 0
+        stdout = "[]"
+
+    monkeypatch.setattr(cb.subprocess, "run", lambda *a, **k: Empty())
+    assert cb.find_pull_request("jweter/VoiceStudio", "RM-demo-1") is None  # answered: there is none
+
+
+def test_an_unavailable_lookup_never_fails_a_dispatch_on_either_path(tmp_path: Path, configured: None) -> None:
+    """Review P1 on #636: a failed PR query plus an empty branch probe must not record FAIL (the PR may exist)."""
+    go(tmp_path, Opener())
+
+    def unavailable(_repo: str, _ident: str) -> str | None:
+        raise cb.LookupUnavailable("down")
+
+    for age in (cb.QUIET_SECONDS + 60, cb.STALE_SECONDS + 60):
+        assert cb.reconcile(tmp_path, now=NOW + age, lookup=unavailable, activity=_quiet_probe(False)) == []
+    assert cb._rows(cb.dispatch_state(tmp_path))[0]["status"] == "DISPATCHED"
+    found = cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 120, lookup=lambda r, _i: f"https://github.com/{r}/pull/7",
+                         state_of=lambda _u: "MERGED", activity=_quiet_probe(False))
+    assert found[0]["outcome"] == "PRODUCT_PR"  # once GitHub answers, the delivery is still recognised
 
 
 def test_the_adapter_never_touches_the_owner_controls_or_merges() -> None:
