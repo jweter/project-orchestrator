@@ -631,13 +631,19 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
     source = ""
     payload: dict[str, Any] | None = None
     try:
+        from . import iron_god_task_decomposer as decomposer  # local import: the decomposer builds on this module
+
+        decomposer.settle(lane_root, items, state)
         control_plane = json.loads(show(repository, head, "engineering/control-plane.json"))
         compiled = compile_capability_authority(state_root, repository, head, control_plane, read_authoritative_file=show)
         source = compiled["graph"]["authority"]["source"]
         payload = compiled["graph"]
         derived = derive(repository, head, compiled["graph"], source, items=items, state=state,
-                         external_pending=frozenset(capable_builder.open_request_ids(lane_root)),
-                         external_done=frozenset(capable_builder.merged_request_ids(lane_root)))
+                         external_pending=frozenset(capable_builder.open_request_ids(lane_root))
+                         | decomposer.active_parent_ids(lane_root),
+                         external_done=frozenset(capable_builder.merged_request_ids(lane_root))
+                         | decomposer.done_parent_ids(lane_root))
+        derived["requests"].extend(decomposer.child_requests(lane_root, repository, head, items, state))
     except (CapabilityAuthorityError, ValueError, OSError, subprocess.SubprocessError) as exc:
         reason = str(exc)[:300] or type(exc).__name__
         derived = {"requests": [], "skipped": [], "direction_required": [{

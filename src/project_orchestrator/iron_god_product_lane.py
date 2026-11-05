@@ -46,6 +46,7 @@ from typing import Any, Callable
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_local_drafter as local_drafter
+from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
@@ -1017,9 +1018,18 @@ def repository_unsupported(clone: Path, head: str) -> str | None:
     return None if roots and python_packages(clone, head, roots) else "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"
 
 
-def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any], capable: dict[str, Any]) -> None:
-    """Dispatch CAPABLE-routed requests within budget and record every outcome; failures never stop the rotation."""
+def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any], capable: dict[str, Any],
+                            hold_for_local: bool = False) -> None:
+    """Dispatch CAPABLE-routed requests within budget and record every outcome; failures never stop the rotation.
+
+    With the local builder on, a slice that has not yet been tried locally waits for its local decomposition first.
+    """
     for request in report.get("capable_requests", []):
+        if hold_for_local and task_decomposer.decomposable(request) and not task_decomposer.plan_path(
+                lane.root, request["id"]).is_file():
+            roadmap_refill.log_event(lane.root, "CAPABLE_HELD_FOR_LOCAL_DECOMPOSITION", name, request["id"],
+                                     {"reason": "the local builder tries to decompose this slice first"})
+            continue
         try:
             result = capable_builder.dispatch_request(request, lane_root=lane.root, enabled=capable["enabled"],
                                                       daily_limit=capable["daily_limit"])
@@ -1079,12 +1089,50 @@ def draft_with_local_builder(lane: ProductLane, name: str, report: dict[str, Any
     log_draft_outcomes(lane, name, outcomes)
 
 
-def log_draft_outcomes(lane: ProductLane, name: str | None, outcomes: list[dict[str, Any]]) -> None:
+def decompose_with_local_builder(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
+                                 release: tuple[Path, str] | None, lease_pool: Any = None) -> None:
+    """Plan (with the local model) the Level 3+ slices the local builder cannot take whole; never fatal."""
+    if release is None:
+        return
+    release_repo, release_sha = release
+
+    def reserve_model() -> str | None:
+        if lease_pool is None:
+            return None
+        try:
+            return lease_pool.acquire(WORKER_LEASE_RUNTIME, WORKER_LEASE_ID, owner_pid=os.getpid()).lease_id
+        except Exception:
+            return None
+
+    def spawn(request_file: Path, tree: Path, base: str, out: Path) -> int:
+        env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
+        flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        lane.reports.mkdir(parents=True, exist_ok=True)
+        with (lane.reports / f"decompose-{out.stem}.log").open("ab") as log:
+            return subprocess.Popen(
+                [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_decompose_author.py"), "--request",
+                 str(request_file), "--clone", str(tree), "--base", base, "--result", str(out)], cwd=str(release_repo),
+                env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, creationflags=flags).pid
+
+    try:
+        outcomes = task_decomposer.advance(
+            lane.root, report.get("capable_requests", []), clone, head, spawn=spawn,
+            may_start=(lane.active() is None and not local_drafter.drafting_in_progress(lane.root)
+                       and not roadmap_progress.verifying(lane.workspaces / "progress")),
+            reserve=reserve_model, release=(lambda lease_id: lease_pool.release(WORKER_LEASE_ID, lease_id))
+            if lease_pool is not None else None)
+    except Exception as exc:  # decomposition is best-effort; the stronger builder keeps the slice
+        outcomes = [{"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
+    log_draft_outcomes(lane, name, outcomes, prefix="LOCAL_DECOMPOSE_")
+
+
+def log_draft_outcomes(lane: ProductLane, name: str | None, outcomes: list[dict[str, Any]],
+                       prefix: str = "LOCAL_DRAFT_") -> None:
     """Ledger + working memory for draft outcomes; ``name`` None means each outcome names its own repository."""
     recent = roadmap_refill.load_store(lane.root)["ledger"][-100:]
     for outcome in outcomes:
         repository = outcome.get("repository") or name or "<portfolio>"  # a harvested job belongs to ITS repository
-        kind = "LOCAL_DRAFT_" + outcome["status"]
+        kind = prefix + outcome["status"]
         if outcome["status"] == "NEEDS_ACCEPTANCE_EXAMPLES" and any(
                 e["kind"] == kind and e["id"] == outcome["id"] and e["detail"].get("reason") == outcome.get("reason")
                 for e in recent):
@@ -1177,6 +1225,9 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
         working_memory.record(lane.state_root, failure["repository"], "ROADMAP_PROGRESS_BLOCKED",
                               detail=str(failure.get("reason", "")), outcome="BLOCKED")
     if draft_locally:  # finished draft jobs are harvested every turn, whichever repository is being refilled
+        log_draft_outcomes(lane, None, task_decomposer.harvest(
+            lane.root, release=(lambda lease_id: lease_pool.release(WORKER_LEASE_ID, lease_id))
+            if lease_pool is not None else None), prefix="LOCAL_DECOMPOSE_")
         log_draft_outcomes(lane, None, local_drafter.harvest(
             lane.root, release=(lambda lease_id: lease_pool.release(WORKER_LEASE_ID, lease_id))
             if lease_pool is not None else None))
@@ -1201,7 +1252,9 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
-        hand_to_capable_builder(lane, name, report, capable)
+        if draft_locally:
+            decompose_with_local_builder(lane, name, report, clone, head, release, lease_pool)
+        hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None)
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
         if record_progress:

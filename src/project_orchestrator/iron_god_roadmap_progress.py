@@ -63,7 +63,9 @@ def _publications_for(item_row: dict[str, Any], publications: dict[str, Any]) ->
 def completed_slices(repository: str, payload: dict[str, Any], items: list[dict[str, Any]], state: dict[str, Any],
                      publications: dict[str, Any], lane_root: Path) -> list[dict[str, Any]]:
     """Slices provably merged that the graph still shows open, each with its evidence."""
-    delivered = capable_builder.merged_request_ids(lane_root)
+    from . import iron_god_task_decomposer as decomposer
+
+    delivered = set(capable_builder.merged_request_ids(lane_root)) | set(decomposer.done_parent_ids(lane_root))
     pull_requests = {capable_builder.request_of(row): row.get("pr_url") for row in capable_builder._rows(
         capable_builder.dispatch_state(lane_root)) if row.get("pr_state") == "MERGED"}
     found = []
@@ -78,6 +80,9 @@ def completed_slices(repository: str, payload: dict[str, Any], items: list[dict[
                 continue
             outcome = state.get("items", {}).get(ident, {})
             evidence = _publications_for(outcome, publications)
+            for child in decomposer.children_of(lane_root, ident):  # a decomposed slice is proven by its subtasks' merges
+                evidence += [f"subtask {child}: {line}" for line in _publications_for(
+                    state.get("items", {}).get(child, {}), publications)]
             if not evidence and pull_requests.get(ident):
                 evidence = [f"{pull_requests[ident]} merged (capable-builder pull request)"]
             if not evidence:
