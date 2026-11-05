@@ -634,8 +634,10 @@ def child_requests(
             status_of[sub["key"]] = (base, *refill._slice_status(base, items, state))
         for sub in plan["subtasks"]:
             base, status, ident = status_of[sub["key"]]
-            if status in {"DONE", "PENDING", "EXHAUSTED"} or drafting_exhausted(lane_root, ident) or any(
-                status_of[d][1] != "DONE" for d in sub["depends_on"]
+            if (
+                status in {"DONE", "PENDING", "EXHAUSTED"}
+                or drafting_exhausted(lane_root, ident, directed=sub.get("kind") == "edit")
+                or any(status_of[d][1] != "DONE" for d in sub["depends_on"])
             ):
                 continue
             failures = (
@@ -667,13 +669,16 @@ def local_work_waiting(lane_root: Path, requests: list[dict[str, Any]]) -> bool:
     return False
 
 
-def drafting_exhausted(lane_root: Path, ident: str) -> bool:
-    """True when every local drafting attempt for this request is spent and none is running or awaiting admission."""
+def drafting_exhausted(lane_root: Path, ident: str, *, directed: bool = False) -> bool:
+    """True when every local drafting attempt is spent and none is running or awaiting admission.
+
+    A Level 2 directed edit is attempted once (the drafter stops after one), so ``directed`` lowers the limit to match."""
     rows = [r for r in drafter._jobs(lane_root) if r.get("id") == ident]
     if any(r.get("stage") == "DRAFTING" for r in rows):
         return False
     spent = sum(1 for r in rows if not drafter._interrupted(r))
-    return spent >= drafter.MAX_ATTEMPTS and drafter._draft_state(lane_root, ident) != "UNJUDGED"
+    limit = 1 if directed else drafter.MAX_ATTEMPTS
+    return spent >= limit and drafter._draft_state(lane_root, ident) != "UNJUDGED"
 
 
 def settle(
@@ -688,8 +693,13 @@ def settle(
             s["key"]: refill._slice_status(f"{plan['parent_id']}-{s['key']}", items, state)
             for s in plan["subtasks"]
         }
+        kinds = {s["key"]: s.get("kind") == "edit" for s in plan["subtasks"]}
         statuses = {
-            key: ("EXHAUSTED" if status in {"NEW", "FAILED"} and drafting_exhausted(lane_root, ident) else status)
+            key: (
+                "EXHAUSTED"
+                if status in {"NEW", "FAILED"} and drafting_exhausted(lane_root, ident, directed=kinds[key])
+                else status
+            )
             for key, (status, ident) in rows.items()
         }
         if all(v == "DONE" for v in statuses.values()):

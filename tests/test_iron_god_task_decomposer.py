@@ -973,3 +973,17 @@ def test_a_def_line_missing_only_its_colon_is_repaired_and_nothing_else_is() -> 
     detail = {**DETAIL, "slugify": {**DETAIL["slugify"], "signature": "def slugify(title: str) -> str"}}
     result = td.propose_staged(PARENT, "", staged_ask(detail=detail), exists=lambda _p: False)
     assert result["ok"] and result["plan"]["subtasks"][0]["signature"] == "def slugify(title: str) -> str:"
+
+
+def test_a_directed_edit_subtask_is_exhausted_after_its_single_attempt(tmp_path: Path) -> None:
+    lane = tmp_path / "lane"
+    plan, _ = edit_check(EDIT_PLAN)
+    td.write_plan(lane, PARENT, plan, planner="qwen2.5-coder:7b")
+    t1, t2 = PARENT["id"] + "-t1", PARENT["id"] + "-t2"
+    _draft_job(lane, t2, 0, "FAILED", "x")
+    assert td.settle(lane, [], {}) == []  # a Level 1 step still has a second attempt
+    _draft_job(lane, t1, 0, "FAILED", "TestPassesAtBase")  # the drafter never retries a directed edit
+    (change,) = td.settle(lane, [], {})
+    assert change["status"] == "BLOCKED" and "SUBTASK_EXHAUSTED: t1" in change["blocker"]
+    assert td.active_parent_ids(lane) == frozenset()
+    assert td.drafting_exhausted(lane, t1, directed=True) and not td.drafting_exhausted(lane, t1)
