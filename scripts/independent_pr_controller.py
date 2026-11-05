@@ -18,7 +18,8 @@ for _root in (str(_repo_root), str(_repo_root / 'src')):
     if _root not in sys.path:
         sys.path.insert(0, _root)
 
-from scripts import green_pr_merger, green_pr_watch_loop
+from project_orchestrator import iron_god_portfolio_merger as portfolio_merger
+from scripts import green_pr_watch_loop
 from scripts.failed_pr_accountability import cycle as failed_pr_cycle
 
 
@@ -61,7 +62,9 @@ def reconcile(repo_root: Path, state_root: Path) -> dict:
     try:
         if owner_status(state_root) != "AUTHORIZED":
             return {"status": owner_status(state_root), "acted": False}
-        decisions = green_pr_merger.cycle(False)
+        # The portfolio merger verifies authorization, diff, gates and exact head, and records evidence;
+        # the owner-control veto above still re-checks before every gh command it runs.
+        decisions = portfolio_merger.cycle(state_root, dry_run=False)
         if owner_status(state_root) != "AUTHORIZED":
             return {"status": owner_status(state_root), "acted": False}
         decisions.extend(failed_pr_cycle(repo_root, state_root))

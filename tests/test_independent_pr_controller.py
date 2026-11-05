@@ -37,6 +37,9 @@ def load_controller(monkeypatch, *, pr_cycle=None, failed_cycle=None, lock=True)
     spec = importlib.util.spec_from_file_location('controller_test_module', SOURCE)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # The controller runs the portfolio merger; tests inject its cycle (the dry_run flag is what they assert on).
+    run_cycle = pr_cycle or (lambda _: [])
+    monkeypatch.setattr(module.portfolio_merger, 'cycle', lambda _state_root, dry_run=False, **_k: run_cycle(dry_run))
     return module
 
 
