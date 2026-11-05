@@ -375,53 +375,159 @@ def _quiet_probe(answer):
     return probe
 
 
-def test_a_quiet_session_releases_its_repository_after_the_quiet_window_not_after_twelve_hours(
-        tmp_path: Path, configured: None) -> None:
-    go(tmp_path, Opener())
+def _row(tmp_path: Path) -> dict:
+    return cb._rows(cb.dispatch_state(tmp_path))[0]
+
+
+def _scoped(ident: str, paths: list[str], repository: str = "jweter/VoiceStudio") -> dict:
+    return {**request(ident, repository), "allowed_paths": paths}
+
+
+def test_a_quiet_session_is_only_suspected_stale_never_failed_or_counted(tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener(), _scoped("RM-demo-1", ["docs/**"]))
     probe = _quiet_probe(False)  # no pull request and no session branch commit since dispatch
 
     assert cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS - 1, lookup=lambda _r, _i: None, activity=probe) == []
     assert probe.calls == []  # inside the window GitHub is not even asked
     changed = cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 1, lookup=lambda _r, _i: None, activity=probe)
 
-    assert changed == [{"dispatch_id": changed[0]["dispatch_id"], "id": "RM-demo-1", "outcome": "FAIL", "quiet": True}]
-    assert cb.QUIET_SECONDS < cb.STALE_SECONDS
-    row = cb._rows(cb.dispatch_state(tmp_path))[0]
-    assert row["status"] == "FAIL" and row["notes"] == cb.NO_PR_NOTE
-    assert cb.no_pr_attempts(cb.dispatch_state(tmp_path), "RM-demo-1") == 1  # the retry prompt still names it
+    assert changed == [{"dispatch_id": _row(tmp_path)["dispatch_id"], "id": "RM-demo-1", "suspicion": cb.SUSPECTED_STALE}]
+    row = _row(tmp_path)
+    assert row["status"] == "DISPATCHED" and row["suspicion"] == cb.SUSPECTED_STALE and not row.get("confirmation")
+    assert cb.no_pr_attempts(cb.dispatch_state(tmp_path), "RM-demo-1") == 0  # no attempt spent, no failure recorded
+    assert cb.attempts_for(cb.dispatch_state(tmp_path), "RM-demo-1") == 1
+    # observing it again changes nothing (idempotent, no churn per cycle)
+    assert cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 600, lookup=lambda _r, _i: None, activity=probe) == []
 
 
-def test_a_session_with_branch_activity_or_an_unknown_answer_is_never_released_early(
+def test_a_suspected_stale_session_never_gets_a_duplicate_of_its_own_request(tmp_path: Path, configured: None) -> None:
+    opener = Opener()
+    go(tmp_path, opener, _scoped("RM-demo-1", ["docs/**"]), daily_limit=10)
+    cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 1, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
+
+    again = go(tmp_path, opener, _scoped("RM-demo-1", ["docs/**"]), now=NOW + cb.QUIET_SECONDS + 2, daily_limit=10)
+
+    assert again["dispatched"] is False and len(opener.fired) == 1
+    assert cb.open_request_ids(tmp_path, now=NOW + cb.QUIET_SECONDS + 2) == {"RM-demo-1"}  # still pending, not retried
+    assert cb.decide(_scoped("RM-demo-1", ["docs/**"]), lane_root=tmp_path, enabled=True,
+                     now=NOW + cb.QUIET_SECONDS + 2, daily_limit=10)["reason"] == "REQUEST_ALREADY_DELIVERED_OR_PENDING"
+
+
+def test_suspected_stale_blocks_overlapping_work_and_frees_only_provably_unrelated_work(
         tmp_path: Path, configured: None) -> None:
-    go(tmp_path, Opener())
-    for answer in (True, None):  # a live session pushed work / GitHub could not be asked
+    opener = Opener()
+    go(tmp_path, opener, _scoped("RM-held", ["backend/services/**", "docs/**"]), daily_limit=10)
+    later = NOW + cb.QUIET_SECONDS + 1
+
+    before = go(tmp_path, opener, _scoped("RM-unrelated", ["frontend/**"]), now=later, daily_limit=10)
+    assert before["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"  # merely quiet is not yet suspected: keep blocking
+    assert before["holders"][0]["state"] == "ACTIVE"
+
+    cb.reconcile(tmp_path, now=later, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
+    overlap = go(tmp_path, opener, _scoped("RM-overlap", ["docs/projects/x.md"]), now=later, daily_limit=10)
+    glob = go(tmp_path, opener, _scoped("RM-glob", ["**"]), now=later, daily_limit=10)
+    unscoped = go(tmp_path, opener, request("RM-unscoped"), now=later, daily_limit=10)
+    other_repo = go(tmp_path, opener, _scoped("RM-elsewhere", ["docs/**"], "jweter/Other"), now=later, daily_limit=10)
+    unrelated = go(tmp_path, opener, _scoped("RM-unrelated", ["frontend/**"]), now=later, daily_limit=10)
+
+    assert overlap["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH" and overlap["holders"][0]["state"] == cb.SUSPECTED_STALE
+    assert glob["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH" and unscoped["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"
+    assert other_repo["dispatched"] is True and unrelated["dispatched"] is True
+
+
+def test_a_legacy_row_without_a_recorded_scope_keeps_blocking_even_when_suspected(tmp_path: Path, configured: None) -> None:
+    opener = Opener()
+    go(tmp_path, opener)  # no allowed_paths on the request: the row records an empty scope
+    row = _row(tmp_path)
+    row.pop("allowed_paths", None)
+    cb._write_row(cb.dispatch_state(tmp_path), row)
+    later = NOW + cb.QUIET_SECONDS + 1
+    cb.reconcile(tmp_path, now=later, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
+
+    result = go(tmp_path, opener, _scoped("RM-new", ["frontend/**"]), now=later, daily_limit=10)
+
+    assert _row(tmp_path)["suspicion"] == cb.SUSPECTED_STALE
+    assert result["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"
+
+
+def test_activity_or_an_unknown_answer_never_marks_a_session_suspected(tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener(), _scoped("RM-demo-1", ["docs/**"]))
+    for answer in (True, None):
         assert cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 60, lookup=lambda _r, _i: None,
                             activity=_quiet_probe(answer)) == []
-    assert cb._rows(cb.dispatch_state(tmp_path))[0]["status"] == "DISPATCHED"
-    other = go(tmp_path, Opener(), request("RM-other", "jweter/VoiceStudio"), now=NOW + cb.QUIET_SECONDS + 60)
-    assert other["dispatched"] is False and other["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"  # still holding the repository
+    assert "suspicion" not in _row(tmp_path) or _row(tmp_path)["suspicion"] is None
 
 
-def test_a_pull_request_found_late_wins_over_the_quiet_rule(tmp_path: Path, configured: None) -> None:
-    go(tmp_path, Opener())
-    probe = _quiet_probe(False)
+def test_suspicion_is_withdrawn_when_the_session_shows_activity_again(tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener(), _scoped("RM-demo-1", ["docs/**"]))
+    cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 1, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
 
-    changed = cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 60, lookup=lambda repo, _i: f"https://github.com/{repo}/pull/5",
-                           state_of=lambda _u: "OPEN", activity=probe)
+    changed = cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 600, lookup=lambda _r, _i: None,
+                           activity=_quiet_probe(True))
 
-    assert changed[0]["outcome"] == "PRODUCT_PR" and probe.calls == []
+    assert changed[0]["suspicion"] is None and _row(tmp_path)["suspicion"] is None
+    assert _row(tmp_path)["status"] == "DISPATCHED"
 
 
-def test_quiet_release_spends_the_attempt_so_the_cap_still_ends_retries(tmp_path: Path, configured: None) -> None:
+def test_a_pull_request_found_after_suspicion_is_a_normal_delivery(tmp_path: Path, configured: None) -> None:
+    go(tmp_path, Opener(), _scoped("RM-demo-1", ["docs/**"]))
+    cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 1, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
+
+    changed = cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 900,
+                           lookup=lambda repo, _i: f"https://github.com/{repo}/pull/5", state_of=lambda _u: "OPEN",
+                           activity=_quiet_probe(False))
+
+    assert changed[0]["outcome"] == "PRODUCT_PR" and _row(tmp_path)["status"] == "PASS"
+
+
+def test_only_the_hard_timeout_confirms_a_failure_and_that_alone_spends_the_attempt(tmp_path: Path, configured: None) -> None:
     opener = Opener()
-    moment = NOW
-    for attempt in range(cb.MAX_ATTEMPTS):
-        assert go(tmp_path, opener, now=moment, daily_limit=10)["task_key"] == f"RM-demo-1#a{attempt}"
-        moment += cb.QUIET_SECONDS + 1
-        cb.reconcile(tmp_path, now=moment, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
+    go(tmp_path, opener, _scoped("RM-demo-1", ["docs/**"]), daily_limit=10)
+    cb.reconcile(tmp_path, now=NOW + cb.QUIET_SECONDS + 1, lookup=lambda _r, _i: None, activity=_quiet_probe(False))
 
-    assert go(tmp_path, opener, now=moment, daily_limit=10)["reason"] == "ATTEMPTS_EXHAUSTED"
-    assert len(opener.fired) == cb.MAX_ATTEMPTS
+    changed = cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 1, lookup=lambda _r, _i: None,
+                           activity=_quiet_probe(False))
+
+    row = _row(tmp_path)
+    assert changed[0]["confirmation"] == cb.CONFIRMED_FAILED
+    assert row["status"] == "FAIL" and row["confirmation"] == cb.CONFIRMED_FAILED and row["suspicion"] is None
+    assert row["notes"] == cb.NO_PR_NOTE and cb.no_pr_attempts(cb.dispatch_state(tmp_path), "RM-demo-1") == 1
+    retry = go(tmp_path, opener, _scoped("RM-demo-1", ["docs/**"]), now=NOW + cb.STALE_SECONDS + 2, daily_limit=10)
+    assert retry["task_key"] == "RM-demo-1#a1"  # the bounded retry the existing attempt cap already allowed
+
+
+def test_a_late_pull_request_after_a_confirmed_failure_is_recorded_so_the_slice_is_not_retried(
+        tmp_path: Path, configured: None) -> None:
+    opener = Opener()
+    go(tmp_path, opener, _scoped("RM-demo-1", ["docs/**"]), daily_limit=10)
+    cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 1, lookup=lambda _r, _i: None)
+    assert _row(tmp_path)["status"] == "FAIL"
+
+    assert cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 60, lookup=lambda _r, _i: None) == []  # nothing yet
+    changed = cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 120, state_of=lambda _u: "MERGED",
+                           lookup=lambda repo, _i: f"https://github.com/{repo}/pull/8")
+
+    assert changed[0]["late"] is True and _row(tmp_path)["outcome_kind"] == "PRODUCT_PR"
+    assert cb.merged_request_ids(tmp_path) == set()  # state is followed on the next pass
+    cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 180, state_of=lambda _u: "MERGED", lookup=lambda *_: None)
+    assert cb.merged_request_ids(tmp_path) == {"RM-demo-1"}
+    assert go(tmp_path, opener, _scoped("RM-demo-1", ["docs/**"]), now=NOW + cb.STALE_SECONDS + 200,
+              daily_limit=10)["reason"] == "REQUEST_ALREADY_DELIVERED_OR_PENDING"
+
+    # outside the re-check window an old failure is left alone and GitHub is not asked again
+    def must_not_ask(*_a):
+        raise AssertionError("looked up a failure older than the late-delivery window")
+    go(tmp_path, opener, _scoped("RM-old", ["docs/**"], "jweter/Old"), now=NOW, daily_limit=10)
+    cb.reconcile(tmp_path, now=NOW + cb.STALE_SECONDS + 1, lookup=lambda _r, _i: None)
+    assert cb.reconcile(tmp_path, now=NOW + cb.LATE_DELIVERY_WINDOW + 10, lookup=must_not_ask,
+                        state_of=lambda _u: "MERGED") == []
+
+
+def test_path_overlap_is_conservative() -> None:
+    assert cb.paths_overlap(["docs/**"], ["docs/projects/x.md"]) and cb.paths_overlap(["**"], ["a/b"])
+    assert cb.paths_overlap(["backend/services/**"], ["backend/**"]) and cb.paths_overlap(["a/*.md"], ["a/sub/x.py"])
+    assert not cb.paths_overlap(["docs/**"], ["frontend/**"]) and not cb.paths_overlap(["docs/a.md"], ["docs/b.md"])
+    assert not cb.paths_overlap(["src\\a/**"], ["tests/**"])
 
 
 def test_session_activity_probe_reads_session_branches_and_fails_open(monkeypatch: pytest.MonkeyPatch) -> None:

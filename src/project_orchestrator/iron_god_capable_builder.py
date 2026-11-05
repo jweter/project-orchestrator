@@ -36,14 +36,54 @@ DEFAULT_DAILY_LIMIT = 2
 MAX_ATTEMPTS = 2  # a request that two capable attempts failed needs a human decision, not a third try
 STALE_SECONDS = 12 * 3600
 # Observed sessions open their pull request within minutes (Project-Everward #343 and #348: about 2-3 minutes after
-# dispatch). A session that has produced no pull request and pushed nothing for this long is not working on the request;
-# holding the whole repository for the full STALE_SECONDS only delays the next attempt.
+# dispatch). After QUIET_SECONDS with no pull request and no session-branch commit a dispatch is only SUSPECTED_STALE:
+# silence is not proof of failure, so nothing is failed, retried or re-requested. It is CONFIRMED_FAILED only by an
+# authoritative signal; today that is the STALE_SECONDS hard timeout (a future session-status source would add another).
 QUIET_SECONDS = 3 * 3600
+SUSPECTED_STALE = "SUSPECTED_STALE"
+CONFIRMED_FAILED = "CONFIRMED_FAILED"
+LATE_DELIVERY_WINDOW = 48 * 3600  # a failed no-PR dispatch is re-checked for a late pull request this long
 ROUTINE = "portfolio_builder"
 
 
 def dispatch_state(lane_root: Path) -> Path:
     return Path(lane_root) / DISPATCH_DIR
+
+
+def _write_row(state_dir: Path, row: dict[str, Any]) -> None:
+    (state_dir / f"{row['dispatch_id']}.json").write_text(json.dumps(row, sort_keys=True, indent=2), encoding="utf-8")
+
+
+def _literal_prefix(pattern: str) -> tuple[str, ...]:
+    parts: list[str] = []
+    for part in str(pattern).replace(chr(92), "/").split("/"):
+        if any(char in part for char in "*?["):
+            break
+        if part:
+            parts.append(part)
+    return tuple(parts)
+
+
+def paths_overlap(left: list[str], right: list[str]) -> bool:
+    """Conservative: two path scopes overlap unless their literal directory prefixes provably diverge."""
+    for a in left:
+        for b in right:
+            pa, pb = _literal_prefix(a), _literal_prefix(b)
+            size = min(len(pa), len(pb))
+            if pa[:size] == pb[:size]:
+                return True
+    return False
+
+
+def releases_repository_for(row: dict[str, Any], request: dict[str, Any]) -> bool:
+    """A SUSPECTED_STALE dispatch stops blocking unrelated work, never the same request or overlapping files.
+
+    Fails closed: a row that does not record its allowed paths (older ledger rows) keeps blocking.
+    """
+    if row.get("suspicion") != SUSPECTED_STALE or request_of(row) == request.get("id"):
+        return False
+    held, wanted = row.get("allowed_paths"), request.get("allowed_paths")
+    return bool(held) and bool(wanted) and not paths_overlap(list(held), list(wanted))
 
 
 def _rows(state_dir: Path) -> list[dict[str, Any]]:
@@ -143,8 +183,11 @@ def decide(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_lim
         return {"dispatch": False, "reason": "ATTEMPTS_EXHAUSTED"}
     if request["id"] in open_request_ids(lane_root, now=now) or request["id"] in merged_request_ids(lane_root):
         return {"dispatch": False, "reason": "REQUEST_ALREADY_DELIVERED_OR_PENDING"}
-    if any(r.get("repository") == request["repository"] and r.get("status") == "DISPATCHED" for r in rows):
-        return {"dispatch": False, "reason": "REPOSITORY_HAS_OPEN_DISPATCH"}
+    holders = [r for r in rows if r.get("repository") == request["repository"] and r.get("status") == "DISPATCHED"]
+    if any(not releases_repository_for(r, request) for r in holders):
+        return {"dispatch": False, "reason": "REPOSITORY_HAS_OPEN_DISPATCH",
+                "holders": [{"dispatch_id": r["dispatch_id"], "session_url": r.get("session_url"),
+                             "state": r.get("suspicion") or "ACTIVE"} for r in holders]}
     if sum(1 for r in rows if now - float(r.get("started_at", 0)) < 24 * 3600) >= daily_limit:
         return {"dispatch": False, "reason": "DAILY_BUDGET_EXHAUSTED"}
     return {"dispatch": True, "reason": "WITHIN_BUDGET"}
@@ -164,6 +207,13 @@ def dispatch_request(request: dict[str, Any], *, lane_root: Path, enabled: bool,
     result = dispatch_if_warranted(task, state_dir, scorecard=specialist_scorecard(state_dir), opener=opener)
     if not result.get("dispatched"):
         return {"dispatched": False, "reason": "ROUTINE_DEMOTED", "detail": result.get("reason")}
+    try:  # the scope lets a later SUSPECTED_STALE state release only unrelated work; absent scope keeps blocking
+        row_path = state_dir / f"{result['dispatch_id']}.json"
+        row = json.loads(row_path.read_text(encoding="utf-8"))
+        row["allowed_paths"] = list(request.get("allowed_paths") or [])
+        _write_row(state_dir, row)
+    except (OSError, ValueError, KeyError):
+        pass
     return {"dispatched": True, "reason": "DISPATCHED", "dispatch_id": result["dispatch_id"],
             "session_id": result["session_id"], "task_key": task["task_key"]}
 
@@ -224,6 +274,22 @@ def find_pull_request(repository: str, request_id: str) -> str | None:
     return None
 
 
+def _late_delivery(state_dir: Path, row: dict[str, Any], now: float,
+                   lookup: Callable[[str, str], str | None]) -> dict[str, Any] | None:
+    """A no-PR failure whose pull request appears afterwards is a delivery: record it so the slice is not retried."""
+    if row.get("notes") != NO_PR_NOTE or row.get("pr_url") or now - float(row.get("started_at", 0)) > LATE_DELIVERY_WINDOW:
+        return None
+    try:
+        url = lookup(row["repository"], request_of(row))
+    except LookupUnavailable:
+        return None
+    if not url:
+        return None
+    ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="PRODUCT_PR", pr_url=url,
+                          product_advancement=True, notes="pull request observed on GitHub after the dispatch timed out")
+    return {"dispatch_id": row["dispatch_id"], "id": request_of(row), "outcome": "PRODUCT_PR", "pr_url": url, "late": True}
+
+
 def session_activity_since(repository: str, since: float) -> bool | None:
     """Whether any ``claude/*`` session branch in the repository has a commit at or after ``since``.
 
@@ -271,8 +337,12 @@ def reconcile(lane_root: Path, *, now: float | None = None,
                 changed.append({"dispatch_id": row["dispatch_id"], "id": request_of(row), "pr_state": observed})
             continue
         if row.get("status") != "DISPATCHED":
+            late = _late_delivery(state_dir, row, now, lookup)
+            if late:
+                changed.append(late)
             continue
-        request_id = str(row.get("task_key", "")).split("#a")[0]
+        request_id = request_of(row)
+        age = now - float(row.get("started_at", 0))
         try:
             url = lookup(row["repository"], request_id)
         except LookupUnavailable:
@@ -281,13 +351,21 @@ def reconcile(lane_root: Path, *, now: float | None = None,
             ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="PRODUCT_PR", pr_url=url,
                                   product_advancement=True, notes="pull request observed on GitHub")
             changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "PRODUCT_PR", "pr_url": url})
-        elif now - float(row.get("started_at", 0)) >= STALE_SECONDS:
-            ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL",
-                                  notes=NO_PR_NOTE)
-            changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL"})
-        elif now - float(row.get("started_at", 0)) >= QUIET_SECONDS and                 activity(row["repository"], float(row.get("started_at", 0))) is False:
-            # no pull request and no session branch commit since dispatch: release the repository now. The attempt is
-            # spent exactly as a stale one is, so MAX_ATTEMPTS still bounds retries; an unknown answer keeps waiting.
-            ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL", notes=NO_PR_NOTE)
-            changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL", "quiet": True})
+        elif age >= STALE_SECONDS:
+            done = ingest_session_result(state_dir, row["dispatch_id"], outcome_kind="FAIL", notes=NO_PR_NOTE)
+            done.update(suspicion=None, confirmation=CONFIRMED_FAILED, confirmation_basis="STALE_TIMEOUT")
+            _write_row(state_dir, done)
+            changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "outcome": "FAIL",
+                            "confirmation": CONFIRMED_FAILED})
+        elif age >= QUIET_SECONDS:
+            seen = activity(row["repository"], float(row.get("started_at", 0)))
+            if seen is False and row.get("suspicion") != SUSPECTED_STALE:
+                row.update(suspicion=SUSPECTED_STALE, suspected_at=now,
+                           suspicion_basis="no pull request and no claude/* branch commit since dispatch")
+                _write_row(state_dir, row)
+                changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "suspicion": SUSPECTED_STALE})
+            elif seen is True and row.get("suspicion") == SUSPECTED_STALE:
+                row.update(suspicion=None, suspicion_cleared_at=now)  # activity reappeared: it is alive after all
+                _write_row(state_dir, row)
+                changed.append({"dispatch_id": row["dispatch_id"], "id": request_id, "suspicion": None})
     return changed
