@@ -11,11 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 
-try:
-    from scripts.green_pr_merger import cycle
-except ModuleNotFoundError:
-    from green_pr_merger import cycle
-
+from project_orchestrator import iron_god_portfolio_merger as portfolio_merger
 from project_orchestrator.activation_capability import merge_watcher_advanced
 from project_orchestrator.kpi_telemetry import append_event, load_events
 from project_orchestrator.planning_dispatch import product_for_repository
@@ -179,7 +175,7 @@ def main() -> int:
         while True:
             started = time.time()
             try:
-                results = cycle(False)
+                results = portfolio_merger.cycle(state.parent)
                 failed_pr_results = failed_pr_accountability_cycle(Path(__file__).resolve().parents[1], state.parent)
                 results.extend(failed_pr_results)
                 error = (
