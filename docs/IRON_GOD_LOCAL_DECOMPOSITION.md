@@ -77,3 +77,14 @@ at the base. Such slices still report a residual and stay with the stronger buil
 Claude is therefore currently required at five points: graph planning, acceptance-example/test authoring for Level 1-2,
 Level 3-4 implementation, review-finding repair, and engine-defect diagnosis. This document's decomposer replaces the second
 and (partly) third; planning, review repair and diagnosis remain the next replacements, in that order of feasibility.
+
+## Slices the local builder can never take (2026-11-06)
+
+The first production run planned Everward's `first-loop-verification` (allowed paths `docs/**`, `Tests/**`, `tests/**`; a C++/Unreal repository)
+and the model needed about a minute to say "no free allowed path". Two changes follow from that evidence:
+
+* **Decided before any model call.** `local_target_missing` checks the repository at the exact base: a new module needs a directory that already
+  holds non-test Python (a C++ `Source/` does not count), or an existing non-test Python module must be in scope. Neither means the plan is
+  BLOCKED immediately (`NO_LOCAL_TARGET_IN_SCOPE`), no planning job runs, and the slice is released to the stronger builder in the same pass.
+* **Structural rejections are terminal.** A planning result that says "no free allowed path" is recorded as `DECOMPOSITION_NOT_POSSIBLE` and is
+  never retried. An ordinary model slip (for example an unparseable signature) still gets its second attempt.

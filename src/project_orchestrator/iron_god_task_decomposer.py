@@ -50,6 +50,9 @@ REQUEST_COPIES = "decompose-requests"
 MAX_SUBTASKS = 5
 MAX_DEPENDENCIES = 2
 MAX_PLAN_ATTEMPTS = 2
+# A rejection no second model sample can cure: the slice's own scope has nowhere for a local subtask to live.
+TERMINAL_MARKERS = ("no free allowed path", "NO_LOCAL_TARGET_IN_SCOPE")
+TEST_FILE = re.compile(r"(^|/)(tests?|__tests__)/|(^|/)test_[^/]+\.py$|_test\.py$")
 JOB_TIMEOUT_S = 40 * 60
 MIN_EXAMPLES = drafter.MIN_ROADMAP_EXAMPLES
 INTERRUPTED_MARK = drafter.INTERRUPTED_MARK
@@ -793,6 +796,40 @@ def _read_at(clone: Path, base: str) -> Callable[[str], str | None]:
     return read
 
 
+def _python_files_at(clone: Path, base: str) -> list[str]:
+    done = subprocess.run(
+        ["git", "-C", str(clone), "ls-tree", "-r", "--name-only", base],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    return [line for line in done.stdout.splitlines() if line.endswith(".py")] if done.returncode == 0 else []
+
+
+def local_target_missing(request: dict[str, Any], clone: Path, base: str) -> str | None:
+    """None when a local subtask could exist for this slice; otherwise the exact structural reason.
+
+    The local builder can only create a new Python module or edit an existing one, so a slice whose allowed paths hold
+    neither (documentation or tests only, or no Python at all) cannot be decomposed however the model answers. That is
+    decided here, from the repository at the exact base, before any model time is spent.
+    """
+    code = [p for p in _python_files_at(clone, base) if not TEST_FILE.search(p)]
+    candidate = module_for(request, "planning_probe", set(), _exists_at(clone, base))
+    if candidate is not None:  # a new module needs a directory that already holds Python (a C++ Source/ does not)
+        folder = candidate.rsplit("/", 1)[0] + "/" if "/" in candidate else ""
+        if any(path.startswith(folder) for path in code):
+            return None
+    allowed, forbidden = list(request["allowed_paths"]), list(request.get("forbidden_paths") or [])
+    for path in code:
+        if _under(path, allowed) and not _under(path, forbidden):
+            return None
+    return (
+        "NO_LOCAL_TARGET_IN_SCOPE: the slice's allowed paths hold no place for a new Python module and no existing "
+        "Python module to edit"
+    )
+
+
 def _exists_at(clone: Path, base: str) -> Callable[[str], bool]:
     def exists(path: str) -> bool:
         return (
@@ -939,6 +976,13 @@ def advance(
         if not decomposable(request) or plan_path(lane_root, request["id"]).is_file():
             continue
         mine = [r for r in rows if r["id"] == request["id"]]
+        terminal = next(
+            (r.get("reason") for r in mine if any(m in str(r.get("reason")) for m in TERMINAL_MARKERS)), None
+        )
+        if terminal:  # an impossible task is recorded and released, never retried
+            block(lane_root, request, f"DECOMPOSITION_NOT_POSSIBLE: {terminal}")
+            outcomes.append({"id": request["id"], "status": "BLOCKED", "reason": str(terminal)[:300]})
+            continue
         spent = sum(1 for r in mine if r.get("stage") != "INTERRUPTED")
         if len(mine) - spent >= drafter.MAX_INTERRUPTIONS:
             continue
@@ -951,6 +995,11 @@ def advance(
             outcomes.append(
                 {"id": request["id"], "status": "BLOCKED", "reason": str(last)[:300]}
             )
+            continue
+        missing = local_target_missing(request, clone, base)
+        if missing:  # decided from the repository itself: no model call, no attempt, the stronger builder is released
+            block(lane_root, request, missing)
+            outcomes.append({"id": request["id"], "status": "BLOCKED", "reason": missing})
             continue
         lease = reserve() if reserve is not None else None
         if reserve is not None and lease is None:

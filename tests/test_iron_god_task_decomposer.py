@@ -987,3 +987,49 @@ def test_a_directed_edit_subtask_is_exhausted_after_its_single_attempt(tmp_path:
     assert change["status"] == "BLOCKED" and "SUBTASK_EXHAUSTED: t1" in change["blocker"]
     assert td.active_parent_ids(lane) == frozenset()
     assert td.drafting_exhausted(lane, t1, directed=True) and not td.drafting_exhausted(lane, t1)
+
+
+# ---- a slice with nowhere for a local subtask is released at once, and structural rejections are never retried -------------
+
+
+def scoped(*allowed: str, forbidden: tuple[str, ...] = ()) -> dict:
+    return {**PARENT, "allowed_paths": list(allowed), "forbidden_paths": list(forbidden)}
+
+
+@pytest.mark.parametrize("allowed, forbidden, missing", [
+    (("docs/**", "tests/**"), (), True),                    # a verify-only slice
+    (("Source/**", "Config/**"), (), True),                 # no Python anywhere in scope
+    (("pkg/**", "tests/**"), (), False),                    # a new module can be placed (and pkg/core.py can be edited)
+    (("pkg/core.py",), (), False),                          # an existing module can be edited
+    (("pkg/core.py",), ("pkg/core.py",), True),             # ...unless it is forbidden
+    (("tests/**", "pkg/test_core.py"), (), True),           # tests are never a local target
+])
+def test_a_slice_with_no_place_for_a_local_subtask_is_detected_from_the_repository(clone: Path, allowed, forbidden, missing) -> None:
+    reason = td.local_target_missing(scoped(*allowed, forbidden=forbidden), clone, head_of(clone))
+    assert (reason is not None and reason.startswith("NO_LOCAL_TARGET_IN_SCOPE")) is missing, reason
+
+
+def test_such_a_slice_is_blocked_without_a_model_call_and_released_to_the_stronger_builder(tmp_path: Path, clone: Path) -> None:
+    lane, spawner = tmp_path / "lane", Spawner()
+    request = {**scoped("docs/**", "tests/**"), "id": refill.item_id(REPO, "cap-a", "verify")}
+    outcomes = td.advance(lane, [request], clone, head_of(clone), spawn=spawner)
+    assert spawner.launched == []                                   # no planning job, no model time
+    assert outcomes == [{"id": request["id"], "status": "BLOCKED", "reason": outcomes[0]["reason"]}]
+    plan = json.loads(td.plan_path(lane, request["id"]).read_text(encoding="utf-8"))
+    assert plan["status"] == "BLOCKED" and plan["blocker"].startswith("NO_LOCAL_TARGET_IN_SCOPE")
+    assert td.active_parent_ids(lane) == frozenset()                # the stronger builder may take it now
+
+
+def test_a_structural_rejection_is_terminal_but_an_ordinary_one_still_gets_its_second_attempt(tmp_path: Path, clone: Path) -> None:
+    base = head_of(clone)
+    structural, spawner = tmp_path / "structural", Spawner({"ok": False, "reason": "PLAN_REJECTED: no free allowed path for step"})
+    td.advance(structural, [PARENT], clone, base, spawn=spawner)
+    outcomes = td.advance(structural, [PARENT], clone, base, spawn=spawner)
+    assert len(spawner.launched) == 1                               # never retried
+    assert [o["status"] for o in outcomes] == ["FAILED", "BLOCKED"] and "no free allowed path" in outcomes[1]["reason"]
+    assert json.loads(td.plan_path(structural, PARENT["id"]).read_text(encoding="utf-8"))["blocker"].startswith(
+        "DECOMPOSITION_NOT_POSSIBLE")
+    ordinary, spawner = tmp_path / "ordinary", Spawner({"ok": False, "reason": "PLAN_REJECTED: t1: signature does not parse"})
+    td.advance(ordinary, [PARENT], clone, base, spawn=spawner)
+    td.advance(ordinary, [PARENT], clone, base, spawn=spawner)
+    assert len(spawner.launched) == 2                               # a model slip still gets another sample
