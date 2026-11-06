@@ -104,3 +104,21 @@ def test_a_dependency_bot_pull_request_is_not_applicable_to_the_gate_but_the_mer
     facts = pm.gather(port, REPO, port.pulls[REPO][0], scope_only=True)
     assert pm.scope_verdict(facts).action == pm.IGNORE
     assert pm.evaluate(facts, now=__import__("tests.test_iron_god_portfolio_merger", fromlist=["NOW"]).NOW).action == pm.ESCALATE
+
+
+def test_the_gate_asks_github_for_no_check_or_status_data_because_its_token_cannot_read_it(monkeypatch) -> None:
+    import subprocess
+
+    seen: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, json.dumps({"number": 7, "title": "x", "state": "OPEN"}), "")
+
+    monkeypatch.setattr(pm.subprocess, "run", fake_run)
+    pm.GhPort().pull_summary(REPO, 7)
+    requested = seen[-1][seen[-1].index("--json") + 1]
+    assert "statusCheckRollup" not in requested and "mergeStateStatus" not in requested and "reviewDecision" not in requested
+    assert {"number", "title", "headRefOid", "baseRefName", "author", "state"} <= set(requested.split(","))
+    pm.GhPort().list_open(REPO)  # the merger, which runs with the owner's own credentials, still reads verification data
+    assert "statusCheckRollup" in seen[-1][seen[-1].index("--json") + 1]

@@ -593,8 +593,12 @@ class GhPort:
     def merge(self, repo: str, number: int, head: str) -> None:
         self._gh(["pr", "merge", str(number), "--repo", repo, "--squash", "--match-head-commit", head])
 
+    # The scope gate runs with a read-only token that cannot read checks or commit statuses, and GitHub fails the whole
+    # request when one requested field is not permitted. It judges authorization only, so it asks for no verification data.
+    SCOPE_FIELDS = "number,title,isDraft,headRefOid,baseRefName,author,createdAt,state"
+
     def pull_summary(self, repo: str, number: int) -> dict[str, Any]:
-        return dict(json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", self.FIELDS]) or "{}"))
+        return dict(json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", self.SCOPE_FIELDS]) or "{}"))
 
     def pull_state(self, repo: str, number: int) -> str:
         info = json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", "state"]) or "{}")
