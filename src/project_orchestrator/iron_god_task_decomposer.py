@@ -36,7 +36,7 @@ import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from . import iron_god_directed_edit as directed_edit
 from . import iron_god_local_drafter as drafter
@@ -50,6 +50,9 @@ REQUEST_COPIES = "decompose-requests"
 MAX_SUBTASKS = 5
 MAX_DEPENDENCIES = 2
 MAX_PLAN_ATTEMPTS = 2
+# A rejection no second model sample can cure: the slice's own scope has nowhere for a local subtask to live.
+TERMINAL_MARKERS = ("NO_LOCAL_TARGET_IN_SCOPE",)
+TEST_FILE = re.compile(r"(^|/)(tests?|__tests__)/|(^|/)test_[^/]+\.py$|_test\.py$")
 JOB_TIMEOUT_S = 40 * 60
 MIN_EXAMPLES = drafter.MIN_ROADMAP_EXAMPLES
 INTERRUPTED_MARK = drafter.INTERRUPTED_MARK
@@ -793,6 +796,40 @@ def _read_at(clone: Path, base: str) -> Callable[[str], str | None]:
     return read
 
 
+def _python_files_at(clone: Path, base: str) -> list[str]:
+    done = subprocess.run(
+        ["git", "-C", str(clone), "ls-tree", "-r", "--name-only", base],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    return [line for line in done.stdout.splitlines() if line.endswith(".py")] if done.returncode == 0 else []
+
+
+def local_target_missing(request: dict[str, Any], clone: Path, base: str) -> str | None:
+    """None when a local subtask could exist for this slice; otherwise the exact structural reason.
+
+    The local builder can only create a new Python module or edit an existing one, so a slice whose allowed paths hold
+    neither (documentation or tests only, or no Python at all) cannot be decomposed however the model answers. That is
+    decided here, from the repository at the exact base, before any model time is spent.
+    """
+    code = [p for p in _python_files_at(clone, base) if not TEST_FILE.search(p)]
+    for candidate in module_candidates(request, "planning_probe", set(), _exists_at(clone, base)):
+        # a new module needs a directory that already holds Python (a C++ Source/ does not); any placement will do
+        folder = candidate.rsplit("/", 1)[0] + "/" if "/" in candidate else ""
+        if any(path.startswith(folder) for path in code):
+            return None
+    allowed, forbidden = list(request["allowed_paths"]), list(request.get("forbidden_paths") or [])
+    for path in code:
+        if _under(path, allowed) and not _under(path, forbidden):
+            return None
+    return (
+        "NO_LOCAL_TARGET_IN_SCOPE: the slice's allowed paths hold no place for a new Python module and no existing "
+        "Python module to edit"
+    )
+
+
 def _exists_at(clone: Path, base: str) -> Callable[[str], bool]:
     def exists(path: str) -> bool:
         return (
@@ -939,6 +976,13 @@ def advance(
         if not decomposable(request) or plan_path(lane_root, request["id"]).is_file():
             continue
         mine = [r for r in rows if r["id"] == request["id"]]
+        terminal = next(
+            (r.get("reason") for r in mine if any(m in str(r.get("reason")) for m in TERMINAL_MARKERS)), None
+        )
+        if terminal:  # an impossible task is recorded and released, never retried
+            block(lane_root, request, f"DECOMPOSITION_NOT_POSSIBLE: {terminal}")
+            outcomes.append({"id": request["id"], "status": "BLOCKED", "reason": str(terminal)[:300]})
+            continue
         spent = sum(1 for r in mine if r.get("stage") != "INTERRUPTED")
         if len(mine) - spent >= drafter.MAX_INTERRUPTIONS:
             continue
@@ -951,6 +995,11 @@ def advance(
             outcomes.append(
                 {"id": request["id"], "status": "BLOCKED", "reason": str(last)[:300]}
             )
+            continue
+        missing = local_target_missing(request, clone, base)
+        if missing:  # decided from the repository itself: no model call, no attempt, the stronger builder is released
+            block(lane_root, request, missing)
+            outcomes.append({"id": request["id"], "status": "BLOCKED", "reason": missing})
             continue
         lease = reserve() if reserve is not None else None
         if reserve is not None and lease is None:
@@ -1004,6 +1053,13 @@ NAME_OK = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
 
 def module_for(request: dict[str, Any], name: str, taken: set[str], exists: Callable[[str], bool]) -> str | None:
     """A new module path for ``name`` inside the slice's allowed code paths (never chosen by the model)."""
+    return next(module_candidates(request, name, taken, exists), None)
+
+
+def module_candidates(
+    request: dict[str, Any], name: str, taken: set[str], exists: Callable[[str], bool]
+) -> Iterator[str]:
+    """Every free path for ``name`` the slice's allowed code paths permit, in pattern order."""
     for pattern in request["allowed_paths"]:
         pattern = pattern.replace("\\", "/")
         if pattern.endswith((".md", ".json", ".yml", ".yaml", ".txt")) or "test" in pattern.lower() or pattern.startswith(("docs/", "doc/", "engineering/")):
@@ -1022,8 +1078,7 @@ def module_for(request: dict[str, Any], name: str, taken: set[str], exists: Call
             and not _under(candidate, list(request.get("forbidden_paths") or []))
             and not exists(candidate)
         ):
-            return candidate
-    return None
+            yield candidate
 
 
 def outline_prompt(request: dict[str, Any], brief: str, feedback: str = "") -> str:
@@ -1235,8 +1290,13 @@ def propose_staged(
             else:
                 path = module_for(request, str(entry["name"]), taken, exists)
                 if path is None:
-                    return {"ok": False, "reason": f"PLAN_REJECTED: no free allowed path for {entry['name']}",
-                            "trail": trail}
+                    free = module_for(request, "planning_probe", set(), exists) is not None
+                    reason = (
+                        f"PLAN_REJECTED: a module named {entry['name']} already exists in scope; choose another function name"
+                        if free  # the scope has room, only this name is taken: an ordinary slip, retried
+                        else f"PLAN_REJECTED: NO_LOCAL_TARGET_IN_SCOPE: no free allowed path for {entry['name']}"
+                    )
+                    return {"ok": False, "reason": reason, "trail": trail}
                 taken.add(path)
                 made = _staged_new(request, entry, index, path, ask, trail)
             earlier = names[: index - 1]
