@@ -36,7 +36,7 @@ import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from . import iron_god_directed_edit as directed_edit
 from . import iron_god_local_drafter as drafter
@@ -51,7 +51,7 @@ MAX_SUBTASKS = 5
 MAX_DEPENDENCIES = 2
 MAX_PLAN_ATTEMPTS = 2
 # A rejection no second model sample can cure: the slice's own scope has nowhere for a local subtask to live.
-TERMINAL_MARKERS = ("no free allowed path", "NO_LOCAL_TARGET_IN_SCOPE")
+TERMINAL_MARKERS = ("NO_LOCAL_TARGET_IN_SCOPE",)
 TEST_FILE = re.compile(r"(^|/)(tests?|__tests__)/|(^|/)test_[^/]+\.py$|_test\.py$")
 JOB_TIMEOUT_S = 40 * 60
 MIN_EXAMPLES = drafter.MIN_ROADMAP_EXAMPLES
@@ -815,8 +815,8 @@ def local_target_missing(request: dict[str, Any], clone: Path, base: str) -> str
     decided here, from the repository at the exact base, before any model time is spent.
     """
     code = [p for p in _python_files_at(clone, base) if not TEST_FILE.search(p)]
-    candidate = module_for(request, "planning_probe", set(), _exists_at(clone, base))
-    if candidate is not None:  # a new module needs a directory that already holds Python (a C++ Source/ does not)
+    for candidate in module_candidates(request, "planning_probe", set(), _exists_at(clone, base)):
+        # a new module needs a directory that already holds Python (a C++ Source/ does not); any placement will do
         folder = candidate.rsplit("/", 1)[0] + "/" if "/" in candidate else ""
         if any(path.startswith(folder) for path in code):
             return None
@@ -1053,6 +1053,13 @@ NAME_OK = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
 
 def module_for(request: dict[str, Any], name: str, taken: set[str], exists: Callable[[str], bool]) -> str | None:
     """A new module path for ``name`` inside the slice's allowed code paths (never chosen by the model)."""
+    return next(module_candidates(request, name, taken, exists), None)
+
+
+def module_candidates(
+    request: dict[str, Any], name: str, taken: set[str], exists: Callable[[str], bool]
+) -> Iterator[str]:
+    """Every free path for ``name`` the slice's allowed code paths permit, in pattern order."""
     for pattern in request["allowed_paths"]:
         pattern = pattern.replace("\\", "/")
         if pattern.endswith((".md", ".json", ".yml", ".yaml", ".txt")) or "test" in pattern.lower() or pattern.startswith(("docs/", "doc/", "engineering/")):
@@ -1071,8 +1078,7 @@ def module_for(request: dict[str, Any], name: str, taken: set[str], exists: Call
             and not _under(candidate, list(request.get("forbidden_paths") or []))
             and not exists(candidate)
         ):
-            return candidate
-    return None
+            yield candidate
 
 
 def outline_prompt(request: dict[str, Any], brief: str, feedback: str = "") -> str:
@@ -1284,8 +1290,13 @@ def propose_staged(
             else:
                 path = module_for(request, str(entry["name"]), taken, exists)
                 if path is None:
-                    return {"ok": False, "reason": f"PLAN_REJECTED: no free allowed path for {entry['name']}",
-                            "trail": trail}
+                    free = module_for(request, "planning_probe", set(), exists) is not None
+                    reason = (
+                        f"PLAN_REJECTED: a module named {entry['name']} already exists in scope; choose another function name"
+                        if free  # the scope has room, only this name is taken: an ordinary slip, retried
+                        else f"PLAN_REJECTED: NO_LOCAL_TARGET_IN_SCOPE: no free allowed path for {entry['name']}"
+                    )
+                    return {"ok": False, "reason": reason, "trail": trail}
                 taken.add(path)
                 made = _staged_new(request, entry, index, path, ask, trail)
             earlier = names[: index - 1]

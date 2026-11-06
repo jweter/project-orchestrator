@@ -1022,14 +1022,39 @@ def test_such_a_slice_is_blocked_without_a_model_call_and_released_to_the_strong
 
 def test_a_structural_rejection_is_terminal_but_an_ordinary_one_still_gets_its_second_attempt(tmp_path: Path, clone: Path) -> None:
     base = head_of(clone)
-    structural, spawner = tmp_path / "structural", Spawner({"ok": False, "reason": "PLAN_REJECTED: no free allowed path for step"})
+    structural, spawner = tmp_path / "structural", Spawner({"ok": False, "reason": "PLAN_REJECTED: NO_LOCAL_TARGET_IN_SCOPE: no free allowed path for step"})
     td.advance(structural, [PARENT], clone, base, spawn=spawner)
     outcomes = td.advance(structural, [PARENT], clone, base, spawn=spawner)
     assert len(spawner.launched) == 1                               # never retried
-    assert [o["status"] for o in outcomes] == ["FAILED", "BLOCKED"] and "no free allowed path" in outcomes[1]["reason"]
+    assert [o["status"] for o in outcomes] == ["FAILED", "BLOCKED"] and "NO_LOCAL_TARGET_IN_SCOPE" in outcomes[1]["reason"]
     assert json.loads(td.plan_path(structural, PARENT["id"]).read_text(encoding="utf-8"))["blocker"].startswith(
         "DECOMPOSITION_NOT_POSSIBLE")
     ordinary, spawner = tmp_path / "ordinary", Spawner({"ok": False, "reason": "PLAN_REJECTED: t1: signature does not parse"})
     td.advance(ordinary, [PARENT], clone, base, spawn=spawner)
     td.advance(ordinary, [PARENT], clone, base, spawn=spawner)
     assert len(spawner.launched) == 2                               # a model slip still gets another sample
+
+
+def test_a_later_allowed_placement_is_enough_even_when_the_first_pattern_has_no_python(clone: Path) -> None:
+    base = head_of(clone)
+    reordered = scoped("empty/**", "pkg/new_*.py", "tests/**")          # empty/ first, a valid placement second
+    assert td.local_target_missing(reordered, clone, base) is None
+    assert td.local_target_missing(scoped("pkg/new_*.py", "empty/**", "tests/**"), clone, base) is None
+    assert td.local_target_missing(scoped("empty/**", "tests/**"), clone, base) is not None
+    assert list(td.module_candidates(reordered, "x", set(), lambda _p: False))[:2] == ["empty/x.py", "pkg/new_x.py"]
+
+
+def test_a_name_collision_is_an_ordinary_slip_and_only_a_scope_without_a_target_is_terminal(tmp_path: Path, clone: Path) -> None:
+    base = head_of(clone)
+    outline = {"functions": [{"name": "core", "kind": "new", "purpose": "collides with pkg/core.py", "criteria": [1],
+                              "depends_on": []}], "residual": []}
+    collision = td.propose_staged(PARENT, "", lambda _prompt: outline, exists=td._exists_at(clone, base))
+    assert not collision["ok"] and "already exists in scope" in collision["reason"]
+    assert not any(m in collision["reason"] for m in td.TERMINAL_MARKERS)
+    no_room = {**PARENT, "allowed_paths": ["docs/**", "tests/**"]}
+    structural = td.propose_staged(no_room, "", lambda _prompt: outline, exists=td._exists_at(clone, base))
+    assert not structural["ok"] and "NO_LOCAL_TARGET_IN_SCOPE" in structural["reason"]
+    spawner = Spawner({"ok": False, "reason": collision["reason"]})
+    td.advance(tmp_path / "lane", [PARENT], clone, base, spawn=spawner)
+    td.advance(tmp_path / "lane", [PARENT], clone, base, spawn=spawner)
+    assert len(spawner.launched) == 2                       # the collision got its second attempt
