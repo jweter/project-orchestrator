@@ -78,8 +78,9 @@ the merged pull request, so completed work is not planned again. Those pull requ
 are authorized by their own, stricter rule instead of being ignored:
 
 * only `engineering/capability-graph.json` may change, opened under the owner's account;
-* the edit must satisfy every graph rule above (no authority, evidence or dependency rewritten) **and** may add no capability
-  or slice;
+* the edit must satisfy every graph rule above (no authority, evidence or dependency rewritten) **and** the new graph must equal
+  the old one with only slice `state` and `verification` updated: no capability or slice added, no capability state or
+  evidence changed, no other field touched (capabilities are completed with their own evidence, not by a progress record);
 * it must complete at least one slice, and each newly completed slice must cite at least one pull request URL in the evidence
   it appended;
 * every cited pull request must belong to the authorized portfolio and GitHub must report it `MERGED` right now. Completion

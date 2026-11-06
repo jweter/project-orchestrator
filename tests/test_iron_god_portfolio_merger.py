@@ -696,3 +696,20 @@ def test_the_github_port_reads_the_state_of_a_cited_pull_request(monkeypatch) ->
     monkeypatch.setattr(pm.subprocess, "run", fake_run)
     assert pm.GhPort().pull_state(REPO, 12) == "MERGED"
     assert seen[0][:3] == ["gh", "pr", "view"] and "--repo" in seen[0]
+
+
+def test_a_progress_record_cannot_complete_a_capability_or_touch_anything_but_slice_state_and_evidence() -> None:
+    completes_capability = delivered()
+    completes_capability["capabilities"][0].update(state="VERIFIED_COMPLETE", verification=["pytest -q"])
+    result = progress(completes_capability)
+    assert result.action == pm.REFUSE and "PROGRESS_CHANGES_CAPABILITY:cap-cache" in result.reasons, result
+    assert pm.progress_problems(graph(), delivered(), {CITED: "MERGED"}) == []  # the legitimate shape is accepted
+    rewrites_text = delivered()
+    rewrites_text["capabilities"][0]["capability"] = "Something else entirely"
+    assert "PROGRESS_CHANGES_CAPABILITY:cap-cache" in progress(rewrites_text).reasons
+    reorders = delivered()
+    reorders["roadmap"] = []  # an invalid graph is refused before the progress rule, but it is still refused
+    assert progress(reorders).action == pm.REFUSE
+    extra_key = delivered()
+    extra_key["capabilities"][0]["slices"][0]["notes"] = "smuggled field"
+    assert any(r.startswith("PROGRESS_CHANGES_MORE_THAN") for r in progress(extra_key).reasons)

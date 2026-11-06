@@ -25,6 +25,7 @@ escalation; no advisor can authorize one. Nothing here consults Claude or ChatGP
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -254,6 +255,27 @@ def progress_problems(base: dict[str, Any], head: dict[str, Any], evidence: dict
             problems.append(f"PROGRESS_ADDS_CAPABILITY:{cap.get('id')}")
     for key in sorted(set(_slices(head)) - set(_slices(base))):
         problems.append(f"PROGRESS_ADDS_WORK:{key[0]}/{key[1]}")
+    # the head must be the base with ONLY slice state/verification updated, as iron_god_roadmap_progress.apply_completions
+    # does: a capability's own state or evidence, the roadmap, and every other field stay exactly as they were
+    expected = copy.deepcopy(base)
+    head_rows = _slices(head)
+    for cap in expected.get("capabilities") or []:
+        for row in cap.get("slices") or []:
+            changed = head_rows.get((str(cap.get("id")), str(row.get("id"))))
+            if changed is None:
+                continue
+            for field in ("state", "verification"):
+                if field in changed:
+                    row[field] = changed[field]
+                else:
+                    row.pop(field, None)
+    base_caps = {str(c.get("id")): c for c in expected.get("capabilities") or [] if isinstance(c, dict)}
+    for cap in head.get("capabilities") or []:
+        before = base_caps.get(str(cap.get("id"))) if isinstance(cap, dict) else None
+        if before is not None and {k: v for k, v in cap.items() if k != "slices"} != {k: v for k, v in before.items() if k != "slices"}:
+            problems.append(f"PROGRESS_CHANGES_CAPABILITY:{cap.get('id')}")
+    if expected != head and not problems:
+        problems.append("PROGRESS_CHANGES_MORE_THAN_SLICE_COMPLETION")
     completed = new_evidence_urls(base, head)
     if not completed:
         problems.append("PROGRESS_COMPLETES_NOTHING")
