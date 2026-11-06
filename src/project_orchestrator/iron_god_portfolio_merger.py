@@ -92,6 +92,7 @@ IMMUTABLE_SLICE_FIELDS = ("objective", "acceptance", "allowed_paths", "forbidden
 APPEND_ONLY_FIELDS = ("verification",)
 
 MERGE, PROMOTE, WAIT, REFUSE, ESCALATE, IGNORE = "MERGE", "PROMOTE", "WAIT", "REFUSE", "ESCALATE", "IGNORE"
+AUTHORIZED = "AUTHORIZED"
 ALWAYS_RECORDED = frozenset({"MERGED", "PROMOTED", "MERGE_FAILED", "PROMOTE_FAILED"})
 
 
@@ -358,26 +359,29 @@ def classify_checks(checks: list[dict[str, Any]]) -> dict[str, Any]:
 # ---- the policy ------------------------------------------------------------------------------------------------------
 
 
-def evaluate(facts: dict[str, Any], *, now: datetime) -> Verdict:
-    """MERGE / PROMOTE / WAIT / REFUSE / ESCALATE / IGNORE for one pull request at one instant, from gathered facts."""
+def authorize(facts: dict[str, Any]) -> tuple[Verdict | None, dict[str, Any], list[str], list[str]]:
+    """The authorization half of the policy: is this change inside what the graph on main allows?
+
+    Returns (an early verdict when the pull request is not for this policy, the authorization record, refusals,
+    escalations). It looks only at paths, the graph and the diff, never at CI state, review threads or time, which
+    GitHub itself enforces, so the same function backs the merger and the GitHub scope gate."""
     repository = str(facts["repository"])
     identity = roadmap_identity(str(facts.get("title") or ""))
     author = str(facts.get("author") or "")
     progress = identity is None and is_progress_title(str(facts.get("title") or ""))
     if identity is None and not progress:
         if author.lower().startswith(("dependabot", "app/dependabot")):
-            return Verdict(ESCALATE, ("DEPENDENCY_UPDATE_REQUIRES_OWNER",), {})
-        return Verdict(IGNORE, ("NOT_ROADMAP_PR",), {})
+            return Verdict(ESCALATE, ("DEPENDENCY_UPDATE_REQUIRES_OWNER",), {}), {}, [], []
+        return Verdict(IGNORE, ("NOT_ROADMAP_PR",), {}), {}, [], []
     identity = identity or "ROADMAP-PROGRESS"
     refuse: list[str] = []
     escalate: list[str] = []
-    wait: list[str] = []
     if author not in OWNER_LOGINS:
         escalate.append(f"AUTHOR_NOT_OWNER_ACCOUNT:{author or 'unknown'}")
     if facts.get("base") != "main":
         refuse.append("BASE_NOT_MAIN")
     if str(facts.get("state") or "OPEN") != "OPEN":
-        return Verdict(IGNORE, (f"PULL_REQUEST_{facts.get('state')}",), {})
+        return Verdict(IGNORE, (f"PULL_REQUEST_{facts.get('state')}",), {}), {}, [], []
 
     # authorization: the graph on main decides what this change may touch
     authorization: dict[str, Any] = {"identity": identity, "policy": POLICY_VERSION, "graph_main_sha": facts.get("main_sha")}
@@ -428,6 +432,31 @@ def evaluate(facts: dict[str, Any], *, now: datetime) -> Verdict:
     refuse.extend(diff_refuse)
     escalate.extend(diff_escalate)
 
+    return None, authorization, refuse, escalate
+
+
+def scope_verdict(facts: dict[str, Any]) -> Verdict:
+    """AUTHORIZED / REFUSE / ESCALATE / IGNORE for the scope gate: authorization only."""
+    early, authorization, refuse, escalate = authorize(facts)
+    if early is not None:
+        if early.reasons == ("DEPENDENCY_UPDATE_REQUIRES_OWNER",):
+            # a dependency bot's pull request is not roadmap development: the gate has nothing to say about it, and a
+            # required check must never block the owner from merging it (the merger's own policy still escalates it)
+            return Verdict(IGNORE, ("NOT_ROADMAP_PR",), {})
+        return early
+    if escalate:
+        return Verdict(ESCALATE, tuple(sorted(set(escalate + refuse))), authorization)
+    if refuse:
+        return Verdict(REFUSE, tuple(sorted(set(refuse))), authorization)
+    return Verdict(AUTHORIZED, ("WITHIN_AUTHORIZED_SCOPE",), authorization)
+
+
+def evaluate(facts: dict[str, Any], *, now: datetime) -> Verdict:
+    """MERGE / PROMOTE / WAIT / REFUSE / ESCALATE / IGNORE for one pull request at one instant, from gathered facts."""
+    early, authorization, refuse, escalate = authorize(facts)
+    if early is not None:
+        return early
+    wait: list[str] = []
     # verification gates
     draft = facts.get("draft") is True
     checks = classify_checks(facts.get("checks") or [])
@@ -483,6 +512,7 @@ class Port(Protocol):
     def merge(self, repo: str, number: int, head: str) -> None: ...
     def merged_info(self, repo: str, number: int) -> dict[str, Any]: ...
     def pull_state(self, repo: str, number: int) -> str: ...
+    def pull_summary(self, repo: str, number: int) -> dict[str, Any]: ...
 
 
 class GhPort:
@@ -563,6 +593,13 @@ class GhPort:
     def merge(self, repo: str, number: int, head: str) -> None:
         self._gh(["pr", "merge", str(number), "--repo", repo, "--squash", "--match-head-commit", head])
 
+    # The scope gate runs with a read-only token that cannot read checks or commit statuses, and GitHub fails the whole
+    # request when one requested field is not permitted. It judges authorization only, so it asks for no verification data.
+    SCOPE_FIELDS = "number,title,isDraft,headRefOid,baseRefName,author,createdAt,state"
+
+    def pull_summary(self, repo: str, number: int) -> dict[str, Any]:
+        return dict(json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", self.SCOPE_FIELDS]) or "{}"))
+
     def pull_state(self, repo: str, number: int) -> str:
         info = json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", "state"]) or "{}")
         return str(info.get("state") or "UNKNOWN")
@@ -571,8 +608,10 @@ class GhPort:
         return dict(json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", "state,mergeCommit"]) or "{}"))
 
 
-def gather(port: Port, repo: str, summary: dict[str, Any]) -> dict[str, Any]:
-    """Every fact the policy needs. Heavy reads happen only for pull requests that claim a roadmap identity."""
+def gather(port: Port, repo: str, summary: dict[str, Any], *, scope_only: bool = False) -> dict[str, Any]:
+    """Every fact the policy needs. Heavy reads happen only for pull requests that claim a roadmap identity.
+
+    ``scope_only`` skips review threads and the quiet-window reads: the GitHub scope gate judges authorization alone."""
     number = int(summary["number"])
     facts: dict[str, Any] = {
         "repository": repo, "number": number, "title": summary.get("title"),
@@ -603,8 +642,9 @@ def gather(port: Port, repo: str, summary: dict[str, Any]) -> dict[str, Any]:
                 facts["progress_evidence"][url] = port.pull_state(match.group(1), int(match.group(2)))
             else:
                 facts["progress_evidence"][url] = "NOT_AN_AUTHORIZED_REPOSITORY"
-    facts["threads"] = port.threads(repo, number)
-    facts["quiet_since"] = port.quiet_since(repo, number, head, str(facts["created_at"] or ""))
+    if not scope_only:
+        facts["threads"] = port.threads(repo, number)
+        facts["quiet_since"] = port.quiet_since(repo, number, head, str(facts["created_at"] or ""))
     return facts
 
 
