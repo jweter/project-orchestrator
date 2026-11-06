@@ -69,3 +69,19 @@ with the local builder for the single CPU model.
 * A review bot that posts an issue comment instead of review threads (for example a usage-limit notice) is not detected; the
   quiet window and unresolved-thread rule are the safeguards.
 * Dependency-only and dependency-touching changes always go to the owner.
+
+## The engine's own roadmap-progress records
+
+After the engine merges a slice it opens `Iron God roadmap progress: record N merged slice(s)` (see
+`iron_god_roadmap_progress.py`), a mechanical edit of the capability graph that marks the slice `VERIFIED_COMPLETE` and cites
+the merged pull request, so completed work is not planned again. Those pull requests carry no `[RM-...]` identity, so they
+are authorized by their own, stricter rule instead of being ignored:
+
+* only `engineering/capability-graph.json` may change, opened under the owner's account;
+* the edit must satisfy every graph rule above (no authority, evidence or dependency rewritten) **and** the new graph must equal
+  the old one with only slice `state` and `verification` updated: no capability or slice added, no capability state or
+  evidence changed, no other field touched (capabilities are completed with their own evidence, not by a progress record);
+* it must complete at least one slice, and each newly completed slice must cite at least one pull request URL in the evidence
+  it appended;
+* every cited pull request must belong to the authorized portfolio and GitHub must report it `MERGED` right now. Completion
+  evidence is therefore confirmed, never taken on trust.
