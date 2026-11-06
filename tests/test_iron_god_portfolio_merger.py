@@ -240,6 +240,8 @@ class FakePort:
         self.pulls: dict[str, list[dict]] = {REPO: [self.summary()]}
         self.files_rows = [file_row("pkg/cache.py"), file_row("tests/test_cache.py")]
         self.graph_base: str | None = json.dumps(graph())
+        self.graph_head_text: str | None = None
+        self.pull_states: dict[tuple[str, int], str] = {}
         self.thread_rows: list[dict] = []
         self.quiet = (NOW - timedelta(minutes=10)).isoformat()
         self.calls: list[tuple] = []
@@ -271,7 +273,11 @@ class FakePort:
         return copy.deepcopy(self.files_rows)
 
     def file_text(self, repo: str, path: str, ref: str) -> str | None:
-        return self.graph_base if ref == "main" else None
+        return self.graph_base if ref == "main" else self.graph_head_text
+
+    def pull_state(self, repo: str, number: int) -> str:
+        self.calls.append(("pull_state", repo, number))
+        return self.pull_states.get((repo, number), "MERGED")
 
     def main_sha(self, repo: str) -> str:
         return MAIN
@@ -587,3 +593,106 @@ def test_changing_an_existing_capability_prerequisites_is_not_a_purely_additive_
     head["capabilities"][0]["depends_on"] = ["something-else"]
     assert "CAPABILITY_DEPENDENCIES_EDITED:cap-cache" in pm.graph_change_problems(base, head)
     assert planning(head).action == pm.REFUSE
+
+
+# ---- the engine's own roadmap-progress records ----------------------------------------------------------------------------
+
+PROGRESS_TITLE = "Iron God roadmap progress: record 1 merged slice(s)"
+CITED = "https://github.com/jweter/knowledge-engine-core/pull/12"
+
+
+def delivered(evidence: str = f"{CITED} merged (capable-builder pull request)", **over: Any) -> dict:
+    head = graph([slice_row(state="VERIFIED_COMPLETE", verification=[evidence], **over)])
+    return head
+
+
+def with_extra_capability() -> dict:
+    head = delivered()
+    extra = copy.deepcopy(graph()["capabilities"][0])
+    extra["id"] = "extra"
+    head["capabilities"].append(extra)
+    head["roadmap"] = ["cap-cache", "extra"]
+    return head
+
+
+def progress(head_graph: dict, evidence: dict | None = None, files: list | None = None, **over: Any) -> pm.Verdict:
+    rows = files if files is not None else [file_row(pm.GRAPH_PATH, patch="+graph\n")]
+    states = {CITED: "MERGED"} if evidence is None else evidence
+    return verdict(title=PROGRESS_TITLE, files=rows, graph_head=json.dumps(head_graph), progress_evidence=states, **over)
+
+
+def test_a_roadmap_progress_record_merges_when_every_cited_pull_request_really_merged() -> None:
+    result = progress(delivered())
+    assert result.action == pm.MERGE and result.authorization["kind"] == "progress"
+    assert result.authorization["evidence"] == {CITED: "MERGED"}
+    assert verdict(title=PROGRESS_TITLE, draft=True, files=[file_row(pm.GRAPH_PATH)],
+                   graph_head=json.dumps(delivered()), progress_evidence={CITED: "MERGED"}).action == pm.PROMOTE
+
+
+@pytest.mark.parametrize("evidence, fragment", [
+    ({CITED: "OPEN"}, f"PROGRESS_EVIDENCE_NOT_MERGED:{CITED}"),
+    ({CITED: "CLOSED"}, "PROGRESS_EVIDENCE_NOT_MERGED"),
+    ({}, "PROGRESS_EVIDENCE_NOT_MERGED"),
+    ({CITED: "NOT_AN_AUTHORIZED_REPOSITORY"}, "PROGRESS_EVIDENCE_NOT_MERGED"),
+])
+def test_completion_evidence_must_be_confirmed_merged_by_github_never_taken_on_trust(evidence: dict, fragment: str) -> None:
+    result = progress(delivered(), evidence=evidence)
+    assert result.action == pm.REFUSE and any(fragment in r for r in result.reasons), result
+
+
+@pytest.mark.parametrize("make_head, fragment", [
+    (lambda: delivered(evidence="verified by hand, trust me"), "PROGRESS_WITHOUT_EVIDENCE:cap-cache/s1"),
+    (lambda: graph(), "PROGRESS_COMPLETES_NOTHING"),
+    (lambda: graph([slice_row(state="VERIFIED_COMPLETE", verification=[f"{CITED} merged"]), slice_row("s2")]),
+     "PROGRESS_ADDS_WORK:cap-cache/s2"),
+    (lambda: delivered(allowed_paths=["**"]), "SLICE_AUTHORITY_EDITED:cap-cache/s1.allowed_paths"),
+    (lambda: with_extra_capability(), "PROGRESS_ADDS_CAPABILITY:extra"),
+])
+def test_a_progress_record_cannot_add_work_rewrite_authority_or_invent_evidence(make_head, fragment: str) -> None:
+    result = progress(make_head())
+    assert result.action == pm.REFUSE and any(fragment in r for r in result.reasons), result
+
+
+def test_a_progress_record_that_touches_anything_but_the_graph_or_comes_from_another_account_is_escalated() -> None:
+    result = progress(delivered(), files=[file_row(pm.GRAPH_PATH), file_row("pkg/cache.py")])
+    assert result.action == pm.ESCALATE and any("OUT_OF_SCOPE_PATHS:pkg/cache.py" in r for r in result.reasons)
+    assert progress(delivered(), author="someone-else").action == pm.ESCALATE
+    assert verdict(title="Iron God roadmap progress", author="dependabot[bot]").action == pm.ESCALATE
+
+
+def test_the_cycle_confirms_each_cited_pull_request_with_github_and_merges_the_record(tmp_path: Path) -> None:
+    port = FakePort(files_rows=[file_row(pm.GRAPH_PATH, patch="+graph\n")], graph_head_text=json.dumps(delivered()))
+    port.pulls[REPO] = [FakePort.summary(title=PROGRESS_TITLE)]
+    (row,) = run(tmp_path, port)
+    assert row["merged"] is True and ("pull_state", REPO, 12) in port.calls
+    entry = ledger(tmp_path)[0]
+    assert entry["action"] == "MERGED" and entry["authorization"]["evidence"] == {CITED: "MERGED"}
+    port = FakePort(files_rows=[file_row(pm.GRAPH_PATH)], graph_head_text=json.dumps(delivered()),
+                    pull_states={(REPO, 12): "OPEN"})
+    port.pulls[REPO] = [FakePort.summary(title=PROGRESS_TITLE)]
+    (row,) = run(tmp_path / "unmerged", port)
+    assert row["decision"] == pm.REFUSE and not row["merged"] and not any(c[0] == "merge" for c in port.calls)
+
+
+def test_evidence_naming_a_repository_outside_the_portfolio_is_never_confirmed() -> None:
+    foreign = "https://github.com/someone/else/pull/9"
+    head = delivered(evidence=f"{foreign} merged")
+    urls = pm.new_evidence_urls(graph(), head)
+    assert urls == {("cap-cache", "s1"): [foreign]}
+    port = FakePort(files_rows=[file_row(pm.GRAPH_PATH)], graph_head_text=json.dumps(head))
+    port.pulls[REPO] = [FakePort.summary(title=PROGRESS_TITLE)]
+    facts_row = pm.gather(port, REPO, port.pulls[REPO][0])
+    assert facts_row["progress_evidence"] == {foreign: "NOT_AN_AUTHORIZED_REPOSITORY"}
+    assert not any(c[0] == "pull_state" for c in port.calls)
+
+
+def test_the_github_port_reads_the_state_of_a_cited_pull_request(monkeypatch) -> None:
+    seen: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        seen.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, json.dumps({"state": "MERGED"}), "")
+
+    monkeypatch.setattr(pm.subprocess, "run", fake_run)
+    assert pm.GhPort().pull_state(REPO, 12) == "MERGED"
+    assert seen[0][:3] == ["gh", "pr", "view"] and "--repo" in seen[0]

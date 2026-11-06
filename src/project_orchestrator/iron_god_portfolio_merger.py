@@ -37,6 +37,7 @@ from typing import Any, Callable, Protocol
 
 from .iron_god_capability_graph_parser import CapabilityGraphInvalidError, parse_capability_graph
 from .iron_god_capable_builder import GRAPH_PATH
+from .iron_god_roadmap_progress import TITLE_PREFIX as PROGRESS_TITLE_PREFIX
 from .iron_god_roadmap_refill import DEFAULT_FORBIDDEN, PLANNING_SLICE, _matches, id_prefix, item_id
 from .state_io import atomic_json
 
@@ -61,6 +62,7 @@ PASS_CONCLUSIONS = frozenset({"SUCCESS", "NEUTRAL", "SKIPPED"})
 PREFLIGHT_CHECK = re.compile(r"(?i)canonical[ -]preflight|full-preflight")
 
 TAG = re.compile(r"^Iron God \[(RM-[A-Za-z0-9._-]+)\]")
+PULL_URL = re.compile(r"https://github\.com/([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)/pull/(\d+)")
 SUFFIX = re.compile(r"-(?:r\d+|t\d+|cap)$")
 PLAN_SUFFIX = re.compile(r"^[0-9a-f]{8}$")
 TEST_PATH = re.compile(r"(^|/)(tests?|__tests__)/|(^|/)test_[^/]+$|_test\.\w+$|\.test\.\w+$")
@@ -221,6 +223,49 @@ PROTECTED_PATHS_SAMPLES = (".github/workflows/ci.yml", ".claude/settings.json", 
                            ".github/CODEOWNERS")
 
 
+def is_progress_title(title: str) -> bool:
+    return str(title or "").startswith(PROGRESS_TITLE_PREFIX)
+
+
+def _slices(graph: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    return {(str(c.get("id")), str(r.get("id"))): r for c in graph.get("capabilities") or [] if isinstance(c, dict)
+            for r in c.get("slices") or [] if isinstance(r, dict)}
+
+
+def new_evidence_urls(base: dict[str, Any], head: dict[str, Any]) -> dict[tuple[str, str], list[str]]:
+    """For every slice a graph edit newly completes: the pull request URLs in the evidence it appended."""
+    old = _slices(base)
+    found: dict[tuple[str, str], list[str]] = {}
+    for key, row in _slices(head).items():
+        before = old.get(key)
+        if before is None or before.get("state") == row.get("state") or row.get("state") != "VERIFIED_COMPLETE":
+            continue
+        added = [str(x) for x in (row.get("verification") or [])][len(before.get("verification") or []):]
+        found[key] = sorted({f"https://github.com/{m.group(1)}/pull/{m.group(2)}" for m in PULL_URL.finditer(" ".join(added))})
+    return found
+
+
+def progress_problems(base: dict[str, Any], head: dict[str, Any], evidence: dict[str, str]) -> list[str]:
+    """A roadmap-progress record may only mark delivered slices complete, citing pull requests GitHub reports MERGED."""
+    problems: list[str] = []
+    old_caps = {str(c.get("id")) for c in base.get("capabilities") or [] if isinstance(c, dict)}
+    for cap in head.get("capabilities") or []:
+        if isinstance(cap, dict) and str(cap.get("id")) not in old_caps:
+            problems.append(f"PROGRESS_ADDS_CAPABILITY:{cap.get('id')}")
+    for key in sorted(set(_slices(head)) - set(_slices(base))):
+        problems.append(f"PROGRESS_ADDS_WORK:{key[0]}/{key[1]}")
+    completed = new_evidence_urls(base, head)
+    if not completed:
+        problems.append("PROGRESS_COMPLETES_NOTHING")
+    for key, urls in completed.items():
+        if not urls:
+            problems.append(f"PROGRESS_WITHOUT_EVIDENCE:{key[0]}/{key[1]}")
+        for url in urls:
+            if evidence.get(url) != "MERGED":
+                problems.append(f"PROGRESS_EVIDENCE_NOT_MERGED:{url}")
+    return problems
+
+
 def diff_problems(files: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     """(refusals, escalations) from reading the diff itself."""
     refuse: list[str] = []
@@ -296,10 +341,12 @@ def evaluate(facts: dict[str, Any], *, now: datetime) -> Verdict:
     repository = str(facts["repository"])
     identity = roadmap_identity(str(facts.get("title") or ""))
     author = str(facts.get("author") or "")
-    if identity is None:
+    progress = identity is None and is_progress_title(str(facts.get("title") or ""))
+    if identity is None and not progress:
         if author.lower().startswith(("dependabot", "app/dependabot")):
             return Verdict(ESCALATE, ("DEPENDENCY_UPDATE_REQUIRES_OWNER",), {})
         return Verdict(IGNORE, ("NOT_ROADMAP_PR",), {})
+    identity = identity or "ROADMAP-PROGRESS"
     refuse: list[str] = []
     escalate: list[str] = []
     wait: list[str] = []
@@ -327,14 +374,15 @@ def evaluate(facts: dict[str, Any], *, now: datetime) -> Verdict:
         if "AUTHORITY_GRAPH_INVALID" not in escalate:
             escalate.append("AUTHORITY_GRAPH_UNAVAILABLE")
     else:
-        grant = resolve_authorization(repository, identity, base_graph)
+        grant = ({"kind": "progress", "slice": "roadmap-progress", "allowed_paths": [GRAPH_PATH], "forbidden_paths": []}
+                 if progress else resolve_authorization(repository, identity, base_graph))
         if grant is None:
             escalate.append("SLICE_NOT_IN_AUTHORIZED_GRAPH")
         else:
             authorization.update(grant)
             allowed, forbidden = grant["allowed_paths"], grant["forbidden_paths"]
             outside = [p for p in paths if p != GRAPH_PATH and (not _any_match(p, allowed) or _any_match(p, forbidden))]
-            if grant["kind"] == "planning":
+            if grant["kind"] in {"planning", "progress"}:
                 outside = [p for p in paths if p != GRAPH_PATH]
                 if GRAPH_PATH not in paths:
                     refuse.append("PLANNING_WITHOUT_GRAPH_CHANGE")
@@ -347,6 +395,9 @@ def evaluate(facts: dict[str, Any], *, now: datetime) -> Verdict:
                         raise ValueError("graph at head unavailable")
                     parse_capability_graph(head_graph)
                     refuse.extend(graph_change_problems(base_graph, head_graph))
+                    if grant["kind"] == "progress":
+                        refuse.extend(progress_problems(base_graph, head_graph, facts.get("progress_evidence") or {}))
+                        authorization["evidence"] = dict(facts.get("progress_evidence") or {})
                 except (ValueError, CapabilityGraphInvalidError):
                     refuse.append("GRAPH_AT_HEAD_INVALID")
 
@@ -409,6 +460,7 @@ class Port(Protocol):
     def mark_ready(self, repo: str, number: int) -> None: ...
     def merge(self, repo: str, number: int, head: str) -> None: ...
     def merged_info(self, repo: str, number: int) -> dict[str, Any]: ...
+    def pull_state(self, repo: str, number: int) -> str: ...
 
 
 class GhPort:
@@ -489,6 +541,10 @@ class GhPort:
     def merge(self, repo: str, number: int, head: str) -> None:
         self._gh(["pr", "merge", str(number), "--repo", repo, "--squash", "--match-head-commit", head])
 
+    def pull_state(self, repo: str, number: int) -> str:
+        info = json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", "state"]) or "{}")
+        return str(info.get("state") or "UNKNOWN")
+
     def merged_info(self, repo: str, number: int) -> dict[str, Any]:
         return dict(json.loads(self._gh(["pr", "view", str(number), "--repo", repo, "--json", "state,mergeCommit"]) or "{}"))
 
@@ -504,7 +560,8 @@ def gather(port: Port, repo: str, summary: dict[str, Any]) -> dict[str, Any]:
         "review_decision": summary.get("reviewDecision") or None, "created_at": summary.get("createdAt"),
         "checks": summary.get("statusCheckRollup") or [],
     }
-    if roadmap_identity(str(facts["title"] or "")) is None:
+    progress = is_progress_title(str(facts["title"] or ""))
+    if roadmap_identity(str(facts["title"] or "")) is None and not progress:
         return facts
     head = facts["head"]
     facts["main_sha"] = port.main_sha(repo)
@@ -512,6 +569,18 @@ def gather(port: Port, repo: str, summary: dict[str, Any]) -> dict[str, Any]:
     paths = {str(f.get("path")) for f in facts["files"]}
     facts["graph_base"] = port.file_text(repo, GRAPH_PATH, "main")
     facts["graph_head"] = port.file_text(repo, GRAPH_PATH, head) if GRAPH_PATH in paths else None
+    if progress and facts["graph_base"] and facts["graph_head"]:
+        try:
+            wanted = new_evidence_urls(json.loads(facts["graph_base"]), json.loads(facts["graph_head"]))
+        except ValueError:
+            wanted = {}
+        facts["progress_evidence"] = {}
+        for url in sorted({u for urls in wanted.values() for u in urls}):
+            match = PULL_URL.fullmatch(url)
+            if match and match.group(1) in PORTFOLIO_REPOS:
+                facts["progress_evidence"][url] = port.pull_state(match.group(1), int(match.group(2)))
+            else:
+                facts["progress_evidence"][url] = "NOT_AN_AUTHORIZED_REPOSITORY"
     facts["threads"] = port.threads(repo, number)
     facts["quiet_since"] = port.quiet_since(repo, number, head, str(facts["created_at"] or ""))
     return facts
