@@ -212,9 +212,15 @@ def test_a_model_that_times_out_ends_the_task_with_evidence_and_a_clean_workspac
     assert result["rolled_back"] is True
 
 
-def test_the_memory_guard_aborts_only_on_sustained_pressure_and_remembers_the_lowest_reading() -> None:
-    readings = iter([6.0, 0.3, 4.0, 0.3, 0.2, 0.1])
-    guard = cb.MemoryGuard(lambda: next(readings), floor_gib=0.5, patience=2)
-    assert guard.lowest == 6.0
-    assert [guard.check() for _ in range(5)] == [False, False, False, True, True]   # a single dip is tolerated
-    assert guard.lowest == 0.1 or guard.lowest == 0.2
+def test_admission_can_require_more_than_memory_and_waiting_for_it_spends_no_attempt(repo: Path) -> None:
+    states = iter([(False, "USER_ACTIVE: idle 30s < 600s required"), (False, "MEMORY: 3.0 GiB available < 7.3 GiB required"),
+                   (True, "ADMITTED")])
+    waited: list[float] = []
+    script = Script([reply()], builds=[(0, "")], tests=[(0, "")])
+    result = cb.build_change(task(repo), script.ask, run=script.run, admit=lambda: next(states), sleep=waited.append)
+    assert result["status"] == cb.SUCCESS and len(waited) == 2 and len(result["iterations"]) == 1
+    never = Script([])
+    result = cb.build_change(task(repo), never.ask, run=never.run, admit=lambda: (False, "USER_ACTIVE: idle 1s"),
+                             sleep=lambda _s: None)
+    assert result["status"] == "WAITING_FOR_MEMORY" and "USER_ACTIVE" in result["reason"] and never.prompts == []
+

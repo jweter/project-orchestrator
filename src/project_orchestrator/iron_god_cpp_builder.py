@@ -161,27 +161,6 @@ def repair_prompt(task: Task, current: dict[str, str], stage: str, problems: lis
     )
 
 
-class MemoryGuard:
-    """Continuous memory watchdog for the duration of a model call.
-
-    Admission before a call is not enough on a shared desktop: available memory swings by gigabytes as other programs
-    change. ``check`` is called repeatedly while the model runs; ``patience`` consecutive readings under ``floor_gib``
-    mean pressure, and the caller aborts and unloads the model instead of letting the host start paging.
-    """
-
-    def __init__(self, available: Callable[[], float], floor_gib: float = 0.5, patience: int = 2) -> None:
-        self.available, self.floor_gib, self.patience = available, floor_gib, patience
-        self.low = 0
-        self.lowest = available()
-
-    def check(self) -> bool:
-        """True when memory pressure is sustained and the model call must be aborted."""
-        value = self.available()
-        self.lowest = min(self.lowest, value)
-        self.low = self.low + 1 if value < self.floor_gib else 0
-        return self.low >= self.patience
-
-
 def default_run(cmd: list[str], cwd: Path, timeout: int) -> tuple[int, str]:
     try:
         done = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -225,7 +204,8 @@ class Workspace:
 
 def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits = Limits(),
                  free_gib: Callable[[], float] = lambda: 99.0, sleep: Callable[[float], None] = time.sleep,
-                 clock: Callable[[], float] = time.monotonic) -> dict[str, Any]:
+                 clock: Callable[[], float] = time.monotonic,
+                 admit: Callable[[], tuple[bool, str]] | None = None) -> dict[str, Any]:
     """Run the generate -> compile -> test -> repair loop. Returns the evidence record; ``status`` is SUCCESS only when the
     repository's own build and tests passed on the final files."""
     started = clock()
@@ -249,9 +229,16 @@ def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits
     prompt, current, last_fingerprint = initial_prompt(task, limits), {}, None
     for iteration in range(1, limits.max_iterations + 1):
         waits = 0
-        while free_gib() < limits.min_free_gib:  # admission: no model call without memory; waiting spends no attempt
+        while True:  # admission: no model call without memory (and idleness, when required); waiting spends no attempt
+            if admit:
+                admitted, why = admit()
+            else:
+                free = free_gib()
+                admitted, why = free >= limits.min_free_gib, f"free {free:.1f} GiB < {limits.min_free_gib} GiB"
+            if admitted:
+                break
             if waits >= limits.memory_waits:
-                return finish("WAITING_FOR_MEMORY", f"free {free_gib():.1f} GiB < {limits.min_free_gib} GiB")
+                return finish("WAITING_FOR_MEMORY", why)
             waits += 1
             sleep(limits.memory_wait_s)
         record: dict[str, Any] = {"n": iteration, "prompt_chars": len(prompt)}

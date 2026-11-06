@@ -1,25 +1,25 @@
 """Run one bounded C++ task through the local builder: a local Ollama model, the real compiler and the repository's tests.
 
-No external AI service is called. The model is only the author; scope, compilation, tests, retry limits, memory admission,
+No external AI service is called. The model is only the author; scope, compilation, tests, retry limits, admission,
 rollback and the optional independent oracle check are deterministic code (``project_orchestrator.iron_god_cpp_builder``).
 
-    python scripts/iron_god_cpp_task.py --task task.json --out evidence.json [--model qwen2.5-coder:7b]
+    python scripts/iron_god_cpp_task.py --task task.json --out evidence.json [--model qwen2.5-coder:3b] [--wait-hours 8]
 
-The task file names the isolated workspace (a git checkout), the files to write, the scope, the context and the commands.
-An optional ``oracle`` runs a held-out, independently written test against the builder's result after it succeeds.
+Safety on a shared desktop (``project_orchestrator.iron_god_local_model.Gate``): a model starts only when the machine has
+enough *available* memory for it plus a reserve and, for a model too big to run beside the owner's apps (the 7B), only
+after the user has been idle; while it runs, sustained memory pressure or returning user input cancels the in-flight
+generation (the connection is closed so the server stops computing) and the model is unloaded. Cancelling is never skipped.
+If the conditions never hold within ``--wait-hours``, the task is reported BLOCKED, not forced.
 """
 
 from __future__ import annotations
 
 import argparse
-import ctypes
 import json
 import os
 import shutil
 import sys
-import threading
 import time
-import urllib.request
 from pathlib import Path
 
 _root = Path(__file__).resolve().parents[1]
@@ -28,43 +28,15 @@ for _path in (str(_root), str(_root / "src")):
         sys.path.insert(0, _path)
 
 from project_orchestrator import iron_god_cpp_builder as cb  # noqa: E402
+from project_orchestrator import iron_god_local_model as lm  # noqa: E402
 
-OLLAMA = "http://127.0.0.1:11434/api/generate"
-
-
-class _MemoryStatus(ctypes.Structure):
-    _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong),
-                ("ullAvailPhys", ctypes.c_ulonglong), ("ullTotalPageFile", ctypes.c_ulonglong),
-                ("ullAvailPageFile", ctypes.c_ulonglong), ("ullTotalVirtual", ctypes.c_ulonglong),
-                ("ullAvailVirtual", ctypes.c_ulonglong), ("sullAvailExtendedVirtual", ctypes.c_ulonglong)]
-
-
-def available_gib() -> float:
-    """Physical memory available to a new process (free plus reclaimable cache), in GiB."""
-    status = _MemoryStatus()
-    status.dwLength = ctypes.sizeof(_MemoryStatus)
-    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))  # type: ignore[attr-defined]
-    return status.ullAvailPhys / 1024**3
-
-
-class Sampler(threading.Thread):
-    """Records the lowest available memory seen while the task runs."""
-
-    def __init__(self) -> None:
-        super().__init__(daemon=True)
-        self.lowest, self.stop_flag = available_gib(), threading.Event()
-
-    def run(self) -> None:
-        while not self.stop_flag.wait(2.0):
-            self.lowest = min(self.lowest, available_gib())
-
-
-def ollama(model: str, prompt: str, *, num_ctx: int, num_predict: int, keep_alive: str, timeout: int) -> dict:
-    body = json.dumps({"model": model, "prompt": prompt, "stream": False, "keep_alive": keep_alive,
-                       "options": {"temperature": 0, "num_ctx": num_ctx, "num_predict": num_predict}}).encode()
-    request = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - loopback only
-        return json.loads(response.read().decode("utf-8"))
+# (resident GiB, reserve GiB, idle seconds required). Measured on Azathoth: the 1.5B uses ~1.0 GB in llama-server and the
+# 7B ~5.3 GB; the 7B drove available memory to ~260 MB with ~4 GiB free, so it runs only when the desktop is idle.
+PROFILES = {
+    "qwen2.5-coder:1.5b": (1.1, 1.0, 0.0),
+    "qwen2.5-coder:3b": (2.3, 1.5, 0.0),
+    "qwen2.5-coder:7b": (5.3, 2.0, 600.0),
+}
 
 
 def register_cmake(workspace: Path, cmake: str, name: str, source: str) -> None:
@@ -83,18 +55,37 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--model", default="qwen2.5-coder:7b")
-    parser.add_argument("--min-free-gib", type=float, default=7.0)
-    parser.add_argument("--abort-below-gib", type=float, default=0.6)
-    parser.add_argument("--memory-wait-minutes", type=float, default=0.0)
+    parser.add_argument("--model", default="qwen2.5-coder:3b")
+    parser.add_argument("--wait-hours", type=float, default=0.0, help="poll for admission (memory and idleness) this long")
     parser.add_argument("--iterations", type=int, default=4)
-    parser.add_argument("--model-timeout", type=int, default=900)
     parser.add_argument("--num-ctx", type=int, default=6144)
     parser.add_argument("--num-predict", type=int, default=2200)
+    parser.add_argument("--model-timeout", type=int, default=900)
     args = parser.parse_args(argv)
     spec = json.loads(args.task.read_text(encoding="utf-8"))
-    workspace = Path(spec["workspace"])
-    build_dir = Path(spec["build_dir"])
+    workspace, build_dir = Path(spec["workspace"]), Path(spec["build_dir"])
+    size, reserve, idle = PROFILES.get(args.model, (6.0, 2.0, 600.0))  # an unknown model gets the strictest profile
+    gate = lm.Gate(model_gib=size, reserve_gib=reserve, min_idle_s=idle)
+    client = lm.OllamaClient()
+    evidence: dict = {"model": args.model, "gate": {"model_gib": size, "reserve_gib": reserve, "min_idle_s": idle,
+                                                      "required_available_gib": gate.required_gib}}
+
+    deadline = time.monotonic() + args.wait_hours * 3600
+    last_note = 0.0
+    while True:  # scheduling: do not start until the machine can take the model safely
+        admitted, why = gate.admit()
+        if admitted:
+            break
+        if time.monotonic() >= deadline:
+            evidence.update(status="BLOCKED_NOT_ADMITTED", reason=why, lowest_available_gib=round(gate.lowest, 2))
+            args.out.write_text(cb.record_json(evidence), encoding="utf-8")
+            print(f"BLOCKED_NOT_ADMITTED: {why}")
+            return 3
+        if time.monotonic() - last_note > 600:
+            print(f"{time.strftime('%H:%M:%S')} waiting: {why}", flush=True)
+            last_note = time.monotonic()
+        time.sleep(60)
+
     os.environ["MSBUILDDISABLENODEREUSE"] = "1"  # leave no idle build nodes holding memory afterwards
     register = spec["cmake_register"]
     register_cmake(workspace, register["file"], register["name"], register["source"])
@@ -111,58 +102,32 @@ def main(argv: list[str] | None = None) -> int:
     stats: list[dict] = []
 
     def ask(prompt: str) -> str:
-        """One model call in a worker thread, watched by a continuous memory guard that aborts and unloads on pressure."""
-        outcome: dict = {}
-
-        def call() -> None:
-            try:
-                outcome["reply"] = ollama(args.model, prompt, num_ctx=args.num_ctx, num_predict=args.num_predict,
-                                          keep_alive="3m", timeout=args.model_timeout)
-            except Exception as exc:  # noqa: BLE001 - reported to the loop as a model failure
-                outcome["error"] = exc
-
-        worker = threading.Thread(target=call, daemon=True)
-        worker.start()
-        guard = cb.MemoryGuard(available_gib, floor_gib=args.abort_below_gib, patience=2)
-        while worker.is_alive():
-            worker.join(2.0)
-            if worker.is_alive() and guard.check():
-                try:
-                    ollama(args.model, "", num_ctx=512, num_predict=1, keep_alive="0", timeout=30)  # unload frees the memory
-                except OSError:
-                    pass
-                raise OSError(f"MEMORY_PRESSURE_ABORT: available memory stayed under {args.abort_below_gib} GiB "
-                              f"(lowest {guard.lowest:.2f} GiB); the model was unloaded")
-        if "error" in outcome:
-            raise outcome["error"]
-        reply = outcome["reply"]
+        try:
+            reply = client.generate(args.model, prompt, num_ctx=args.num_ctx, num_predict=args.num_predict, keep_alive="3m",
+                                    timeout=args.model_timeout, should_abort=gate.abort_reason, poll_s=1.0)
+        except lm.ModelCancelled:
+            evidence["unloaded_after_cancel"] = client.unload(args.model)  # the generation is already cancelled; free the memory
+            raise
         stats.append({k: reply.get(k) for k in ("eval_count", "eval_duration", "prompt_eval_count", "prompt_eval_duration",
                                                  "load_duration", "total_duration")})
         return str(reply.get("response", ""))
 
-    waits = max(int(args.memory_wait_minutes * 3), 1)
-    limits = cb.Limits(max_iterations=args.iterations, min_free_gib=args.min_free_gib, memory_waits=waits, memory_wait_s=20.0)
-    sampler = Sampler()
-    sampler.start()
+    limits = cb.Limits(max_iterations=args.iterations, memory_waits=15, memory_wait_s=20.0)
     started = time.time()
-    evidence = cb.build_change(task, ask, limits=limits, free_gib=available_gib)
-    sampler.stop_flag.set()
-    evidence["model"] = args.model
+    result = cb.build_change(task, ask, limits=limits, admit=gate.admit)
+    evidence.update(result)
     evidence["model_calls"] = stats
     evidence["tokens_per_second"] = [round(s["eval_count"] / (s["eval_duration"] / 1e9), 2) for s in stats
                                      if s.get("eval_count") and s.get("eval_duration")]
-    evidence["lowest_available_gib"] = round(sampler.lowest, 2)
+    evidence["lowest_available_gib"] = round(gate.lowest, 2)
     evidence["wall_seconds"] = round(time.time() - started, 1)
     oracle = spec.get("oracle")
     if oracle and evidence["status"] == cb.SUCCESS:
         evidence["oracle"] = run_oracle(spec, task, register, oracle)
-    try:  # release the model's memory as soon as the task is over
-        ollama(args.model, "", num_ctx=512, num_predict=1, keep_alive="0", timeout=60)
-    except OSError:
-        pass
+    evidence["model_unloaded"] = client.unload(args.model)  # always hand the model's memory back
     args.out.write_text(cb.record_json(evidence), encoding="utf-8")
     print(f"{evidence['status']}: {evidence.get('reason', '')} ({evidence['wall_seconds']}s, "
-          f"{len(evidence['iterations'])} model call(s)) -> {args.out}")
+          f"{len(evidence['iterations'])} model call(s), lowest available {evidence['lowest_available_gib']} GiB) -> {args.out}")
     return 0 if evidence["status"] == cb.SUCCESS and evidence.get("oracle", {}).get("passed", True) else 1
 
 
