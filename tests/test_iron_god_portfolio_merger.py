@@ -759,3 +759,12 @@ def test_only_complete_owner_signed_exceptions_load(tmp_path: Path) -> None:
     assert pm.load_exceptions(tmp_path) == [grant()]
     (directory / pm.EXCEPTIONS_FILE).write_text("{not json", encoding="utf-8")
     assert pm.load_exceptions(tmp_path) == []
+
+
+def test_malformed_exception_field_types_grant_nothing_and_never_abort_the_cycle(tmp_path: Path) -> None:
+    directory = tmp_path / "portfolio-merger"
+    directory.mkdir()
+    bad = [grant(approved_by=[]), grant(pr="not-a-number"), grant(pr=True), grant(paths=[1]), grant(paths=[""]),
+           grant(head="Z" * 40), grant(repository=None), grant(reason=None), grant(approved_at=3)]
+    (directory / pm.EXCEPTIONS_FILE).write_text(json.dumps([*bad, grant()]), encoding="utf-8")
+    assert pm.load_exceptions(tmp_path) == [grant()]

@@ -731,9 +731,21 @@ def load_exceptions(state_root: Path) -> list[dict[str, Any]]:
         value = json.loads((Path(state_root) / "portfolio-merger" / EXCEPTIONS_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
-    required = ("repository", "pr", "head", "paths", "approved_by", "approved_at", "reason")
-    return [e for e in value if isinstance(e, dict) and all(k in e for k in required) and e["approved_by"] in OWNER_LOGINS
-            and isinstance(e["paths"], list) and e["paths"] and len(str(e["head"])) == 40] if isinstance(value, list) else []
+    if not isinstance(value, list):
+        return []
+    return [e for e in value if _valid_exception(e)]
+
+
+def _valid_exception(entry: Any) -> bool:
+    """Every field has the right type and shape; anything else grants nothing (and can never abort a cycle)."""
+    if not isinstance(entry, dict):
+        return False
+    approver, head, paths = entry.get("approved_by"), entry.get("head"), entry.get("paths")
+    return (isinstance(entry.get("repository"), str) and isinstance(entry.get("pr"), int) and not isinstance(entry["pr"], bool)
+            and isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}", head) is not None
+            and isinstance(paths, list) and bool(paths) and all(isinstance(x, str) and x for x in paths)
+            and isinstance(approver, str) and approver in OWNER_LOGINS
+            and isinstance(entry.get("approved_at"), str) and isinstance(entry.get("reason"), str))
 
 
 def _apply_exceptions(facts: dict[str, Any], exceptions: list[dict[str, Any]]) -> dict[str, Any]:
