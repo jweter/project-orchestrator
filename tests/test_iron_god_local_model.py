@@ -176,6 +176,11 @@ class FakeDoor:
                     raise lm.ModelCancelled(reason)
         return {"response": "{}"}
 
+    stray: list = []
+
+    def loaded(self):
+        return list(self.stray)
+
     def unload(self, model, **kw):
         self.unloaded.append(model)
         return True
@@ -237,3 +242,42 @@ def test_the_shared_client_follows_the_configured_endpoint(monkeypatch):
     assert (client.host, client.port) == ("10.1.2.3", 9999)
     monkeypatch.delenv("OLLAMA_API_BASE")
     assert (lm.OllamaClient().host, lm.OllamaClient().port) == ("127.0.0.1", 11434)
+
+
+def test_qwen35_sizes_have_their_own_profiles_and_unknown_sizes_stay_strict():
+    assert lm.gate_for("qwen3.5:4b").model_gib == 4.5 and lm.gate_for("qwen3.5:2b").model_gib == 2.8
+    assert lm.gate_for("qwen3.5:0.8b").model_gib == 1.3 and lm.gate_for("qwen3.5:9b").min_idle_s == 600.0
+    assert lm.gate_for("qwen3.5:27b").model_gib == 5.3 and lm.gate_for("qwen3.5:27b").min_idle_s == 600.0
+
+
+def test_a_stray_resident_model_is_evicted_before_the_run_and_thinking_is_off_for_qwen3(tmp_path):
+    fake = FakeDoor()
+    fake.stray = ["some-other:7b"]
+    lm.guarded_generate("p", requested="qwen3.5:4b", num_ctx=1, num_predict=1, wait_s=5, client=fake,
+                        probes=door_probes(9.0), directory=tmp_path / "slot")
+    assert fake.unloaded[0] == "some-other:7b" and fake.calls[0][0] == "qwen3.5:4b"
+    sent = {}
+
+    class Capture(lm.OllamaClient):
+        def __init__(self):
+            super().__init__("127.0.0.1", 1)
+
+    import http.client as hc
+    original = hc.HTTPConnection.request
+    hc.HTTPConnection.request = lambda self, m, path, body=None, headers=None: sent.update(body=body)
+    try:
+        with pytest.raises(Exception):
+            Capture().generate("qwen3.5:4b", "p", num_ctx=1, num_predict=1, keep_alive=0, timeout=0.2)
+    finally:
+        hc.HTTPConnection.request = original
+    assert json.loads(sent["body"])["think"] is False
+
+
+def test_a_stray_model_that_cannot_be_unloaded_blocks_the_run_and_loads_nothing(tmp_path):
+    fake = FakeDoor()
+    fake.stray = ["stubborn:7b"]
+    fake.unload = lambda model, **kw: False
+    with pytest.raises(lm.ModelNotAdmitted, match="STRAY_MODEL_RESIDENT"):
+        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=door_probes(9.0),
+                            directory=tmp_path / "slot")
+    assert fake.calls == [] and not (tmp_path / "slot").exists()
