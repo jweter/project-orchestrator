@@ -713,3 +713,58 @@ def test_a_progress_record_cannot_complete_a_capability_or_touch_anything_but_sl
     extra_key = delivered()
     extra_key["capabilities"][0]["slices"][0]["notes"] = "smuggled field"
     assert any(r.startswith("PROGRESS_CHANGES_MORE_THAN") for r in progress(extra_key).reasons)
+
+
+# ---- owner-approved, head-pinned scope exceptions ---------------------------------------------------------------------
+
+
+def grant(**over: Any) -> dict:
+    base = {"repository": REPO, "pr": 7, "head": HEAD, "paths": ["docs/other.md"], "approved_by": "jweter",
+            "approved_at": "2026-11-07T02:00:00+00:00", "reason": "owner approved this exact move"}
+    base.update(over)
+    return base
+
+
+def excepted(exceptions: list, **over: Any) -> pm.Verdict:
+    f = pm._apply_exceptions(facts(files=[file_row("pkg/cache.py"), file_row("docs/other.md")], **over), exceptions)
+    return pm.evaluate(f, now=NOW)
+
+
+def test_an_owner_exception_clears_exactly_its_named_path_for_that_head_and_is_recorded() -> None:
+    assert verdict(files=[file_row("pkg/cache.py"), file_row("docs/other.md")]).action == pm.ESCALATE
+    result = excepted([grant()])
+    assert result.action == pm.MERGE and result.authorization["owner_exception"][0]["approved_by"] == "jweter"
+
+
+def test_an_exception_does_not_cover_other_paths_other_heads_or_other_pull_requests() -> None:
+    f = [file_row("pkg/cache.py"), file_row("docs/other.md"), file_row("docs/more.md")]
+    result = pm.evaluate(pm._apply_exceptions(facts(files=f), [grant()]), now=NOW)
+    assert result.action == pm.ESCALATE and any("docs/more.md" in r and "docs/other.md" not in r for r in result.reasons)
+    assert excepted([grant(head="b" * 40)]).action == pm.ESCALATE      # the head moved: the exception no longer applies
+    assert excepted([grant(pr=8)]).action == pm.ESCALATE
+
+
+def test_an_exception_never_lifts_protected_paths_or_a_failing_gate() -> None:
+    f = [file_row("pkg/cache.py"), file_row(".github/workflows/ci.yml")]
+    protected = pm.evaluate(pm._apply_exceptions(facts(files=f), [grant(paths=[".github/workflows/ci.yml"])]), now=NOW)
+    assert protected.action == pm.ESCALATE
+    assert excepted([grant()], checks=checks(conclusion="FAILURE")).action == pm.REFUSE
+
+
+def test_only_complete_owner_signed_exceptions_load(tmp_path: Path) -> None:
+    directory = tmp_path / "portfolio-merger"
+    directory.mkdir()
+    (directory / pm.EXCEPTIONS_FILE).write_text(json.dumps([grant(), grant(approved_by="someone"), grant(head="short"),
+                                                            {"repository": REPO}]), encoding="utf-8")
+    assert pm.load_exceptions(tmp_path) == [grant()]
+    (directory / pm.EXCEPTIONS_FILE).write_text("{not json", encoding="utf-8")
+    assert pm.load_exceptions(tmp_path) == []
+
+
+def test_malformed_exception_field_types_grant_nothing_and_never_abort_the_cycle(tmp_path: Path) -> None:
+    directory = tmp_path / "portfolio-merger"
+    directory.mkdir()
+    bad = [grant(approved_by=[]), grant(pr="not-a-number"), grant(pr=True), grant(paths=[1]), grant(paths=[""]),
+           grant(head="Z" * 40), grant(repository=None), grant(reason=None), grant(approved_at=3)]
+    (directory / pm.EXCEPTIONS_FILE).write_text(json.dumps([*bad, grant()]), encoding="utf-8")
+    assert pm.load_exceptions(tmp_path) == [grant()]

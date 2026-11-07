@@ -412,6 +412,10 @@ def authorize(facts: dict[str, Any]) -> tuple[Verdict | None, dict[str, Any], li
                 outside = [p for p in paths if p != GRAPH_PATH]
                 if GRAPH_PATH not in paths:
                     refuse.append("PLANNING_WITHOUT_GRAPH_CHANGE")
+            granted = {p for e in facts.get("owner_exceptions") or [] for p in e.get("paths", [])}
+            if granted & set(outside):  # an explicit, head-pinned owner approval for these exact paths only
+                authorization["owner_exception"] = [e for e in facts["owner_exceptions"]]
+                outside = [p for p in outside if p not in granted]
             if outside:  # widening or reinterpreting an authorization is the owner's decision, never the merger's
                 escalate.append("OUT_OF_SCOPE_PATHS:" + ",".join(sorted(outside)[:8]))
             if GRAPH_PATH in paths:
@@ -713,9 +717,48 @@ def _advise(advisor: Advisor | None, facts: dict[str, Any], verdict: Verdict) ->
 Guard = Callable[[], "str | None"]  # None while the engine may still act; otherwise the reason it may not
 
 
+EXCEPTIONS_FILE = "owner-approved-exceptions.json"
+
+
+def load_exceptions(state_root: Path) -> list[dict[str, Any]]:
+    """Owner-approved scope exceptions: ``[{repository, pr, head, paths, approved_by, approved_at, reason}]``.
+
+    Each exception covers exactly one pull request at one exact head and an explicit list of paths. It never widens the
+    global policy, never covers protected paths, dependencies or secrets (those escalate separately), and silently stops
+    applying when the head changes. A malformed file grants nothing.
+    """
+    try:
+        value = json.loads((Path(state_root) / "portfolio-merger" / EXCEPTIONS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(value, list):
+        return []
+    return [e for e in value if _valid_exception(e)]
+
+
+def _valid_exception(entry: Any) -> bool:
+    """Every field has the right type and shape; anything else grants nothing (and can never abort a cycle)."""
+    if not isinstance(entry, dict):
+        return False
+    approver, head, paths = entry.get("approved_by"), entry.get("head"), entry.get("paths")
+    return (isinstance(entry.get("repository"), str) and isinstance(entry.get("pr"), int) and not isinstance(entry["pr"], bool)
+            and isinstance(head, str) and re.fullmatch(r"[0-9a-f]{40}", head) is not None
+            and isinstance(paths, list) and bool(paths) and all(isinstance(x, str) and x for x in paths)
+            and isinstance(approver, str) and approver in OWNER_LOGINS
+            and isinstance(entry.get("approved_at"), str) and isinstance(entry.get("reason"), str))
+
+
+def _apply_exceptions(facts: dict[str, Any], exceptions: list[dict[str, Any]]) -> dict[str, Any]:
+    facts["owner_exceptions"] = [e for e in exceptions if e["repository"] == facts.get("repository")
+                                 and int(e["pr"]) == int(facts["number"]) and e["head"] == facts["head"]]
+    return facts
+
+
 def process(port: Port, ledger: Ledger | None, repo: str, summary: dict[str, Any], *, clock: Callable[[], datetime],
-            advisor: Advisor | None, dry_run: bool, guard: Guard | None = None) -> dict[str, Any]:
-    facts = gather(port, repo, summary)
+            advisor: Advisor | None, dry_run: bool, guard: Guard | None = None,
+            exceptions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    exceptions = exceptions or []
+    facts = _apply_exceptions(gather(port, repo, summary), exceptions)
     verdict, opinion = _advise(advisor, facts, evaluate(facts, now=clock()))
     row: dict[str, Any] = {"repository": repo, "pr": facts["number"], "head": facts["head"], "decision": verdict.action,
                            "reasons": list(verdict.reasons), "merged": False, "promoted": False}
@@ -743,7 +786,7 @@ def process(port: Port, ledger: Ledger | None, repo: str, summary: dict[str, Any
         return row  # the review window restarts at promotion; the next cycle decides the merge
     # MERGE: re-gather and re-decide on a fresh read immediately before acting, then merge exactly that head
     fresh_summary = next((s for s in port.list_open(repo) if int(s.get("number", -1)) == facts["number"]), None)
-    again = gather(port, repo, fresh_summary) if fresh_summary else None
+    again = _apply_exceptions(gather(port, repo, fresh_summary), exceptions) if fresh_summary else None
     if again is None or again["head"] != facts["head"]:
         row["decision"] = "HEAD_CHANGED_BEFORE_MERGE"
         return row
@@ -781,6 +824,7 @@ def cycle(state_root: Path, *, repositories: tuple[str, ...] = PORTFOLIO_REPOS, 
     port = port or GhPort()
     ledger = None if dry_run else Ledger(state_root)
     rows: list[dict[str, Any]] = []
+    exceptions = load_exceptions(state_root)
     for repo in repositories:
         try:
             summaries = port.list_open(repo)
@@ -794,7 +838,7 @@ def cycle(state_root: Path, *, repositories: tuple[str, ...] = PORTFOLIO_REPOS, 
                 return rows
             try:
                 rows.append(process(port, ledger, repo, summary, clock=clock, advisor=advisor, dry_run=dry_run,
-                                    guard=guard))
+                                    guard=guard, exceptions=exceptions))
             except Exception as exc:  # one broken pull request never stops the others, and is itself recorded
                 rows.append({"repository": repo, "pr": summary.get("number"), "head": summary.get("headRefOid"),
                              "decision": "PR_PROCESSING_FAILED", "merged": False, "error_class": type(exc).__name__})
