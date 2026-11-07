@@ -902,6 +902,16 @@ def harvest(
                 }
             )
             continue
+        if not result.get("ok") and "ModelNotAdmitted" in str(result.get("reason", "")):
+            # No memory or no free model slot is waiting, not a failed attempt: forget the job so nothing is spent.
+            _job_path(lane_root, job["id"], job["attempt"]).unlink(missing_ok=True)
+            if release is not None and job.get("lease_id"):
+                try:
+                    release(job["lease_id"])
+                except Exception:  # a lease that is already gone changes nothing
+                    pass
+            outcomes.append({"id": job["id"], "status": "WAITING_FOR_MEMORY", "reason": str(result.get("reason"))[:300]})
+            continue
         if not result.get("ok"):
             reason = str(result.get("reason", "PLANNING_FAILED"))[:300]
             interrupted = (

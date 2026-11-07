@@ -221,3 +221,19 @@ def test_pressure_during_a_run_cancels_it_and_the_model_is_still_unloaded(tmp_pa
     with pytest.raises(lm.ModelCancelled):
         lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=gate_probes, directory=tmp_path / "slot")
     assert fake.unloaded == ["qwen2.5-coder:3b"]
+
+
+def test_the_size_token_is_matched_exactly_so_13b_never_borrows_the_3b_profile():
+    for name in ("ollama/codellama:13b", "x:30b", "qwen:0.3b", "mystery-model"):
+        assert lm.gate_for(name).model_gib == 5.3 and lm.gate_for(name).min_idle_s == 600.0
+    assert lm.gate_for("ollama/qwen2.5-coder:3b-instruct-q4").model_gib == 2.3
+    assert lm.gate_for("qwen2.5-coder:1.5b").model_gib == 1.1
+    assert lm.choose_model("ollama/codellama:13b", **door_probes(4.0))[0] == "qwen2.5-coder:3b"
+
+
+def test_the_shared_client_follows_the_configured_endpoint(monkeypatch):
+    monkeypatch.setenv("OLLAMA_API_BASE", "http://10.1.2.3:9999/")
+    client = lm.OllamaClient()
+    assert (client.host, client.port) == ("10.1.2.3", 9999)
+    monkeypatch.delenv("OLLAMA_API_BASE")
+    assert (lm.OllamaClient().host, lm.OllamaClient().port) == ("127.0.0.1", 11434)
