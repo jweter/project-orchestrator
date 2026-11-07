@@ -49,21 +49,10 @@ def brief(clone: Path, base: str, allowed: list[str]) -> str:
 
 
 def ask_ollama(prompt: str, model: str, timeout: int = 1500) -> Any:
-    base = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
-    body = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.2, "num_ctx": 6144, "num_predict": 1800},
-    }
-    request = urllib.request.Request(
-        base + "/api/generate",
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(json.load(response).get("response") or "{}")
+    from project_orchestrator.iron_god_local_model import guarded_generate
+
+    reply = guarded_generate(prompt, requested=model, num_ctx=6144, num_predict=1800, json_mode=True, timeout=timeout)
+    return json.loads(reply.get("response") or "{}")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1058,3 +1058,15 @@ def test_a_name_collision_is_an_ordinary_slip_and_only_a_scope_without_a_target_
     td.advance(tmp_path / "lane", [PARENT], clone, base, spawn=spawner)
     td.advance(tmp_path / "lane", [PARENT], clone, base, spawn=spawner)
     assert len(spawner.launched) == 2                       # the collision got its second attempt
+
+
+def test_waiting_for_memory_spends_no_attempt_and_returns_the_lease(tmp_path: Path, clone: Path) -> None:
+    lane, base, released = tmp_path / "lane", head_of(clone), []
+    waiting = {"ok": False, "reason": "MODEL_UNAVAILABLE: ModelNotAdmitted: MEMORY: 1.0 GiB available < 3.8 GiB required"}
+    for _ in range(td.MAX_PLAN_ATTEMPTS + 3):  # far more waits than attempts
+        td.advance(lane, [PARENT], clone, base, spawn=Spawner(waiting), reserve=lambda: "lease-1", release=released.append)
+        outcomes = td.harvest(lane, release=released.append)
+        assert outcomes and outcomes[0]["status"] == "WAITING_FOR_MEMORY"
+    assert released and not td.plan_path(lane, PARENT["id"]).exists()
+    assert not [r for r in td._jobs(lane) if r.get("stage") == "FAILED"]
+    assert not any(o["status"] == "BLOCKED" for o in td.advance(lane, [PARENT], clone, base, spawn=Spawner(waiting)))

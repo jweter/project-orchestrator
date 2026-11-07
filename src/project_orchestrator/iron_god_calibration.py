@@ -35,7 +35,7 @@ PROFILE_NAME = "iron-god-capability-profile.json"
 LADDER_VERSION = 1
 CALIBRATION_LEASE_ID = "iron-god-calibration"
 # Same default as scripts/autonomous_slice_builder.MODEL (asserted by tests).
-DEFAULT_MODEL = os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:7b")
+DEFAULT_MODEL = os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:3b")
 
 _PLANNING = {
     "vision_ref": "calibration ladder (owner-held capability measurement)",
