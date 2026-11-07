@@ -143,3 +143,26 @@ def test_isolated_cycle_failures_are_reported_as_watcher_error():
     results=[{"repository":"broken/repo","decision":"REPOSITORY_QUERY_FAILED","merged":False}]
     error=("PARTIAL_PROMOTION_FAILURE" if any(result.get("decision") in {"REPOSITORY_QUERY_FAILED","PR_PROCESSING_FAILED"} for result in results) else None)
     assert error=="PARTIAL_PROMOTION_FAILURE"
+
+
+def test_portfolio_only_cycle_never_reconciles_product_lifecycle(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(watcher, "merge_watcher_advanced", lambda root: calls.append(root) or True)
+    payload = watcher.process_cycle(
+        tmp_path / "green-pr-watcher.json",
+        [{"repository": "jweter/knowledge-engine-ai", "pr": 7, "head": "a" * 40, "merged": True}],
+        None, time.time(), reconcile=False)
+    assert calls == [] and payload["reconciliation_advanced"] is False
+    assert payload["kpi_events_emitted"] == 1  # the merge is still recorded as evidence
+
+
+def test_commissioning_keeps_the_roadmap_merger_running_in_portfolio_only_mode(tmp_path, monkeypatch):
+    import scripts.continuous_flow_supervisor as supervisor
+
+    repo = tmp_path / "release"
+    (repo / "engineering").mkdir(parents=True)
+    (repo / "engineering" / "iron-god-commissioning.json").write_text('{"mode": "IRON_GOD_COMMISSIONING"}', encoding="utf-8")
+    launched = []
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda argv, **k: launched.append(argv) or "proc")
+    assert supervisor.start_merge_watcher(repo, tmp_path, 60) == "proc"
+    assert "--portfolio-only" in launched[0] and launched[0][1].endswith("green_pr_watch_loop.py")

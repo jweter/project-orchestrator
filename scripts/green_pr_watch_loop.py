@@ -121,7 +121,7 @@ def append_kpi_events(path: Path, events: list[dict]) -> int:
     return len(load_events(path)) - before
 
 
-def process_cycle(state: Path, results: list[dict], error: str | None, started: float) -> dict:
+def process_cycle(state: Path, results: list[dict], error: str | None, started: float, *, reconcile: bool = True) -> dict:
     observed_at = datetime.now(UTC).isoformat()
     payload = {
         "updated_at_utc": observed_at,
@@ -137,7 +137,7 @@ def process_cycle(state: Path, results: list[dict], error: str | None, started: 
     event_count = append_kpi_events(state_root / "kpi-events.jsonl", events)
 
     reconciliation_advanced = False
-    if any(event["to_state"] == "MERGED" for event in events):
+    if reconcile and any(event["to_state"] == "MERGED" for event in events):
         reconciliation_advanced = merge_watcher_advanced(state_root)
         if reconciliation_advanced:
             atomic(
@@ -160,13 +160,16 @@ def main() -> int:
     p.add_argument("--state", required=True)
     p.add_argument("--poll-seconds", type=int, default=60)
     p.add_argument("--once", action="store_true")
+    p.add_argument("--portfolio-only", action="store_true",
+                   help="commissioning mode: only the policy-enforced roadmap merger runs; no failed-PR repair routing, "
+                        "evidence watcher or product lifecycle reconciliation")
     a = p.parse_args()
     state = Path(a.state)
     singleton = acquire_singleton(state)
     if singleton is None:
         return 0
     repo_root = Path(__file__).resolve().parents[1]
-    evidence = subprocess.Popen(
+    evidence = None if a.portfolio_only else subprocess.Popen(
         [sys.executable, str(repo_root / "scripts" / "github_evidence_watch_loop.py"),
          "--repo-root", str(repo_root), "--state-root", str(state.parent)],
         cwd=repo_root, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -176,7 +179,8 @@ def main() -> int:
             started = time.time()
             try:
                 results = portfolio_merger.cycle(state.parent)
-                failed_pr_results = failed_pr_accountability_cycle(Path(__file__).resolve().parents[1], state.parent)
+                failed_pr_results = ([] if a.portfolio_only
+                                     else failed_pr_accountability_cycle(Path(__file__).resolve().parents[1], state.parent))
                 results.extend(failed_pr_results)
                 error = (
                     "PARTIAL_PROMOTION_FAILURE"
@@ -193,12 +197,12 @@ def main() -> int:
             except Exception as exc:
                 results = []
                 error = type(exc).__name__
-            process_cycle(state, results, error, started)
+            process_cycle(state, results, error, started, reconcile=not a.portfolio_only)
             if a.once:
                 return 0 if error is None else 1
             time.sleep(max(30, a.poll_seconds))
     finally:
-        if evidence.poll() is None:
+        if evidence is not None and evidence.poll() is None:
             evidence.terminate()
         release_singleton(singleton)
 

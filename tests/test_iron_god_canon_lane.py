@@ -378,11 +378,13 @@ def test_commissioning_suspends_legacy_product_activity(tmp_path, monkeypatch):
     state = tmp_path / "flow-state"
     state.mkdir()
     (state / "linear-bindings.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda *a, **k: pytest.fail("no merge watcher process"))
+    launched = []
+    monkeypatch.setattr(supervisor.subprocess, "Popen", lambda argv, **k: launched.append(argv) or "proc")
     monkeypatch.setattr(supervisor.subprocess, "run", lambda *a, **k: pytest.fail("no product subprocess"))
-    watcher = supervisor.start_merge_watcher(repo, state, 60)
-    # The stand-in is safe at every use in main(): restart check, report, terminate.
-    assert watcher.poll() == 0 and watcher.pid is None and watcher.terminate() is None
+    # Owner directive 2026-11-06: roadmap PRs keep flowing during commissioning, but only through the scope-checked
+    # portfolio merger - never the legacy failed-PR repair routing, evidence watcher or lifecycle reconciliation.
+    assert supervisor.start_merge_watcher(repo, state, 60) == "proc"
+    assert "--portfolio-only" in launched[0]
     assert supervisor.run_linear_reconciliation(repo, state) is None
     assert supervisor.evolution_authorized(repo, tmp_path, state) == (
         False, "IRON_GOD_COMMISSIONING_LEGACY_READINESS_SKIPPED", [], [],
