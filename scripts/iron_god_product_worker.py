@@ -132,18 +132,10 @@ def planning_prompt(packet: dict[str, Any], brief: str) -> str:
 
 
 def ollama_json(prompt: str, *, model: str | None = None, timeout: int = 1800) -> dict[str, Any]:
-    from scripts.autonomous_slice_builder import MODEL
+    """A JSON reply from the shared guarded local door (3B unless a larger model is admitted right now)."""
+    from project_orchestrator.iron_god_local_model import guarded_generate
 
-    base = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
-    name = (model or MODEL).split("/", 1)[-1]
-    body = {"model": name, "prompt": prompt, "stream": False, "format": "json",
-            "options": {"temperature": 0.2, "num_ctx": 8192, "num_predict": 1200}}
-    if name != MODEL.split("/", 1)[-1]:
-        body["keep_alive"] = 0  # a larger planner must leave RAM before the builder model loads (16 GB host)
-    request = urllib.request.Request(base + "/api/generate", data=json.dumps(body).encode("utf-8"),
-                                     headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        reply = json.load(response)
+    reply = guarded_generate(prompt, requested=model, num_ctx=8192, num_predict=1200, json_mode=True, timeout=timeout)
     return json.loads(reply.get("response") or "{}")
 
 
@@ -1209,26 +1201,16 @@ def external_completion(worktree: Path, base: str, plan: dict[str, Any]) -> dict
 
 
 def production_generate(prompt: str, num_predict: int, check: Callable[[], None]) -> dict[str, Any]:
-    """One plain completion from the local builder model, holding the shared model lock."""
-    import shutil
-
-    from scripts.autonomous_slice_builder import MODEL, _acquire_ollama_lock
+    """One completion from the local builder model through the shared guarded door (slot, memory gate, cancel, unload)."""
+    from project_orchestrator.iron_god_local_model import guarded_generate
 
     check()
-    base = os.environ.get("OLLAMA_API_BASE", "http://127.0.0.1:11434").rstrip("/")
-    body = {"model": MODEL.split("/", 1)[-1], "prompt": prompt, "stream": False,
-            "options": {"temperature": 0.2, "num_ctx": DIRECT_NUM_CTX, "num_predict": num_predict}}
-    lock = _acquire_ollama_lock()
-    try:
-        request = urllib.request.Request(base + "/api/generate", data=json.dumps(body).encode("utf-8"),
-                                         headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=1800) as response:
-            reply = json.load(response)
-    finally:
-        shutil.rmtree(lock, ignore_errors=True)
+    reply = guarded_generate(prompt, requested=os.environ.get("EXPONENTIAL_BUILDER_MODEL"), num_ctx=DIRECT_NUM_CTX,
+                             num_predict=num_predict, timeout=1800)
     check()
     return {"text": reply.get("response") or "", "prompt_tokens": reply.get("prompt_eval_count"),
-            "output_tokens": reply.get("eval_count"), "model_s": round((reply.get("total_duration") or 0) / 1e9, 1)}
+            "output_tokens": reply.get("eval_count"), "model_s": round((reply.get("total_duration") or 0) / 1e9, 1),
+            "model_used": reply.get("model_used"), "lowest_available_gib": reply.get("lowest_available_gib")}
 
 
 def repository_test(worktree: Path, test: str, check: Callable[[], None], timeout: int = 600) -> dict[str, Any]:
@@ -1303,7 +1285,7 @@ def execute_directed_slice(packet: dict[str, Any], plan: dict[str, Any], worktre
     reply = generate(prompt, min(4096, max(600, 30 * (lines + 25 * len(plan["add"])))), check)
     text = str(reply.get("text") or "")
     handback["directed"] = {**{k: reply.get(k) for k in ("prompt_tokens", "output_tokens", "model_s")},
-                            "model": os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:7b"),
+                            "model": os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:3b"),
                             "prompt": prompt[:16000], "reply": text[:8000]}
     try:
         edited = de.apply_reply(original, text, plan["targets"], add=plan["add"])

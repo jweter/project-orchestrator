@@ -158,3 +158,66 @@ def test_returning_user_input_aborts_an_idle_only_run_but_not_a_small_model_run(
 def test_the_system_probes_return_plausible_values() -> None:
     assert 0.1 < lm.available_gib() < 4096
     assert lm.user_idle_seconds() >= 0.0
+
+
+# ---- the shared guarded door -------------------------------------------------------------------------------------------
+
+
+class FakeDoor:
+    def __init__(self, abort_after_poll=False):
+        self.calls, self.unloaded, self.abort = [], [], abort_after_poll
+
+    def generate(self, model, prompt, **kw):
+        self.calls.append((model, kw))
+        if self.abort:
+            for _ in range(3):  # the real client polls every second
+                reason = kw["should_abort"]()
+                if reason:
+                    raise lm.ModelCancelled(reason)
+        return {"response": "{}"}
+
+    def unload(self, model, **kw):
+        self.unloaded.append(model)
+        return True
+
+
+def door_probes(free, idle=0.0):
+    return {"available": lambda: free, "idle": lambda: idle}
+
+
+def test_default_is_3b_and_a_larger_request_downgrades_unless_it_is_admitted_right_now():
+    assert lm.choose_model(None, **door_probes(6.0))[0] == "qwen2.5-coder:3b"
+    assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(6.0, idle=900))[0] == "qwen2.5-coder:3b"   # memory
+    assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(9.0, idle=10))[0] == "qwen2.5-coder:3b"    # user active
+    assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(9.0, idle=900))[0] == "qwen2.5-coder:7b"
+    assert lm.gate_for("some-unknown-model").model_gib == 5.3                                              # strictest
+
+
+def test_guarded_generate_loads_nothing_when_memory_is_short_and_always_unloads_after(tmp_path):
+    fake = FakeDoor()
+    with pytest.raises(lm.ModelNotAdmitted, match="MEMORY"):
+        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=0.0, client=fake, probes=door_probes(1.0), directory=tmp_path / "slot")
+    assert fake.calls == [] and not (tmp_path / "slot").exists()
+    reply = lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=door_probes(6.0), directory=tmp_path / "slot")
+    assert reply["model_used"] == "qwen2.5-coder:3b" and fake.unloaded == ["qwen2.5-coder:3b"]
+    assert fake.calls[0][1]["keep_alive"] == 0 and not (tmp_path / "slot").exists()
+
+
+def test_only_one_model_run_holds_the_slot_and_a_dead_owner_is_recovered(tmp_path):
+    slot = tmp_path / "slot"
+    with lm.model_slot(1, directory=slot):
+        with pytest.raises(lm.ModelNotAdmitted, match="SLOT_BUSY"):
+            with lm.model_slot(0.0, directory=slot, poll_s=0.01):
+                pass
+    slot.mkdir()
+    (slot / "owner").write_text("999999\n1\n", encoding="utf-8")
+    with lm.model_slot(1, directory=slot, alive=lambda pid: False):
+        assert (slot / "owner").exists()
+
+
+def test_pressure_during_a_run_cancels_it_and_the_model_is_still_unloaded(tmp_path):
+    fake, free = FakeDoor(abort_after_poll=True), iter([6.0, 6.0, 6.0, 0.1, 0.1, 0.1])
+    gate_probes = {"available": lambda: next(free), "idle": lambda: 0.0}
+    with pytest.raises(lm.ModelCancelled):
+        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=gate_probes, directory=tmp_path / "slot")
+    assert fake.unloaded == ["qwen2.5-coder:3b"]

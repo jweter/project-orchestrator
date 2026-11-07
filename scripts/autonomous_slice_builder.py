@@ -49,7 +49,7 @@ def contract_products(contract_path:Path|None=None)->dict[str,tuple[str,...]]:
 
 def portfolio_repositories(contract_path:Path|None=None)->tuple[str,...]:
     return tuple(repo for repositories in contract_products(contract_path).values() for repo in repositories)
-MODEL=os.environ.get("EXPONENTIAL_BUILDER_MODEL","ollama/qwen2.5-coder:7b")
+MODEL=os.environ.get("EXPONENTIAL_BUILDER_MODEL","ollama/qwen2.5-coder:3b")
 PROTECTED_PARTS=("dowork.txt","agents.md","license","security",".github/workflows",
                  "engineering/control-plane.json","roadmap","architecture","vision","policy")
 PLACEHOLDER_MARKERS=("entire file content", "todo: implement", "your code here", "placeholder")
