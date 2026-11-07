@@ -1,0 +1,160 @@
+"""The cancellable local-model client and its gates: the guard must interrupt an in-flight generation, not the caller."""
+
+from __future__ import annotations
+
+import json
+import select
+import socket
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
+
+from project_orchestrator import iron_god_local_model as lm
+
+
+class FakeOllama:
+    """A server whose generation runs up to ``busy_s`` and records exactly when it notices the client went away."""
+
+    def __init__(self, busy_s: float = 20.0) -> None:
+        self.busy_s, self.loaded = busy_s, ["m:7b"]
+        self.started_at = self.disconnected_at = self.finished_at = None
+        self.requests: list[dict] = []
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args) -> None:  # noqa: D401 - silence the test server
+                pass
+
+            def _send(self, payload: dict) -> None:
+                data = json.dumps(payload).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self) -> None:  # noqa: N802
+                self._send({"models": [{"name": name} for name in outer.loaded]})
+
+            def do_POST(self) -> None:  # noqa: N802
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                outer.requests.append(body)
+                if body.get("keep_alive") == 0:
+                    outer.loaded = []
+                    return self._send({"done": True})
+                outer.started_at = time.monotonic()
+                while time.monotonic() - outer.started_at < outer.busy_s:
+                    readable, _, _ = select.select([self.connection], [], [], 0.05)
+                    if readable and self.connection.recv(1, socket.MSG_PEEK) == b"":
+                        outer.disconnected_at = time.monotonic()  # the generation would be cancelled here
+                        return
+                outer.finished_at = time.monotonic()
+                self._send({"response": "done", "eval_count": 3, "eval_duration": 1_000_000_000})
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self.server.server_address[1]
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def client(self) -> lm.OllamaClient:
+        return lm.OllamaClient("127.0.0.1", self.port)
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def server():
+    fake = FakeOllama()
+    yield fake
+    fake.close()
+
+
+def test_a_guard_abort_closes_the_connection_so_the_server_stops_generating(server: FakeOllama) -> None:
+    triggered_at: list[float] = []
+
+    def abort() -> str | None:
+        if time.monotonic() - server.started_at > 0.6 if server.started_at else False:
+            triggered_at.append(time.monotonic())
+            return "MEMORY_PRESSURE: test"
+        return None
+
+    began = time.monotonic()
+    with pytest.raises(lm.ModelCancelled, match="MEMORY_PRESSURE"):
+        server.client().generate("m:7b", "write a lot", num_ctx=512, num_predict=100, keep_alive="1m", timeout=60,
+                                 should_abort=abort, poll_s=0.2)
+    assert time.monotonic() - began < 5                       # the caller was released quickly...
+    time.sleep(0.5)
+    assert server.disconnected_at is not None                  # ...and the SERVER saw the disconnect (generation cancelled)
+    assert server.finished_at is None                          # it did not run to completion
+    assert server.disconnected_at - triggered_at[0] < 2.0      # within seconds of the guard firing
+
+
+def test_without_an_abort_reason_the_generation_completes_normally() -> None:
+    fake = FakeOllama(busy_s=0.4)
+    try:
+        reply = fake.client().generate("m:7b", "x", num_ctx=512, num_predict=10, keep_alive="1m", timeout=30,
+                                       should_abort=lambda: None, poll_s=0.1)
+        assert reply["response"] == "done" and fake.disconnected_at is None
+    finally:
+        fake.close()
+
+
+def test_unload_drops_the_model_and_is_confirmed_by_the_server(server: FakeOllama) -> None:
+    client = server.client()
+    assert client.loaded() == ["m:7b"]
+    assert client.unload("m:7b", wait_s=3, poll_s=0.05) is True
+    assert client.loaded() == [] and server.requests[-1]["keep_alive"] == 0
+
+
+def test_unload_reports_failure_when_the_server_keeps_the_model_loaded(server: FakeOllama) -> None:
+    class Stubborn(lm.OllamaClient):
+        def loaded(self) -> list[str]:
+            return ["m:7b"]
+
+    assert Stubborn("127.0.0.1", server.port).unload("m:7b", wait_s=0.3, poll_s=0.05) is False
+
+
+def test_a_server_that_is_down_is_an_ordinary_model_failure() -> None:
+    client = lm.OllamaClient("127.0.0.1", 1)  # nothing listens here
+    with pytest.raises(OSError):
+        client.generate("m:7b", "x", num_ctx=512, num_predict=1, keep_alive="1m", timeout=2)
+
+
+def gate(free: list[float], idle: float = 3600.0, **over) -> lm.Gate:
+    readings = iter(free)
+    return lm.Gate(model_gib=over.pop("model_gib", 5.3), available=lambda: next(readings, free[-1]), idle=lambda: idle, **over)
+
+
+def test_admission_needs_available_memory_for_the_model_plus_a_reserve() -> None:
+    assert gate([8.0]).admit() == (True, "ADMITTED")
+    refused, reason = gate([6.0]).admit()
+    assert refused is False and reason.startswith("MEMORY: 6.0 GiB available < 7.3 GiB required")
+    assert gate([3.5], model_gib=1.9, reserve_gib=1.5).admit()[0] is True
+
+
+def test_an_idle_only_model_is_not_admitted_while_the_user_is_active() -> None:
+    refused, reason = gate([9.0], idle=30.0, min_idle_s=600).admit()
+    assert refused is False and reason.startswith("USER_ACTIVE")
+    assert gate([9.0], idle=900.0, min_idle_s=600).admit()[0] is True
+    assert gate([9.0], idle=1.0, min_idle_s=0).admit()[0] is True      # a small model beside the desktop needs no idleness
+
+
+def test_abort_needs_sustained_pressure_and_remembers_the_lowest_reading() -> None:
+    g = gate([8.0, 0.3, 4.0, 0.3, 8.0], idle=900.0)
+    assert [g.abort_reason() for _ in range(5)] == [None] * 5            # single dips and recoveries never abort
+    g2 = gate([8.0, 0.3, 0.2], idle=900.0)
+    first, second = g2.abort_reason(), g2.abort_reason()
+    assert first is None and second is not None and second.startswith("MEMORY_PRESSURE") and g2.lowest <= 0.3
+
+
+def test_returning_user_input_aborts_an_idle_only_run_but_not_a_small_model_run() -> None:
+    assert gate([9.0], idle=2.0, min_idle_s=600).abort_reason() == (
+        "USER_RETURNED: keyboard or mouse input while an idle-only model was running")
+    assert gate([9.0], idle=2.0, min_idle_s=0).abort_reason() is None
+
+
+def test_the_system_probes_return_plausible_values() -> None:
+    assert 0.1 < lm.available_gib() < 4096
+    assert lm.user_idle_seconds() >= 0.0
