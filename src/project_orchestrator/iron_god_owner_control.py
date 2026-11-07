@@ -59,7 +59,8 @@ ACTIONS = frozenset({TAKE_THE_WHEEL, GIVE_ME_CONTROL})
 COMMAND_FRESHNESS = timedelta(seconds=120)
 CLOCK_SKEW = timedelta(seconds=5)
 ACK_WINDOW = timedelta(seconds=180)
-GRANT_MAX_AGE = timedelta(hours=24)
+# Owner decision (2026-11-07): Take the Wheel has no time limit. A grant lasts until Give Me Control, a new owner
+# command, a release mismatch, or the death of the acknowledging supervisor.
 
 CONTROL_DIRNAME = "IronGodControl"
 KEY_FILE = "owner-key.dpapi"
@@ -128,6 +129,7 @@ class OwnerDecision:
     release_sha: str | None = None
     supervisor_instance_id: str | None = None
     revocation_acknowledged: bool = False
+    owner_intent: str | None = None  # the owner's latest authenticated command; survives suspension of execution
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -140,6 +142,7 @@ class OwnerDecision:
             "release_sha": self.release_sha,
             "supervisor_instance_id": self.supervisor_instance_id,
             "revocation_acknowledged": self.revocation_acknowledged,
+            "owner_intent": self.owner_intent,
         }
 
 
@@ -729,6 +732,7 @@ def evaluate(
         "command_id": command.get("command_id"),
         "action": command.get("action"),
         "release_sha": command.get("release_sha"),
+        "owner_intent": command.get("action"),
     }
     try:
         ack = _verified(key, *ack_row) if ack_row is not None else None
@@ -744,15 +748,13 @@ def evaluate(
         )
     issued = _parse_time(command.get("issued_at_utc"))
     age = current - issued
-    if age > GRANT_MAX_AGE:
-        return _denied(UNVERIFIED, "GRANT_EXPIRED", **fields)
     if release_sha is not None and command.get("release_sha") != release_sha:
         return _denied(UNVERIFIED, "GRANT_RELEASE_MISMATCH", **fields)
     if ack is None:
         if age <= ACK_WINDOW:
             return _denied(AUTHORIZED_PENDING_ACK, "SUPERVISOR_ACK_PENDING", **fields)
         return _denied(UNVERIFIED, "SUPERVISOR_ACK_MISSING", **fields)
-    if ack.get("kind") != "GRANT_ACK" or ack.get("release_sha") != command.get("release_sha"):
+    if ack.get("kind") not in {"GRANT_ACK", "RESUME_ACK"} or ack.get("release_sha") != command.get("release_sha"):
         return _denied(UNVERIFIED, "ACK_BINDING_INVALID", **fields)
     acked_by = SupervisorIdentity.from_mapping(ack.get("supervisor") or {})
     fields["supervisor_instance_id"] = acked_by.instance_id
@@ -766,6 +768,7 @@ def evaluate(
 def _record_ack(
     root: Path, supervisor: SupervisorIdentity, *, kind: str, release_sha: str | None,
     now: datetime | None, liveness: Callable[[SupervisorIdentity], bool],
+    safety_check: Callable[[], str | None] | None = None,
 ) -> int:
     current = _clock(now)
     key = _owner_key(root)
@@ -782,13 +785,33 @@ def _record_ack(
             wanted = TAKE_THE_WHEEL if kind == "GRANT_ACK" else GIVE_ME_CONTROL
             if command.get("action") != wanted:
                 raise OwnerControlError("LATEST_COMMAND_IS_NOT_" + wanted)
-            if _ack(db, generation) is not None:
-                raise OwnerControlError("COMMAND_ALREADY_ACKNOWLEDGED")
+            existing = _ack(db, generation)
+            resumed_from: dict[str, Any] | None = None
             if kind == "GRANT_ACK":
-                if current - _parse_time(command.get("issued_at_utc")) > ACK_WINDOW:
-                    raise OwnerControlError("GRANT_ACK_WINDOW_EXPIRED")
                 if command.get("release_sha") != release_sha:
                     raise OwnerControlError("GRANT_RELEASE_MISMATCH")
+                fresh = existing is None and current - _parse_time(command.get("issued_at_utc")) <= ACK_WINDOW
+                if not fresh:
+                    # Persistent owner intent: a later supervisor of the SAME release may resume the unrevoked grant, but
+                    # only when the previous holder is provably gone and every safety gate passes. Never a hijack.
+                    if existing is not None:
+                        previous = _verified(key, *existing)
+                        if previous.get("kind") not in {"GRANT_ACK", "RESUME_ACK"}:
+                            raise OwnerControlError("COMMAND_ALREADY_ACKNOWLEDGED")
+                        holder = SupervisorIdentity.from_mapping(previous.get("supervisor") or {})
+                        if holder == supervisor:
+                            raise OwnerControlError("COMMAND_ALREADY_ACKNOWLEDGED")
+                        if liveness(holder):
+                            raise OwnerControlError("GRANT_HELD_BY_LIVE_SUPERVISOR")
+                        resumed_from = holder.as_dict()
+                    reason = safety_check() if safety_check is not None else "RESUME_REQUIRES_SAFETY_CHECK"
+                    if reason:
+                        _event(db, "RESUME_REFUSED", generation, {"reason": reason, "supervisor": supervisor.as_dict()}, current)
+                        db.execute("COMMIT")
+                        raise OwnerControlError("RESUME_SAFETY_GATE_" + reason)
+                    kind = "RESUME_ACK"
+            elif existing is not None:
+                raise OwnerControlError("COMMAND_ALREADY_ACKNOWLEDGED")
             payload = {
                 "schema_version": SCHEMA_VERSION,
                 "kind": kind,
@@ -798,15 +821,20 @@ def _record_ack(
                 "supervisor": supervisor.as_dict(),
                 "acked_at_utc": current.isoformat(),
             }
+            if resumed_from is not None:
+                payload["resumed_from"] = resumed_from
             text = _canonical(payload)
             db.execute(
-                "INSERT INTO supervisor_acks (generation, payload, mac, recorded_at_utc) VALUES (?,?,?,?)",
+                "INSERT OR REPLACE INTO supervisor_acks (generation, payload, mac, recorded_at_utc) VALUES (?,?,?,?)",
                 (generation, text, _mac(key, text), current.isoformat()),
             )
-            _event(db, kind, generation, {"supervisor": supervisor.as_dict()}, current)
+            _event(db, kind, generation, {"supervisor": supervisor.as_dict(), "resumed_from": resumed_from}, current)
             db.execute("COMMIT")
         except BaseException:
-            db.execute("ROLLBACK")
+            try:
+                db.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass  # already committed (a recorded refusal)
             raise
     return generation
 
@@ -814,14 +842,19 @@ def _record_ack(
 def acknowledge_grant(
     root: Path, supervisor: SupervisorIdentity, *, release_sha: str, now: datetime | None = None,
     liveness: Callable[[SupervisorIdentity], bool] = supervisor_alive,
+    safety_check: Callable[[], str | None] | None = None,
 ) -> OwnerDecision:
-    """Bind a fresh, unacknowledged grant to this live supervisor, then decide.
+    """Bind the owner's unrevoked Take the Wheel to this live supervisor, then decide.
 
-    A grant already bound to another (possibly dead) supervisor is never
-    rebound: restarts require a new owner Take the Wheel.
+    Take the Wheel is persistent owner intent. A fresh grant is bound on first acknowledgment. After a crash, restart or
+    reboot, a new supervisor of the same release resumes it (RESUME_ACK) only if the previous holder is gone, the command
+    is authentic, still the latest, bound to this release, and ``safety_check`` passes; otherwise execution stays
+    suspended (fail closed) and the intent is preserved. A live holder is never displaced; a different release needs
+    the owner's fresh Take the Wheel.
     """
     try:
-        _record_ack(root, supervisor, kind="GRANT_ACK", release_sha=release_sha, now=now, liveness=liveness)
+        _record_ack(root, supervisor, kind="GRANT_ACK", release_sha=release_sha, now=now, liveness=liveness,
+                    safety_check=safety_check)
     except OwnerControlError:
         pass  # The decision below reports the precise reason.
     except (OSError, sqlite3.Error):

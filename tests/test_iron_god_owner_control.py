@@ -101,17 +101,53 @@ def test_grant_is_bound_to_the_accepted_release(root):
     )
 
 
-def test_supervisor_restart_never_revives_authority(root):
+def granted(root):
     take(root)
-    first, second = supervisor("a"), supervisor("b")
+    first = supervisor("a")
     assert oc.acknowledge_grant(root, first, release_sha=SHA, now=T0 + timedelta(seconds=10), liveness=Alive(first)).permitted
-    # First supervisor exits; a watchdog-started replacement cannot rebind the grant.
-    dead = Alive(second)
-    assert oc.evaluate(root, now=T0 + timedelta(seconds=60), liveness=dead).reasons == ("ACKNOWLEDGING_SUPERVISOR_GONE",)
-    replacement = oc.acknowledge_grant(root, second, release_sha=SHA, now=T0 + timedelta(seconds=61), liveness=dead)
-    assert replacement.permitted is False
-    assert replacement.reasons == ("GRANT_BOUND_TO_OTHER_SUPERVISOR",)
-    assert oc.owner_status(root, now=T0 + timedelta(seconds=61)) == "OWNER_CONTROL_UNVERIFIED"
+    return first
+
+
+def test_a_restarted_supervisor_resumes_the_unrevoked_intent_once_the_holder_is_gone(root):
+    first, second = granted(root), supervisor("b")
+    later = T0 + timedelta(days=3)
+    gone = Alive(second)
+    assert oc.evaluate(root, now=later, liveness=gone).reasons == ("ACKNOWLEDGING_SUPERVISOR_GONE",)
+    assert oc.evaluate(root, now=later, liveness=gone).owner_intent == oc.TAKE_THE_WHEEL   # intent survives suspension
+    resumed = oc.acknowledge_grant(root, second, release_sha=SHA, now=later, liveness=gone, safety_check=lambda: None)
+    assert resumed.permitted is True and resumed.supervisor_instance_id == second.instance_id
+    assert oc.recent_events(root, 1)[0]["kind"] == "RESUME_ACK"
+    # the old process can no longer act, and nobody else is displaced
+    assert oc.evaluate(root, supervisor=first, now=later, liveness=Alive(first, second)).permitted is False
+
+
+def test_a_live_holder_is_never_displaced(root):
+    first, intruder = granted(root), supervisor("c")
+    result = oc.acknowledge_grant(root, intruder, release_sha=SHA, now=T0 + timedelta(days=2), liveness=Alive(first, intruder),
+                                  safety_check=lambda: None)
+    assert result.permitted is False
+    assert oc.evaluate(root, supervisor=first, now=T0 + timedelta(days=2), liveness=Alive(first, intruder)).permitted is True
+
+
+def test_a_failed_safety_gate_keeps_the_intent_but_fails_closed_and_is_recorded(root):
+    granted(root)
+    second = supervisor("b")
+    result = oc.acknowledge_grant(root, second, release_sha=SHA, now=T0 + timedelta(hours=5), liveness=Alive(second),
+                                  safety_check=lambda: "RELEASE_RECEIPT_MISSING")
+    assert result.permitted is False and result.owner_intent == oc.TAKE_THE_WHEEL
+    assert oc.recent_events(root, 1)[0]["kind"] == "RESUME_REFUSED"
+    assert oc.owner_status(root, now=T0 + timedelta(hours=5)) == "OWNER_CONTROL_UNVERIFIED"
+
+
+def test_a_different_release_or_a_revocation_is_never_resumed(root):
+    granted(root)
+    second = supervisor("b")
+    other = oc.acknowledge_grant(root, second, release_sha=OTHER_SHA, now=T0 + timedelta(hours=1), liveness=Alive(second),
+                                 safety_check=lambda: None)
+    assert other.permitted is False and other.reasons == ("GRANT_RELEASE_MISMATCH",) and other.owner_intent == oc.TAKE_THE_WHEEL
+    give(root, T0 + timedelta(hours=2))
+    after = oc.acknowledge_grant(root, second, release_sha=SHA, now=T0 + timedelta(hours=3), liveness=Alive(second))
+    assert after.permitted is False and after.owner_intent == oc.GIVE_ME_CONTROL
 
 
 def test_give_me_control_revokes_immediately_and_is_acknowledged(root):
@@ -213,12 +249,16 @@ def test_retired_markers_and_arbitrary_json_are_not_authority(tmp_path):
     assert "human-mode.json" not in source and "iron-god-exclusive" not in source
 
 
-def test_grant_expires_after_maximum_age(root):
+def test_grant_has_no_time_limit_while_its_supervisor_lives_and_dies_with_it(root):
     take(root)
     sup = supervisor()
     alive = Alive(sup)
     oc.acknowledge_grant(root, sup, release_sha=SHA, now=T0 + timedelta(seconds=5), liveness=alive)
-    assert oc.evaluate(root, now=T0 + oc.GRANT_MAX_AGE + timedelta(seconds=1), liveness=alive).reasons == ("GRANT_EXPIRED",)
+    for later in (timedelta(hours=25), timedelta(days=30)):
+        assert oc.evaluate(root, now=T0 + later, liveness=alive).permitted is True
+    assert oc.evaluate(root, now=T0 + timedelta(days=30), liveness=Alive()).permitted is False  # supervisor gone
+    give(root, T0 + timedelta(days=31))
+    assert oc.evaluate(root, now=T0 + timedelta(days=31), liveness=alive).permitted is False   # Give Me Control revokes
 
 
 def test_unsafe_control_directory_acl_fails_closed(root):
@@ -304,6 +344,13 @@ def test_decision_survives_a_process_restart_without_new_authority(root):
     seen = json.loads(other.stdout)
     # Another process observes the same live grant, bound to this supervisor.
     assert seen["permitted"] is True and seen["supervisor_instance_id"] == me.instance_id
+
+
+def test_resume_without_a_safety_gate_is_refused_and_a_late_first_ack_resumes_only_through_one(root):
+    take(root)
+    late, sup = T0 + oc.ACK_WINDOW + timedelta(seconds=1), supervisor()
+    assert oc.acknowledge_grant(root, sup, release_sha=SHA, now=late, liveness=Alive(sup)).permitted is False
+    assert oc.acknowledge_grant(root, sup, release_sha=SHA, now=late, liveness=Alive(sup), safety_check=lambda: None).permitted
 
 
 # ---- owner-signed scope exceptions -------------------------------------------------------------------------------------
