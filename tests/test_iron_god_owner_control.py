@@ -213,12 +213,16 @@ def test_retired_markers_and_arbitrary_json_are_not_authority(tmp_path):
     assert "human-mode.json" not in source and "iron-god-exclusive" not in source
 
 
-def test_grant_expires_after_maximum_age(root):
+def test_grant_has_no_time_limit_while_its_supervisor_lives_and_dies_with_it(root):
     take(root)
     sup = supervisor()
     alive = Alive(sup)
     oc.acknowledge_grant(root, sup, release_sha=SHA, now=T0 + timedelta(seconds=5), liveness=alive)
-    assert oc.evaluate(root, now=T0 + oc.GRANT_MAX_AGE + timedelta(seconds=1), liveness=alive).reasons == ("GRANT_EXPIRED",)
+    for later in (timedelta(hours=25), timedelta(days=30)):
+        assert oc.evaluate(root, now=T0 + later, liveness=alive).permitted is True
+    assert oc.evaluate(root, now=T0 + timedelta(days=30), liveness=Alive()).permitted is False  # supervisor gone
+    give(root, T0 + timedelta(days=31))
+    assert oc.evaluate(root, now=T0 + timedelta(days=31), liveness=alive).permitted is False   # Give Me Control revokes
 
 
 def test_unsafe_control_directory_acl_fails_closed(root):

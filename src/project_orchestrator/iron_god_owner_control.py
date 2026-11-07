@@ -59,7 +59,8 @@ ACTIONS = frozenset({TAKE_THE_WHEEL, GIVE_ME_CONTROL})
 COMMAND_FRESHNESS = timedelta(seconds=120)
 CLOCK_SKEW = timedelta(seconds=5)
 ACK_WINDOW = timedelta(seconds=180)
-GRANT_MAX_AGE = timedelta(hours=24)
+# Owner decision (2026-11-07): Take the Wheel has no time limit. A grant lasts until Give Me Control, a new owner
+# command, a release mismatch, or the death of the acknowledging supervisor.
 
 CONTROL_DIRNAME = "IronGodControl"
 KEY_FILE = "owner-key.dpapi"
@@ -713,8 +714,6 @@ def evaluate(
         )
     issued = _parse_time(command.get("issued_at_utc"))
     age = current - issued
-    if age > GRANT_MAX_AGE:
-        return _denied(UNVERIFIED, "GRANT_EXPIRED", **fields)
     if release_sha is not None and command.get("release_sha") != release_sha:
         return _denied(UNVERIFIED, "GRANT_RELEASE_MISMATCH", **fields)
     if ack is None:
