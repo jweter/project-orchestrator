@@ -135,6 +135,8 @@ class OllamaClient:
                                    "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": num_predict}}
         if json_mode:
             payload["format"] = "json"
+        if model.lower().startswith("qwen3"):
+            payload["think"] = False  # a thinking model otherwise spends the CPU budget on hidden reasoning tokens
         body = json.dumps(payload)
         conn = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
         outcome: dict[str, Any] = {}
@@ -210,7 +212,11 @@ def inference_cpu_seconds() -> float:
 # --- the one shared door every local author goes through -----------------------------------------------------------------
 BUILDER_MODEL = "qwen2.5-coder:3b"
 # model name fragment -> (resident GiB, reserve GiB left for Windows and the desktop, user idle seconds required)
-PROFILES: dict[str, tuple[float, float, float]] = {"1.5b": (1.1, 1.0, 0.0), "3b": (2.3, 1.5, 0.0), "7b": (5.3, 2.0, 600.0)}
+# The 0.8b/2b/4b/9b rows (qwen3.5 sizes) are ESTIMATES from the published download sizes, to be replaced by measured peaks.
+PROFILES: dict[str, tuple[float, float, float]] = {
+    "0.8b": (1.3, 1.0, 0.0), "1.5b": (1.1, 1.0, 0.0), "2b": (2.8, 1.2, 0.0), "3b": (2.3, 1.5, 0.0),
+    "4b": (4.5, 1.5, 0.0), "7b": (5.3, 2.0, 600.0), "9b": (7.8, 2.0, 600.0),
+}
 
 
 class ModelNotAdmitted(RuntimeError):
@@ -303,6 +309,8 @@ def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int,
             if time.monotonic() >= deadline:
                 raise ModelNotAdmitted(why)
             time.sleep(poll_s)
+        for other in [m for m in ollama.loaded() if m != name]:  # one resident model: evict strays before loading
+            ollama.unload(other)
         try:
             reply = ollama.generate(name, prompt, num_ctx=num_ctx, num_predict=num_predict, keep_alive=0, timeout=timeout,
                                     should_abort=gate.abort_reason, temperature=temperature, json_mode=json_mode)
