@@ -13,6 +13,7 @@ from typing import BinaryIO
 
 from project_orchestrator import iron_god_portfolio_merger as portfolio_merger
 from project_orchestrator.activation_capability import merge_watcher_advanced
+from project_orchestrator.human_ownership import owner_control_status
 from project_orchestrator.kpi_telemetry import append_event, load_events
 from project_orchestrator.planning_dispatch import product_for_repository
 from scripts.failed_pr_accountability import cycle as failed_pr_accountability_cycle
@@ -121,6 +122,12 @@ def append_kpi_events(path: Path, events: list[dict]) -> int:
     return len(load_events(path)) - before
 
 
+def _owner_veto(state_root: Path) -> str | None:
+    """Re-checked by the merger immediately before every promotion and merge: owner control revokes it at once."""
+    status = owner_control_status(state_root)
+    return None if status == "AUTHORIZED" else status
+
+
 def process_cycle(state: Path, results: list[dict], error: str | None, started: float, *, reconcile: bool = True) -> dict:
     observed_at = datetime.now(UTC).isoformat()
     payload = {
@@ -178,7 +185,7 @@ def main() -> int:
         while True:
             started = time.time()
             try:
-                results = portfolio_merger.cycle(state.parent)
+                results = portfolio_merger.cycle(state.parent, guard=lambda: _owner_veto(state.parent))
                 failed_pr_results = ([] if a.portfolio_only
                                      else failed_pr_accountability_cycle(Path(__file__).resolve().parents[1], state.parent))
                 results.extend(failed_pr_results)

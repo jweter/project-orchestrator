@@ -166,3 +166,10 @@ def test_commissioning_keeps_the_roadmap_merger_running_in_portfolio_only_mode(t
     monkeypatch.setattr(supervisor.subprocess, "Popen", lambda argv, **k: launched.append(argv) or "proc")
     assert supervisor.start_merge_watcher(repo, tmp_path, 60) == "proc"
     assert "--portfolio-only" in launched[0] and launched[0][1].endswith("green_pr_watch_loop.py")
+
+
+def test_the_watcher_hands_the_merger_a_live_owner_veto(tmp_path, monkeypatch):
+    statuses = iter(["AUTHORIZED", "OWNER_HOLDS_CONTROL"])
+    monkeypatch.setattr(watcher, "owner_control_status", lambda root: next(statuses))
+    assert watcher._owner_veto(tmp_path) is None                       # engine authorized: the merger may act
+    assert watcher._owner_veto(tmp_path) == "OWNER_HOLDS_CONTROL"      # owner clicked Give Me Control: it must stop at once
