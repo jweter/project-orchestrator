@@ -718,9 +718,13 @@ def test_a_progress_record_cannot_complete_a_capability_or_touch_anything_but_sl
 # ---- owner-approved, head-pinned scope exceptions ---------------------------------------------------------------------
 
 
+def signed_by_owner(_root: Path, entry: dict) -> bool:
+    return entry.get("mac") == "owner-mac"
+
+
 def grant(**over: Any) -> dict:
     base = {"repository": REPO, "pr": 7, "head": HEAD, "paths": ["docs/other.md"], "approved_by": "jweter",
-            "approved_at": "2026-11-07T02:00:00+00:00", "reason": "owner approved this exact move"}
+            "approved_at": "2026-11-07T02:00:00+00:00", "reason": "owner approved this exact move", "mac": "owner-mac"}
     base.update(over)
     return base
 
@@ -756,9 +760,9 @@ def test_only_complete_owner_signed_exceptions_load(tmp_path: Path) -> None:
     directory.mkdir()
     (directory / pm.EXCEPTIONS_FILE).write_text(json.dumps([grant(), grant(approved_by="someone"), grant(head="short"),
                                                             {"repository": REPO}]), encoding="utf-8")
-    assert pm.load_exceptions(tmp_path) == [grant()]
+    assert pm.load_exceptions(tmp_path, signed_by_owner) == [grant()]
     (directory / pm.EXCEPTIONS_FILE).write_text("{not json", encoding="utf-8")
-    assert pm.load_exceptions(tmp_path) == []
+    assert pm.load_exceptions(tmp_path, signed_by_owner) == []
 
 
 def test_malformed_exception_field_types_grant_nothing_and_never_abort_the_cycle(tmp_path: Path) -> None:
@@ -767,4 +771,13 @@ def test_malformed_exception_field_types_grant_nothing_and_never_abort_the_cycle
     bad = [grant(approved_by=[]), grant(pr="not-a-number"), grant(pr=True), grant(paths=[1]), grant(paths=[""]),
            grant(head="Z" * 40), grant(repository=None), grant(reason=None), grant(approved_at=3)]
     (directory / pm.EXCEPTIONS_FILE).write_text(json.dumps([*bad, grant()]), encoding="utf-8")
-    assert pm.load_exceptions(tmp_path) == [grant()]
+    assert pm.load_exceptions(tmp_path, signed_by_owner) == [grant()]
+
+
+def test_an_unsigned_or_forged_exception_grants_nothing_even_when_every_field_is_valid(tmp_path: Path) -> None:
+    directory = tmp_path / "portfolio-merger"
+    directory.mkdir()
+    forged = [grant(mac="guess"), {k: v for k, v in grant().items() if k != "mac"}, grant(mac=None), grant()]
+    (directory / pm.EXCEPTIONS_FILE).write_text(json.dumps(forged), encoding="utf-8")
+    assert pm.load_exceptions(tmp_path, signed_by_owner) == [grant()]
+    assert pm.load_exceptions(tmp_path) == []  # the real verifier: no owner key under tmp_path -> nothing is authority
