@@ -562,6 +562,37 @@ def _verified(key: bytes, payload_text: str, mac: str) -> dict[str, Any]:
     return payload
 
 
+# --- owner-signed scope exceptions ---------------------------------------------
+EXCEPTION_DOMAIN = "scope-exception-v1:"
+_EXCEPTION_FIELDS = ("repository", "pr", "head", "paths", "approved_by", "approved_at", "reason")
+
+
+def _exception_text(entry: Mapping[str, Any]) -> str:
+    return EXCEPTION_DOMAIN + _canonical({k: entry.get(k) for k in _EXCEPTION_FIELDS})
+
+
+def sign_scope_exception(
+    root: Path, entry: Mapping[str, Any], *, origin_check: Callable[[], dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Owner-sign one head-pinned scope exception. Like Take the Wheel, only the owner's desktop-icon launch may sign."""
+    (origin_check or verify_interactive_desktop_origin)()
+    key = _owner_key(root)
+    signed = {k: entry.get(k) for k in _EXCEPTION_FIELDS}
+    signed["mac"] = _mac(key, _exception_text(signed))
+    return signed
+
+
+def verify_scope_exception(root: Path, entry: Mapping[str, Any]) -> bool:
+    """True only for an entry whose MAC was produced with the owner key. Any failure grants nothing."""
+    try:
+        mac = entry.get("mac")
+        if not isinstance(mac, str):
+            return False
+        return hmac.compare_digest(_mac(_owner_key(root), _exception_text(entry)), mac)
+    except Exception:  # noqa: BLE001 - an unreadable key or malformed entry is never authority
+        return False
+
+
 # --- owner commands ----------------------------------------------------------
 
 def issue_command(
@@ -921,6 +952,14 @@ def main(argv: list[str] | None = None) -> int:
     wait.add_argument("--timeout", type=float, default=120.0)
     sub.add_parser("events")
     sub.add_parser("owner-status")
+    grant = sub.add_parser("sign-exception", help="owner-sign a head-pinned scope exception (desktop launch only)")
+    grant.add_argument("--exceptions-file", required=True)
+    grant.add_argument("--repository", required=True)
+    grant.add_argument("--pr", type=int, required=True)
+    grant.add_argument("--head", required=True)
+    grant.add_argument("--path", action="append", required=True)
+    grant.add_argument("--approved-by", required=True)
+    grant.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     try:
         if args.expect_source is not None:
@@ -934,6 +973,19 @@ def main(argv: list[str] | None = None) -> int:
             if args.action == TAKE_THE_WHEEL and release is None:
                 raise OwnerControlError("ACCEPTED_RELEASE_PIN_UNREADABLE")
             print(json.dumps(issue_command(root, args.action, release_sha=release), sort_keys=True))
+            return 0
+        if args.command == "sign-exception":
+            entry = sign_scope_exception(root, {
+                "repository": args.repository, "pr": args.pr, "head": args.head, "paths": args.path,
+                "approved_by": args.approved_by, "approved_at": datetime.now(UTC).isoformat(), "reason": args.reason})
+            target = Path(args.exceptions_file)
+            try:
+                existing = json.loads(target.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                existing = []
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps([*(existing if isinstance(existing, list) else []), entry], indent=2), encoding="utf-8")
+            print(json.dumps({"status": "SIGNED", "head": args.head, "pr": args.pr}))
             return 0
         if args.command == "status":
             decision = evaluate(root, release_sha=args.release_sha)

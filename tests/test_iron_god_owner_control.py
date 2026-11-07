@@ -351,3 +351,37 @@ def test_resume_without_a_safety_gate_is_refused_and_a_late_first_ack_resumes_on
     late, sup = T0 + oc.ACK_WINDOW + timedelta(seconds=1), supervisor()
     assert oc.acknowledge_grant(root, sup, release_sha=SHA, now=late, liveness=Alive(sup)).permitted is False
     assert oc.acknowledge_grant(root, sup, release_sha=SHA, now=late, liveness=Alive(sup), safety_check=lambda: None).permitted
+
+
+# ---- owner-signed scope exceptions -------------------------------------------------------------------------------------
+
+
+def exception_entry(**over):
+    entry = {"repository": "o/r", "pr": 7, "head": "c" * 40, "paths": ["tools/x.py"], "approved_by": "jweter",
+             "approved_at": "2026-11-07T00:00:00+00:00", "reason": "owner approved"}
+    entry.update(over)
+    return entry
+
+
+def refuse_origin():
+    raise oc.OwnerControlError("NOT_DESKTOP_CONTROL_ORIGIN")
+
+
+def test_only_the_desktop_launch_can_sign_and_the_signature_verifies(root):
+    oc.enroll_owner(root)
+    with pytest.raises(oc.OwnerControlError, match="NOT_DESKTOP_CONTROL_ORIGIN"):
+        oc.sign_scope_exception(root, exception_entry(), origin_check=refuse_origin)
+    signed = oc.sign_scope_exception(root, exception_entry(), origin_check=desktop)
+    assert oc.verify_scope_exception(root, signed) is True
+
+
+def test_a_tampered_unsigned_or_wrongly_keyed_exception_never_verifies(root, tmp_path):
+    oc.enroll_owner(root)
+    signed = oc.sign_scope_exception(root, exception_entry(), origin_check=desktop)
+    for forged in (dict(signed, head="d" * 40), dict(signed, paths=["tools/x.py", "src/y.py"]), dict(signed, pr=8),
+                   dict(signed, mac="0" * 64), {k: v for k, v in signed.items() if k != "mac"}, dict(signed, mac=None)):
+        assert oc.verify_scope_exception(root, forged) is False
+    other = tmp_path / "Other" / "IronGodControl"
+    oc.enroll_owner(other)
+    assert oc.verify_scope_exception(other, signed) is False
+    assert oc.verify_scope_exception(tmp_path / "nothing", signed) is False
