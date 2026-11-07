@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 import re
 import subprocess
 import time
@@ -89,6 +90,8 @@ def scope_problems(paths: list[str], task: Task) -> list[str]:
         norm = path.replace("\\", "/")
         if norm.startswith("/") or ".." in norm.split("/") or re.match(r"^[A-Za-z]:", norm):
             problems.append(f"PATH_NOT_RELATIVE:{path}")
+        elif posixpath.normpath(norm) != norm:  # "src/./x" or "src//x" would dodge a forbidden pattern yet resolve to the same file
+            problems.append(f"PATH_NOT_CANONICAL:{path}")
         elif not _matches(norm, task.allowed_paths) or _matches(norm, task.forbidden_paths):
             problems.append(f"OUT_OF_SCOPE:{path}")
     return problems
@@ -177,21 +180,26 @@ class Workspace:
 
     def __init__(self, root: Path, run: Run) -> None:
         self.root, self.run, self.created = Path(root), run, []
+        self.original: dict[str, bytes] = {}  # content of pre-existing files as they were before this run first touched them
 
     def write(self, files: dict[str, str]) -> None:
         for path, text in files.items():
             target = self.root / path
             existed = target.exists()
+            if existed and path not in self.original and path not in self.created:
+                self.original[path] = target.read_bytes()
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(text, encoding="utf-8", newline="\n")
             if not existed and path not in self.created:
                 self.created.append(path)
 
     def rollback(self) -> None:
-        self.run(["git", "checkout", "--", "."], self.root, 120)
+        # Undo only what this run changed: restoring from git would also discard edits that were in the checkout already.
+        for path, content in self.original.items():
+            (self.root / path).write_bytes(content)
         for path in self.created:
             (self.root / path).unlink(missing_ok=True)
-        self.created = []
+        self.original, self.created = {}, []
 
     def diff(self) -> str:
         code, out = self.run(["git", "diff", "--no-color", "HEAD"], self.root, 120)
@@ -260,8 +268,7 @@ def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits
         if problems or missing:
             record.update(stage="SCOPE", problems=problems + [f"MISSING_FILE:{m}" for m in missing])
             prompt = repair_prompt(task, current, "scope", record["problems"], "")
-            if problems:
-                continue  # nothing out of scope is ever written, even to be corrected later
+            continue  # nothing is written or verified until every required file is present and in scope
         workspace.write({p: t for p, t in files.items() if p not in problems})
         current = {p: files[p] for p in files if p not in problems}
         evidence["files"] = sorted(current)

@@ -224,3 +224,33 @@ def test_admission_can_require_more_than_memory_and_waiting_for_it_spends_no_att
                              sleep=lambda _s: None)
     assert result["status"] == "WAITING_FOR_MEMORY" and "USER_ACTIVE" in result["reason"] and never.prompts == []
 
+
+
+@pytest.mark.parametrize("alias", ["src/simulation/./secret/key.hpp", "src/simulation//secret/key.hpp", "src/simulation/x/../secret/key.hpp"])
+def test_path_aliases_cannot_dodge_a_forbidden_pattern(repo: Path, alias: str) -> None:
+    assert cb.scope_problems([alias], task(repo)) != []
+
+
+def test_rollback_restores_only_what_the_run_changed_and_keeps_preexisting_edits(repo: Path) -> None:
+    keep = repo / "src/simulation/include/x/existing.hpp"
+    keep.write_text("// the owner's uncommitted edit\n", encoding="utf-8")        # not touched by the builder
+    target = repo / "src/simulation/include/x/foo.hpp"
+    target.write_text("// tracked-then-edited\n", encoding="utf-8")               # touched by the builder
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "foo"], check=True)
+    target.write_text("// edited before the run\n", encoding="utf-8")
+    result = cb.build_change(task(repo), lambda _p: (_ for _ in ()).throw(OSError("model down")), run=Script([]).run)
+    assert result["status"] == "MODEL_UNAVAILABLE"
+    assert keep.read_text(encoding="utf-8") == "// the owner's uncommitted edit\n"
+    script = Script([reply()], builds=[(1, "foo.hpp(1): error C2065: 'x': undeclared identifier")])
+    cb.build_change(task(repo), script.ask, run=script.run, limits=cb.Limits(max_iterations=1))
+    assert target.read_text(encoding="utf-8") == "// edited before the run\n"      # restored to its pre-run state, not to git
+    assert keep.read_text(encoding="utf-8") == "// the owner's uncommitted edit\n"
+
+
+def test_a_response_missing_a_required_file_is_retried_and_never_built_as_is(repo: Path) -> None:
+    only_header = "=== FILE: src/simulation/include/x/foo.hpp ===\n" + GOOD_HEADER + "=== END ===\n"
+    script = Script([only_header, reply()], builds=[(0, "")], tests=[(0, "")])
+    result = cb.build_change(task(repo), script.ask, run=script.run)
+    assert result["iterations"][0]["stage"] == "SCOPE" and "MISSING_FILE:src/simulation/tests/foo_tests.cpp" in script.prompts[1]
+    assert result["status"] == cb.SUCCESS and [c[0] for c in script.commands].count("build") == 1   # nothing was built from the incomplete first reply
