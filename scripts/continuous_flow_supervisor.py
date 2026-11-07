@@ -63,9 +63,12 @@ def load_runtime_leases_with_recovery(state_path:Path=RUNTIME_LEASE_STATE)->tupl
 RUNTIME_LEASES,RUNTIME_LEASE_RECOVERY=load_runtime_leases_with_recovery()
 
 def start_merge_watcher(repo_root:Path,state_root:Path,poll_seconds:int)->subprocess.Popen:
-    if _supervisor_runtime.commissioning_active(repo_root): return _supervisor_runtime.SuspendedMergeWatcher()  # no product merges
+    # Commissioning no longer suspends merging: the owner's roadmap PRs must keep flowing. Only the deterministic, scope-checked
+    # portfolio merger runs (no failed-PR repair routing, evidence watcher or lifecycle reconciliation) - it escalates anything
+    # outside the authorized roadmap scope, so no unrelated product work is merged.
+    mode=["--portfolio-only"] if _supervisor_runtime.commissioning_active(repo_root) else []
     return subprocess.Popen([sys.executable,str(repo_root/"scripts"/"green_pr_watch_loop.py"),
-        "--state",str(state_root/"green-pr-watcher.json"),"--poll-seconds",str(poll_seconds)],
+        "--state",str(state_root/"green-pr-watcher.json"),"--poll-seconds",str(poll_seconds),*mode],
         cwd=repo_root,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 
 def run_linear_reconciliation(repo_root:Path,state_root:Path)->int|None:
