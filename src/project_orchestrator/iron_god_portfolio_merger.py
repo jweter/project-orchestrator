@@ -720,12 +720,19 @@ Guard = Callable[[], "str | None"]  # None while the engine may still act; other
 EXCEPTIONS_FILE = "owner-approved-exceptions.json"
 
 
-def load_exceptions(state_root: Path) -> list[dict[str, Any]]:
+def _owner_signed(state_root: Path, entry: dict[str, Any]) -> bool:
+    from . import iron_god_owner_control as controller
+
+    return controller.verify_scope_exception(controller.control_root(Path(state_root)), entry)
+
+
+def load_exceptions(state_root: Path, verify: Callable[[Path, dict[str, Any]], bool] | None = None) -> list[dict[str, Any]]:
     """Owner-approved scope exceptions: ``[{repository, pr, head, paths, approved_by, approved_at, reason}]``.
 
     Each exception covers exactly one pull request at one exact head and an explicit list of paths. It never widens the
     global policy, never covers protected paths, dependencies or secrets (those escalate separately), and silently stops
-    applying when the head changes. A malformed file grants nothing.
+    applying when the head changes. Every entry must carry an HMAC made with the owner key (signed only from the owner's
+    desktop launch); an unsigned, forged or malformed entry grants nothing.
     """
     try:
         value = json.loads((Path(state_root) / "portfolio-merger" / EXCEPTIONS_FILE).read_text(encoding="utf-8"))
@@ -733,7 +740,8 @@ def load_exceptions(state_root: Path) -> list[dict[str, Any]]:
         return []
     if not isinstance(value, list):
         return []
-    return [e for e in value if _valid_exception(e)]
+    check = verify or _owner_signed
+    return [e for e in value if _valid_exception(e) and check(Path(state_root), e)]
 
 
 def _valid_exception(entry: Any) -> bool:

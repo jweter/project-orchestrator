@@ -79,3 +79,21 @@ Machine contracts paired with those documents remain authoritative for their mec
 Architecture, roadmap, project status, engineering JSON contracts, and historical design documents are retrieved on demand when the task touches them. Being authoritative for a domain does not make a document always-read context.
 
 New always-on policy belongs here only when it applies broadly to portfolio execution. Feature-specific policy belongs with that feature and is loaded only when invoked.
+
+## Owner-signed scope exceptions: what the signature does and does not protect
+
+A scope exception (`portfolio-merger/owner-approved-exceptions.json`) is honored only if its HMAC verifies with the DPAPI-protected
+owner key. Signing (`iron_god_owner_control sign-exception`) is refused unless the process descends from the owner's desktop-icon
+launch chain, exactly like Take the Wheel.
+
+Verified exposure of the key (2026-11-07): the key is never placed in the environment, command-line arguments, logs or any shared
+file; it exists only as `IronGodControl/owner-key.dpapi`, an ACL-restricted file (owner account and SYSTEM). **Autonomous workers
+run under the same Windows account (`AZATHOTH\jerem`) with an unrestricted token**, so a worker that deliberately reads the file and
+calls DPAPI can recover the key and compute a valid MAC, bypassing the desktop-origin check. The signature therefore defeats forged,
+tampered, unsigned, replayed-to-another-head/path and wrong-key entries and accidental or model-written files, but **it is not a
+boundary against hostile code already running as the owner**. This is the same limit as Take the Wheel itself.
+
+Closing it requires an OS boundary the engine does not have today: run workers under a separate low-privilege Windows account (or
+restricted token) that cannot read `IronGodControl`. That is an owner-level system change and is not made here. Until then every
+exception is also head-pinned, path-limited to the named files, unable to lift protected-path, dependency or secret escalation, and
+recorded in the merger ledger for review.
