@@ -14,7 +14,9 @@ authority: callers must re-evaluate before each unit of work.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -79,11 +81,44 @@ def acknowledge_and_evaluate(
         return ExecutionDecision(permitted=False, reasons=(OWNER_RELEASE_UNPINNED,))
     try:
         decision = _controller.acknowledge_grant(
-            control_root, supervisor, release_sha=release_sha, liveness=liveness
+            control_root, supervisor, release_sha=release_sha, liveness=liveness,
+            safety_check=lambda: _resume_safety_gate(control_root, release_sha),
         )
     except Exception:
         return ExecutionDecision(permitted=False, reasons=("EXECUTION_AUTHORITY_UNVERIFIED",))
+    if not decision.permitted and decision.owner_intent == _controller.TAKE_THE_WHEEL:
+        _flag_owner_attention(control_root, decision.reasons, release_sha)
     return _from_owner(decision)
+
+
+def _resume_safety_gate(control_root: Path, release_sha: str) -> str | None:
+    """Reason a supervisor may not resume the owner's persistent grant, else None.
+
+    The running release must be the accepted, receipted release pinned beside the controller's flow-state.
+    """
+    try:
+        pin = json.loads((Path(control_root).parent / "supervisor-pinned-release.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "PIN_UNREADABLE"
+    if not isinstance(pin, dict) or pin.get("enabled") is not True or pin.get("accepted_sha") != release_sha:
+        return "RELEASE_NOT_THE_PINNED_RELEASE"
+    receipt = pin.get("receipt_path")
+    if not isinstance(receipt, str) or not Path(receipt).is_file():
+        return "RELEASE_RECEIPT_MISSING"
+    return None
+
+
+def _flag_owner_attention(control_root: Path, reasons: tuple[str, ...], release_sha: str) -> None:
+    """Fail closed loudly: the owner's Take the Wheel is preserved but cannot be resumed safely."""
+    try:
+        from .state_io import atomic_json
+
+        atomic_json(Path(control_root).parent / "owner-attention.json", {
+            "schema_version": 1, "kind": "TAKE_THE_WHEEL_SUSPENDED", "release_sha": release_sha,
+            "reasons": list(reasons), "observed_at_utc": datetime.now(UTC).isoformat(),
+            "action_needed": "Owner intent is preserved; execution is suspended until the reasons clear or you re-issue Take the Wheel."})
+    except Exception:  # noqa: BLE001 - attention is best effort and never grants anything
+        pass
 
 
 def supervisor_identity(worker: dict[str, Any]) -> _controller.SupervisorIdentity:

@@ -119,3 +119,23 @@ def test_decision_never_writes_controller_state(tmp_path):
     authority.evaluate_execution_authority(root, release_sha=TEST_RELEASE_SHA)
     after = {p.name: p.read_bytes() for p in root.iterdir() if p.is_file()}
     assert before == after
+
+
+def test_resume_safety_gate_requires_the_pinned_receipted_release_and_flags_the_owner(tmp_path):
+    import json
+
+    from project_orchestrator import execution_authority as ea
+
+    control = tmp_path / "flow-state" / "IronGodControl"
+    control.mkdir(parents=True)
+    pin = tmp_path / "flow-state" / "supervisor-pinned-release.json"
+    assert ea._resume_safety_gate(control, "a" * 40) == "PIN_UNREADABLE"
+    receipt = tmp_path / "receipt.json"
+    pin.write_text(json.dumps({"enabled": True, "accepted_sha": "a" * 40, "receipt_path": str(receipt)}), encoding="utf-8")
+    assert ea._resume_safety_gate(control, "a" * 40) == "RELEASE_RECEIPT_MISSING"
+    assert ea._resume_safety_gate(control, "b" * 40) == "RELEASE_NOT_THE_PINNED_RELEASE"
+    receipt.write_text("{}", encoding="utf-8")
+    assert ea._resume_safety_gate(control, "a" * 40) is None
+    ea._flag_owner_attention(control, ("GRANT_RELEASE_MISMATCH",), "a" * 40)
+    flag = json.loads((tmp_path / "flow-state" / "owner-attention.json").read_text(encoding="utf-8"))
+    assert flag["kind"] == "TAKE_THE_WHEEL_SUSPENDED" and flag["reasons"] == ["GRANT_RELEASE_MISMATCH"]
