@@ -271,3 +271,13 @@ def test_a_stray_resident_model_is_evicted_before_the_run_and_thinking_is_off_fo
     finally:
         hc.HTTPConnection.request = original
     assert json.loads(sent["body"])["think"] is False
+
+
+def test_a_stray_model_that_cannot_be_unloaded_blocks_the_run_and_loads_nothing(tmp_path):
+    fake = FakeDoor()
+    fake.stray = ["stubborn:7b"]
+    fake.unload = lambda model, **kw: False
+    with pytest.raises(lm.ModelNotAdmitted, match="STRAY_MODEL_RESIDENT"):
+        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=door_probes(9.0),
+                            directory=tmp_path / "slot")
+    assert fake.calls == [] and not (tmp_path / "slot").exists()

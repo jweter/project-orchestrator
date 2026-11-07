@@ -310,7 +310,8 @@ def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int,
                 raise ModelNotAdmitted(why)
             time.sleep(poll_s)
         for other in [m for m in ollama.loaded() if m != name]:  # one resident model: evict strays before loading
-            ollama.unload(other)
+            if not ollama.unload(other):  # an unconfirmed eviction would leave two models resident
+                raise ModelNotAdmitted(f"STRAY_MODEL_RESIDENT: {other} could not be unloaded")
         try:
             reply = ollama.generate(name, prompt, num_ctx=num_ctx, num_predict=num_predict, keep_alive=0, timeout=timeout,
                                     should_abort=gate.abort_reason, temperature=temperature, json_mode=json_mode)
