@@ -159,7 +159,10 @@ class OllamaClient:
                 raise ModelCancelled(reason)
         if "error" in outcome:
             raise outcome["error"]
-        return dict(outcome["reply"])
+        reply = dict(outcome["reply"])
+        if reply.get("error"):  # the server answered with an error body (e.g. runtime missing): never mistake it for an empty reply
+            raise OSError("OLLAMA_ERROR: " + str(reply["error"])[:300])
+        return reply
 
     @staticmethod
     def cancel(conn: http.client.HTTPConnection) -> None:

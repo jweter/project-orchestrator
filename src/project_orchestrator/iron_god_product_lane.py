@@ -45,6 +45,7 @@ from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
+from . import iron_god_cpp_lane as cpp_lane
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_roadmap_progress as roadmap_progress
@@ -1025,6 +1026,8 @@ def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any]
     With the local builder on, a slice that has not yet been tried locally waits for its local decomposition first.
     """
     for request in report.get("capable_requests", []):
+        if cpp_lane.classify(request) is not None:  # native work is built by the local C++ lane, never by the paid builder
+            continue
         if hold_for_local and task_decomposer.decomposable(request) and not task_decomposer.plan_path(
                 lane.root, request["id"]).is_file():
             roadmap_refill.log_event(lane.root, "CAPABLE_HELD_FOR_LOCAL_DECOMPOSITION", name, request["id"],
@@ -1087,6 +1090,54 @@ def draft_with_local_builder(lane: ProductLane, name: str, report: dict[str, Any
     except Exception as exc:  # drafting is best-effort; other repositories and the rotation continue
         outcomes = [{"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
     log_draft_outcomes(lane, name, outcomes)
+
+
+def spawn_cpp_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str, result: Path,
+                     log_path: Path) -> int:
+    """Launch the local C++ author like a product worker: release-bound, its own process."""
+    env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    with log_path.open("ab") as log:
+        return subprocess.Popen(
+            [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_cpp_author.py"), "--request", str(request_file),
+             "--clone", str(clone), "--base", base, "--result", str(result)],
+            cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            creationflags=flags).pid
+
+
+def build_native_requests(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
+                          release: tuple[Path, str] | None) -> None:
+    """Advance the local C++ lane for this repository's native requests; outcomes are logged, never fatal."""
+    native = [r for r in report.get("capable_requests", []) if cpp_lane.classify(r) is not None]
+    if not native or release is None:
+        return
+    release_repo, release_sha = release
+    try:
+        outcomes = cpp_lane.advance(
+            lane.root, native,
+            may_start=lane.active() is None and not roadmap_progress.verifying(lane.workspaces / "progress"),
+            spawn=lambda request_file, result: spawn_cpp_author(
+                release_repo, release_sha, request_file, clone, head, result, lane.reports / f"cpp-{result.stem}.log"),
+            alive=lambda pid: owner_controller.process_start_fingerprint(pid) is not None)
+    except Exception as exc:  # native building is best-effort; the rest of the rotation continues
+        outcomes = [{"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
+    try:
+        def add_publication(packet_id: str, item: dict[str, Any]) -> None:
+            items = lane.publications()["items"]
+            items.setdefault(packet_id, item)
+            _save_publications(lane, items)
+
+        if lane.active() is None:
+            outcomes += cpp_lane.finalize(
+                lane.root, native, add_publication=add_publication,
+                save_report=lambda verifier, data: atomic_json(lane.reports / f"{verifier}-verification.json", data))
+    except Exception as exc:  # a failed hand-off is recorded and retried next cycle
+        outcomes.append({"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"})
+    for row in outcomes:
+        roadmap_refill.log_event(lane.root, "CPP_" + str(row["status"]), name, str(row["id"]), {"reason": row.get("reason", "")})
+        working_memory.record(lane.state_root, name, "CPP_" + str(row["status"]), detail=f"{row['id']}: {row.get('reason', '')}",
+                              outcome=None if row["status"] in ("STARTED", "BUILT_AND_VERIFIED", "PUBLICATION_REGISTERED") else "BLOCKED")
 
 
 def spawn_decompose_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str,
@@ -1259,6 +1310,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
         hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None)
+        build_native_requests(lane, name, report, clone, head, release)
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
             planning_later.append((name, report, clone, head))

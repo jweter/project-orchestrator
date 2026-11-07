@@ -21,6 +21,7 @@ class FakeOllama:
         self.busy_s, self.loaded = busy_s, ["m:7b"]
         self.started_at = self.disconnected_at = self.finished_at = None
         self.requests: list[dict] = []
+        self.error: str | None = None
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -43,6 +44,8 @@ class FakeOllama:
                 if body.get("keep_alive") == 0:
                     outer.loaded = []
                     return self._send({"done": True})
+                if outer.error:
+                    return self._send({"error": outer.error})
                 outer.started_at = time.monotonic()
                 while time.monotonic() - outer.started_at < outer.busy_s:
                     readable, _, _ = select.select([self.connection], [], [], 0.05)
@@ -281,3 +284,13 @@ def test_a_stray_model_that_cannot_be_unloaded_blocks_the_run_and_loads_nothing(
         lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=door_probes(9.0),
                             directory=tmp_path / "slot")
     assert fake.calls == [] and not (tmp_path / "slot").exists()
+
+
+def test_an_error_body_from_the_server_is_a_failure_not_an_empty_answer() -> None:
+    fake = FakeOllama(busy_s=0.1)
+    fake.error = "error starting llama-server: llama-server binary not found"
+    try:
+        with pytest.raises(OSError, match="OLLAMA_ERROR.*llama-server"):
+            fake.client().generate("m:7b", "x", num_ctx=512, num_predict=10, keep_alive="0", timeout=30, should_abort=lambda: None, poll_s=0.1)
+    finally:
+        fake.close()

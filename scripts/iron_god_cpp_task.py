@@ -30,15 +30,6 @@ for _path in (str(_root), str(_root / "src")):
 from project_orchestrator import iron_god_cpp_builder as cb  # noqa: E402
 from project_orchestrator import iron_god_local_model as lm  # noqa: E402
 
-# (resident GiB, reserve GiB, idle seconds required). Measured on Azathoth: the 1.5B uses ~1.0 GB in llama-server and the
-# 7B ~5.3 GB; the 7B drove available memory to ~260 MB with ~4 GiB free, so it runs only when the desktop is idle.
-PROFILES = {
-    "qwen2.5-coder:1.5b": (1.1, 1.0, 0.0),
-    "qwen2.5-coder:3b": (2.3, 1.5, 0.0),
-    "qwen2.5-coder:7b": (5.3, 2.0, 600.0),
-}
-
-
 def register_cmake(workspace: Path, cmake: str, name: str, source: str) -> None:
     """Deterministic scaffolding: register one test executable inside the BUILD_TESTING block of the project's CMake file."""
     path = workspace / cmake
@@ -64,8 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     spec = json.loads(args.task.read_text(encoding="utf-8"))
     workspace, build_dir = Path(spec["workspace"]), Path(spec["build_dir"])
-    size, reserve, idle = PROFILES.get(args.model, (6.0, 2.0, 600.0))  # an unknown model gets the strictest profile
-    gate = lm.Gate(model_gib=size, reserve_gib=reserve, min_idle_s=idle)
+    gate = lm.gate_for(args.model)  # the shared profiles: an unknown model gets the strictest one
+    size, reserve, idle = gate.model_gib, gate.reserve_gib, gate.min_idle_s
     client = lm.OllamaClient()
     evidence: dict = {"model": args.model, "gate": {"model_gib": size, "reserve_gib": reserve, "min_idle_s": idle,
                                                       "required_available_gib": gate.required_gib}}
