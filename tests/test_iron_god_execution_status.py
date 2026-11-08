@@ -168,7 +168,7 @@ def test_the_dashboard_health_endpoint_carries_the_execution_view_and_the_page_r
     script = (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
     assert 'id="execution"' in page and 'id="exec-phase"' in page and "app.js?v=8" in page
     assert "renderExecution(h?.execution)" in script and "Memory admission decisions" in script
-    assert "azathoth-shell-v8" in (ROOT / "dashboard" / "sw.js").read_text(encoding="utf-8")
+    assert "azathoth-shell-v9" in (ROOT / "dashboard" / "sw.js").read_text(encoding="utf-8")
 
 
 def test_a_native_cpp_job_with_no_lane_record_is_shown_from_the_authors_own_report(tmp_path: Path) -> None:
