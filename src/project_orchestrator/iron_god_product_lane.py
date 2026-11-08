@@ -214,14 +214,44 @@ def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any]) -> None:
         pass
 
 
+def verified_owner_roadmaps(lane: ProductLane, repos: list[str]) -> dict[str, set[str]]:
+    """Owner-approved roadmap documents that really exist in each repository's last-synced clone (read from the document).
+
+    A roadmap counts only with an ``OWNER-APPROVED`` status line and the standing-development-authorization section, the same
+    test the roadmap refill applies. Best effort: a repository whose clone cannot be read simply has none.
+    """
+    found: dict[str, set[str]] = {}
+    for repo in repos:
+        try:
+            clone = lane.clone(repo)
+            for ref in ("origin/main", "origin/master", "HEAD"):
+                listing = _git(clone, "ls-tree", "--name-only", ref, "docs/")
+                if listing.returncode == 0:
+                    break
+            else:
+                continue
+            for path in listing.stdout.split():
+                if not roadmap_refill.OWNER_ROADMAP.fullmatch(path):
+                    continue
+                shown = _git(clone, "show", f"{ref}:{path}")
+                text = shown.stdout if shown.returncode == 0 else ""
+                if re.search(r"^Status:\s*OWNER-APPROVED", text, re.M) and "standing development authorization" in text.lower():
+                    found.setdefault(repo, set()).add(path)
+        except Exception:  # noqa: BLE001 - an unreadable clone is not evidence of approval
+            continue
+    return found
+
+
 def _approved_work_waiting(lane: ProductLane, release_repo: Path, config: dict[str, Any]) -> bool:
     """Is there an approved backlog item some repository could start right now (memory aside)? Cheap and side-effect free."""
     try:
         approved, _ = backlog.load_backlog(release_repo)
+        names = product_repositories(release_repo, config)
+        approved = backlog.promote_by_roadmap(approved, verified_owner_roadmaps(lane, names))
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
         return any(backlog.next_item(approved, state, name, max_level=level) is not None  # the backlog keys on "owner/repo"
-                   for name in product_repositories(release_repo, config))
+                   for name in names)
     except Exception:  # noqa: BLE001 - unknown is not "work is waiting"
         return False
 
@@ -1030,6 +1060,7 @@ def advance_product_lane(
     explained: list[dict[str, Any]] = []
     if config.get("planning") == "backlog":  # roadmap-driven: only approved slices, never self-invented ones
         approved, rejected = backlog.load_backlog(release_repo)
+        approved = backlog.promote_by_roadmap(approved, verified_owner_roadmaps(lane, repos))  # the owner's roadmap IS the approval
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
         if config.get("roadmap_refill", True):
@@ -1300,6 +1331,12 @@ def log_draft_outcomes(lane: ProductLane, name: str | None, outcomes: list[dict[
         working_memory.record(lane.state_root, repository, kind, detail=f"{outcome['id']}: {outcome.get('reason', '')}"[:200],
                               outcome="BLOCKED" if outcome["status"] in {"FAILED", "ERROR", "NEEDS_ACCEPTANCE_EXAMPLES"}
                               else None)
+    if any(o.get("status") == "WAITING_FOR_MEMORY" for o in outcomes):
+        # The local model could not start the roadmap's decomposition or drafting for lack of memory: that is a development
+        # stall too, so the owner's standing Dev Mode rule must see it (it asks only whether closing programs would help).
+        model = default_ollama_model().split("/", 1)[-1]
+        _dev_mode_tick(lane, {"status": "WAITING_FOR_MEMORY", "work_waiting": True,
+                              "route": {"required_gib": model_routing.required_gib(model), "available_gib": available_gib()}})
 
 
 def spawn_progress_preflight(release_repo: Path, release_sha: str, worktree: Path, result: Path,
