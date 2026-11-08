@@ -17,7 +17,7 @@ def test_dashboard_server_serves_snapshot_and_pwa(tmp_path):
     try:
         base=f"http://127.0.0.1:{httpd.server_port}"
         assert json.load(urlopen(base+"/api/dashboard"))["active_count"]==2
-        html=urlopen(base+"/").read().decode()
+        html=urlopen(base+"/index.html").read().decode()  # "/" is now the command center (iron-god.html)
         assert "Azathoth Foundry" in html and "manifest.webmanifest" in html
         manifest=json.load(urlopen(base+"/manifest.webmanifest"))
         assert manifest["display"]=="standalone"
