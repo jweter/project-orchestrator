@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from .iron_god_local_model import is_memory_wait
+from . import iron_god_cpp_lane as cpp_lane
 from . import iron_god_directed_edit as directed_edit
 from . import iron_god_local_drafter as drafter
 from . import iron_god_roadmap_refill as refill
@@ -90,7 +91,26 @@ def decomposable(request: dict[str, Any]) -> bool:
         and not str(request.get("id", "")).endswith(refill.ESCALATION_SUFFIX)
         and bool(request.get("allowed_paths"))
         and bool(request.get("slice_acceptance"))
+        and not native_scope(request)
     )
+
+
+def native_scope(request: dict[str, Any]) -> bool:
+    """True when the slice reaches a registered native (C++) source root, e.g. Everward's ``src/simulation/``.
+
+    This decomposer only plans Python steps (a new pure-function module, or a directed edit of a Python module). Found
+    live on 2026-11-08: given Everward's C++ ``first-loop-chained-simulation-test`` slice, the 7B invented unrelated
+    Python functions, and the module placer would have put ``.py`` files under the C++ ``src/simulation/`` tree. Native
+    slices are built by the local C++ lane (which needs a ``cpp`` section in the slice's graph), never decomposed here.
+    """
+    profile = cpp_lane.profile_for(request.get("repository"))
+    if profile is None:
+        return False
+    for pattern in request.get("allowed_paths") or []:
+        base = str(pattern).replace("\\", "/").split("*", 1)[0]
+        if any(base.startswith(root) or root.startswith(base) for root in profile.source_roots):
+            return True
+    return False
 
 
 def _under(path: str, patterns: list[str]) -> bool:

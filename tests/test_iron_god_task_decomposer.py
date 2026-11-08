@@ -1139,3 +1139,16 @@ def test_a_criterion_that_loses_one_of_its_owners_keeps_its_unfinished_work_in_t
     result = td.propose_staged(joint, "", staged_ask(outline, broken), exists=lambda _p: False)
     assert result["ok"] and [s["function_name"] for s in result["plan"]["subtasks"]] == ["slugify"]
     assert result["plan"]["residual"] == ["slugify a title and clamp its length"]       # not empty: the clamp part is missing
+
+
+
+def test_a_native_cpp_slice_is_never_decomposed_into_python_steps() -> None:
+    """Found live 2026-11-08: Everward's C++ first-loop test slice came back as invented Python functions, and the module
+    placer would have written .py files under the C++ src/simulation tree."""
+    everward = {**PARENT, "repository": "jweter/Project-Everward",
+                "allowed_paths": ["src/simulation/**", "tests/**", "Tests/**", "docs/**", "tools/**"]}
+    assert td.native_scope(everward) and not td.decomposable(everward)
+    assert td.native_scope({**everward, "allowed_paths": ["**"]})                          # everything includes native code
+    assert not td.native_scope({**everward, "allowed_paths": ["tools/**", "docs/**"]})     # Python tooling only: allowed
+    assert td.decomposable({**everward, "allowed_paths": ["tools/**", "tests/**"]})
+    assert not td.native_scope(PARENT) and td.decomposable(PARENT)                         # a Python repository is unchanged

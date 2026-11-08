@@ -44,6 +44,7 @@ BLOCKERS = {
     "DECOMPOSITION_NOT_POSSIBLE": "The slice cannot be decomposed locally (a terminal reason is recorded).",
     "DECOMPOSITION_PLAN_BLOCKED": "The local plan for this slice stopped (a step spent its attempts); the slice is back with the stronger builder.",
     "DECOMPOSITION_PARTIAL": "The local model delivered part of this slice; the residual it could not plan waits for the stronger builder.",
+    "NATIVE_SLICE_NEEDS_CPP_SPEC": "This slice is native (C++) code. The free local C++ lane can build it once the slice's capability graph declares a cpp section; until then only the stronger builder can.",
     "WAITING_FOR_CAPABLE_BUILDER_BUDGET": "The slice needs the stronger builder and today's budget is used up.",
     "CAPABLE_BUILDER_DISPATCHED": "The slice was handed to the stronger builder and is in progress there.",
     "LOCAL_BUILD_EXHAUSTED": "The local builder spent every allowed attempt on this slice.",
@@ -203,6 +204,8 @@ def classify(request: dict[str, Any], ctx: dict[str, Any], *, now: float, free_g
         return row
     if any(isinstance(e.get("detail"), dict) and e["detail"].get("reason") == "DAILY_BUDGET_EXHAUSTED" for e in events):
         return block("WAITING_FOR_CAPABLE_BUILDER_BUDGET", "CAPABLE_BUILDER", "WAITING")
+    if decomposer.native_scope(request) and not isinstance(request.get("cpp"), dict):
+        return block("NATIVE_SLICE_NEEDS_CPP_SPEC", "ROUTING", "WAITING", allowed_paths=list(request.get("allowed_paths") or [])[:6])
     stuck_for = now - _last_movement(request, ctx)
     if stuck_for > STUCK_AFTER_S:  # nothing we know of explains it: report everything we know, once
         return block("UNEXPLAINED_NO_PROGRESS", "UNKNOWN", "STUCK", idle_minutes=round(stuck_for / 60.0, 1), builder=builder,

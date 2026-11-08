@@ -17,7 +17,9 @@ OLD = NOW - 3 * 3600
 
 
 def request(rid="RM-a", *, level=3, builder="CAPABLE", reason="LEVEL_BEYOND_PRODUCT_LANE", slice_="big-slice", **over):
-    base = {"id": rid, "repository": "jweter/Project-Everward", "slice": slice_, "capability_level": level,
+    # A Python repository: these tests are about decomposition states. Everward's src/** is native C++ and is routed to
+    # the C++ lane instead (test_a_native_slice_without_a_cpp_spec_names_the_gap_instead_of_looking_stuck).
+    base = {"id": rid, "repository": "jweter/knowledge-engine-core", "slice": slice_, "capability_level": level,
             "route": {"builder": builder, "level": level, "reason": reason}, "allowed_paths": ["src/**"],
             "slice_acceptance": ["it works"], "_file_mtime": NOW - 60}
     base.update(over)
@@ -192,3 +194,12 @@ def test_a_stopped_or_partial_plan_is_reported_as_such_never_as_progress() -> No
     assert taken["blocker"]["code"] == "CAPABLE_BUILDER_DISPATCHED"                 # the stronger builder has the residual
     active = run(request(), context=ctx(plans={"RM-a": "ACTIVE"}))
     assert active["stage"] == "DECOMPOSED" and active["status"] == "PROGRESSING"
+
+
+
+def test_a_native_slice_without_a_cpp_spec_names_the_gap_instead_of_looking_stuck() -> None:
+    native = request("RM-ew", repository="jweter/Project-Everward", allowed_paths=["src/simulation/**", "tests/**"])
+    row = run(native)
+    assert row["blocker"]["code"] == "NATIVE_SLICE_NEEDS_CPP_SPEC" and row["status"] == "WAITING"
+    with_spec = request("RM-ew", repository="jweter/Project-Everward", allowed_paths=["src/simulation/**"], cpp={"test": "x"})
+    assert (run(with_spec)["blocker"] or {}).get("code") != "NATIVE_SLICE_NEEDS_CPP_SPEC"   # a declared cpp spec routes on
