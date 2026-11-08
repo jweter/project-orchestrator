@@ -49,7 +49,8 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
     db_path = _path(path)
     if read_only:
         # Read-only opens never create or modify a database or journal.
-        uri = f"file:{db_path.as_posix()}?mode=ro"
+        # as_uri() percent-encodes the path (a "#" or "?" in it would otherwise end the filename and drop mode=ro)
+        uri = f"{db_path.as_uri()}?mode=ro"
         connection = sqlite3.connect(uri, uri=True, timeout=10, isolation_level=None)
         connection.execute("PRAGMA busy_timeout=10000")
     else:

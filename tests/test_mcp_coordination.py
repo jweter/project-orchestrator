@@ -213,3 +213,16 @@ def test_mcp_main_refuses_network_transport_without_loading_sdk(monkeypatch, cap
     monkeypatch.setenv("IRON_GOD_MCP_TRANSPORT", "streamable-http")
     assert gateway.main() == 2
     assert "LOCAL_STDIO_ONLY" in capsys.readouterr().err
+
+
+def test_a_database_path_with_uri_metacharacters_posts_and_reads_the_same_file(tmp_path):
+    """Review finding on #668: a '#' ended the SQLite URI filename, so reads opened a different file and failed."""
+    for name in ("advisory#pilot.sqlite", "a%20b.sqlite", "100%.sqlite"):
+        database = tmp_path / name
+        co.post_message(database, sender_label="claude-code", recipient="chatgpt", kind="status", body="hi",
+                           idempotency_key="k")
+        got = co.list_messages(database, recipient_label="chatgpt")["messages"]
+        assert [m["body"] for m in got] == ["hi"]
+    assert sorted(p.name for p in tmp_path.iterdir() if p.suffix == ".sqlite") == ["100%.sqlite", "a%20b.sqlite", "advisory#pilot.sqlite"]
+    assert not (tmp_path / "advisory").exists()                                       # no stray file from a truncated name
+
