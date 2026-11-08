@@ -252,9 +252,11 @@ def engine_snapshot(state_root: Path) -> dict:
         "product": root / "iron-god-products" / "lane-status.json",
         "canon": root / "iron-god-canon" / "lane-status.json",
         "supervisor": root / "supervisor-generation-heartbeat.json",
+        "communication": root / "iron-god-mailbox-observation.json",
     }
     permitted = ("status", "observed_at_utc", "heartbeat_at_utc", "repository",
-                 "packet_id", "backlog_item", "actor_revision", "worker_status")
+                 "packet_id", "backlog_item", "actor_revision", "worker_status",
+                 "pending_unacknowledged", "last_message_seq")
     values = {}
     for label, path in sources.items():
         if not path.is_file():
