@@ -346,3 +346,15 @@ def test_the_live_server_follows_the_pin_to_another_release_and_health_works_fir
             del sys.modules[name]
         sys.modules.update(saved_modules)
         sys.path[:] = saved_path
+
+
+def test_a_build_paused_by_an_owner_takeover_is_explained_in_plain_english(tmp_path):
+    root = engine_state(tmp_path, merged_recently=False)
+    write(root / cc.LANE / "lane-status.json", {"status": "PARKED", "repository": "jweter/knowledge-engine-core", "packet_id": "PKT-9",
+                                                "worker_status": "ENVIRONMENT_FAILURE", "observed_at_utc": RECENT,
+                                                "worker_summary": "EXECUTION_AUTHORITY_REVOKED_DURING_IMPLEMENTATION"})
+    work = snap(root)["work"]
+    assert "PARKED" not in work["text"] and "paused when you took control" in work["text"] and "costs it nothing" in work["text"]
+    write(root / cc.LANE / "lane-status.json", {"status": "PARKED", "repository": "jweter/knowledge-engine-core", "observed_at_utc": RECENT})
+    assert snap(root)["work"]["text"] == "The last build was paused and is waiting to resume"
+
