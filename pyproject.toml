@@ -11,6 +11,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=9.0", "hypothesis>=6.0", "ruff>=0.13", "mypy>=1.18"]
+mcp = ["mcp>=2.0,<3"]
 
 [project.scripts]
 project-orchestrator = "project_orchestrator.cli:main"
