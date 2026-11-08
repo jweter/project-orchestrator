@@ -808,6 +808,7 @@ def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch)
 def test_an_authorized_builder_never_waits_for_user_inactivity(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
     grant_owner_authority(tmp_path)
+    monkeypatch.setattr(b,"select_repo",lambda *a,**k:None)  # hermetic: past the old idle gate, stop before any GitHub call
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]!="USER_ACTIVE"
     assert "idle_seconds" not in result and "manual_human_mode" not in result
@@ -836,6 +837,7 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
 def test_full_power_has_no_inactivity_gate(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
     monkeypatch.setattr(b,"owner_control_status",lambda _root:b.AUTHORIZED)
+    monkeypatch.setattr(b,"select_repo",lambda *a,**k:None)  # hermetic: no GitHub call, so this passes without gh or a token
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result["status"]!="USER_ACTIVE"
     assert "idle_seconds" not in result
