@@ -144,7 +144,14 @@ def view(lane_root: Path, *, now: float | None = None, loaded_models: list[str] 
     lane_reason = str(lane.get("reason") or "")
 
     worker_age = _age(worker.get("updated_at_epoch"), now)
-    worker_current = bool(active) and worker_age is not None and str(worker.get("packet_id") or active.get("packet_id")) == str(active.get("packet_id"))
+    if active:
+        worker_current = worker_age is not None and str(worker.get("packet_id") or active.get("packet_id")) == str(active.get("packet_id"))
+    else:  # a native C++ job has no lane record: a recent, still-active worker report stands in for it
+        worker_current = (worker_age is not None and worker_age < STALE_AFTER_S and str(worker.get("phase")) in ACTIVE_PHASES)
+        if worker_current:
+            active = {"packet_id": worker.get("packet_id"), "repository": worker.get("repository"), "task_id": worker.get("task_id"),
+                      "title": worker.get("title"), "capability_level": worker.get("capability_level"), "model": worker.get("model"),
+                      "worker_pid": worker.get("pid")}
     delivery_age = _age(delivery.get("updated_at_epoch"), now)
 
     phase, detail = "IDLE", ""
@@ -186,7 +193,8 @@ def view(lane_root: Path, *, now: float | None = None, loaded_models: list[str] 
         "task": {"id": (active or {}).get("task_id") or (active or {}).get("packet_id") or lane.get("task_id"),
                  "title": (active or {}).get("title") or lane.get("title"),
                  "capability_level": level},
-        "model": {"name": model_name, "calibrated_for": (capability_profile or {}).get("model"),
+        "model": {"name": model_name, "route": (active or {}).get("route") or lane.get("route"),
+                  "calibrated_for": (capability_profile or {}).get("model"),
                   "calibrated_max_level": max_level,
                   "level_ok": (None if level is None or max_level is None else int(level) <= int(max_level))},
         "worker": {"pid": (active or {}).get("worker_pid") or worker.get("pid") if (active or worker_current) else None,

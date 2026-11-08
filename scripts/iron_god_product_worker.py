@@ -906,6 +906,7 @@ def execute_product_packet(
         head = _git(worktree, "rev-parse", "HEAD")
         handback.update(status=status, summary=summary, observed_at=_now(),
                         head_sha=head.stdout.strip() if head.returncode == 0 else base)
+        trace.phase("IDLE", f"{status}: {summary[:160]}")
         return handback
 
     if not authority():

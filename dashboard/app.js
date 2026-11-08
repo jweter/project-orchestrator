@@ -70,7 +70,8 @@ function renderExecution(x){
   rows.push(card(x.repository||"No repository","Task: "+esc(t.title||t.id||"none")+(t.id&&t.title?' ('+esc(t.id)+')':'')+" · capability level "+esc(t.capability_level??"—"),
     '<span class="status '+(x.owner_authorized===true?"good":x.owner_authorized===false?"bad":"warn")+'">'+(x.owner_authorized===true?"TAKE THE WHEEL":x.owner_authorized===false?"OWNER HOLDS CONTROL":"CONTROL UNKNOWN")+'</span>'));
   const levelNote=m.level_ok===false?'<br><b class="bad">Task level '+esc(t.capability_level)+' is above the calibrated maximum '+esc(m.calibrated_max_level)+'</b>':"";
-  rows.push(card("Model: "+(m.name||"unknown"),"Calibrated for "+esc(m.calibrated_for||"nothing")+" · demonstrated max level "+esc(m.calibrated_max_level??"—")+levelNote,
+  const why=m.route&&m.route.reason?'<br>Why this model: '+esc(m.route.reason):"";
+  rows.push(card("Model: "+(m.name||"unknown"),"Calibrated for "+esc(m.calibrated_for||"nothing")+" · demonstrated max level "+esc(m.calibrated_max_level??"—")+levelNote+why,
     '<span class="status '+(m.calibrated_for&&m.name&&String(m.calibrated_for).endsWith(String(m.name).replace(/^ollama\//,""))?"good":"warn")+'">'+(m.calibrated_for&&String(m.calibrated_for).endsWith(String(m.name||"").replace(/^ollama\//,""))?"CALIBRATED":"NOT CALIBRATED")+'</span>'));
   if(x.active||w.pid)rows.push(card("Worker "+(w.pid??"—"),"Elapsed "+(Number.isFinite(w.elapsed_s)?Math.round(w.elapsed_s/60*10)/10+" min":"—")+" · last progress: "+esc(w.last_progress||"—")+" ("+fmtAge(w.last_progress_age_s)+")"+(x.stuck?'<br><b class="bad">No progress reported for a long time</b>':""),
     '<span class="status '+phaseClass(phase)+'">'+esc(phase)+'</span>'));

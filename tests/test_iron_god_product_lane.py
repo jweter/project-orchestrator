@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from project_orchestrator import iron_god_backlog as backlog_mod
+from project_orchestrator import iron_god_calibration as cal
 from project_orchestrator import iron_god_development_memory as devmem
 from project_orchestrator import iron_god_merge_readiness as readiness
 from project_orchestrator import iron_god_product_lane as pl
@@ -2339,3 +2340,89 @@ def test_a_diagnostics_failure_never_stops_the_rotation(env, monkeypatch):
     monkeypatch.setattr(pl.roadmap_refill, "request_status", explode)
     result = step(env, Runner(plan=never_plans))
     assert result["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM" and "RuntimeError" in result["diagnostics_error"]
+
+
+# --- capability-aware model routing in the lane -------------------------------------------------------------------------
+class RoutedRunner(Runner):
+    """A runner whose spawn accepts the model routing chose, like the real spawn_product_worker."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.models = []
+
+    def spawn(self, release_repo, packet_path, handback_path, *, release_sha, log_path, model=None):
+        self.models.append(model)
+        return super().spawn(release_repo, packet_path, handback_path, release_sha=release_sha, log_path=log_path)
+
+
+def measured(**levels):
+    hw = cal.hardware_fingerprint()
+    return {f"ollama/{name}": {"schema_version": 1, "ladder_version": cal.LADDER_VERSION, "model": f"ollama/{name}",
+                               "hardware": hw, "max_passing_level": level, "levels": {}} for name, level in levels.items()}
+
+
+FULL = {"qwen2.5-coder:7b": 3, "qwen3.5:4b": 2, "qwen2.5-coder:3b": 1}
+
+
+def routed_step(env, runner, free, profiles, level=None):
+    if level is not None:
+        env.policy = {**env.policy, "portfolio_rotation": {**env.policy["portfolio_rotation"], "capability_level": level}}
+    return pl.advance_product_lane(
+        env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=True, decide=lambda: PERMIT,
+        spawn=runner.spawn, alive=lambda _w: False, stop=lambda _w: None, resources=lambda: {"admitted": True},
+        lease_pool=env.pool, github=FakeGitHub(), sync=env.sync, owned_paths=lambda r: [], gates=lambda *_a: None,
+        memory_root=env.memory, rng=random.Random(7), policy=env.policy,
+        profiles=lambda: profiles, free_gib=lambda: free)
+
+
+def test_the_lane_runs_the_primary_builder_when_memory_admits_it_and_says_why(env):
+    runner = RoutedRunner()
+    result = routed_step(env, runner, 8.0, measured(**FULL))
+    assert result["status"] == "DISPATCHED" and runner.models == ["qwen2.5-coder:7b"]
+    active = json.loads(pl.ProductLane(env.state).active_path.read_text(encoding="utf-8"))
+    assert active["model"] == "ollama/qwen2.5-coder:7b" and active["route"]["reason"] == "PRIMARY_BUILDER"
+
+
+def test_when_memory_is_short_a_smaller_model_takes_only_work_it_has_demonstrated(env):
+    runner = RoutedRunner()
+    result = routed_step(env, runner, 6.5, measured(**FULL), level=2)
+    assert result["status"] == "DISPATCHED" and runner.models == ["qwen3.5:4b"]
+    active = json.loads(pl.ProductLane(env.state).active_path.read_text(encoding="utf-8"))
+    assert active["route"]["reason"].startswith("CONSTRAINED_FALLBACK") and active["model"] == "ollama/qwen3.5:4b"
+
+
+def test_a_hard_task_waits_for_memory_instead_of_being_downgraded(env):
+    runner = RoutedRunner()
+    result = routed_step(env, runner, 6.5, measured(**FULL))           # the default self-planned task is level 3: only 7B covers it
+    assert result["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0 and runner.models == []
+    assert "level 3 is covered only by qwen2.5-coder:7b" in result["reason"] and "7.3 GiB" in result["reason"]
+    assert pl.ProductLane(env.state).active() is None                  # nothing was dispatched, no lease or worktree was spent
+
+
+def test_when_no_calibrated_model_fits_the_lane_waits_with_the_exact_numbers(env):
+    runner = RoutedRunner()
+    result = routed_step(env, runner, 2.0, measured(**FULL))
+    assert result["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0 and "GiB" in result["reason"]
+
+
+def test_a_task_above_every_calibrated_level_waits_for_calibration_not_memory(env):
+    runner = RoutedRunner()
+    result = routed_step(env, runner, 20.0, measured(**{"qwen2.5-coder:3b": 1}))
+    assert result["status"] == "WAITING_FOR_CALIBRATION" and runner.spawned == 0
+    assert result["reason"].startswith("NO_MODEL_QUALIFIES_FOR_LEVEL_3") and "SLICE_EXCEEDS_CALIBRATED_CAPABILITY" in result["reason"]
+
+
+def test_the_routed_model_reaches_the_workers_environment(env, monkeypatch):
+    seen = {}
+
+    class Popen:
+        pid = 1
+
+        def __init__(self, argv, **kwargs):
+            seen["env"] = kwargs["env"]
+
+    monkeypatch.setattr(pl.subprocess, "Popen", Popen)
+    monkeypatch.setattr(pl.owner_controller, "process_start_fingerprint", lambda pid: "fp")
+    pl.spawn_product_worker(env.release, env.state / "p.json", env.state / "h.json", release_sha="a" * 40,
+                            log_path=env.state / "log.txt", model="qwen3.5:4b")
+    assert seen["env"]["EXPONENTIAL_BUILDER_MODEL"] == "ollama/qwen3.5:4b"

@@ -156,3 +156,34 @@ def test_the_dashboard_health_endpoint_carries_the_execution_view_and_the_page_r
     assert 'id="execution"' in page and 'id="exec-phase"' in page and "app.js?v=7" in page
     assert "renderExecution(h?.execution)" in script and "Memory admission decisions" in script
     assert "azathoth-shell-v7" in (ROOT / "dashboard" / "sw.js").read_text(encoding="utf-8")
+
+
+def test_a_native_cpp_job_with_no_lane_record_is_shown_from_the_authors_own_report(tmp_path: Path) -> None:
+    seed(tmp_path, worker={"phase": "COMPILING", "detail": "cmake configure/build with MSVC", "packet_id": "EW-1",
+                           "repository": "jweter/Project-Everward", "task_id": "EW-1", "title": "Add clamp_unit",
+                           "capability_level": 3, "model": "ollama/qwen2.5-coder:7b", "started_at_epoch": NOW - 90, "pid": 777})
+    stamp(tmp_path, "worker", NOW - 5)
+    v = es.view(tmp_path, now=NOW)
+    assert v["phase"] == "COMPILING" and v["active"] is True and v["repository"] == "jweter/Project-Everward"
+    assert v["task"]["id"] == "EW-1" and v["worker"]["pid"] == 777 and v["model"]["name"] == "ollama/qwen2.5-coder:7b"
+
+
+def test_a_finished_turn_reports_idle_and_is_never_shown_as_still_running(tmp_path: Path) -> None:
+    seed(tmp_path, worker={"phase": "IDLE", "detail": "PASS: accepted", "packet_id": "EW-1", "started_at_epoch": NOW - 600})
+    stamp(tmp_path, "worker", NOW - 2)
+    assert es.view(tmp_path, now=NOW)["active"] is False
+
+
+def test_the_cpp_author_reports_phases_from_the_commands_it_really_runs() -> None:
+    text = (ROOT / "scripts" / "iron_god_cpp_author.py").read_text(encoding="utf-8")
+    for needle in ('trace.phase("CODING"', 'trace.phase("COMPILING"', 'trace.phase("TESTING"', 'trace.phase("VERIFYING"', "run=traced_run",
+                   "lane.preflight_record(workspace, head, traced_run)", 'trace.phase("IDLE"'):
+        assert needle in text, needle
+
+
+def test_the_routing_decision_is_shown_with_the_model_it_chose(tmp_path: Path) -> None:
+    route = {"model": "qwen3.5:4b", "reason": "CONSTRAINED_FALLBACK: qwen2.5-coder:7b is not available now", "level": 2}
+    seed(tmp_path, lane={"status": "DISPATCHED", "active": {**ACTIVE, "model": "ollama/qwen3.5:4b", "route": route}})
+    v = es.view(tmp_path, now=NOW)
+    assert v["model"]["name"] == "ollama/qwen3.5:4b" and v["model"]["route"]["reason"].startswith("CONSTRAINED_FALLBACK")
+    assert "Why this model" in (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
