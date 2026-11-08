@@ -431,13 +431,14 @@ def salvage_plan(
     subs = [s for s in raw["subtasks"] if isinstance(s, dict)]
     coverage = {str(k): list(v) for k, v in raw["coverage"].items() if isinstance(v, list)}
     skip: set[int] = set()
+    lost: set[int] = set()  # criteria that lost one of their owners: part of their work is not planned any more
     dropped: list[dict[str, Any]] = []
     problems: list[str] = []
     for _round in range(2 * MAX_SUBTASKS + 2):
         plan, problems = validate_plan({"subtasks": subs, "coverage": coverage, "residual": []}, request,
                                        exists=exists, read=read, skip_criteria=frozenset(skip))
         if plan is not None:
-            plan["residual"] = residual + [criteria[i][:300] for i in sorted(skip)]
+            plan["residual"] = residual + [criteria[i][:300] for i in sorted(skip | lost)]
             plan["dropped"] = dropped
             return plan, []
         bad = {m.group(1) for m in (_KEY_PROBLEM.match(p) for p in problems) if m}
@@ -460,6 +461,9 @@ def salvage_plan(
                 if sub.get("key") in bad:
                     dropped.append({"title": str(sub.get("title") or sub.get("function_name") or sub.get("key"))[:120],
                                     "problems": [p[:200] for p in problems if p.startswith(str(sub.get("key")))][:3]})
+            for number, owners in coverage.items():  # review P2 on #659: surviving owners do not make it complete
+                if any(o in bad for o in owners) and str(number).isdigit() and 0 < int(number) <= len(criteria):
+                    lost.add(int(number) - 1)
             kept = [s for s in subs if s.get("key") not in bad]
             renumber = {s["key"]: f"t{i}" for i, s in enumerate(kept, start=1)}
             subs = [{**s, "key": renumber[s["key"]],
@@ -1027,7 +1031,10 @@ def harvest(
                 }
             )
             continue
-        plan, problems = validate_plan(
+        # Recomputed here against the authoritative clone at the exact base, never taken from the worker: the same
+        # deterministic salvage the proposer applied (review P1 on #659: the strict validator here rejected every
+        # partial plan the proposer had accepted, so none ever reached write_plan through the real lifecycle).
+        plan, problems = salvage_plan(
             result.get("raw"),
             request,
             exists=_exists_at(Path(job["clone"]), job["base"]),

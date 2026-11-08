@@ -1113,3 +1113,29 @@ def test_waiting_for_memory_spends_no_attempt_and_returns_the_lease(tmp_path: Pa
     assert released and not td.plan_path(lane, PARENT["id"]).exists()
     assert not [r for r in td._jobs(lane) if r.get("stage") == "FAILED"]
     assert not any(o["status"] == "BLOCKED" for o in td.advance(lane, [PARENT], clone, base, spawn=Spawner(waiting)))
+
+
+
+def test_a_partial_plan_survives_the_real_harvest_and_becomes_an_active_plan_with_its_residual(tmp_path: Path, clone: Path) -> None:
+    """Review P1 on #659: harvest re-validated with the strict validator, so a partial plan the proposer accepted was
+    rejected as RESIDUAL_NOT_LOCAL in the real worker lifecycle and never written."""
+    lane, base = tmp_path / "lane", head_of(clone)
+    partial = {**GOOD, "residual": ["wire the helpers into the existing handler"]}
+    td.advance(lane, [PARENT], clone, base, spawn=Spawner({"ok": True, "raw": partial, "model": "qwen2.5-coder:7b"}))
+    (outcome,) = td.harvest(lane)
+    assert outcome["status"] == "PLANNED", outcome
+    plan = json.loads(td.plan_path(lane, PARENT["id"]).read_text(encoding="utf-8"))
+    assert plan["status"] == "ACTIVE" and plan["residual"] == ["wire the helpers into the existing handler"]
+
+
+def test_a_criterion_that_loses_one_of_its_owners_keeps_its_unfinished_work_in_the_residual() -> None:
+    """Review P2 on #659: one criterion needing both steps, the clamp step dropped: the slugify step alone must not make the
+    criterion look complete, or settle() would mark an incomplete slice DONE."""
+    joint = {**PARENT, "slice_acceptance": ["slugify a title and clamp its length", PARENT["slice_acceptance"][2]]}
+    outline = {"functions": [{"name": "slugify", "purpose": "hyphenate a title", "criteria": [1], "depends_on": []},
+                             {"name": "clamp", "purpose": "limit a number", "criteria": [1], "depends_on": []}], "residual": []}
+    broken = {**DETAIL, "clamp": {"signature": "def clamp(value: int) -> int:", "done_when": "x",
+                                  "acceptance_examples": [{"call": "{fn}(undefined_name)", "expected": 1, "why": "not a literal"}]}}
+    result = td.propose_staged(joint, "", staged_ask(outline, broken), exists=lambda _p: False)
+    assert result["ok"] and [s["function_name"] for s in result["plan"]["subtasks"]] == ["slugify"]
+    assert result["plan"]["residual"] == ["slugify a title and clamp its length"]       # not empty: the clamp part is missing
