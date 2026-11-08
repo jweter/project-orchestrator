@@ -39,7 +39,7 @@ WAITING_TEXT = {
     "CALIBRATION_REQUIRED": "No capability profile exists for this machine.",
     "SLICE_EXCEEDS_CALIBRATED_CAPABILITY": "The slice needs a higher capability level than the calibrated model has shown.",
 }
-BLOCKED_STATUS_HINTS = ("BLOCKED", "FAILED", "REJECTED", "REFUSED", "UNVERIFIED", "UNAVAILABLE", "EXHAUSTED")
+BLOCKED_STATUS_HINTS = ("BLOCKED", "FAILED", "REJECTED", "REFUSED", "UNVERIFIED", "UNCONFIRMED", "ORPHANED", "UNAVAILABLE", "EXHAUSTED")
 
 
 def _now() -> str:
