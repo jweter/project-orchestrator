@@ -154,7 +154,7 @@ if(-not $AuditOnly) {
   $pythonForDevMode = Get-IronGodPython
   $devModeScript = if($pinForDevMode) { Join-Path $pinForDevMode.Repo 'scripts\iron_god_dev_mode.py' } else { $null }
   if($pythonForDevMode -and $devModeScript -and (Test-Path -LiteralPath $devModeScript -PathType Leaf)) {
-   Start-Process -FilePath $pythonForDevMode -ArgumentList @($devModeScript,'restore','--state-root',$state) -WindowStyle Hidden | Out-Null
+   Start-Process -FilePath $pythonForDevMode -ArgumentList @(('"' + $devModeScript + '"'),'restore','--state-root',('"' + $state + '"')) -WindowStyle Hidden | Out-Null
    $events.Add('DEV_MODE_RESTORE_STARTED')
   } else { $diagnostics.Add('DEV_MODE_RESTORE_UNAVAILABLE_IN_PINNED_RELEASE') }
  } catch { $diagnostics.Add('DEV_MODE_RESTORE_FAILED: ' + $_.Exception.Message) }

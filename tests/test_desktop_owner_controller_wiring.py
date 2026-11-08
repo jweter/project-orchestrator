@@ -216,3 +216,23 @@ def test_give_me_control_gives_the_laptop_back_by_restoring_dev_mode_without_eve
     assert "exit" not in block and "throw" not in block.lower()                              # it can never change the handoff's result
     after = text[end:]
     assert "OWNER_CONTROL_GRANTED" in text[:start] and "$status -ne 'OWNER_CONTROL_GRANTED'" in after   # the success rule is untouched
+
+
+def test_the_restore_paths_are_quoted_so_a_profile_with_a_space_still_restores() -> None:
+    """Review finding: Start-Process does not quote -ArgumentList items, so an unquoted path splits at a space."""
+    text = HUMAN.read_text(encoding="utf-8")
+    block = text[text.index("# Owner decision 2026-11-08"):text.index("$report = [ordered]@{")]
+    assert "('\"' + $devModeScript + '\"')" in block and "('\"' + $state + '\"')" in block
+
+
+@windows
+def test_start_process_really_splits_unquoted_paths_and_keeps_quoted_ones_whole(tmp_path) -> None:
+    """Proves the finding on real PowerShell, so the quoting is not cargo cult."""
+    folder = tmp_path / "with space"
+    folder.mkdir()
+    script = folder / "echo_args.py"
+    script.write_text("import sys, pathlib; pathlib.Path(sys.argv[1]).write_text(str(len(sys.argv)))", encoding="utf-8")
+    out = tmp_path / "count.txt"
+    command = (f"$s='{script}'; Start-Process -FilePath '{sys.executable}' -ArgumentList @(('\"' + $s + '\"'),'{out}') -Wait -WindowStyle Hidden")
+    subprocess.run([PS, "-NoProfile", "-Command", command], check=True, timeout=60)
+    assert out.read_text(encoding="utf-8") == "2"                                             # script + one argument: not split
