@@ -62,22 +62,6 @@ def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[
     return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=False)
 
 
-def windows_idle_seconds() -> float | None:
-    """Return interactive Windows idle time, or None off Windows."""
-    if os.name != "nt":
-        return None
-
-    class LASTINPUTINFO(ctypes.Structure):
-        _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
-
-    info = LASTINPUTINFO()
-    info.cbSize = ctypes.sizeof(info)
-    if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)):
-        raise RuntimeError("GetLastInputInfo failed")
-    tick = ctypes.windll.kernel32.GetTickCount64()
-    return max(0.0, (tick - info.dwTime) / 1000.0)
-
-
 def accepted_pin(actor_repo: Path) -> tuple[str, str]:
     """Return the (source, sha) pin this actor may run, or fail closed.
 
@@ -559,7 +543,6 @@ def run_idle_session(
     actor_repo: Path,
     queue: Path,
     workspace_root: Path,
-    min_idle_seconds: int,
     poll_seconds: int,
     state_dir: Path | None = None,
     max_backoff_seconds: int = 900,
@@ -567,7 +550,7 @@ def run_idle_session(
     min_disk_free_gb: float = 10.0,
     execution_authority: Callable[[], object] | None = None,
 ) -> int:
-    """Stay resident and run bounded actor cycles only while the session is idle.
+    """Stay resident and run bounded actor cycles while execution is authorized.
 
     A launch normally coincides with owner activity (the owner just clicked
     Take the Wheel), so the actor must not exit when the idle threshold is
@@ -582,7 +565,6 @@ def run_idle_session(
     owner execution decision; a denial or revocation keeps it resident and
     non-executing.
     """
-    threshold = max(0, min_idle_seconds)
     cadence = max(30, poll_seconds)
     state_dir = state_dir or (queue / "state")
     authority = execution_authority or default_execution_authority
@@ -604,14 +586,6 @@ def run_idle_session(
                     maintenance_status=maintenance_status,
                 )
                 return 0
-            idle = windows_idle_seconds()
-            if idle is not None and idle < threshold:
-                # Record each waiting episode once; polling must not flood telemetry.
-                if waiting != "USER_ACTIVE":
-                    emit_state(state_dir, "USER_ACTIVE", idle_seconds=idle, resident=True)
-                    waiting = "USER_ACTIVE"
-                time.sleep(cadence)
-                continue
             try:
                 decision = authority()
                 permitted = getattr(decision, "permitted", False) is True
@@ -636,7 +610,7 @@ def run_idle_session(
                 continue
             waiting = None
             if not prepared:
-                emit_state(state_dir, "IDLE_AVAILABLE", idle_seconds=idle)
+                emit_state(state_dir, "IDLE_AVAILABLE")
                 update_actor_checkout(actor_repo)
                 run_daily_hygiene(state_dir)
                 prepared = True
@@ -661,7 +635,6 @@ def run_idle_session(
             emit_state(
                 state_dir,
                 "EXECUTING",
-                idle_seconds=idle,
                 steward_band=assessment["band"],
                 steward_max_parallel_lanes=assessment["max_parallel_lanes"],
                 **resources,
@@ -699,7 +672,6 @@ def main() -> int:
     parser.add_argument("--actor-repo", required=True)
     parser.add_argument("--queue", required=True)
     parser.add_argument("--workspace-root", required=True)
-    parser.add_argument("--min-idle-seconds", type=int, default=300)
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--state-dir")
     parser.add_argument("--max-backoff-seconds", type=int, default=900)
@@ -719,7 +691,6 @@ def main() -> int:
             actor_repo,
             queue,
             workspace_root,
-            args.min_idle_seconds,
             args.poll_seconds,
             Path(args.state_dir) if args.state_dir else None,
             args.max_backoff_seconds,

@@ -49,12 +49,12 @@ def contract_products(contract_path:Path|None=None)->dict[str,tuple[str,...]]:
 
 def portfolio_repositories(contract_path:Path|None=None)->tuple[str,...]:
     return tuple(repo for repositories in contract_products(contract_path).values() for repo in repositories)
-MODEL=os.environ.get("EXPONENTIAL_BUILDER_MODEL","ollama/qwen2.5-coder:3b")
+from project_orchestrator.iron_god_local_model import default_ollama_model
+MODEL=default_ollama_model()
 PROTECTED_PARTS=("dowork.txt","agents.md","license","security",".github/workflows",
                  "engineering/control-plane.json","roadmap","architecture","vision","policy")
 PLACEHOLDER_MARKERS=("entire file content", "todo: implement", "your code here", "placeholder")
 GENERIC_ROOT_FILES={"utils.py","util.py","helpers.py","helper.py","path/to/filename.js"}
-MIN_IDLE_SECONDS=300
 MAX_AIDER_SECONDS=2700
 MAX_PREFLIGHT_SECONDS=7200
 MAX_AUTONOMOUS_DELETIONS=80
@@ -217,13 +217,6 @@ def manual_human_mode_enabled(state_path:Path)->bool:
     """Fail closed unless the owner marker is absent or explicitly disabled."""
     return owner_control_status(owner_state_root(state_path)) != AUTHORIZED
 
-def windows_idle_seconds()->float|None:
-    if os.name!="nt": return None
-    class LASTINPUTINFO(ctypes.Structure):
-        _fields_=[("cbSize",ctypes.c_uint),("dwTime",ctypes.c_uint)]
-    info=LASTINPUTINFO(); info.cbSize=ctypes.sizeof(info)
-    if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info)): return None
-    return max(0.0,(ctypes.windll.kernel32.GetTickCount64()-info.dwTime)/1000.0)
 def open_pr_count(repo:str)->int:
     return len(gh_json(["pr","list","--repo",repo,"--state","open","--json","number","--limit","20"]))
 
@@ -925,9 +918,6 @@ def build_once(workspace_root:Path,state_path:Path,dry_run:bool=False,eligible_p
                execution_grant:Path|None=None,worker_id:str|None=None,invocation_id:str|None=None)->dict[str,Any]:
     if manual_human_mode_enabled(state_path):
         return {"status":"USER_ACTIVE","manual_human_mode":True}
-    idle=windows_idle_seconds()
-    if idle is not None and idle<MIN_IDLE_SECONDS:
-        return {"status":"USER_ACTIVE","idle_seconds":idle}
     repo=select_repo(state_path,eligible_products,eligible_repos)
     if repo is None:
         return {"status":"NO_ELIGIBLE_REPOSITORY"}

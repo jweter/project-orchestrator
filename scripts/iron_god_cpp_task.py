@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--task", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--model", default="qwen2.5-coder:3b")
-    parser.add_argument("--wait-hours", type=float, default=0.0, help="poll for admission (memory and idleness) this long")
+    parser.add_argument("--wait-hours", type=float, default=0.0, help="poll for memory admission this long")
     parser.add_argument("--iterations", type=int, default=4)
     parser.add_argument("--num-ctx", type=int, default=6144)
     parser.add_argument("--num-predict", type=int, default=2200)
@@ -56,9 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     spec = json.loads(args.task.read_text(encoding="utf-8"))
     workspace, build_dir = Path(spec["workspace"]), Path(spec["build_dir"])
     gate = lm.gate_for(args.model)  # the shared profiles: an unknown model gets the strictest one
-    size, reserve, idle = gate.model_gib, gate.reserve_gib, gate.min_idle_s
+    size, reserve = gate.model_gib, gate.reserve_gib
     client = lm.OllamaClient()
-    evidence: dict = {"model": args.model, "gate": {"model_gib": size, "reserve_gib": reserve, "min_idle_s": idle,
+    evidence: dict = {"model": args.model, "gate": {"model_gib": size, "reserve_gib": reserve,
                                                       "required_available_gib": gate.required_gib}}
 
     deadline = time.monotonic() + args.wait_hours * 3600

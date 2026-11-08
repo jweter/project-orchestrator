@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,7 @@ for _path in (str(ROOT), str(ROOT / "src")):
 
 from project_orchestrator import iron_god_cpp_builder as cb  # noqa: E402
 from project_orchestrator import iron_god_cpp_lane as lane  # noqa: E402
+from project_orchestrator import iron_god_execution_status as execution_status  # noqa: E402
 from project_orchestrator import iron_god_local_model as lm  # noqa: E402
 
 
@@ -78,12 +80,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--wait-s", type=float, default=900.0)
     args = parser.parse_args(argv)
+    os.environ.setdefault(execution_status.ENV_DIR, str(args.result.parent.parent / "execution"))
     request = json.loads(args.request.read_text(encoding="utf-8"))
     profile = lane.classify(request)
     out: dict = {"request": request.get("id"), "base": args.base}
 
+    trace = execution_status.Trace(execution_status.dir_from_env(), packet_id=str(request.get("id")),
+                                   repository=request.get("repository"), task_id=request.get("id"),
+                                   title=str(request.get("objective") or "")[:120],
+                                   capability_level=request.get("capability_level"), model=lm.default_ollama_model())
+
     def finish(code: int, **fields) -> int:
         out.update(fields)
+        trace.phase("IDLE", f"{out.get('status')}: {str(out.get('reason', ''))[:160]}")
         args.result.parent.mkdir(parents=True, exist_ok=True)
         args.result.write_text(cb.record_json(out), encoding="utf-8")
         print(f"{out.get('status')}: {out.get('reason', '')}")
@@ -97,13 +106,28 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as exc:
         return finish(1, status="BLOCKED", reason=str(exc))
 
+    trace.phase("PLANNING", f"preparing {request.get('id')} in an isolated worktree")
+
+    def traced_run(cmd, cwd, timeout):
+        """The real commands decide the phase: configure/build compile, ctest tests, the repository's preflight verifies."""
+        text = " ".join(str(part) for part in cmd)
+        if "engineering/preflight.py" in text:
+            trace.phase("VERIFYING", "the repository's canonical preflight at the exact head")
+        elif cmd and str(cmd[0]).lower().startswith("ctest"):
+            trace.phase("TESTING", "ctest")
+        elif cmd and str(cmd[0]).lower().startswith("cmake"):
+            trace.phase("COMPILING", "cmake configure/build with MSVC")
+        return cb.default_run(cmd, cwd, timeout)
+
     def generate(prompt: str, **kw):
+        trace.phase("CODING", "the local model is writing the header and test")
         return lm.guarded_generate(prompt, requested=kw.get("requested"), num_ctx=kw.get("num_ctx", 6144),
                                    num_predict=kw.get("num_predict", 2200), timeout=kw.get("timeout", 900),
                                    wait_s=args.wait_s)
 
     try:
-        outcome = lane.author(request, workspace, workspace.parent / (workspace.name + "-build"), generate=generate)
+        outcome = lane.author(request, workspace, workspace.parent / (workspace.name + "-build"), generate=generate,
+                              run=traced_run)
     except lm.ModelNotAdmitted as exc:  # memory/slot not available: wait, spend nothing
         return finish(3, status="WAITING_FOR_MEMORY", reason=str(exc)[:200])
     except lm.ModelCancelled as exc:  # must precede OSError: ModelCancelled is an OSError
@@ -126,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         return finish(1, status="COMMIT_FAILED", reason=(committed.stderr or committed.stdout)[-200:])
     head = git(workspace, "rev-parse", "HEAD").stdout.strip()
     # The repository's own canonical preflight at the exact committed head, as the Python worker does (AGENTS.md).
-    preflight = lane.preflight_record(workspace, head)
+    preflight = lane.preflight_record(workspace, head, traced_run)
     if not preflight["ok"]:
         return finish(1, status="PREFLIGHT_FAILED", reason=str(preflight["detail"])[:300], head=head, preflight=preflight)
     return finish(0, status="BUILT_AND_VERIFIED", branch=branch, head=head, base=args.base, workspace=str(workspace),

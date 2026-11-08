@@ -83,101 +83,14 @@ def telemetry_states(state_dir):
     return [json.loads(line)["state"] for line in path.read_text(encoding="utf-8").splitlines()]
 
 
-def test_idle_session_does_not_start_before_threshold(monkeypatch, tmp_path):
-    sleeps = []
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 120.0)
-    monkeypatch.setattr(
-        bootstrap,
-        "update_actor_checkout",
-        lambda *_: pytest.fail("checkout must not update while user is active"),
-    )
-    monkeypatch.setattr(
-        bootstrap,
-        "execute_bridge_once",
-        lambda *_: pytest.fail("no dispatch while user is active"),
-    )
-    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
-    with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state")
-    assert sleeps == [60, 60, 60]
-    # One waiting episode is recorded once, not once per poll.
-    assert telemetry_states(tmp_path / "state") == ["USER_ACTIVE"]
-
-
-def test_take_the_wheel_launch_stays_resident_until_idle_then_works(monkeypatch, tmp_path):
-    """Regression: the owner's click leaves idle ~2s; the actor exited at once and
-    Take the Wheel rolled back with TAKE_THE_WHEEL_RUNTIME_NOT_VERIFIED."""
-    state = tmp_path / "state"
-    idle_values = iter([1.9, 2.2, 45.0, 400.0])
-    events = []
-    sleeps = []
-
-    def lock_held_while_waiting(_value):
-        if not events:
-            assert bootstrap.acquire_single_instance(state) is None
-
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
-    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: events.append("update") or SHA)
-    monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: events.append("hygiene"))
-    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: events.append("verify") or SHA)
-    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: events.append("bridge") or 0)
-    healthy_resources(monkeypatch)
-    monkeypatch.setattr(
-        bootstrap.time, "sleep", stop_after_sleeps(4, sleeps, lock_held_while_waiting)
-    )
-    with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(
-            tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=permitted
-        )
-    assert sleeps == [60, 60, 60, 60]
-    assert events == ["update", "hygiene", "verify", "bridge"]
-    assert telemetry_states(state)[:2] == ["USER_ACTIVE", "IDLE_AVAILABLE"]
-    # The kernel singleton is released once the resident actor ends.
-    reacquired = bootstrap.acquire_single_instance(state)
-    assert reacquired is not None
-    bootstrap.release_single_instance(state, reacquired)
-
-
-def test_idle_session_runs_repeated_cycles_then_yields_on_activity(monkeypatch, tmp_path):
-    idle_values = iter([600.0, 600.0, 5.0, 5.0, 600.0])
-    cycles = []
-    updates = []
-    sleeps = []
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
-    verifications = []
-    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: updates.append(True) or SHA)
-    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: verifications.append(True) or SHA)
-    monkeypatch.setattr(
-        bootstrap,
-        "execute_bridge_once",
-        lambda *_: cycles.append(True) or 0,
-    )
-    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(5, sleeps))
-    healthy_resources(monkeypatch)
-
-    with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(
-            tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", execution_authority=permitted
-        )
-    # Owner activity paused new cycles without exiting; idle resumed work
-    # without re-preparing the pinned checkout.
-    assert len(updates) == 1
-    assert len(cycles) == 3
-    # ...but the pinned checkout is re-verified before every single dispatch.
-    assert len(verifications) == 3
-    assert sleeps == [60, 60, 60, 60, 60]
-    assert telemetry_states(tmp_path / "state").count("USER_ACTIVE") == 1
-
-
 def test_idle_session_stops_on_bridge_failure(monkeypatch, tmp_path):
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: 2)
     monkeypatch.setattr(bootstrap.time, "sleep", lambda _: (_ for _ in ()).throw(KeyboardInterrupt()))
     with pytest.raises(KeyboardInterrupt):
         bootstrap.run_idle_session(
-            tmp_path, tmp_path, tmp_path, 300, 60, execution_authority=permitted
+            tmp_path, tmp_path, tmp_path, 60, execution_authority=permitted
         )
 
 
@@ -232,10 +145,8 @@ def test_emit_state_writes_structured_jsonl(tmp_path):
 
 
 def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
-    idle_values = iter([600.0, 600.0, 5.0])
-    results = iter([2, 0])
+    results = iter([2, 0, 0])
     sleeps = []
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: next(idle_values))
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: next(results))
@@ -243,10 +154,10 @@ def test_idle_session_uses_bounded_backoff_then_recovers(monkeypatch, tmp_path):
     healthy_resources(monkeypatch)
     with pytest.raises(_StopResidentActor):
         bootstrap.run_idle_session(
-            tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", 120,
+            tmp_path, tmp_path, tmp_path, 60, tmp_path / "state", 120,
             execution_authority=permitted,
         )
-    # Failure backoff (60, capped at 120), recovery cadence, then a resident wait.
+    # Failure backoff (60, capped at 120), then recovery at the normal cadence; no inactivity wait exists any more.
     assert sleeps == [60, 60, 60]
 
 
@@ -268,7 +179,6 @@ def test_maintenance_marker_blocks_actor_before_checkout(monkeypatch, tmp_path):
     marker.parent.mkdir(parents=True)
     marker.write_text('{"status":"STARTUP_SANITY"}', encoding="utf-8")
     monkeypatch.setenv("LOCALAPPDATA", str(local))
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
     monkeypatch.setattr(
         bootstrap,
         "update_actor_checkout",
@@ -280,7 +190,6 @@ def test_maintenance_marker_blocks_actor_before_checkout(monkeypatch, tmp_path):
             tmp_path,
             tmp_path / "queue",
             tmp_path / "workspace",
-            300,
             60,
             tmp_path / "state",
         )
@@ -654,14 +563,13 @@ def test_denied_authority_keeps_actor_resident_without_checkout_or_dispatch(monk
     denied = SimpleNamespace(
         permitted=False, reasons=("CONTROLLER_SHADOW_MODE", "OWNER_AUTHORITY_CONTRACT_UNDEFINED")
     )
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("no checkout without authority"))
     monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: pytest.fail("no hygiene without authority"))
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("no dispatch without authority"))
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
     with pytest.raises(_StopResidentActor):
         bootstrap.run_idle_session(
-            tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=lambda: denied
+            tmp_path, tmp_path, tmp_path, 60, state, execution_authority=lambda: denied
         )
     assert sleeps == [60, 60, 60]
     import json
@@ -675,7 +583,6 @@ def test_revocation_mid_session_stops_new_cycles_but_stays_resident(monkeypatch,
     decisions = iter([True, True, False, False])
     cycles = []
     sleeps = []
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: None)
     verifications = []
@@ -685,7 +592,7 @@ def test_revocation_mid_session_stops_new_cycles_but_stays_resident(monkeypatch,
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(4, sleeps))
     authority = lambda: SimpleNamespace(permitted=next(decisions), reasons=("CONTROLLER_CANDIDATE_EXECUTION_DISABLED",))
     with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, state, execution_authority=authority)
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 60, state, execution_authority=authority)
     assert len(cycles) == 2
     assert len(verifications) == 2
     assert telemetry_states(state).count("AUTHORITY_WAIT") == 1
@@ -701,13 +608,12 @@ def test_revocation_mid_session_stops_new_cycles_but_stays_resident(monkeypatch,
     ],
 )
 def test_malformed_or_failing_authority_fails_closed(monkeypatch, tmp_path, decision):
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("fail closed before checkout"))
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("fail closed before dispatch"))
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(1, []))
     with pytest.raises(_StopResidentActor):
         bootstrap.run_idle_session(
-            tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state", execution_authority=decision
+            tmp_path, tmp_path, tmp_path, 60, tmp_path / "state", execution_authority=decision
         )
     assert telemetry_states(tmp_path / "state") == ["AUTHORITY_WAIT"]
 
@@ -718,12 +624,11 @@ def test_default_actor_authority_denies_without_an_owner_grant(monkeypatch, tmp_
     import json
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", "a" * 40)
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("shadow controller must block checkout"))
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("shadow controller must block dispatch"))
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(1, []))
     with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 300, 60, tmp_path / "state")
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 60, tmp_path / "state")
     line = json.loads((tmp_path / "state" / "actor-telemetry.jsonl").read_text(encoding="utf-8").strip())
     assert line["state"] == "AUTHORITY_WAIT"
     assert line["reasons"] == ["OWNER_NOT_ENROLLED"]
@@ -749,12 +654,11 @@ def test_commissioning_keeps_the_actor_resident_without_queue_work(monkeypatch, 
     (actor / "engineering" / "iron-god-commissioning.json").write_text(
         json.dumps({"mode": "IRON_GOD_COMMISSIONING"}), encoding="utf-8")
     sleeps = []
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 900.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: pytest.fail("no checkout"))
     monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: pytest.fail("no queue work while commissioning"))
     monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(2, sleeps))
     with pytest.raises(_StopResidentActor):
-        bootstrap.run_idle_session(actor, tmp_path, tmp_path, 300, 60, tmp_path / "state",
+        bootstrap.run_idle_session(actor, tmp_path, tmp_path, 60, tmp_path / "state",
                                    execution_authority=permitted)
     line = json.loads((tmp_path / "state" / "actor-telemetry.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert line["state"] == "AUTHORITY_WAIT"
@@ -865,7 +769,6 @@ def test_idle_session_refuses_second_dispatch_after_actor_tampering(monkeypatch,
         return pytest.fail(f"unexpected Git command {cmd}")
 
     monkeypatch.setattr(bootstrap, "run", fake_run)
-    monkeypatch.setattr(bootstrap, "windows_idle_seconds", lambda: 600.0)
     monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
     monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: None)
     monkeypatch.setattr(bootstrap, "execute_bridge_once", tamper_then_succeed)
@@ -873,7 +776,24 @@ def test_idle_session_refuses_second_dispatch_after_actor_tampering(monkeypatch,
     healthy_resources(monkeypatch)
     with pytest.raises(RuntimeError, match="LOCAL_ACTOR_DIRTY_BEFORE_DISPATCH"):
         bootstrap.run_idle_session(
-            actor, tmp_path / "queue", tmp_path / "work", 300, 60, tmp_path / "state",
+            actor, tmp_path / "queue", tmp_path / "work", 60, tmp_path / "state",
             execution_authority=permitted,
         )
     assert len(bridges) == 1
+
+
+def test_the_actor_never_waits_for_user_inactivity(monkeypatch, tmp_path):
+    """Owner decision 2026-11-07: Iron God develops continuously while Take the Wheel is active; keyboard and mouse
+    activity never pause it. Resource contention (memory, disk, CPU) is the only thing that may."""
+    assert not hasattr(bootstrap, "windows_idle_seconds")
+    state = tmp_path / "state"
+    cycles, sleeps = [], []
+    monkeypatch.setattr(bootstrap, "update_actor_checkout", lambda *_: SHA)
+    monkeypatch.setattr(bootstrap, "run_daily_hygiene", lambda *_: None)
+    monkeypatch.setattr(bootstrap, "verify_pinned_actor", lambda *_: SHA)
+    monkeypatch.setattr(bootstrap, "execute_bridge_once", lambda *_: cycles.append(True) or 0)
+    healthy_resources(monkeypatch)
+    monkeypatch.setattr(bootstrap.time, "sleep", stop_after_sleeps(3, sleeps))
+    with pytest.raises(_StopResidentActor):
+        bootstrap.run_idle_session(tmp_path, tmp_path, tmp_path, 60, state, execution_authority=permitted)
+    assert len(cycles) == 3 and "USER_ACTIVE" not in telemetry_states(state)

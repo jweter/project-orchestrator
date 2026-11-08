@@ -40,7 +40,7 @@ def main() -> int:
             sample.update(t=elapsed, cpu=lm.inference_cpu_seconds())
         return 0.1 if started["at"] and elapsed > args.trigger_after_s else real()
 
-    gate = lm.Gate(model_gib=1.0, reserve_gib=0.5, min_idle_s=0.0, available=available, patience=2)
+    gate = lm.Gate(model_gib=1.0, reserve_gib=0.5, available=available, patience=2)
     admitted, why = gate.admit()
     evidence: dict = {"model": args.model, "admitted": admitted, "admission": why, "injected_pressure_after_s": args.trigger_after_s}
     if not admitted:
