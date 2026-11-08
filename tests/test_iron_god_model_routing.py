@@ -22,16 +22,16 @@ def pick(level, free, profiles=MEASURED):
     return routing.route(level, profiles, free, hardware=HW)
 
 
-def test_the_thresholds_are_the_ones_the_owner_set_for_7b_and_the_measured_ones_for_the_rest() -> None:
-    assert routing.required_gib("qwen2.5-coder:7b") == 7.3          # preserved from the owner's decision
+def test_the_thresholds_are_the_measured_ones() -> None:
+    assert routing.required_gib("qwen2.5-coder:7b") == pytest.approx(5.3)   # measured 4.7 GiB load cost + 0.6 GiB cancel floor (2026-11-08)
     assert routing.required_gib("qwen3.5:4b") == pytest.approx(6.1)
     assert routing.required_gib("qwen2.5-coder:3b") == pytest.approx(3.9)
 
 
 @pytest.mark.parametrize("level,free,expected", [
     (3, 8.0, "qwen2.5-coder:7b"), (2, 8.0, "qwen2.5-coder:7b"), (1, 8.0, "qwen2.5-coder:7b"),   # plenty of memory: the primary builder
-    (2, 6.5, "qwen3.5:4b"),                                                                       # 7B not admitted: 4B has shown level 2
-    (1, 6.5, "qwen3.5:4b"), (1, 4.5, "qwen2.5-coder:3b"),                                         # constrained: smaller models take easy work
+    (2, 5.5, "qwen2.5-coder:7b"), (3, 5.4, "qwen2.5-coder:7b"),                                   # the measured threshold admits the 7B at 5.3
+    (1, 5.0, "qwen2.5-coder:3b"), (1, 4.5, "qwen2.5-coder:3b"),                                   # constrained: smaller models take easy work
 ])
 def test_the_primary_builder_is_preferred_and_smaller_models_take_only_work_they_have_demonstrated(level, free, expected) -> None:
     decision = pick(level, free)
@@ -39,7 +39,7 @@ def test_the_primary_builder_is_preferred_and_smaller_models_take_only_work_they
     assert decision.level == level and expected in decision.admitted
 
 
-@pytest.mark.parametrize("level,free", [(3, 6.5), (3, 4.5), (2, 4.5), (3, 7.2)])
+@pytest.mark.parametrize("level,free", [(3, 5.0), (3, 4.5), (2, 4.5), (3, 5.2)])
 def test_a_task_is_never_downgraded_below_the_level_a_model_has_demonstrated(level, free) -> None:
     decision = pick(level, free)
     assert decision.model is None                                    # wait, do not hand it to a model that has not shown it can do it
@@ -75,13 +75,13 @@ def test_a_model_outside_the_ladder_is_never_chosen() -> None:
 
 
 def test_the_fallback_explains_itself() -> None:
-    reason = pick(2, 6.5).reason
-    assert reason.startswith("CONSTRAINED_FALLBACK") and "qwen2.5-coder:7b" in reason and "qwen3.5:4b" in reason
+    reason = pick(1, 5.0).reason
+    assert reason.startswith("CONSTRAINED_FALLBACK") and "qwen2.5-coder:7b" in reason and "qwen2.5-coder:3b" in reason
 
 
 def test_the_highest_level_available_now_follows_memory() -> None:
-    levels = {free: routing.max_level_now(MEASURED, free, hardware=HW) for free in (3.0, 4.0, 6.2, 7.4)}
-    assert levels == {3.0: 0, 4.0: 1, 6.2: 2, 7.4: 3}
+    levels = {free: routing.max_level_now(MEASURED, free, hardware=HW) for free in (3.0, 4.0, 5.2, 5.4)}
+    assert levels == {3.0: 0, 4.0: 1, 5.2: 1, 5.4: 3}
     assert routing.max_level_now(MEASURED, None, hardware=HW) == 0
 
 

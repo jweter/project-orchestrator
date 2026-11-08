@@ -143,9 +143,9 @@ def test_user_activity_is_never_an_admission_condition() -> None:
     assert not hasattr(lm, "user_idle_seconds")
     assert not hasattr(lm.Gate(model_gib=1.0), "min_idle_s")
     seven = lm.gate_for("qwen2.5-coder:7b", available=lambda: 8.0)
-    assert seven.required_gib == 7.3 and seven.admit() == (True, "ADMITTED")          # the owner's initial 7.3 GiB threshold
-    refused, reason = lm.gate_for("qwen2.5-coder:7b", available=lambda: 7.0).admit()
-    assert refused is False and reason.startswith("MEMORY: 7.0 GiB available < 7.3 GiB required")
+    assert seven.required_gib == pytest.approx(5.3) and seven.admit() == (True, "ADMITTED")   # measured 4.7 + the 0.6 cancel floor
+    refused, reason = lm.gate_for("qwen2.5-coder:7b", available=lambda: 5.0).admit()
+    assert refused is False and reason.startswith("MEMORY: 5.0 GiB available < 5.3 GiB required")
 
 
 def test_abort_needs_sustained_pressure_and_remembers_the_lowest_reading() -> None:
@@ -200,7 +200,7 @@ def test_default_is_7b_and_a_task_is_never_silently_downgraded():
         assert lm.choose_model(None, **door_probes(free))[0] == "qwen2.5-coder:7b"
         assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(free))[0] == "qwen2.5-coder:7b"
     assert lm.choose_model("ollama/qwen2.5-coder:3b", **door_probes(4.0))[0] == "qwen2.5-coder:3b"
-    assert lm.gate_for("some-unknown-model").model_gib == 5.3                                              # strictest
+    assert lm.gate_for("some-unknown-model").model_gib == 4.7                                              # strictest = the 7B row
 
 
 def test_guarded_generate_loads_nothing_when_memory_is_short_and_always_unloads_after(tmp_path):
@@ -235,7 +235,7 @@ def test_pressure_during_a_run_cancels_it_and_the_model_is_still_unloaded(tmp_pa
 
 def test_the_size_token_is_matched_exactly_so_13b_never_borrows_the_3b_profile():
     for name in ("ollama/codellama:13b", "x:30b", "qwen:0.3b", "mystery-model"):
-        assert lm.gate_for(name).model_gib == 5.3
+        assert lm.gate_for(name).model_gib == 4.7
     assert lm.gate_for("ollama/qwen2.5-coder:3b-instruct-q4").model_gib == 2.4
     assert lm.gate_for("qwen2.5-coder:1.5b").model_gib == 1.4
     wanted, strict = lm.choose_model("ollama/codellama:13b", **door_probes(4.0))
@@ -253,7 +253,7 @@ def test_the_shared_client_follows_the_configured_endpoint(monkeypatch):
 def test_qwen35_sizes_have_their_own_measured_profiles_and_unknown_sizes_stay_strict():
     assert lm.gate_for("qwen3.5:4b").model_gib == 4.6 and lm.gate_for("qwen3.5:2b").model_gib == 3.3
     assert lm.gate_for("qwen3.5:0.8b").model_gib == 1.3 and lm.gate_for("qwen3.5:9b").model_gib == 7.8
-    assert lm.gate_for("qwen3.5:27b").model_gib == 5.3
+    assert lm.gate_for("qwen3.5:27b").model_gib == 4.7
 
 
 def test_a_stray_resident_model_is_evicted_before_the_run_and_thinking_is_off_for_qwen3(tmp_path):
@@ -303,12 +303,12 @@ def test_an_error_body_from_the_server_is_a_failure_not_an_empty_answer() -> Non
 def test_guarded_session_admits_by_memory_holds_the_slot_and_always_unloads(tmp_path):
     fake, slot = FakeDoor(), tmp_path / "slot"
     with pytest.raises(lm.ModelNotAdmitted, match="MEMORY"):
-        with lm.guarded_session(wait_s=0.0, client=fake, probes=door_probes(6.0), directory=slot):
-            pytest.fail("7B must not be admitted below its 7.3 GiB threshold")
+        with lm.guarded_session(wait_s=0.0, client=fake, probes=door_probes(5.0), directory=slot):
+            pytest.fail("7B must not be admitted below its 5.3 GiB measured threshold")
     assert fake.unloaded == [] and not slot.exists()                       # nothing loaded, slot released
 
     with lm.guarded_session(wait_s=5, client=fake, probes=door_probes(8.0), directory=slot) as gate:
-        assert gate.required_gib == 7.3 and slot.exists()                  # one model at a time: the slot is held
+        assert gate.required_gib == pytest.approx(5.3) and slot.exists()                  # one model at a time: the slot is held
         with pytest.raises(lm.ModelNotAdmitted, match="SLOT_BUSY"):
             with lm.guarded_session(wait_s=0.0, client=FakeDoor(), probes=door_probes(8.0), directory=slot, poll_s=0.01):
                 pass

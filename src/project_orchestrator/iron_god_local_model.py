@@ -199,10 +199,12 @@ ADMISSION_WAIT_S = 600.0  # how long a worker waits for memory before reporting 
 BUILDER_MODEL = "qwen2.5-coder:7b"  # Iron God's primary builder (owner decision 2026-11-07; level 3 on the engine ladder)
 # model name fragment -> (resident GiB, reserve GiB left for Windows and the desktop). Resident sizes are the peak Ollama
 # memory MEASURED on Azathoth by scripts/iron_god_model_bench.py (2026-11-07) with a 6144-token context; the 0.8b and 9b
-# rows are still ESTIMATES from published download sizes. The 7b row keeps the owner's initial 7.3 GiB admission threshold.
+# rows are still ESTIMATES from published download sizes. The 7b row is the MEASURED cost of loading it on Azathoth
+# (scripts: ctx_probe 2026-11-08, 4.7 GiB drop in available memory at a 6144 context; 3.9 at 2048) plus only the 0.6 GiB
+# cancel floor: owner decision 2026-11-08 to remove the padded 7.3 GiB threshold. Sustained pressure still cancels the run.
 PROFILES: dict[str, tuple[float, float]] = {
     "0.8b": (1.3, 1.0), "1.5b": (1.4, 1.0), "2b": (3.3, 1.2), "3b": (2.4, 1.5),
-    "4b": (4.6, 1.5), "7b": (5.3, 2.0), "9b": (7.8, 2.0),
+    "4b": (4.6, 1.5), "7b": (4.7, 0.6), "9b": (7.8, 2.0),
 }
 
 
