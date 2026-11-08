@@ -202,6 +202,11 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+# Outcomes after which a memory signal carried through the pass may still reach the standing rule. Any other blocking exit
+# (low disk, a file conflict, a busy lease, a failed preflight...) cannot be fixed by closing programs, so the signal is dropped.
+_CARRY_STATUSES = frozenset({"DISPATCHED", "ACCEPTED_LOCAL", "WAITING_FOR_MEMORY"})
+
+
 def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any], final: bool = False) -> None:
     """Owner's standing rule (2026-11-08): if development stalls on memory, enter Dev Mode and carry on.
 
@@ -221,7 +226,7 @@ def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any], final: bool = Fal
             # Local decomposition or drafting stalled on memory earlier in this pass. The pass's final report (often
             # IDLE_...) must not erase that stall, or a policy with a stall time above zero could never accumulate it.
             lane.planning_memory_wait = None
-            if not waiting:
+            if not waiting and (status in _CARRY_STATUSES or status.startswith("IDLE")):
                 waiting, route = True, carried
         out = dev_mode.engine_step(
             lane.state_root, cfg, waiting_for_memory=waiting,

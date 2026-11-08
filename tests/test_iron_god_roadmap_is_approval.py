@@ -172,7 +172,7 @@ def test_the_planning_hook_remembers_the_stall_for_the_final_report(tmp_path, mo
 
 # --- the lane-level proof for review finding 1 (the helper alone was not enough) ----------------------------------------------
 from tests.test_iron_god_product_lane import (  # noqa: E402,F401  (env is a pytest fixture)
-    FULL, REPOS, FakeGitHub, RoutedRunner, direct_item, directed_env, env, measured, routed_step)
+    FULL, PERMIT, REPOS, FakeGitHub, RoutedRunner, direct_item, directed_env, env, measured, routed_step)
 
 
 def test_the_lane_does_not_call_work_a_memory_stall_when_its_repository_cannot_start_it_anyway(env, monkeypatch) -> None:
@@ -210,9 +210,18 @@ def test_tight_memory_runs_the_7b_and_tells_the_standing_rule(env, monkeypatch) 
     tight = routed_step(env, runner, 3.0, measured(**FULL))
     assert tight["status"] in {"DISPATCHED", "ACCEPTED_LOCAL"} and runner.models == ["qwen2.5-coder:7b"]
     assert carried[-1] == {"required_gib": pytest.approx(5.3), "available_gib": 3.0}
-    directed_env(env, [direct_item("L2-2", REPOS[1])])
-    comfortable = routed_step(env, RoutedRunner(), 8.0, measured(**FULL))
-    assert comfortable["status"] in {"DISPATCHED", "ACCEPTED_LOCAL"} and carried[-1] is None
+
+
+def test_comfortable_memory_carries_no_signal(env, monkeypatch) -> None:
+    """One pass per test: a second pass in the same environment depends on what the first left behind (it was flaky)."""
+    carried = []
+    monkeypatch.setattr(product_lane, "_dev_mode_tick",
+                        lambda lane, payload, final=False: carried.append(getattr(lane, "planning_memory_wait", None)) if final else None)
+    directed_env(env, [direct_item("L2-1", REPOS[0])])
+    runner = RoutedRunner()
+    comfortable = routed_step(env, runner, 8.0, measured(**FULL))
+    assert comfortable["status"] in {"DISPATCHED", "ACCEPTED_LOCAL"} and runner.models == ["qwen2.5-coder:7b"]
+    assert carried[-1] is None
 
 
 def test_a_memory_stall_only_the_trace_can_see_still_reaches_the_dev_mode_rule(tmp_path, monkeypatch) -> None:
@@ -260,3 +269,29 @@ def test_dev_mode_never_hears_of_a_stall_while_the_owner_holds_control(env, monk
 
     advance(True)                                                # control returns: the same pass may consult the rule again
     assert seen and seen[-1]["waiting_for_memory"] is True
+
+
+def test_p2_low_disk_drops_signal(env, monkeypatch) -> None:
+    """Review P2 on #658: with tight memory the signal was set before resource admission, so a pass that then stopped for low
+    disk still told the rule memory was the blocker, and Dev Mode could close programs that cannot unblock anything."""
+    from types import SimpleNamespace as NS
+    seen = []
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw) or None)
+    monkeypatch.setattr(product_lane.pipeline_trace, "refresh", lambda root, **kw: {"by_blocker": {}})
+    policy = {**env.policy, "portfolio_rotation": {**env.policy["portfolio_rotation"],
+                                                   "dev_mode": {"auto": True, "stall_minutes": 0}}}
+    directed_env(env, [direct_item("L2-1", REPOS[0])])
+
+    def advance(resources):
+        return product_lane.advance_product_lane(
+            env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=True,
+            decide=lambda: PERMIT, spawn=RoutedRunner().spawn, alive=lambda _w: False,
+            stop=lambda _w: None, resources=resources, lease_pool=env.pool, github=FakeGitHub(), sync=env.sync,
+            owned_paths=lambda r: [], gates=lambda *_a: None, memory_root=env.memory, rng=random.Random(7), policy=policy,
+            profiles=lambda: measured(**FULL), free_gib=lambda: 3.0)
+
+    low_disk = advance(lambda: {"admitted": False, "reason": "LOW_DISK"})
+    assert low_disk["status"] == "WAITING_FOR_RESOURCES"
+    assert seen and seen[-1]["waiting_for_memory"] is False          # closing programs cannot fix low disk
+
+    # the positive case (tight memory, the run starts, the rule is told) is test_tight_memory_runs_the_7b_and_tells_the_standing_rule
