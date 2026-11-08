@@ -46,6 +46,7 @@ from typing import Any, Callable
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_cpp_lane as cpp_lane
+from . import iron_god_dev_mode as dev_mode
 from . import iron_god_execution_status as execution_status
 from . import iron_god_model_routing as model_routing
 from . import iron_god_local_drafter as local_drafter
@@ -186,7 +187,43 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
                     | {"worker_pid": (active.get("worker") or {}).get("pid")}) if isinstance(active, dict) else None)
     except Exception:  # noqa: BLE001
         pass
+    _dev_mode_tick(lane, payload)
     return payload
+
+
+def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any]) -> None:
+    """Owner's standing rule (2026-11-08): if development stalls on memory, enter Dev Mode and carry on.
+
+    The lane only reaches a memory wait after the owner's execution authority was verified. The rule itself needs authorised
+    work to be waiting (``work_waiting``), memory as the sole blocker for the policy's stall time, and proof that closing the
+    approved list would make the blocked model fit; see ``iron_god_dev_mode.engine_step``. It is OFF unless the policy says so.
+    """
+    cfg = getattr(lane, "dev_mode_config", None)
+    if cfg is None:
+        return
+    try:
+        status = str(payload.get("status") or "")
+        route = payload.get("route") or {}
+        out = dev_mode.engine_step(
+            lane.state_root, cfg, waiting_for_memory=(status == "WAITING_FOR_MEMORY" and payload.get("work_waiting") is True),
+            idle=status.startswith("IDLE"), required_gib=route.get("required_gib"), free_gib=route.get("available_gib"))
+        if out and out.get("action") in {"ENTER", "RESTORED", "RESTORE_PENDING", "NO_HELP", "LIMIT", "COOLDOWN"}:
+            execution_status.note(execution_status.execution_dir(lane.root), "devmode", **out)
+            roadmap_refill.log_event(lane.root, "DEV_MODE_" + str(out["action"]), "portfolio", "dev-mode", out)
+    except Exception:  # noqa: BLE001 - the rule must never break the lane
+        pass
+
+
+def _approved_work_waiting(lane: ProductLane, release_repo: Path, config: dict[str, Any]) -> bool:
+    """Is there an approved backlog item some repository could start right now (memory aside)? Cheap and side-effect free."""
+    try:
+        approved, _ = backlog.load_backlog(release_repo)
+        state = backlog.load_state(lane.root)
+        level = int(config.get("development_level", 1))
+        return any(backlog.next_item(approved, state, name, max_level=level) is not None  # the backlog keys on "owner/repo"
+                   for name in product_repositories(release_repo, config))
+    except Exception:  # noqa: BLE001 - unknown is not "work is waiting"
+        return False
 
 
 def next_repository(lane: ProductLane, repos: list[str], busy: set[str],
@@ -884,6 +921,7 @@ def advance_product_lane(
     config = rotation_config(policy if policy is not None else load_policy(release_repo))
     if config is None:
         return {"status": "PORTFOLIO_ROTATION_DISABLED"}
+    lane.dev_mode_config = config.get("dev_mode")  # the owner's standing Dev Mode rule, if the policy enables it
     pool = lease_pool if lease_pool is not None else default_lease_pool()
     if decide is None:
         decision = acknowledge_and_evaluate(owner_controller.control_root(state_root),
@@ -941,7 +979,8 @@ def advance_product_lane(
             why = model_routing.route(1, measured, free)
             waiting_for_memory = why.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
             return _report(lane, {"status": "WAITING_FOR_MEMORY" if waiting_for_memory else "WAITING_FOR_CALIBRATION",
-                                  "reason": why.reason, "route": why.as_dict()})
+                                  "reason": why.reason, "route": why.as_dict(),
+                                  "work_waiting": bool(waiting_for_memory and _approved_work_waiting(lane, release_repo, config))})
     else:
         refused = capability({"capability_level": int(config.get("capability_level", 3))})
         if refused:
@@ -1023,7 +1062,8 @@ def advance_product_lane(
         if decision.model is None:  # wait, never downgrade; no attempt is spent
             why_waiting = decision.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
             return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",
-                                  "reason": decision.reason, "repository": repo, "route": decision.as_dict()})
+                                  "reason": decision.reason, "repository": repo, "route": decision.as_dict(),
+                                  "work_waiting": bool(why_waiting)})
     admission = resources()
     if not admission.get("admitted"):
         return _report(lane, {"status": "WAITING_FOR_RESOURCES", "repository": repo, "admission": admission})

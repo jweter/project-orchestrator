@@ -187,3 +187,41 @@ def test_the_routing_decision_is_shown_with_the_model_it_chose(tmp_path: Path) -
     v = es.view(tmp_path, now=NOW)
     assert v["model"]["name"] == "ollama/qwen3.5:4b" and v["model"]["route"]["reason"].startswith("CONSTRAINED_FALLBACK")
     assert "Why this model" in (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
+
+
+def _server():
+    spec = importlib.util.spec_from_file_location("foundry_dashboard_server", ROOT / "scripts" / "foundry_dashboard_server.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module._TOP_CACHE.update(at=0.0, rows=[])
+    return module
+
+
+def test_the_dashboard_names_the_biggest_memory_users_so_a_memory_wait_has_a_visible_cause() -> None:
+    server = _server()
+    out = json.dumps([{"name": "chrome", "count": 20, "mib": 2650}, {"name": "ollama", "count": 2, "mib": 120}])
+    rows = server._top_memory_users(runner=lambda: out, now=1000.0)
+    assert rows[0] == {"name": "chrome", "count": 20, "mib": 2650, "dev_mode": "CLOSE"}
+    calls = []
+    cached = server._top_memory_users(runner=lambda: calls.append(1) or "[]", now=1005.0)   # inside ten seconds: no new probe
+    assert cached == rows and calls == []
+    assert server._top_memory_users(runner=lambda: json.dumps({"name": "solo", "count": 1, "mib": 5}), now=1100.0)[0]["name"] == "solo"
+
+
+def test_an_unreadable_process_list_is_reported_as_nothing_not_as_an_error() -> None:
+    server = _server()
+
+    def boom():
+        raise OSError("powershell unavailable")
+
+    assert server._top_memory_users(runner=boom, now=5000.0) == []
+    assert server._top_memory_users(runner=lambda: "not json", now=6000.0) == []
+
+
+def test_the_memory_card_lists_them_and_the_server_never_changes_a_process() -> None:
+    script = (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
+    assert "Biggest memory users" in script and "top_consumers" in script
+    text = (ROOT / "scripts" / "foundry_dashboard_server.py").read_text(encoding="utf-8")
+    start = text.index("def _top_memory_users")
+    block = text[start:text.index("def _execution_view")]
+    assert "Stop-Process" not in block and "taskkill" not in block and "Kill" not in block   # it only reports
