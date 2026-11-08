@@ -365,6 +365,23 @@ def test_a_plan_that_contradicts_the_roadmap_is_replaced_by_the_roadmap_not_trus
     assert backlog.item_problems({**draft, "status": "approved", "assignee": backlog.AGENT_ID}) == []
 
 
+def test_discarded_planner_interpretation_cannot_leave_contradictory_acceptance_criteria(world: dict) -> None:
+    request = request_of(world)
+    plan = {**GOOD_PLAN, "examples": [
+        {"call": "newest_entries([1, 2, 3, 4], 2)", "why": "first two", "expected": [1, 2]},
+        *GOOD_PLAN["examples"][1:],
+    ]}
+    validated = {**validated_good(world, request), "acceptance_criteria": [
+        "newest_entries([1, 2, 3, 4], 2) returns [1, 2] (planner assertion)",
+    ]}
+    draft = drafter.plan_to_draft(request, plan, validated)
+    criteria = draft["acceptance_criteria"]
+    assert "returns the last N items in order" in criteria
+    assert any("returns [3, 4] (roadmap acceptance)" in criterion for criterion in criteria)
+    assert not any("returns [1, 2]" in criterion for criterion in criteria)
+    assert all("planner assertion" not in criterion for criterion in criteria)
+
+
 def test_a_plan_whose_own_examples_avoid_the_roadmap_calls_still_carries_the_roadmap_tests(world: dict) -> None:
     """Even an evasive plan cannot drop the owner's examples: they travel with the build spec into the builder's tests."""
     request = request_of(world)

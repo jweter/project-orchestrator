@@ -221,8 +221,14 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
     if misread:
         own = []
     examples = [*injected, *own]
-    criteria = [*validated["acceptance_criteria"], *[f"{e['call']} returns {e['expected']!r} (roadmap acceptance)"
-                                                      for e in injected]]
+    # When the planner misreads an authoritative example, its criteria are no
+    # more trustworthy than its objective or examples. Keep only roadmap-owned
+    # acceptance criteria; otherwise a discarded interpretation can still
+    # become a conflicting completion gate for the local builder.
+    criteria = ([*request.get("slice_acceptance", [])] if misread
+                else [*validated["acceptance_criteria"]])
+    criteria.extend(f"{e['call']} returns {e['expected']!r} (roadmap acceptance)"
+                    for e in injected)
     roadmap_part = " ".join(str(request["objective"]).split())[:ROADMAP_OBJECTIVE_CHARS]
     objective = (f"Roadmap slice goal: {roadmap_part}" if misread
                  else f"{validated['objective']} Roadmap slice goal: {roadmap_part}")[:600]
