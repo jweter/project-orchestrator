@@ -29,7 +29,8 @@ from typing import Any, Callable
 
 from . import iron_god_cpp_builder as cb
 
-CPP_BUILDER_MODEL = "qwen2.5-coder:3b"
+# No model is named here: the lane asks the shared door for the primary builder (iron_god_local_model.BUILDER_MODEL) unless a
+# slice names one in its cpp section ("model"). The door applies the memory gate, single slot, cancellation and unload.
 IDENT = re.compile(r"[^a-z0-9]+")
 
 
@@ -214,18 +215,27 @@ def author(request: dict[str, Any], workspace: Path, build_dir: Path, *, generat
     lowest: list[float] = []
     model_used: list[str] = []
 
+    cancelled: list[BaseException] = []
+    wanted = requested_model or (request.get("cpp") or {}).get("model") or None  # None: the shared door's primary builder
+
     def ask(prompt: str) -> str:
-        reply = generate(prompt, requested=requested_model or CPP_BUILDER_MODEL, num_ctx=6144, num_predict=2200,
-                         timeout=900)
+        try:
+            reply = generate(prompt, requested=wanted, num_ctx=6144, num_predict=2200, timeout=900)
+        except OSError as exc:
+            if type(exc).__name__ == "ModelCancelled":  # the builder treats OSError as an unavailable model; keep the signal
+                cancelled.append(exc)
+            raise
         stats.append({key: reply.get(key) for key in ("eval_count", "eval_duration", "prompt_eval_count",
                                                       "prompt_eval_duration", "load_duration", "total_duration")})
         if reply.get("lowest_available_gib") is not None:
             lowest.append(float(reply["lowest_available_gib"]))
-        model_used.append(str(reply.get("model_used") or requested_model or CPP_BUILDER_MODEL))
+        model_used.append(str(reply.get("model_used") or wanted or "primary-builder"))
         return str(reply.get("response", ""))
 
     result = cb.build_change(task, ask, run=run, limits=limits or cb.Limits(max_iterations=4))
-    record = evidence_record(request, result, model=model_used[-1] if model_used else CPP_BUILDER_MODEL, stats=stats,
+    if cancelled:  # memory pressure stopped the model: surface it so the caller waits instead of spending an attempt
+        raise cancelled[0]
+    record = evidence_record(request, result, model=model_used[-1] if model_used else (wanted or "primary-builder"), stats=stats,
                              lowest_available_gib=min(lowest) if lowest else None)
     return AuthorOutcome(record, result.get("status") == cb.SUCCESS)
 
@@ -281,8 +291,8 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], *, may_start: bool,
             if result.is_file():
                 data = json.loads(result.read_text(encoding="utf-8"))
                 status = data.get("status")
-                if status == "WAITING_FOR_MEMORY":
-                    job.update(state="WAITING")
+                if status == "WAITING_FOR_MEMORY":  # this launch never built anything: refund the attempt it was charged
+                    job.update(state="WAITING", attempts=max(0, int(job.get("attempts", 0)) - 1))
                 elif status == "BUILT_AND_VERIFIED":
                     job.update(state="BUILT", result=data)
                 else:
@@ -310,8 +320,7 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], *, may_start: bool,
             if pid is None:
                 outcomes.append({"id": job["id"], "status": "SPAWN_FAILED", "reason": ""})
                 continue
-            spent = 0 if job.get("state") == "WAITING" else 1  # a memory wait costs no attempt
-            job.update(state="RUNNING", pid=pid, result_file=str(result_file), attempts=job.get("attempts", 0) + spent)
+            job.update(state="RUNNING", pid=pid, result_file=str(result_file), attempts=job.get("attempts", 0) + 1)
             write_job(lane_root, job)
             outcomes.append({"id": job["id"], "status": "STARTED", "reason": f"attempt {job['attempts']}"})
             break
@@ -366,9 +375,50 @@ def independent_verification(request: dict[str, Any], result: dict[str, Any], bu
             return report
     dirty_code, dirty = run(["git", "status", "--porcelain"], workspace, 60)
     report["checks"].append({"name": "clean_tree", "ok": dirty_code == 0 and not dirty.strip()})
+    if not report["checks"][-1]["ok"]:
+        report["reason"] = "TREE_NOT_CLEAN"
+        return report
+    recorded = result.get("preflight") if isinstance(result.get("preflight"), dict) else {}
+    ok = recorded.get("ok") is True and recorded.get("head_sha") == head  # the repository's own gate, run by the author
+    report["checks"].append({"name": "canonical_preflight", "ok": ok,
+                             "detail": str(recorded.get("detail") or "NO_PREFLIGHT_RECORDED_FOR_THIS_HEAD")[:300]})
+    if not ok:
+        report["reason"] = "CANONICAL_PREFLIGHT_FAILED"
+        return report
     report["passed"] = all(c["ok"] for c in report["checks"])
     report["target"] = name
     return report
+
+
+PREFLIGHT_TIMEOUT_S = 3600
+
+
+def canonical_preflight(workspace: Path, head: str, run: cb.Run) -> tuple[bool, str]:
+    """Run ``engineering/preflight.py`` at the exact head and accept only its own GREEN, FULL evidence for that head."""
+    import json
+    import sys
+
+    evidence_path = workspace / "preflight-evidence.json"
+    evidence_path.unlink(missing_ok=True)
+    status, out = run([sys.executable, "engineering/preflight.py", "--evidence", "preflight-evidence.json"], workspace,
+                      PREFLIGHT_TIMEOUT_S)
+    try:
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False, f"NO_PREFLIGHT_EVIDENCE (exit {status}): {out[-200:]}"
+    finally:
+        evidence_path.unlink(missing_ok=True)  # keep the verified tree exactly the committed head
+    green = status == 0 and evidence.get("status") == "GREEN" and evidence.get("mode") == "FULL" \
+        and evidence.get("head_sha") == head
+    return green, (f"GREEN at {head[:12]}" if green else
+                   f"exit {status}, status {evidence.get('status')}, mode {evidence.get('mode')}, "
+                   f"head {str(evidence.get('head_sha'))[:12]}: {out[-200:]}")
+
+
+def preflight_record(workspace: Path, head: str, run: cb.Run = cb.default_run) -> dict[str, Any]:
+    """The author's canonical-preflight verdict for ``head`` as stored in its result (the supervisor re-reads this)."""
+    ok, detail = canonical_preflight(workspace, head, run)
+    return {"ok": ok, "head_sha": head, "detail": detail}
 
 
 def publication_item(request: dict[str, Any], result: dict[str, Any], verifier: str) -> dict[str, Any]:
