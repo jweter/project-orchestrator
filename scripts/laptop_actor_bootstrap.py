@@ -699,7 +699,7 @@ def main() -> int:
     parser.add_argument("--actor-repo", required=True)
     parser.add_argument("--queue", required=True)
     parser.add_argument("--workspace-root", required=True)
-    parser.add_argument("--min-idle-seconds", type=int, default=300)
+    parser.add_argument("--min-idle-seconds", type=int, default=0, help="legacy; Iron God does not wait for user inactivity")
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--state-dir")
     parser.add_argument("--max-backoff-seconds", type=int, default=900)

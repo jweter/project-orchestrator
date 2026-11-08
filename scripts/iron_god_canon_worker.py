@@ -218,21 +218,24 @@ def execute_packet(
 
 
 def production_agent(worktree: Path, message: str, files: list[str], check: Callable[[], None]) -> None:
-    from scripts.autonomous_slice_builder import (
-        MAX_AIDER_SECONDS,
-        _acquire_ollama_lock,
-        aider_invocation,
-    )
-    import shutil
+    from scripts.autonomous_slice_builder import MAX_AIDER_SECONDS, aider_invocation
 
     argv, env = lean_aider_invocation(aider_invocation, message, files)
-    lock = _acquire_ollama_lock()
+    from project_orchestrator import iron_god_local_model as lm
+
+    watched = None
     try:
-        result = NativeWindowsRuntime().execute_supervised(
-            RuntimeRequest(tuple(argv), worktree, env, MAX_AIDER_SECONDS), check, interval=2.0,
-        )
-    finally:
-        shutil.rmtree(lock, ignore_errors=True)
+        with lm.guarded_session(lm.bare_name(lm.default_ollama_model()), wait_s=lm.ADMISSION_WAIT_S) as gate:
+            watched = lm.MemoryChecked(check, gate)
+            result = NativeWindowsRuntime().execute_supervised(
+                RuntimeRequest(tuple(argv), worktree, env, MAX_AIDER_SECONDS), watched, interval=2.0,
+            )
+    except lm.ModelNotAdmitted as exc:  # nothing was loaded; this is a wait, not a failed attempt
+        raise RuntimeError(f"WAITING_FOR_MEMORY: {str(exc)[:200]}") from exc
+    except RuntimeError as exc:
+        if watched is not None and watched.reason:
+            raise RuntimeError(f"WAITING_FOR_MEMORY: cancelled on {watched.reason}"[:300]) from exc
+        raise
     if result.returncode != 0:
         raise RuntimeError(f"AIDER_EXIT_{result.returncode}: {_tail(result.stderr)[-300:]}")  # keep the exception line
 

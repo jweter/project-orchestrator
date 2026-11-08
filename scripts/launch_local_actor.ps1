@@ -32,5 +32,5 @@ if (-not (Test-Path -LiteralPath $bootstrap -PathType Leaf)) { throw 'Local boot
 if ($VerifyOnly) { Write-Output "LOCAL_ACTOR_PREFLIGHT_OK $sha actor=$ActorRoot"; exit 0 }
 $env:IRON_GOD_ACCEPTED_REPO = $source
 $env:IRON_GOD_ACCEPTED_SHA = $sha
-& python $bootstrap --actor-repo $ActorRoot --queue $QueueRoot --workspace-root $WorkspaceRoot --min-idle-seconds 300 --poll-seconds 60
+& python $bootstrap --actor-repo $ActorRoot --queue $QueueRoot --workspace-root $WorkspaceRoot --min-idle-seconds 0 --poll-seconds 60
 exit $LASTEXITCODE

@@ -125,9 +125,9 @@ def test_a_server_that_is_down_is_an_ordinary_model_failure() -> None:
         client.generate("m:7b", "x", num_ctx=512, num_predict=1, keep_alive="1m", timeout=2)
 
 
-def gate(free: list[float], idle: float = 3600.0, **over) -> lm.Gate:
+def gate(free: list[float], **over) -> lm.Gate:
     readings = iter(free)
-    return lm.Gate(model_gib=over.pop("model_gib", 5.3), available=lambda: next(readings, free[-1]), idle=lambda: idle, **over)
+    return lm.Gate(model_gib=over.pop("model_gib", 5.3), available=lambda: next(readings, free[-1]), **over)
 
 
 def test_admission_needs_available_memory_for_the_model_plus_a_reserve() -> None:
@@ -137,30 +137,30 @@ def test_admission_needs_available_memory_for_the_model_plus_a_reserve() -> None
     assert gate([3.5], model_gib=1.9, reserve_gib=1.5).admit()[0] is True
 
 
-def test_an_idle_only_model_is_not_admitted_while_the_user_is_active() -> None:
-    refused, reason = gate([9.0], idle=30.0, min_idle_s=600).admit()
-    assert refused is False and reason.startswith("USER_ACTIVE")
-    assert gate([9.0], idle=900.0, min_idle_s=600).admit()[0] is True
-    assert gate([9.0], idle=1.0, min_idle_s=0).admit()[0] is True      # a small model beside the desktop needs no idleness
+def test_user_activity_is_never_an_admission_condition() -> None:
+    """Iron God develops continuously while Take the Wheel is active: only resource contention gates a model."""
+    assert not hasattr(lm, "user_idle_seconds")
+    assert not hasattr(lm.Gate(model_gib=1.0), "min_idle_s")
+    seven = lm.gate_for("qwen2.5-coder:7b", available=lambda: 8.0)
+    assert seven.required_gib == 7.3 and seven.admit() == (True, "ADMITTED")          # the owner's initial 7.3 GiB threshold
+    refused, reason = lm.gate_for("qwen2.5-coder:7b", available=lambda: 7.0).admit()
+    assert refused is False and reason.startswith("MEMORY: 7.0 GiB available < 7.3 GiB required")
 
 
 def test_abort_needs_sustained_pressure_and_remembers_the_lowest_reading() -> None:
-    g = gate([8.0, 0.3, 4.0, 0.3, 8.0], idle=900.0)
+    g = gate([8.0, 0.3, 4.0, 0.3, 8.0])
     assert [g.abort_reason() for _ in range(5)] == [None] * 5            # single dips and recoveries never abort
-    g2 = gate([8.0, 0.3, 0.2], idle=900.0)
+    g2 = gate([8.0, 0.3, 0.2])
     first, second = g2.abort_reason(), g2.abort_reason()
     assert first is None and second is not None and second.startswith("MEMORY_PRESSURE") and g2.lowest <= 0.3
 
 
-def test_returning_user_input_aborts_an_idle_only_run_but_not_a_small_model_run() -> None:
-    assert gate([9.0], idle=2.0, min_idle_s=600).abort_reason() == (
-        "USER_RETURNED: keyboard or mouse input while an idle-only model was running")
-    assert gate([9.0], idle=2.0, min_idle_s=0).abort_reason() is None
+def test_returning_user_input_never_aborts_a_run() -> None:
+    assert gate([9.0]).abort_reason() is None
 
 
 def test_the_system_probes_return_plausible_values() -> None:
     assert 0.1 < lm.available_gib() < 4096
-    assert lm.user_idle_seconds() >= 0.0
 
 
 # ---- the shared guarded door -------------------------------------------------------------------------------------------
@@ -189,15 +189,16 @@ class FakeDoor:
         return True
 
 
-def door_probes(free, idle=0.0):
-    return {"available": lambda: free, "idle": lambda: idle}
+def door_probes(free):
+    return {"available": lambda: free}
 
 
-def test_default_is_3b_and_a_larger_request_downgrades_unless_it_is_admitted_right_now():
-    assert lm.choose_model(None, **door_probes(6.0))[0] == "qwen2.5-coder:3b"
-    assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(6.0, idle=900))[0] == "qwen2.5-coder:3b"   # memory
-    assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(9.0, idle=10))[0] == "qwen2.5-coder:3b"    # user active
-    assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(9.0, idle=900))[0] == "qwen2.5-coder:7b"
+def test_default_is_7b_and_a_task_is_never_silently_downgraded():
+    assert lm.BUILDER_MODEL == "qwen2.5-coder:7b" and lm.default_ollama_model().endswith("qwen2.5-coder:7b")
+    for free in (4.0, 6.0, 9.0):                       # memory decides admission, never which model is quietly substituted
+        assert lm.choose_model(None, **door_probes(free))[0] == "qwen2.5-coder:7b"
+        assert lm.choose_model("ollama/qwen2.5-coder:7b", **door_probes(free))[0] == "qwen2.5-coder:7b"
+    assert lm.choose_model("ollama/qwen2.5-coder:3b", **door_probes(4.0))[0] == "qwen2.5-coder:3b"
     assert lm.gate_for("some-unknown-model").model_gib == 5.3                                              # strictest
 
 
@@ -206,8 +207,8 @@ def test_guarded_generate_loads_nothing_when_memory_is_short_and_always_unloads_
     with pytest.raises(lm.ModelNotAdmitted, match="MEMORY"):
         lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=0.0, client=fake, probes=door_probes(1.0), directory=tmp_path / "slot")
     assert fake.calls == [] and not (tmp_path / "slot").exists()
-    reply = lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=door_probes(6.0), directory=tmp_path / "slot")
-    assert reply["model_used"] == "qwen2.5-coder:3b" and fake.unloaded == ["qwen2.5-coder:3b"]
+    reply = lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=door_probes(9.0), directory=tmp_path / "slot")
+    assert reply["model_used"] == "qwen2.5-coder:7b" and fake.unloaded == ["qwen2.5-coder:7b"]
     assert fake.calls[0][1]["keep_alive"] == 0 and not (tmp_path / "slot").exists()
 
 
@@ -224,19 +225,20 @@ def test_only_one_model_run_holds_the_slot_and_a_dead_owner_is_recovered(tmp_pat
 
 
 def test_pressure_during_a_run_cancels_it_and_the_model_is_still_unloaded(tmp_path):
-    fake, free = FakeDoor(abort_after_poll=True), iter([6.0, 6.0, 6.0, 0.1, 0.1, 0.1])
-    gate_probes = {"available": lambda: next(free), "idle": lambda: 0.0}
+    fake, free = FakeDoor(abort_after_poll=True), iter([9.0, 9.0, 9.0, 0.1, 0.1, 0.1])
+    gate_probes = {"available": lambda: next(free)}
     with pytest.raises(lm.ModelCancelled):
         lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=gate_probes, directory=tmp_path / "slot")
-    assert fake.unloaded == ["qwen2.5-coder:3b"]
+    assert fake.unloaded == ["qwen2.5-coder:7b"]
 
 
 def test_the_size_token_is_matched_exactly_so_13b_never_borrows_the_3b_profile():
     for name in ("ollama/codellama:13b", "x:30b", "qwen:0.3b", "mystery-model"):
-        assert lm.gate_for(name).model_gib == 5.3 and lm.gate_for(name).min_idle_s == 600.0
-    assert lm.gate_for("ollama/qwen2.5-coder:3b-instruct-q4").model_gib == 2.3
-    assert lm.gate_for("qwen2.5-coder:1.5b").model_gib == 1.1
-    assert lm.choose_model("ollama/codellama:13b", **door_probes(4.0))[0] == "qwen2.5-coder:3b"
+        assert lm.gate_for(name).model_gib == 5.3
+    assert lm.gate_for("ollama/qwen2.5-coder:3b-instruct-q4").model_gib == 2.4
+    assert lm.gate_for("qwen2.5-coder:1.5b").model_gib == 1.4
+    wanted, strict = lm.choose_model("ollama/codellama:13b", **door_probes(4.0))
+    assert wanted == "codellama:13b" and strict.admit()[0] is False                      # strictest profile, no substitution
 
 
 def test_the_shared_client_follows_the_configured_endpoint(monkeypatch):
@@ -247,10 +249,10 @@ def test_the_shared_client_follows_the_configured_endpoint(monkeypatch):
     assert (lm.OllamaClient().host, lm.OllamaClient().port) == ("127.0.0.1", 11434)
 
 
-def test_qwen35_sizes_have_their_own_profiles_and_unknown_sizes_stay_strict():
-    assert lm.gate_for("qwen3.5:4b").model_gib == 4.5 and lm.gate_for("qwen3.5:2b").model_gib == 2.8
-    assert lm.gate_for("qwen3.5:0.8b").model_gib == 1.3 and lm.gate_for("qwen3.5:9b").min_idle_s == 600.0
-    assert lm.gate_for("qwen3.5:27b").model_gib == 5.3 and lm.gate_for("qwen3.5:27b").min_idle_s == 600.0
+def test_qwen35_sizes_have_their_own_measured_profiles_and_unknown_sizes_stay_strict():
+    assert lm.gate_for("qwen3.5:4b").model_gib == 4.6 and lm.gate_for("qwen3.5:2b").model_gib == 3.3
+    assert lm.gate_for("qwen3.5:0.8b").model_gib == 1.3 and lm.gate_for("qwen3.5:9b").model_gib == 7.8
+    assert lm.gate_for("qwen3.5:27b").model_gib == 5.3
 
 
 def test_a_stray_resident_model_is_evicted_before_the_run_and_thinking_is_off_for_qwen3(tmp_path):

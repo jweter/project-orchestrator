@@ -43,6 +43,7 @@ for _path in (str(ROOT / "src"), str(ROOT)):
 from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
 from project_orchestrator.execution_runtime import NativeWindowsRuntime, RuntimeRequest  # noqa: E402
 from project_orchestrator.iron_god_calibration import remove_tree  # noqa: E402
+from project_orchestrator.iron_god_local_model import default_ollama_model  # noqa: E402
 from scripts.iron_god_canon_worker import (  # noqa: E402
     _git,
     _now,
@@ -360,17 +361,24 @@ def production_planner(worktree: Path, packet: dict[str, Any], check: Callable[[
 
 
 def production_agent(worktree: Path, message: str, files: list[str], check: Callable[[], None]) -> None:
-    from scripts.autonomous_slice_builder import MAX_AIDER_SECONDS, _acquire_ollama_lock, aider_invocation
-    import shutil
+    from scripts.autonomous_slice_builder import MAX_AIDER_SECONDS, aider_invocation
 
     argv, env = lean_aider_invocation(aider_invocation, message, files)
-    lock = _acquire_ollama_lock()
+    from project_orchestrator import iron_god_local_model as lm
+
+    watched = None
     try:
-        result = NativeWindowsRuntime().execute_supervised(
-            RuntimeRequest(tuple(argv), worktree, env, MAX_AIDER_SECONDS), check, interval=2.0,
-        )
-    finally:
-        shutil.rmtree(lock, ignore_errors=True)
+        with lm.guarded_session(lm.bare_name(lm.default_ollama_model()), wait_s=lm.ADMISSION_WAIT_S) as gate:
+            watched = lm.MemoryChecked(check, gate)
+            result = NativeWindowsRuntime().execute_supervised(
+                RuntimeRequest(tuple(argv), worktree, env, MAX_AIDER_SECONDS), watched, interval=2.0,
+            )
+    except lm.ModelNotAdmitted as exc:  # nothing was loaded; this is a wait, not a failed attempt
+        raise RuntimeError(f"WAITING_FOR_MEMORY: {str(exc)[:200]}") from exc
+    except RuntimeError as exc:
+        if watched is not None and watched.reason:
+            raise RuntimeError(f"WAITING_FOR_MEMORY: cancelled on {watched.reason}"[:300]) from exc
+        raise
     if result.returncode != 0:
         raise RuntimeError(f"AIDER_EXIT_{result.returncode}: {_tail(result.stderr)[-300:]}")
 
@@ -1205,7 +1213,7 @@ def production_generate(prompt: str, num_predict: int, check: Callable[[], None]
     from project_orchestrator.iron_god_local_model import guarded_generate
 
     check()
-    reply = guarded_generate(prompt, requested=os.environ.get("EXPONENTIAL_BUILDER_MODEL"), num_ctx=DIRECT_NUM_CTX,
+    reply = guarded_generate(prompt, requested=default_ollama_model(), num_ctx=DIRECT_NUM_CTX,
                              num_predict=num_predict, timeout=1800)
     check()
     return {"text": reply.get("response") or "", "prompt_tokens": reply.get("prompt_eval_count"),
@@ -1285,7 +1293,7 @@ def execute_directed_slice(packet: dict[str, Any], plan: dict[str, Any], worktre
     reply = generate(prompt, min(4096, max(600, 30 * (lines + 25 * len(plan["add"])))), check)
     text = str(reply.get("text") or "")
     handback["directed"] = {**{k: reply.get(k) for k in ("prompt_tokens", "output_tokens", "model_s")},
-                            "model": os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:3b"),
+                            "model": default_ollama_model(),
                             "prompt": prompt[:16000], "reply": text[:8000]}
     try:
         edited = de.apply_reply(original, text, plan["targets"], add=plan["add"])
