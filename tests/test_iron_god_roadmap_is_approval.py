@@ -167,3 +167,21 @@ def test_the_planning_hook_remembers_the_stall_for_the_final_report(tmp_path, mo
     product_lane.log_draft_outcomes(lane, "jweter/knowledge-engine-core",
                                     [{"id": "RM-x", "status": "WAITING_FOR_MEMORY", "reason": "MEMORY"}], prefix="LOCAL_DECOMPOSE_")
     assert lane.planning_memory_wait["required_gib"] == pytest.approx(7.3)
+
+
+# --- the lane-level proof for review finding 1 (the helper alone was not enough) ----------------------------------------------
+from tests.test_iron_god_product_lane import (  # noqa: E402,F401  (env is a pytest fixture)
+    FULL, REPOS, RoutedRunner, direct_item, directed_env, env, measured, routed_step)
+
+
+def test_the_lane_does_not_call_work_a_memory_stall_when_its_repository_cannot_start_it_anyway(env, monkeypatch) -> None:
+    """Review finding 1, at the place it was found: an approved level-2 item in a repository that is blocked (open publication or
+    failing base preflight) must not look like 'waiting for memory', or the standing rule closes programs for nothing."""
+    directed_env(env, [direct_item("L2-1", REPOS[0])])
+    runner = RoutedRunner()
+    waiting = routed_step(env, runner, 5.0, measured(**FULL))
+    assert waiting["status"] == "WAITING_FOR_MEMORY" and waiting["work_waiting"] is True       # control: the unblocked case still waits
+
+    monkeypatch.setattr(product_lane, "unready_repositories", lambda rows, head_of: {REPOS[0]})   # the repository is blocked
+    blocked = routed_step(env, RoutedRunner(), 5.0, measured(**FULL))
+    assert blocked.get("work_waiting") is not True and blocked["status"] != "WAITING_FOR_MEMORY"
