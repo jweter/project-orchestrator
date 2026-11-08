@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
+from .iron_god_local_model import is_memory_wait
 from . import iron_god_directed_edit as directed_edit
 from . import iron_god_local_drafter as drafter
 from . import iron_god_roadmap_refill as refill
@@ -1001,8 +1002,8 @@ def harvest(
                 }
             )
             continue
-        if not result.get("ok") and "ModelNotAdmitted" in str(result.get("reason", "")):
-            # No memory or no free model slot is waiting, not a failed attempt: forget the job so nothing is spent.
+        if not result.get("ok") and is_memory_wait(result.get("reason", "")):
+            # No memory, no free model slot, or the memory brake cancelled the run: a wait, not a failed attempt.
             _job_path(lane_root, job["id"], job["attempt"]).unlink(missing_ok=True)
             if release is not None and job.get("lease_id"):
                 try:

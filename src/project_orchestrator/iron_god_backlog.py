@@ -205,6 +205,12 @@ def load_state(lane_root: Path) -> dict[str, Any]:
     return state
 
 
+def _memory_wait(outcome: str) -> bool:
+    from .iron_god_local_model import is_memory_wait
+
+    return is_memory_wait(outcome)
+
+
 def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outcome: str,
                           failed_source_fingerprint: str | None = None) -> dict[str, Any]:
     """One attempt's outcome; MERGED marks the item done for dependency and dispatch purposes."""
@@ -224,7 +230,9 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
     # budget - bounded, so a persistent fault cannot loop forever. Other environment failures (a timeout, a vanished
     # worker) keep spending attempts, as before.
     environmental = [p for p in row.get("environment_packets", []) if p != packet_id]
-    if outcome.startswith("ENVIRONMENT_FAILURE") and "AUTHORITY_REVOKED" in outcome:
+    # Owner 2026-11-08: the laptop's memory is not the slice's fault either. A build that never got memory, or that the
+    # memory brake cancelled, is refunded the same way (same bound).
+    if outcome.startswith("ENVIRONMENT_FAILURE") and ("AUTHORITY_REVOKED" in outcome or _memory_wait(outcome)):
         environmental.append(packet_id)
     row["environment_packets"] = environmental
     row["attempts"] = len(row["packets"]) - min(len(environmental), MAX_ENVIRONMENT_RETRIES)

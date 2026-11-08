@@ -40,6 +40,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from .iron_god_local_model import is_memory_wait
 from . import iron_god_roadmap_refill as refill
 from .state_io import atomic_json
 
@@ -326,6 +327,16 @@ def harvest(lane_root: Path, *, now: Callable[[], float] = time.time,
             continue
         if not result.get("ok"):
             reason = str(result.get("reason", "DRAFT_FAILED"))[:300]
+            if is_memory_wait(reason):  # no memory, or the memory brake: a wait, not a failed attempt (owner 2026-11-08)
+                _job_path(lane_root, job["id"], job["attempt"]).unlink(missing_ok=True)
+                if release is not None and job.get("lease_id"):
+                    try:
+                        release(job["lease_id"])
+                    except Exception:  # a lease that is already gone changes nothing
+                        pass
+                outcomes.append({"id": job["id"], "status": "WAITING_FOR_MEMORY", "reason": reason,
+                                 "repository": job.get("repository")})
+                continue
             if INTERRUPTED_MARK in reason:  # the owner took the laptop back: not the slice's or the model's failure
                 _finish(lane_root, job, release, stage="INTERRUPTED", reason=reason)
                 outcomes.append({"id": job["id"], "status": "INTERRUPTED", "reason": reason,

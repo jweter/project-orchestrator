@@ -43,3 +43,5 @@ def _isolate_live_owner_state(tmp_path_factory, monkeypatch):
     downstream behavior must inject AUTHORIZED explicitly.
     """
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path_factory.mktemp("localappdata")))
+    # The single model slot and the memory-pressure stamp beside it default to the home folder: never the live ones.
+    monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR", str(tmp_path_factory.mktemp("ollama-locks") / "ollama-aider"))

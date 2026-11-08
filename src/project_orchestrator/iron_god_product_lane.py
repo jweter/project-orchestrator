@@ -60,7 +60,7 @@ from . import iron_god_roadmap_refill as roadmap_refill
 from . import iron_god_working_memory as working_memory
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .iron_god_calibration import capability_gate, load_profile, load_profiles, remove_tree
-from .iron_god_local_model import available_gib, default_ollama_model
+from .iron_god_local_model import available_gib, default_ollama_model, recent_pressure
 from .iron_god_canon_lane import (
     WORKER_LEASE_ID,
     WORKER_LEASE_RUNTIME,
@@ -970,6 +970,7 @@ def advance_product_lane(
     policy: dict[str, Any] | None = None,
     profiles: Callable[[], dict[str, dict[str, Any]]] | None = None,
     free_gib: Callable[[], float | None] | None = None,
+    memory_pressure: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
     """Advance the product rotation by one fail-closed step.
 
@@ -1036,12 +1037,14 @@ def advance_product_lane(
     use_routing = capability is None
     ceiling = 9
     measured = free = None
+    pressure = False
     if use_routing:
         measured = (profiles or (lambda: load_profiles(state_root)))()
         free = (free_gib or available_gib)()
-        ceiling = model_routing.max_level_now(measured, free)
+        pressure = (memory_pressure or recent_pressure)()
+        ceiling = model_routing.max_level_now(measured, free, after_pressure=pressure)
         if ceiling == 0:
-            why = model_routing.route(1, measured, free)
+            why = model_routing.route(1, measured, free, after_pressure=pressure)
             waiting_for_memory = why.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
             return _report(lane, {"status": "WAITING_FOR_MEMORY" if waiting_for_memory else "WAITING_FOR_CALIBRATION",
                                   "reason": why.reason, "route": why.as_dict(),
@@ -1120,7 +1123,7 @@ def advance_product_lane(
             held = next((x for x in (backlog.next_item(approved, state, n, max_level=level)
                                      for n in repos if n not in repo_blocked) if x is not None), None)
             if held is not None:
-                held_route = model_routing.route(held.get("level"), measured or {}, free)
+                held_route = model_routing.route(held.get("level"), measured or {}, free, after_pressure=pressure)
                 if held_route.model is None:
                     by_memory = held_route.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
                     return _report(lane, {"status": "WAITING_FOR_MEMORY" if by_memory else "WAITING_FOR_CALIBRATION",
@@ -1139,7 +1142,8 @@ def advance_product_lane(
     if use_routing:
         chosen_item = items.get(repo)
         task_level = chosen_item.get("level") if chosen_item is not None else int(config.get("capability_level", 3))
-        decision = model_routing.route(task_level, measured or {}, (free_gib or available_gib)())
+        decision = model_routing.route(task_level, measured or {}, (free_gib or available_gib)(),
+                                       after_pressure=bool(pressure))
         if decision.model is None:  # wait, never downgrade; no attempt is spent
             why_waiting = decision.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
             return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",

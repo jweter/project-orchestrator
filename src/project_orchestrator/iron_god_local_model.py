@@ -68,6 +68,7 @@ class Gate:
     # Owner decision 2026-11-08: the primary builder is never refused for want of comfortable memory. ``required_gib`` is the
     # comfortable level (what Dev Mode works toward); ``start_gib`` is the least that lets the model load at all.
     start_gib: float | None = None
+    pressure_file: Path | None = None  # set by the door: where a memory-pressure cancel is stamped
 
     def __post_init__(self) -> None:
         self._low = 0
@@ -90,7 +91,9 @@ class Gate:
         self.lowest = min(self.lowest, free)
         self._low = self._low + 1 if free < self.abort_below_gib else 0
         if self._low >= self.patience:
-            return f"MEMORY_PRESSURE: available stayed under {self.abort_below_gib} GiB (lowest {self.lowest:.2f} GiB)"
+            reason = f"MEMORY_PRESSURE: available stayed under {self.abort_below_gib} GiB (lowest {self.lowest:.2f} GiB)"
+            note_pressure(reason, self.pressure_file)
+            return reason
         return None
 
 
@@ -199,6 +202,44 @@ def inference_cpu_seconds() -> float:
 
 
 # --- the one shared door every local author goes through -----------------------------------------------------------------
+# A run that never got memory, or was cancelled because memory ran out, is a WAIT, never a failed attempt (owner
+# 2026-11-08: the laptop's memory is not the slice's or the model's fault). Every author and the backlog use this test.
+MEMORY_WAIT_MARKERS = ("ModelNotAdmitted", "MEMORY_PRESSURE", "WAITING_FOR_MEMORY", "MODEL_SLOT_BUSY", "MEMORY: ")
+# After a real memory-pressure cancel the 7B is started only at its comfortable level for this long, so a busy laptop
+# never sees a load-cancel-load loop; meanwhile the lane reports a memory wait and the standing Dev Mode rule frees memory.
+PRESSURE_COOLDOWN_S = 30 * 60
+
+
+def is_memory_wait(text: Any) -> bool:
+    return any(marker in str(text or "") for marker in MEMORY_WAIT_MARKERS)
+
+
+def pressure_file(directory: Path | None = None) -> Path:
+    return (directory or slot_dir()).parent / "memory-pressure.json"
+
+
+def note_pressure(reason: str, path: Path | None) -> None:
+    """Stamp a memory-pressure cancel (best effort; only the door passes a path)."""
+    if path is None:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"at": time.time(), "reason": reason[:300]}), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def recent_pressure(directory: Path | None = None, *, now: float | None = None) -> bool:
+    """True within PRESSURE_COOLDOWN_S of the last memory-pressure cancel."""
+    try:
+        at = float(json.loads(pressure_file(directory).read_text(encoding="utf-8"))["at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return 0 <= (time.time() if now is None else now) - at < PRESSURE_COOLDOWN_S
+
+
 PRIMARY_START_GIB = 1.0  # the least free memory at which the 7B is started; below the 0.6 GiB cancel floor it could not run
 ADMISSION_WAIT_S = 600.0  # how long a worker waits for memory before reporting WAITING_FOR_MEMORY (no attempt spent)
 BUILDER_MODEL = "qwen2.5-coder:7b"  # Iron God's primary builder (owner decision 2026-11-07; level 3 on the engine ladder)
@@ -325,6 +366,9 @@ def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int,
     with _slot_reported(wait_s, directory, poll_s, requested):
         while True:
             name, gate = choose_model(requested, **(probes or {}))
+            gate.pressure_file = pressure_file(directory)
+            if recent_pressure(directory):  # memory ran out recently: wait for the comfortable level
+                gate.start_gib = None
             admitted, why = gate.admit()
             _record("ADMITTED" if admitted else "MEMORY" if why.startswith("MEMORY") else "REFUSED", name, admitted, why, gate)
             if admitted:
@@ -362,6 +406,9 @@ def guarded_session(model: str | None = None, *, wait_s: float = 900.0, client: 
     deadline = time.monotonic() + wait_s
     with _slot_reported(wait_s, directory, poll_s, model):
         name, gate = choose_model(model, **(probes or {}))
+        gate.pressure_file = pressure_file(directory)
+        if recent_pressure(directory):  # memory ran out recently: wait for the comfortable level, Dev Mode helps
+            gate.start_gib = None
         while True:
             admitted, why = gate.admit()
             _record("ADMITTED" if admitted else "MEMORY" if why.startswith("MEMORY") else "REFUSED", name, admitted, why, gate)
