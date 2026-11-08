@@ -106,10 +106,10 @@ def main(argv: list[str] | None = None) -> int:
         outcome = lane.author(request, workspace, workspace.parent / (workspace.name + "-build"), generate=generate)
     except lm.ModelNotAdmitted as exc:  # memory/slot not available: wait, spend nothing
         return finish(3, status="WAITING_FOR_MEMORY", reason=str(exc)[:200])
+    except lm.ModelCancelled as exc:  # must precede OSError: ModelCancelled is an OSError
+        return finish(3, status="WAITING_FOR_MEMORY", reason="CANCELLED_ON_PRESSURE: " + str(exc)[:160])
     except OSError as exc:  # the model runtime itself is broken: a real failure, not an empty answer and not a spent attempt
         return finish(3, status="MODEL_RUNTIME_ERROR", reason=str(exc)[:300])
-    except lm.ModelCancelled as exc:
-        return finish(3, status="WAITING_FOR_MEMORY", reason="CANCELLED_ON_PRESSURE: " + str(exc)[:160])
     if not outcome.ok:
         out["evidence"] = outcome.evidence
         return finish(1, status="BLOCKED" if outcome.blocked else outcome.evidence.get("status", "FAILED"),
@@ -125,7 +125,12 @@ def main(argv: list[str] | None = None) -> int:
     if committed.returncode != 0:
         return finish(1, status="COMMIT_FAILED", reason=(committed.stderr or committed.stdout)[-200:])
     head = git(workspace, "rev-parse", "HEAD").stdout.strip()
-    return finish(0, status="BUILT_AND_VERIFIED", branch=branch, head=head, base=args.base, workspace=str(workspace))
+    # The repository's own canonical preflight at the exact committed head, as the Python worker does (AGENTS.md).
+    preflight = lane.preflight_record(workspace, head)
+    if not preflight["ok"]:
+        return finish(1, status="PREFLIGHT_FAILED", reason=str(preflight["detail"])[:300], head=head, preflight=preflight)
+    return finish(0, status="BUILT_AND_VERIFIED", branch=branch, head=head, base=args.base, workspace=str(workspace),
+                  preflight=preflight)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from project_orchestrator import iron_god_cpp_lane as lane
@@ -147,9 +148,10 @@ def test_advance_starts_one_job_and_waiting_spends_no_attempt(tmp_path: Path) ->
     assert again == [] and len(started) == 1  # still running: nothing new
     started[0].write_text(json.dumps({"status": "WAITING_FOR_MEMORY", "reason": "MEMORY"}), encoding="utf-8")
     lane.advance(tmp_path, [request()], may_start=False, spawn=spawn, alive=lambda pid: True)
-    assert lane.read_job(tmp_path, "EW-CORE-1")["state"] == "WAITING"
+    waiting = lane.read_job(tmp_path, "EW-CORE-1")
+    assert waiting["state"] == "WAITING" and waiting["attempts"] == 0  # the launch that only waited is refunded
     lane.advance(tmp_path, [request()], may_start=True, spawn=spawn, alive=lambda pid: True)
-    assert lane.read_job(tmp_path, "EW-CORE-1")["attempts"] == 1  # the wait cost nothing
+    assert lane.read_job(tmp_path, "EW-CORE-1")["attempts"] == 1  # the resumed launch is the real first attempt
 
 
 def test_advance_gives_up_after_the_attempt_cap_and_survives_a_dead_author(tmp_path: Path) -> None:
@@ -192,16 +194,22 @@ def _built_job(tmp_path: Path, lane_root: Path, head: str = "h1") -> dict:
     ws = tmp_path / "ws"
     (ws / ".git").mkdir(parents=True, exist_ok=True)
     job = {"id": "EW-CORE-1", "attempts": 1, "state": "BUILT",
-           "result": {"status": "BUILT_AND_VERIFIED", "branch": "ig/cpp-x", "head": head, "base": "b0", "workspace": str(ws)}}
+           "result": {"status": "BUILT_AND_VERIFIED", "branch": "ig/cpp-x", "head": head, "base": "b0", "workspace": str(ws),
+                      "preflight": {"ok": True, "head_sha": head, "detail": "GREEN"}}}
     lane.write_job(lane_root, job)
     return job
 
 
-def _fake_run(changed: str, head: str = "h1", fail: str | None = None):
+def _fake_run(changed: str, head: str = "h1", fail: str | None = None, preflight: str = "GREEN", preflight_head: str | None = None):
     calls: list[list[str]] = []
 
     def run(cmd, cwd, timeout):
         calls.append(list(cmd))
+        if "engineering/preflight.py" in cmd:
+            if preflight != "NONE":
+                (Path(cwd) / "preflight-evidence.json").write_text(json.dumps(
+                    {"status": preflight, "mode": "FULL", "head_sha": preflight_head or head}), encoding="utf-8")
+            return (0 if preflight == "GREEN" else 1), "preflight output"
         if cmd[:2] == ["git", "rev-parse"]:
             return 0, head + "\n"
         if cmd[:2] == ["git", "diff"]:
@@ -270,3 +278,69 @@ def test_standing_rules_give_the_model_the_include_path_and_nan_fact() -> None:
     rules = lane.standing_rules({"header": "src/simulation/include/everward/simulation/clamp.hpp"}, lane.EVERWARD)
     assert any('#include "everward/simulation/clamp.hpp"' in r for r in rules)
     assert any("quiet_NaN" in r for r in rules)
+
+
+def test_a_memory_wait_on_the_last_attempt_does_not_lock_the_job_out_forever(tmp_path: Path) -> None:
+    """Review finding: two real failures, then a third launch that only waits for memory must stay startable."""
+    started: list[Path] = []
+
+    def spawn(req: Path, res: Path) -> int:
+        started.append(res)
+        return 99
+
+    for _ in range(lane.MAX_ATTEMPTS - 1):
+        lane.advance(tmp_path, [request()], may_start=True, spawn=spawn, alive=lambda pid: False)  # dies: a real failed attempt
+        lane.advance(tmp_path, [request()], may_start=False, spawn=spawn, alive=lambda pid: False)
+    lane.advance(tmp_path, [request()], may_start=True, spawn=spawn, alive=lambda pid: True)
+    assert lane.read_job(tmp_path, "EW-CORE-1")["attempts"] == lane.MAX_ATTEMPTS
+    started[-1].write_text(json.dumps({"status": "WAITING_FOR_MEMORY", "reason": "MEMORY"}), encoding="utf-8")
+    lane.advance(tmp_path, [request()], may_start=False, spawn=spawn, alive=lambda pid: True)
+    job = lane.read_job(tmp_path, "EW-CORE-1")
+    assert job["state"] == "WAITING" and job["attempts"] == lane.MAX_ATTEMPTS - 1
+    out = lane.advance(tmp_path, [request()], may_start=True, spawn=spawn, alive=lambda pid: True)
+    assert [o["status"] for o in out] == ["STARTED"]  # memory came back: it runs again instead of being excluded
+
+
+def test_a_memory_cancellation_survives_the_builder_boundary(tmp_path: Path) -> None:
+    """Review finding: ModelCancelled is an OSError the builder reports as MODEL_UNAVAILABLE; the author must still see it."""
+    import pytest
+
+    from project_orchestrator import iron_god_local_model as lm
+
+    def cancelled(prompt, **kw):
+        raise lm.ModelCancelled("MEMORY_PRESSURE: available stayed under 0.6 GiB")
+
+    ws = tmp_path / "ws"
+    (ws / "src/simulation").mkdir(parents=True)
+    (ws / "src/simulation/CMakeLists.txt").write_text(CMAKE, encoding="utf-8")
+    with pytest.raises(lm.ModelCancelled):
+        lane.author(request(), ws, tmp_path / "b", generate=cancelled, which=lambda tool: "x")
+
+
+def test_canonical_preflight_accepts_only_green_full_evidence_for_the_exact_head(tmp_path: Path) -> None:
+    """Review finding P1: the repository's own engineering/preflight.py gates every native publication."""
+    for kwargs, expected in (({}, True), ({"preflight": "FAILED"}, False), ({"preflight": "NONE"}, False),
+                             ({"preflight_head": "someone-elses-head"}, False)):
+        run, calls = _fake_run("x", **kwargs)
+        rec = lane.preflight_record(tmp_path, "h1", run)
+        assert rec["ok"] is expected and rec["head_sha"] == "h1", kwargs
+        assert any("engineering/preflight.py" in c for c in calls)
+        assert not (tmp_path / "preflight-evidence.json").exists()  # no evidence file is left in the committed tree
+
+
+def test_finalize_refuses_a_publication_without_a_green_preflight_record_for_this_head(tmp_path: Path) -> None:
+    changed = ("src/simulation/CMakeLists.txt\nsrc/simulation/include/everward/clamp.hpp\n"
+               "src/simulation/tests/clamp_tests.cpp\n")
+    for record in (None, {"ok": False, "head_sha": "h1", "detail": "FAILED"}, {"ok": True, "head_sha": "other", "detail": "x"}):
+        job = _built_job(tmp_path, tmp_path)
+        if record is None:
+            job["result"].pop("preflight", None)
+        else:
+            job["result"]["preflight"] = record
+        lane.write_job(tmp_path, job)
+        (tmp_path / "ws/src/simulation").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "ws/src/simulation/CMakeLists.txt").write_text(CMAKE, encoding="utf-8")
+        run, _ = _fake_run(changed)
+        pubs: dict = {}
+        out = lane.finalize(tmp_path, [request()], save_report=lambda *_: None, add_publication=pubs.__setitem__, run=run)
+        assert out[0]["status"] == "VERIFICATION_FAILED" and out[0]["reason"] == "CANONICAL_PREFLIGHT_FAILED" and pubs == {}, record
