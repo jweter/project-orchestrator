@@ -29,7 +29,8 @@ from typing import Any, Callable
 
 from . import iron_god_cpp_builder as cb
 
-CPP_BUILDER_MODEL = "qwen2.5-coder:3b"
+# No model is named here: the lane asks the shared door for the primary builder (iron_god_local_model.BUILDER_MODEL) unless a
+# slice names one in its cpp section ("model"). The door applies the memory gate, single slot, cancellation and unload.
 IDENT = re.compile(r"[^a-z0-9]+")
 
 
@@ -215,11 +216,11 @@ def author(request: dict[str, Any], workspace: Path, build_dir: Path, *, generat
     model_used: list[str] = []
 
     cancelled: list[BaseException] = []
+    wanted = requested_model or (request.get("cpp") or {}).get("model") or None  # None: the shared door's primary builder
 
     def ask(prompt: str) -> str:
         try:
-            reply = generate(prompt, requested=requested_model or CPP_BUILDER_MODEL, num_ctx=6144, num_predict=2200,
-                             timeout=900)
+            reply = generate(prompt, requested=wanted, num_ctx=6144, num_predict=2200, timeout=900)
         except OSError as exc:
             if type(exc).__name__ == "ModelCancelled":  # the builder treats OSError as an unavailable model; keep the signal
                 cancelled.append(exc)
@@ -228,13 +229,13 @@ def author(request: dict[str, Any], workspace: Path, build_dir: Path, *, generat
                                                       "prompt_eval_duration", "load_duration", "total_duration")})
         if reply.get("lowest_available_gib") is not None:
             lowest.append(float(reply["lowest_available_gib"]))
-        model_used.append(str(reply.get("model_used") or requested_model or CPP_BUILDER_MODEL))
+        model_used.append(str(reply.get("model_used") or wanted or "primary-builder"))
         return str(reply.get("response", ""))
 
     result = cb.build_change(task, ask, run=run, limits=limits or cb.Limits(max_iterations=4))
     if cancelled:  # memory pressure stopped the model: surface it so the caller waits instead of spending an attempt
         raise cancelled[0]
-    record = evidence_record(request, result, model=model_used[-1] if model_used else CPP_BUILDER_MODEL, stats=stats,
+    record = evidence_record(request, result, model=model_used[-1] if model_used else (wanted or "primary-builder"), stats=stats,
                              lowest_available_gib=min(lowest) if lowest else None)
     return AuthorOutcome(record, result.get("status") == cb.SUCCESS)
 

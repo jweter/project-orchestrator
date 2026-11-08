@@ -110,7 +110,7 @@ def test_author_succeeds_through_the_guarded_door_and_records_evidence(tmp_path:
 
     outcome = lane.author(request(), root, tmp_path / "b", generate=generate, run=run, which=lambda t: "/bin/" + t)
     assert outcome.ok, outcome.evidence
-    assert seen["requested"] == "qwen2.5-coder:3b"
+    assert seen["requested"] is None  # the shared door chooses the primary builder; the lane names no model
     assert outcome.evidence["model"] == "qwen2.5-coder:3b" and outcome.evidence["lowest_available_gib"] == 3.2
     assert (root / "src/simulation/include/everward/clamp.hpp").is_file()
     assert "ew_ew_core_1_tests" in (root / lane.EVERWARD.cmake_file).read_text(encoding="utf-8")
@@ -344,3 +344,25 @@ def test_finalize_refuses_a_publication_without_a_green_preflight_record_for_thi
         pubs: dict = {}
         out = lane.finalize(tmp_path, [request()], save_report=lambda *_: None, add_publication=pubs.__setitem__, run=run)
         assert out[0]["status"] == "VERIFICATION_FAILED" and out[0]["reason"] == "CANONICAL_PREFLIGHT_FAILED" and pubs == {}, record
+
+
+def test_the_lane_uses_the_shared_primary_builder_unless_a_slice_names_a_model(tmp_path: Path) -> None:
+    """Review of the 7B decision: no hard-coded 3B. The lane asks the guarded door, which owns the primary-builder choice."""
+    seen: list[str | None] = []
+
+    def door(prompt, requested=None, **kw):
+        seen.append(requested)
+        return {"response": "", "model_used": requested or "whatever-the-door-chose"}
+
+    ws = tmp_path / "ws"
+    (ws / "src/simulation").mkdir(parents=True)
+    (ws / "src/simulation/CMakeLists.txt").write_text(CMAKE, encoding="utf-8")
+    lane.author(request(), ws, tmp_path / "b", generate=door, which=lambda tool: "x", limits=lane.cb.Limits(max_iterations=1))
+    assert seen and set(seen) == {None}                      # no model named: the door picks the primary builder
+
+    seen.clear()
+    pinned = request()
+    pinned["cpp"] = {**pinned["cpp"], "model": "qwen2.5-coder:3b"}
+    lane.author(pinned, ws, tmp_path / "b2", generate=door, which=lambda tool: "x", limits=lane.cb.Limits(max_iterations=1))
+    assert set(seen) == {"qwen2.5-coder:3b"}                 # an explicit, evidence-backed per-slice choice is honoured
+    assert not hasattr(lane, "CPP_BUILDER_MODEL")
