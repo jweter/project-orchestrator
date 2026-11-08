@@ -399,3 +399,55 @@ def test_with_the_owners_zero_stall_time_the_first_memory_blocked_tick_enters_wh
     hopeless = Hooks()
     out, _ = tick(tmp_path / "other", clock, waiting=True, free=2.0, hooks=hopeless, config=policy)
     assert out["action"] == "NO_HELP" and hopeless.entered == []                         # no delay, but still never when it cannot help
+
+
+def test_a_program_that_fails_to_relaunch_keeps_dev_mode_open_for_a_retry(tmp_path: Path) -> None:
+    """Review finding: restore used to end Dev Mode even when a relaunch failed, so the program could never be retried."""
+    state = {"active": True, "closed": [{"name": "chrome", "path": str(tmp_path / "chrome.exe")},
+                                        {"name": "OneDrive", "path": str(tmp_path / "OneDrive.exe")}]}
+    for name in ("chrome", "OneDrive"):
+        (tmp_path / f"{name}.exe").write_text("", encoding="utf-8")
+    path = tmp_path / dev.STATE_NAME
+    path.write_text(json.dumps(state), encoding="utf-8")
+    flaky = {"chrome": False}
+    first = dev.restore(path, running=lambda: set(), start=lambda p, a: flaky.get(Path(p).stem, True))
+    assert [r["name"] for r in first["restored"]] == ["OneDrive"] and first["still_active"] is True
+    kept = dev.status(path)
+    assert kept["active"] is True and [c["name"] for c in kept["closed"]] == ["chrome"] and kept["pending_relaunch"] == ["chrome"]
+    started = []
+    second = dev.restore(path, running=lambda: set(), start=lambda p, a: started.append(Path(p).stem) or True)
+    assert started == ["chrome"] and second["still_active"] is False and second["note"] == "Dev Mode ended"   # only the failed one is retried
+    assert dev.status(path)["active"] is False and sorted(dev.status(path)["restored"]) == ["OneDrive", "chrome"]
+
+
+def test_the_engine_is_not_out_of_dev_mode_until_every_program_is_back(tmp_path: Path) -> None:
+    clock, hooks = Clock(), Hooks()
+    tick(tmp_path, clock, waiting=True, hooks=hooks)
+    (tmp_path / dev.STATE_NAME).write_text(json.dumps({"active": True, "closed": [{"name": "chrome"}]}), encoding="utf-8")
+    tick(tmp_path, clock, idle=True, hooks=hooks)
+    clock.step(16)
+
+    def partial_restore(state_path, **kw):
+        return {"restored": [{"name": "OneDrive"}], "still_active": True}      # state file still says active
+
+    out = dev.engine_step(tmp_path, ON, waiting_for_memory=False, idle=True, required_gib=None, free_gib=None, now=clock.t,
+                          plan_fn=hooks.plan, enter_fn=hooks.enter, restore_fn=partial_restore)
+    assert out["action"] == "RESTORE_PENDING" and "retried" in out["reason"]
+    assert "last_exit" not in json.loads((tmp_path / dev.AUTO_NAME).read_text(encoding="utf-8"))   # no cooldown for a half-finished exit
+
+
+def test_the_approved_work_check_uses_the_backlogs_qualified_repository_names(tmp_path, monkeypatch) -> None:
+    """Review finding: stripping 'owner/' made the helper always answer no work, so the rule could never fire on that path."""
+    from types import SimpleNamespace
+
+    from project_orchestrator import iron_god_product_lane as product_lane
+
+    asked = []
+    monkeypatch.setattr(product_lane.backlog, "load_backlog", lambda root: ([{"id": "x"}], {}))
+    monkeypatch.setattr(product_lane.backlog, "load_state", lambda root: {})
+    monkeypatch.setattr(product_lane, "product_repositories", lambda root, cfg: ["jweter/knowledge-engine-core", "jweter/VoiceStudio"])
+    monkeypatch.setattr(product_lane.backlog, "next_item",
+                        lambda approved, state, repo, max_level: asked.append(repo) or ({"id": "x"} if repo == "jweter/VoiceStudio" else None))
+    lane = SimpleNamespace(root=tmp_path)
+    assert product_lane._approved_work_waiting(lane, tmp_path, {"development_level": 2}) is True
+    assert asked == ["jweter/knowledge-engine-core", "jweter/VoiceStudio"]             # fully qualified, exactly as the backlog keys them

@@ -250,7 +250,7 @@ def restore(state_path: Path, *, running: Callable[[], set[str]] | None = None,
     if not state.get("active"):
         return {"restored": [], "skipped": [], "note": "Dev Mode is not active"}
     up = {n.lower() for n in (running() if running else {r["name"] for r in snapshot_processes()})}
-    restored, skipped = [], []
+    restored, skipped, retry = [], [], []
     for record in state.get("closed", []):
         name, path = str(record["name"]), str(record.get("path") or "")
         if classify(name, path, config=config)[0] != CLOSE or name.lower() in up:
@@ -260,12 +260,22 @@ def restore(state_path: Path, *, running: Callable[[], set[str]] | None = None,
             skipped.append({"name": name, "why": "its program file was not found"})
             continue
         ok = start(path, RESTORE_FLAGS.get(name.lower(), []))
-        (restored if ok else skipped).append({"name": name} if ok else {"name": name, "why": "relaunch failed"})
-    state.update(active=False, restored_at_utc=_now(), restored=[r["name"] for r in restored])
+        if ok:
+            restored.append({"name": name})
+        else:  # a transient failure: keep it pending so the next restore (owner or engine) can try again
+            skipped.append({"name": name, "why": "relaunch failed; will be retried by the next restore"})
+            retry.append(record)
+    state.update(restored_at_utc=_now(), restored=sorted({*state.get("restored", []), *(r["name"] for r in restored)}))
+    if retry:
+        state.update(active=True, closed=retry, pending_relaunch=[r["name"] for r in retry])
+        note = "Dev Mode is still on: some programs failed to relaunch and will be retried by the next restore"
+    else:
+        state.update(active=False, closed=[], pending_relaunch=[])
+        note = "Dev Mode ended"
     tmp = state_path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
     os.replace(tmp, state_path)
-    return {"restored": restored, "skipped": skipped, "note": "Dev Mode ended"}
+    return {"restored": restored, "skipped": skipped, "note": note, "still_active": bool(retry)}
 
 
 def status(state_path: Path) -> dict[str, Any]:
@@ -370,9 +380,13 @@ def engine_step(state_root: Path, raw_config: Any, *, waiting_for_memory: bool, 
 
     if active and auto["idle_since"] is not None and (now - auto["idle_since"]) / 60.0 >= config["exit_idle_minutes"]:
         result = (restore_fn or restore)(state_path, config=load_config(state_root))
-        auto["last_exit"] = now
-        auto["idle_since"] = None
-        out = {"action": "RESTORED", "reason": f"nothing to build for {config['exit_idle_minutes']:.0f} minutes",
+        pending = bool(status(state_path).get("active"))              # some program failed to relaunch: not out of Dev Mode yet
+        if not pending:
+            auto["last_exit"] = now
+            auto["idle_since"] = None
+        out = {"action": "RESTORE_PENDING" if pending else "RESTORED",
+               "reason": (f"nothing to build for {config['exit_idle_minutes']:.0f} minutes"
+                          + ("; some programs failed to relaunch and will be retried" if pending else "")),
                "restored": [r.get("name") for r in result.get("restored", [])]}
     elif waiting_for_memory and not active:
         entries_today = sum(1 for t in auto.get("entries", []) if now - float(t) < 86400)

@@ -207,7 +207,7 @@ def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any]) -> None:
         out = dev_mode.engine_step(
             lane.state_root, cfg, waiting_for_memory=(status == "WAITING_FOR_MEMORY" and payload.get("work_waiting") is True),
             idle=status.startswith("IDLE"), required_gib=route.get("required_gib"), free_gib=route.get("available_gib"))
-        if out and out.get("action") in {"ENTER", "RESTORED", "NO_HELP", "LIMIT", "COOLDOWN"}:
+        if out and out.get("action") in {"ENTER", "RESTORED", "RESTORE_PENDING", "NO_HELP", "LIMIT", "COOLDOWN"}:
             execution_status.note(execution_status.execution_dir(lane.root), "devmode", **out)
             roadmap_refill.log_event(lane.root, "DEV_MODE_" + str(out["action"]), "portfolio", "dev-mode", out)
     except Exception:  # noqa: BLE001 - the rule must never break the lane
@@ -220,7 +220,7 @@ def _approved_work_waiting(lane: ProductLane, release_repo: Path, config: dict[s
         approved, _ = backlog.load_backlog(release_repo)
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
-        return any(backlog.next_item(approved, state, name.split("/", 1)[-1], max_level=level) is not None
+        return any(backlog.next_item(approved, state, name, max_level=level) is not None  # the backlog keys on "owner/repo"
                    for name in product_repositories(release_repo, config))
     except Exception:  # noqa: BLE001 - unknown is not "work is waiting"
         return False
