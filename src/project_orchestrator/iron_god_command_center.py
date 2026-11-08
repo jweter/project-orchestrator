@@ -92,6 +92,8 @@ def _parse(stamp: Any) -> datetime | None:
 
 
 def _age_s(stamp: Any, now: datetime) -> float | None:
+    if isinstance(stamp, (int, float)) and not isinstance(stamp, bool):
+        return max(0.0, now.timestamp() - float(stamp))
     when = _parse(stamp)
     return None if when is None else max(0.0, (now - when).total_seconds())
 
@@ -159,10 +161,10 @@ def _default_engine_processes() -> int | None:
 def _engine(state_root: Path, now: datetime, processes: int | None = None) -> dict[str, Any]:
     owner = None
     try:
-        from .human_ownership import AUTHORIZED, owner_control_status
+        from .human_ownership import AUTHORIZED, OWNER_CONTROL_ACTIVE, owner_control_status
 
         owner = owner_control_status(state_root)
-        authorized = owner == AUTHORIZED
+        authorized = True if owner == AUTHORIZED else False if owner == OWNER_CONTROL_ACTIVE else None
     except Exception:  # noqa: BLE001
         authorized = None
     heartbeat = _read_json(state_root / "supervisor-generation-heartbeat.json") or {}
@@ -175,7 +177,7 @@ def _engine(state_root: Path, now: datetime, processes: int | None = None) -> di
         pass
     beat_age = _age_s(heartbeat.get("heartbeat_at_utc"), now)
     if authorized is None:
-        mode, mode_text = "UNKNOWN", "Owner-control state could not be read"
+        mode, mode_text = "UNKNOWN", f"Owner control could not be verified ({owner or 'unreadable'}); not shown as Give Me Control"
     elif authorized:
         mode, mode_text = "TAKE_THE_WHEEL", "Take the Wheel: the engine is authorized to develop"
     else:
@@ -214,7 +216,7 @@ def _current_work(lane_dir: Path, now: datetime) -> dict[str, Any]:
     for kind, directory, stage in (("planning", "decompose-jobs", "PLANNING"), ("drafting", "draft-jobs", "DRAFTING"),
                                    ("native build", "cpp-jobs", "RUNNING")):
         for job in _jobs(lane_dir / directory):
-            if str(job.get("stage")) == stage:
+            if str(job.get("stage") or job.get("state")) == stage:
                 running.append((float(job.get("_mtime") or 0), {**job, "_kind": kind}))
     lane = _read_json(lane_dir / "lane-status.json") or {}
     status = str(lane.get("status") or "")
@@ -248,7 +250,13 @@ def _pr(value: Any) -> tuple[Any, Any]:
 
 def _progress(lane_dir: Path, now: datetime) -> dict[str, Any]:
     since = now - WINDOW
-    pubs = (_read_json(lane_dir / "publications.json") or {}).get("items") or {}
+    pubs_raw = _read_json(lane_dir / "publications.json")
+    state_raw = _read_json(lane_dir / "backlog-state.json")
+    if not isinstance(pubs_raw, dict) or not isinstance(state_raw, dict):
+        return {"window_hours": int(WINDOW.total_seconds() // 3600), "unavailable": True, "verified_deliveries": [],
+                "verified_in_window": None, "open_pull_requests": [], "build_attempts_in_window": None, "failed_tasks_in_window": None,
+                "recent_failures": [], "plans": [], "merged_by_repo": {}}
+    pubs = pubs_raw.get("items") or {}
     merged = []
     for item in pubs.values():
         if isinstance(item, dict) and item.get("state") == "MERGED":
@@ -259,8 +267,8 @@ def _progress(lane_dir: Path, now: datetime) -> dict[str, Any]:
     merged.sort(key=lambda m: str(m.get("merged_at_utc") or ""), reverse=True)
     open_prs = [{"evidence": "ATTEMPTED", "repository": i.get("repository"), "pr": _pr(i.get("pr"))[0], "pr_url": _pr(i.get("pr"))[1], "state": i.get("state"),
                  "title": str(i.get("title") or "")[:140]} for i in pubs.values()
-                if isinstance(i, dict) and i.get("state") not in ("MERGED", "CLOSED", "ABANDONED")]
-    state = (_read_json(lane_dir / "backlog-state.json") or {}).get("items") or {}
+                if isinstance(i, dict) and i.get("state") not in ("MERGED", "CLOSED", "ABANDONED") and _pr(i.get("pr"))[0]]
+    state = state_raw.get("items") or {}
     builds = Counter()
     recent_failures = []
     for item_id, row in state.items():
@@ -271,7 +279,6 @@ def _progress(lane_dir: Path, now: datetime) -> dict[str, Any]:
         if updated is not None and updated < since:
             continue
         attempts = int(row.get("attempts") or 0)
-        builds["attempts"] += attempts
         if outcome.startswith("FAIL") or outcome.startswith("REVIEW_REQUIRED"):
             builds["failed_items"] += 1
             recent_failures.append({"evidence": "FAILED", "task": item_id, "outcome": outcome[:120], "attempts": attempts,
@@ -279,6 +286,14 @@ def _progress(lane_dir: Path, now: datetime) -> dict[str, Any]:
         elif outcome == "MERGED":
             builds["merged_items"] += 1
     recent_failures.sort(key=lambda f: str(f.get("updated_at_utc") or ""), reverse=True)
+    # build attempts in the window come from the lane's timestamped packet events (a task's own counter is lifetime)
+    finished = 0
+    for event in ((_read_json(lane_dir / "ledger.json") or {}).get("events") or []):
+        if isinstance(event, dict) and str(event.get("state_after") or "") in ("BLOCKED", "ACCEPTED_LOCAL", "MERGED"):
+            when = _parse(event.get("observed_at"))
+            finished += 1 if when is not None and when >= since else 0
+    builds["attempts"] = finished
+    merged_by_repo = Counter(_short_repo(m.get("repository")) for m in merged)
     plans = []
     for path in sorted((lane_dir / "decompositions").glob("*.json")) if (lane_dir / "decompositions").is_dir() else []:
         plan = _read_json(path)
@@ -294,7 +309,7 @@ def _progress(lane_dir: Path, now: datetime) -> dict[str, Any]:
     return {"window_hours": int(WINDOW.total_seconds() // 3600), "verified_deliveries": merged[:12],
             "verified_in_window": len(merged_window), "open_pull_requests": open_prs,
             "build_attempts_in_window": builds["attempts"], "failed_tasks_in_window": builds["failed_items"],
-            "recent_failures": recent_failures[:10], "plans": plans[:10]}
+            "recent_failures": recent_failures[:10], "plans": plans[:10], "merged_by_repo": dict(merged_by_repo)}
 
 
 def _waiting(lane_dir: Path) -> dict[str, Any]:
@@ -389,7 +404,7 @@ def _activity(state_root: Path, lane_dir: Path, limit: int = 40) -> list[dict[st
 
 def _projects(lane_dir: Path, progress: dict[str, Any]) -> list[dict[str, Any]]:
     report = _read_json(lane_dir / "pipeline-report.json") or {}
-    merged_by_repo = Counter(_short_repo(m.get("repository")) for m in progress.get("verified_deliveries") or [])
+    merged_by_repo = progress.get("merged_by_repo") or {}
     rows: dict[str, dict[str, Any]] = {}
     for row in report.get("slices") or []:
         repo = _short_repo(row.get("repository"))
@@ -400,23 +415,28 @@ def _projects(lane_dir: Path, progress: dict[str, Any]) -> list[dict[str, Any]]:
         if blocker and row.get("status") in ("BLOCKED", "STUCK", "WAITING"):
             entry["blocked_reasons"][blocker] += 1
         if entry["next"] is None and row.get("status") == "PROGRESSING":
-            entry["next"] = {"slice": row.get("slice"), "stage": row.get("stage"), "level": row.get("level")}
+            entry["next"] = {"slice": row.get("slice"), "stage": row.get("stage"), "level": row.get("level")}  # work in progress
     out = []
     for repo, entry in sorted(rows.items()):
         out.append({"repository": repo, "slices": entry["slices"], "by_status": dict(entry["by_status"]),
-                    "verified_merged_prs": merged_by_repo.get(repo, 0), "next_eligible": entry["next"],
+                    "verified_merged_prs": merged_by_repo.get(repo, 0) if merged_by_repo or progress.get("unavailable") is not True else None,
+                    "in_progress": entry["next"],
                     "top_blocker": entry["blocked_reasons"].most_common(1)[0][0] if entry["blocked_reasons"] else None})
     return out
 
 
 def _verdict(engine: dict[str, Any], work: dict[str, Any], progress: dict[str, Any], waiting: dict[str, Any]) -> dict[str, Any]:
-    delivered = progress.get("verified_in_window") or 0
-    failed = progress.get("failed_tasks_in_window") or 0
     hours = progress.get("window_hours")
     if engine.get("mode") == "OWNER_CONTROL":
         return {"state": "PAUSED", "headline": "Paused: you hold control", "reason": engine.get("mode_text")}
     if engine.get("supervisor_alive") is False:
-        return {"state": "DOWN", "headline": "Engine not running", "reason": "The supervisor heartbeat is stale"}
+        return {"state": "DOWN", "headline": "Engine not running", "reason": "No supervisor or actor process was found"}
+    if engine.get("mode") == "UNKNOWN":
+        return {"state": "UNKNOWN", "headline": "Owner control could not be verified", "reason": engine.get("mode_text")}
+    if progress.get("verified_in_window") is None or progress.get("failed_tasks_in_window") is None:
+        return {"state": "UNKNOWN", "headline": "Delivery evidence unavailable", "reason": "The engine's publication or backlog records could not be read"}
+    delivered = progress.get("verified_in_window") or 0
+    failed = progress.get("failed_tasks_in_window") or 0
     if delivered:
         return {"state": "PRODUCTIVE", "headline": f"Productive: {delivered} verified deliver{'y' if delivered == 1 else 'ies'} in the last {hours} h",
                 "reason": work.get("text")}
@@ -465,7 +485,10 @@ def snapshot(state_root: Path, *, now: datetime | None = None, ollama: Callable[
 def _dev_mode(state_root: Path) -> dict[str, Any]:
     from . import iron_god_dev_mode as dev
 
-    current = dev.status(state_root / dev.STATE_NAME)
+    path = state_root / dev.STATE_NAME
+    if path.is_file() and _read_json(path) is None:
+        return {"active": None, "closed": [], "last_decision": None}   # present but unreadable: unknown, not "off"
+    current = dev.status(path)
     auto = _read_json(state_root / dev.AUTO_NAME) or {}
     return {"active": bool(current.get("active")), "closed": [c.get("name") for c in current.get("closed", [])],
             "last_decision": auto.get("last_decision")}

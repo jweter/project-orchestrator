@@ -115,8 +115,10 @@ $dashboardFiles=@('dashboard\iron-god.html','dashboard\iron-god.js','dashboard\i
   'dashboard\app.css','dashboard\sw.js','dashboard\manifest.webmanifest','scripts\foundry_dashboard_server.py')
 $dashboardLive=Join-Path $Base 'Dashboard\live'
 $dashboardBackup=Join-Path $backup 'dashboard-live'
+$dashboardNew=New-Object 'System.Collections.Generic.List[string]'
 foreach($file in $dashboardFiles){
   $installed=Join-Path $dashboardLive $file
+  if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) {$dashboardNew.Add($file)}
   if (Test-Path -LiteralPath $installed -PathType Leaf) {
     $saved=Join-Path $dashboardBackup $file
     New-Item -ItemType Directory -Path (Split-Path -Parent $saved) -Force -ErrorAction Stop|Out-Null
@@ -203,6 +205,11 @@ try {
       try {Copy-Item -LiteralPath $saved -Destination (Join-Path $dashboardLive $file) -Force -ErrorAction Stop}
       catch {$failures.Add('DASHBOARD '+$file+': '+$_.Exception.Message)}
     }
+  }
+  # a file this promotion newly installed has no backup: remove it, or the rollback leaves a mixed-release dashboard
+  foreach($file in $dashboardNew){
+    try {Remove-Item -LiteralPath (Join-Path $dashboardLive $file) -Force -ErrorAction SilentlyContinue}
+    catch {$failures.Add('DASHBOARD_NEW '+$file+': '+$_.Exception.Message)}
   }
   throw ('LOCAL_PIN_PROMOTION_ROLLED_BACK: '+$errorText+
          '; ROLLBACK_ERRORS='+($failures -join '; ')+

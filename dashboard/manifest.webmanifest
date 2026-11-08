@@ -1,7 +1,7 @@
 {
   "name":"Azathoth Control Center",
   "short_name":"Azathoth",
-  "start_url":"/",
+  "start_url":"/index.html",
   "scope":"/",
   "display":"standalone",
   "background_color":"#090b10",

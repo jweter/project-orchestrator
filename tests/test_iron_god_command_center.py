@@ -148,9 +148,9 @@ def test_the_feed_collapses_a_repeated_blocker_and_shows_build_failures(tmp_path
     assert feed == sorted(feed, key=lambda a: a["at_utc"], reverse=True)
 
 
-def test_projects_name_the_next_eligible_task_and_their_verified_merges(tmp_path):
+def test_projects_name_the_work_in_progress_and_their_verified_merges(tmp_path):
     projects = {p["repository"]: p for p in snap(engine_state(tmp_path, merged_recently=True))["projects"]}
-    assert projects["knowledge-engine-ai"]["next_eligible"]["slice"] == "s3"
+    assert projects["knowledge-engine-ai"]["in_progress"]["slice"] == "s3"
     assert projects["knowledge-engine-ai"]["verified_merged_prs"] == 1
     assert projects["knowledge-engine-web"]["top_blocker"] == "DECOMPOSITION_NOT_STARTED"
 
@@ -234,3 +234,115 @@ def test_a_bare_live_copy_serves_the_pinned_releases_command_center(tmp_path):
         assert "IRON GOD" in urlopen(base_url + "/").read().decode()   # the front page is the command center
     finally:
         httpd.shutdown()
+
+# --- review findings on #667: each of these failed before its fix ---------------------------------------------------------
+def test_unverified_owner_control_is_unknown_and_does_not_mask_a_dead_engine(tmp_path, monkeypatch):
+    root = engine_state(tmp_path, merged_recently=True)
+    monkeypatch.setattr(human_ownership, "owner_control_status", lambda r: human_ownership.OWNER_CONTROL_UNVERIFIED)
+    s = snap(root)
+    assert s["engine"]["mode"] == "UNKNOWN" and s["verdict"]["state"] == "UNKNOWN"
+    assert snap(root, engine_processes=lambda: 0)["verdict"]["state"] == "DOWN"       # the dead engine is still reported
+
+
+def test_a_running_native_job_and_epoch_job_times_are_read(tmp_path):
+    root = engine_state(tmp_path, merged_recently=False)
+    started = (NOW - timedelta(minutes=7)).timestamp()
+    write(root / cc.LANE / "cpp-jobs" / "ew_x.json", {"id": "ew_x", "repository": "jweter/Project-Everward", "state": "RUNNING",
+                                                      "pid": 7, "started_at": started})
+    work = snap(root)["work"]
+    assert work["busy"] and work["kind"] == "native build" and round(work["since_age_s"]) == 420
+
+
+def test_attempts_in_window_come_from_timestamped_packet_events_not_lifetime_counters(tmp_path):
+    root = engine_state(tmp_path, merged_recently=False)
+    write(root / cc.LANE / "backlog-state.json", {"items": {"T": {"attempts": 9, "outcome": "FAIL: x", "updated_at_utc": RECENT}}})
+    write(root / cc.LANE / "ledger.json", {"packets": {}, "events": [
+        {"state_after": "BLOCKED", "observed_at": OLD}, {"state_after": "BLOCKED", "observed_at": OLD},
+        {"state_after": "BLOCKED", "observed_at": RECENT}, {"state_after": "IMPLEMENTING", "observed_at": RECENT}]})
+    assert snap(root)["progress"]["build_attempts_in_window"] == 1                      # not 9, not the old ones
+
+
+def test_missing_evidence_is_unknown_never_nothing_delivered(tmp_path):
+    root = engine_state(tmp_path, merged_recently=False)
+    (root / cc.LANE / "publications.json").unlink()
+    s = snap(root)
+    assert s["progress"]["unavailable"] and s["progress"]["verified_in_window"] is None
+    assert s["verdict"]["state"] == "UNKNOWN" and "unavailable" in s["verdict"]["headline"]
+    assert all(p["verified_merged_prs"] is None for p in s["projects"])
+
+
+def test_a_publication_without_a_pr_number_is_not_an_open_pr_and_project_totals_use_every_merge(tmp_path):
+    root = engine_state(tmp_path, merged_recently=False)
+    pubs = json.loads((root / cc.LANE / "publications.json").read_text(encoding="utf-8"))
+    pubs["items"]["pending"] = {"state": "PUBLISH_PENDING", "repository": "jweter/knowledge-engine-ai", "title": "no pr yet"}
+    for n in range(15):
+        pubs["items"][f"m{n}"] = {"state": "MERGED", "repository": "jweter/knowledge-engine-core", "pr": {"number": n},
+                                  "merged_at_utc": OLD}
+    write(root / cc.LANE / "publications.json", pubs)
+    s = snap(root)
+    assert [o["pr"] for o in s["progress"]["open_pull_requests"]] == [200]
+    assert s["progress"]["merged_by_repo"]["knowledge-engine-core"] == 16 and len(s["progress"]["verified_deliveries"]) == 12   # all merges, 12 shown
+
+
+def test_an_unreadable_dev_mode_state_is_unknown_not_off(tmp_path):
+    root = engine_state(tmp_path, merged_recently=False)
+    write(root / "dev-mode-state.json", "{not json")
+    assert snap(root)["resources"]["dev_mode"]["active"] is None
+    (root / "dev-mode-state.json").unlink()
+    assert snap(root)["resources"]["dev_mode"]["active"] is False
+
+
+def test_the_page_renders_unknown_for_missing_sources_and_the_pwa_follows_the_route_change():
+    js = (ROOT / "dashboard/iron-god.js").read_text(encoding="utf-8")
+    assert "Dev Mode unknown" in js and "could not be read" in js and "In progress" in js
+    assert json.loads((ROOT / "dashboard/manifest.webmanifest").read_text(encoding="utf-8"))["start_url"] == "/index.html"
+    sw = (ROOT / "dashboard/sw.js").read_text(encoding="utf-8")
+    assert 'caches.match("/index.html")' in sw and "shell-v9" in sw and sw.count('"/index.html"') >= 2
+
+
+def test_rollback_removes_dashboard_files_that_the_promotion_newly_installed():
+    script = (ROOT / "scripts/desktop-control/Promote-DisabledLocalRelease.ps1").read_text(encoding="utf-8")
+    assert "$dashboardNew.Add($file)" in script and "foreach($file in $dashboardNew)" in script and "Remove-Item" in script
+
+
+def test_the_live_server_follows_the_pin_to_another_release_and_health_works_first(tmp_path):
+    import shutil
+    import sys
+
+    base = tmp_path / "ExponentialEngine"
+    live = base / "Dashboard" / "live"
+    (live / "scripts").mkdir(parents=True)
+    shutil.copy2(ROOT / "scripts" / "foundry_dashboard_server.py", live / "scripts" / "foundry_dashboard_server.py")
+    shutil.copytree(ROOT / "dashboard", live / "dashboard")
+    for sha, marker in (("a" * 40, "RELEASE_A"), ("b" * 40, "RELEASE_B")):
+        src = base / "releases" / sha / "src"
+        shutil.copytree(ROOT / "src" / "project_orchestrator", src / "project_orchestrator", ignore=shutil.ignore_patterns("__pycache__"))
+        with (src / "project_orchestrator" / "iron_god_command_center.py").open("a", encoding="utf-8") as f:
+            f.write(f"\nRELEASE_MARKER = {marker!r}\n")
+    state = engine_state(base, merged_recently=True)
+    # simulate a bare process, then put sys.modules / sys.path back exactly: other tests hold the checkout's module objects
+    ours = lambda n: n == "project_orchestrator" or n.startswith("project_orchestrator.")  # noqa: E731
+    saved_modules = {n: m for n, m in sys.modules.items() if ours(n)}
+    saved_path = list(sys.path)
+    for name in saved_modules:
+        del sys.modules[name]
+    spec = importlib.util.spec_from_file_location("live_server_pin", live / "scripts" / "foundry_dashboard_server.py")
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)
+    write(state / "supervisor-pinned-release.json", {"accepted_sha": "a" * 40})
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.handler_for(state, live / "dashboard"))
+    Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{httpd.server_address[1]}"
+        assert json.load(urlopen(url + "/api/health")) is not None            # health first: no prior command-center call needed
+        assert json.load(urlopen(url + "/api/command-center"))["read_only"]
+        assert sys.modules["project_orchestrator.iron_god_command_center"].RELEASE_MARKER == "RELEASE_A"
+        write(state / "supervisor-pinned-release.json", {"accepted_sha": "b" * 40})   # a promotion moves the pin
+        assert json.load(urlopen(url + "/api/command-center"))["read_only"]
+        assert sys.modules["project_orchestrator.iron_god_command_center"].RELEASE_MARKER == "RELEASE_B"
+    finally:
+        httpd.shutdown()
+        for name in [n for n in sys.modules if ours(n)]:
+            del sys.modules[name]
+        sys.modules.update(saved_modules)
+        sys.path[:] = saved_path

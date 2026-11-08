@@ -63,7 +63,8 @@ function renderEngine(e) {
 function renderResources(r) {
   const used = r?.ram_total_gib != null && r?.ram_free_gib != null ? r.ram_total_gib - r.ram_free_gib : null;
   const disk = r?.disk_total_gib != null && r?.disk_free_gib != null ? r.disk_total_gib - r.disk_free_gib : null;
-  const dev = r?.dev_mode?.active ? `Dev Mode ON (closed: ${esc((r.dev_mode.closed || []).join(", ") || "nothing")})` : "Dev Mode off";
+  const dm = r?.dev_mode?.active;
+  const dev = dm === true ? `Dev Mode ON (closed: ${esc((r.dev_mode.closed || []).join(", ") || "nothing")})` : dm === false ? "Dev Mode off" : "Dev Mode unknown";
   $("resources").innerHTML = `<div>RAM ${unknown(r?.ram_free_gib, " GiB free")} of ${unknown(r?.ram_total_gib, " GiB")}</div>${bar(used, r?.ram_total_gib)}
     <div>CPU ${unknown(r?.cpu_percent, "%")}</div>${bar(r?.cpu_percent, 100)}
     <div>Disk ${unknown(r?.disk_free_gib, " GiB free")}</div>${bar(disk, r?.disk_total_gib)}
@@ -71,7 +72,7 @@ function renderResources(r) {
 }
 
 function renderProgress(p) {
-  if (!p) { $("progress").innerHTML = unknown(null); return; }
+  if (!p || p.unavailable) { $("progress").innerHTML = '<div class="sub">Unknown: the engine\'s publication or backlog records could not be read.</div>'; return; }
   const delivered = (p.verified_deliveries || []).slice(0, 6).map((d) =>
     `<li>${badge("VERIFIED")}<b>${repo(d.repository)} ${d.pr_url ? `<a href="${esc(d.pr_url)}" target="_blank" rel="noopener">#${esc(d.pr)}</a>` : "#" + esc(d.pr)}</b> ${esc(d.title)}<div class="sub">merged ${clock(d.merged_at_utc)} ${esc(d.merged_at_utc ? new Date(d.merged_at_utc).toLocaleDateString() : "")} · ${esc(d.merged_sha || "")}</div></li>`).join("") || '<li class="sub">No merged pull request recorded.</li>';
   const plans = (p.plans || []).slice(0, 5).map((x) =>
@@ -92,6 +93,7 @@ function renderProgress(p) {
 }
 
 function renderWaiting(w) {
+  if (!w || w.by_reason === null || w.by_reason === undefined) { $("waiting").innerHTML = '<div class="sub">Unknown: the pipeline report could not be read.</div>'; return; }
   const reasons = Object.entries(w?.by_reason || {}).sort((a, b) => b[1] - a[1]);
   const byCode = {};
   for (const item of w?.items || []) (byCode[item.code] ||= []).push(item);
@@ -105,10 +107,10 @@ function renderWaiting(w) {
 }
 
 function renderProjects(projects) {
-  const rows = (projects || []).map((p) => `<tr><td><b>${esc(p.repository)}</b></td><td>${esc(p.slices)}</td><td>${esc(p.verified_merged_prs)}</td>
-    <td>${p.next_eligible ? esc(p.next_eligible.slice) + ` <span class="sub">${esc(p.next_eligible.stage || "")}</span>` : '<span class="sub">none ready</span>'}</td>
+  const rows = (projects || []).map((p) => `<tr><td><b>${esc(p.repository)}</b></td><td>${esc(p.slices)}</td><td>${unknown(p.verified_merged_prs)}</td>
+    <td>${p.in_progress ? esc(p.in_progress.slice) + ` <span class="sub">${esc(p.in_progress.stage || "")}</span>` : '<span class="sub">nothing moving</span>'}</td>
     <td class="hide-sm">${esc(p.top_blocker || "")}</td></tr>`).join("");
-  $("projects").innerHTML = rows ? `<table><thead><tr><th>Project</th><th>Slices</th><th>Merged</th><th>Next eligible</th><th class="hide-sm">Top blocker</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="sub">No projects in the trace.</div>';
+  $("projects").innerHTML = rows ? `<table><thead><tr><th>Project</th><th>Slices</th><th>Merged</th><th>In progress</th><th class="hide-sm">Top blocker</th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="sub">No projects in the trace.</div>';
 }
 
 function renderActivity(feed) {
