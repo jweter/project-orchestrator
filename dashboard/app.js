@@ -66,7 +66,7 @@ function renderLanes(lanes={}){
     }
     if(key==="legacy_pool")details.push("Reported workers: "+(lane.running_total??"unknown"));
     if(key==="dispatch")details.push("Controller decision: "+(lane.permitted===true?"permitted":lane.permitted===false?"denied":"unknown")+" · candidates: "+(Array.isArray(lane.candidate_products)?lane.candidate_products.length:"unknown"));
-    const cls=stale||status==="UNKNOWN"?"warn":status==="BLOCKED"?"bad":status==="DISPATCHED"?"good":"";
+    const cls=stale||status==="UNKNOWN"?"warn":/BLOCKED|FAILED|UNVERIFIED|UNCONFIRMED|ORPHANED/.test(status)?"bad":status==="DISPATCHED"?"good":"";
     return card(title,details.map(esc).join("<br>"),'<span class="status '+cls+'">'+esc(status)+'</span>');
   }).join("");
 }

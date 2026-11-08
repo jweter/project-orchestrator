@@ -241,6 +241,103 @@ def test_rotation_keeps_its_order_when_repositories_are_added_or_removed(env):
     assert set(lane.rotation()["order"]) == set(REPOS[:2])
 
 
+def test_product_worker_launch_is_durably_reserved_before_spawn(env):
+    runner = Runner()
+    actual_spawn = runner.spawn
+    observed = []
+
+    def inspect_then_spawn(release_repo, packet_path, handback_path, **kwargs):
+        lane = pl.ProductLane(env.state)
+        reservation = lane.active()
+        packet = json.loads(Path(packet_path).read_text(encoding="utf-8"))
+        assert reservation is not None
+        assert reservation["launch_state"] == "SPAWN_UNCONFIRMED"
+        assert reservation["packet_id"] == packet["packet_id"]
+        assert reservation["branch"] == packet["branch"]
+        assert reservation["base_sha"] == packet["base_sha"]
+        assert reservation["unfinished_criteria"] == packet["planning"]["acceptance_criteria"]
+        assert reservation["next_action"] == "RECONCILE_WORKER_IDENTITY_BEFORE_RETRY"
+        assert git(Path(reservation["worktree"]), "rev-parse", "HEAD") == reservation["base_sha"]
+        observed.append(reservation["packet_id"])
+        return actual_spawn(release_repo, packet_path, handback_path, **kwargs)
+
+    runner.spawn = inspect_then_spawn
+    result = step(env, runner)
+    assert result["status"] == "DISPATCHED" and observed == [result["packet_id"]]
+    active = pl.ProductLane(env.state).active()
+    assert active["launch_state"] == "SPAWN_CONFIRMED"
+    assert active["worker"]["process_start_fingerprint"] == "windows:1"
+    assert active["next_action"] == "WAIT_FOR_WORKER_THEN_VERIFY_EXACT_HEAD"
+
+
+def test_spawn_uncertainty_survives_supervisor_restart_without_duplicate_worker(env):
+    lane = pl.ProductLane(env.state)
+    runner = Runner()
+    seen = []
+
+    def crash_after_possible_spawn(_release_repo, packet_path, _handback_path, **_kwargs):
+        reservation = lane.active()
+        assert reservation["launch_state"] == "SPAWN_UNCONFIRMED"
+        seen.append(reservation["packet_id"])
+        raise RuntimeError("simulated failure before worker identity acknowledgement")
+
+    runner.spawn = crash_after_possible_spawn
+    with pytest.raises(RuntimeError, match="simulated failure"):
+        step(env, runner)
+    first = lane.active()
+    assert first["launch_state"] == "SPAWN_UNCONFIRMED"
+    assert (lane.packets / f"{first['packet_id']}.json").is_file()
+    assert Path(first["worktree"]).is_dir()
+    assert first["unfinished_criteria"]
+
+    replacement_runner = Runner()
+    for authority in (PERMIT, DENY):
+        result = step(env, replacement_runner, decision=authority)
+        assert result["status"] == "WORKER_LAUNCH_UNCONFIRMED"
+        assert result["packet_id"] == seen[0]
+        assert result["next_action"] == "RECONCILE_WORKER_IDENTITY_BEFORE_RETRY"
+        assert replacement_runner.spawned == 0
+        assert lane.active() == first
+
+
+def test_orphaned_ledger_packet_blocks_replacement_when_active_record_missing(env):
+    runner = Runner()
+    first = step(env, runner)
+    assert first["status"] == "DISPATCHED"
+    lane = pl.ProductLane(env.state)
+    lane.active_path.unlink()
+    second = step(env, runner)
+    assert second["status"] == "ORPHANED_PRODUCT_WORKER_OWNERSHIP"
+    assert second["packet_ids"] == [first["packet_id"]]
+    assert runner.spawned == 1
+    assert "RECONCILE_LEDGER_PACKET_LEASE" in second["next_action"]
+
+
+def test_worker_without_authenticated_process_fingerprint_remains_uncertain(env):
+    runner = Runner()
+    runner.spawn = lambda *_a, **_k: {
+        "pid": 142, "process_start_fingerprint": "", "host": "fake",
+    }
+    first = step(env, runner)
+    assert first["status"] == "WORKER_LAUNCH_UNCONFIRMED"
+    state = pl.ProductLane(env.state).active()
+    assert state["launch_state"] == "SPAWN_UNCONFIRMED"
+    assert state["worker"]["pid"] == 142
+    assert step(env, Runner())["status"] == "WORKER_LAUNCH_UNCONFIRMED"
+
+
+@pytest.mark.parametrize("malformed", ["{invalid", "[]", "{}"])
+def test_unreadable_active_worker_state_never_becomes_new_dispatch(env, malformed):
+    lane = pl.ProductLane(env.state)
+    lane.root.mkdir(parents=True, exist_ok=True)
+    lane.active_path.write_text(malformed, encoding="utf-8")
+    runner = Runner()
+    status = step(env, runner)
+    assert status["status"] == "ACTIVE_WORKER_STATE_UNVERIFIED"
+    assert runner.spawned == 0
+    assert lane.active_path.read_text(encoding="utf-8") == malformed
+
+
 def test_full_turn_publishes_by_pull_request_and_merges_only_after_ci_is_green(env):
     runner, github = Runner(), FakeGitHub(("pass", "pass", "skipping"))
     dispatched = step(env, runner, github)
