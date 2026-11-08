@@ -121,7 +121,7 @@ def test_the_model_door_reports_admission_decisions_and_cancellation(tmp_path: P
             return {"response": "{}"}
 
     with pytest.raises(lm.ModelNotAdmitted):
-        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=0.0, client=Door(), probes={"available": lambda: 5.0},
+        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=0.0, client=Door(), probes={"available": lambda: 0.5},
                             directory=tmp_path / "slot")
     lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=Door(), probes={"available": lambda: 9.0},
                         directory=tmp_path / "slot")

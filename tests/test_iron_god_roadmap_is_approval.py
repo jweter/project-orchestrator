@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -171,7 +172,7 @@ def test_the_planning_hook_remembers_the_stall_for_the_final_report(tmp_path, mo
 
 # --- the lane-level proof for review finding 1 (the helper alone was not enough) ----------------------------------------------
 from tests.test_iron_god_product_lane import (  # noqa: E402,F401  (env is a pytest fixture)
-    FULL, REPOS, RoutedRunner, direct_item, directed_env, env, measured, routed_step)
+    FULL, PERMIT, REPOS, FakeGitHub, RoutedRunner, direct_item, directed_env, env, measured, routed_step)
 
 
 def test_the_lane_does_not_call_work_a_memory_stall_when_its_repository_cannot_start_it_anyway(env, monkeypatch) -> None:
@@ -179,21 +180,48 @@ def test_the_lane_does_not_call_work_a_memory_stall_when_its_repository_cannot_s
     failing base preflight) must not look like 'waiting for memory', or the standing rule closes programs for nothing."""
     directed_env(env, [direct_item("L2-1", REPOS[0])])
     runner = RoutedRunner()
-    waiting = routed_step(env, runner, 5.0, measured(**FULL))
+    waiting = routed_step(env, runner, 0.5, measured(**FULL))
     assert waiting["status"] == "WAITING_FOR_MEMORY" and waiting["work_waiting"] is True       # control: the unblocked case still waits
 
     monkeypatch.setattr(product_lane, "unready_repositories", lambda rows, head_of: {REPOS[0]})   # the repository is blocked
-    blocked = routed_step(env, RoutedRunner(), 5.0, measured(**FULL))
-    assert blocked.get("work_waiting") is not True and blocked["status"] != "WAITING_FOR_MEMORY"
+    blocked = routed_step(env, RoutedRunner(), 0.5, measured(**FULL))
+    assert blocked.get("work_waiting") is not True          # the rule is not told about a stall closing programs cannot fix
 
 
 # --- owner decision 2026-11-08: no padded 7B threshold, and a stall the trace sees must reach the standing rule ---------------
-def test_the_7b_is_admitted_at_its_measured_cost_and_still_refused_below_it() -> None:
+def test_the_7b_is_started_whenever_it_can_load_and_only_refused_when_it_cannot() -> None:
     from project_orchestrator import iron_god_local_model as lm
 
-    assert lm.gate_for("qwen2.5-coder:7b", available=lambda: 5.9).admit() == (True, "ADMITTED")   # the laptop's real free RAM
-    refused, why = lm.gate_for("qwen2.5-coder:7b", available=lambda: 5.0).admit()
-    assert refused is False and why.startswith("MEMORY: 5.0 GiB available < 5.3 GiB required")   # measured cost + 0.6 cancel floor
+    for free in (5.9, 3.0, 1.0):                                    # the laptop's real free RAM and well below it
+        assert lm.gate_for("qwen2.5-coder:7b", available=lambda free=free: free).admit() == (True, "ADMITTED")
+    refused, why = lm.gate_for("qwen2.5-coder:7b", available=lambda: 0.5).admit()
+    assert refused is False and why.startswith("MEMORY: 0.5 GiB available < 1.0 GiB required")
+    assert lm.gate_for("qwen2.5-coder:7b", available=lambda: 0.0).required_gib == pytest.approx(5.3)   # the comfortable level stays
+    assert lm.gate_for("some-unknown-model", available=lambda: 3.0).admit()[0] is False                # unparsed names stay strict
+
+
+def test_tight_memory_runs_the_7b_and_tells_the_standing_rule(env, monkeypatch) -> None:
+    """Below the comfortable level the model still runs; the rule is told so Dev Mode can free memory meanwhile."""
+    carried = []
+    monkeypatch.setattr(product_lane, "_dev_mode_tick",
+                        lambda lane, payload, final=False: carried.append(getattr(lane, "planning_memory_wait", None)) if final else None)
+    directed_env(env, [direct_item("L2-1", REPOS[0])])
+    runner = RoutedRunner()
+    tight = routed_step(env, runner, 3.0, measured(**FULL))
+    assert tight["status"] in {"DISPATCHED", "ACCEPTED_LOCAL"} and runner.models == ["qwen2.5-coder:7b"]
+    assert carried[-1] == {"required_gib": pytest.approx(5.3), "available_gib": 3.0}
+
+
+def test_comfortable_memory_carries_no_signal(env, monkeypatch) -> None:
+    """One pass per test: a second pass in the same environment depends on what the first left behind (it was flaky)."""
+    carried = []
+    monkeypatch.setattr(product_lane, "_dev_mode_tick",
+                        lambda lane, payload, final=False: carried.append(getattr(lane, "planning_memory_wait", None)) if final else None)
+    directed_env(env, [direct_item("L2-1", REPOS[0])])
+    runner = RoutedRunner()
+    comfortable = routed_step(env, runner, 8.0, measured(**FULL))
+    assert comfortable["status"] in {"DISPATCHED", "ACCEPTED_LOCAL"} and runner.models == ["qwen2.5-coder:7b"]
+    assert carried[-1] is None
 
 
 def test_a_memory_stall_only_the_trace_can_see_still_reaches_the_dev_mode_rule(tmp_path, monkeypatch) -> None:
@@ -213,3 +241,57 @@ def test_a_memory_stall_only_the_trace_can_see_still_reaches_the_dev_mode_rule(t
     monkeypatch.setattr(product_lane, "available_gib", lambda: 9.0)                            # memory is fine: nothing is stalled
     product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})
     assert seen[-1]["waiting_for_memory"] is False
+
+
+def test_dev_mode_never_hears_of_a_stall_while_the_owner_holds_control(env, monkeypatch) -> None:
+    """Review P1: a trace-derived memory stall must not reach the rule when execution is not authorised (Give Me Control), or
+    Dev Mode could close the owner's programs while they are using the laptop."""
+    from types import SimpleNamespace as NS
+    seen = []
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw) or None)
+    monkeypatch.setattr(product_lane.pipeline_trace, "refresh",
+                        lambda root, **kw: {"by_blocker": {"DECOMPOSITION_WAITING_FOR_MEMORY": 10}})
+    monkeypatch.setattr(product_lane, "available_gib", lambda: 2.0)
+    policy = {**env.policy, "portfolio_rotation": {**env.policy["portfolio_rotation"],
+                                                   "dev_mode": {"auto": True, "stall_minutes": 0}}}
+
+    def advance(permitted):
+        return product_lane.advance_product_lane(
+            env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=True,
+            decide=lambda: NS(permitted=permitted, reasons=["OWNER_HOLDS_CONTROL"]), spawn=RoutedRunner().spawn,
+            alive=lambda _w: False, stop=lambda _w: None, resources=lambda: {"admitted": True}, lease_pool=env.pool,
+            github=FakeGitHub(), sync=env.sync, owned_paths=lambda r: [], gates=lambda *_a: None, memory_root=env.memory,
+            rng=random.Random(7), policy=policy, profiles=lambda: measured(**FULL), free_gib=lambda: 2.0)
+
+    denied = advance(False)
+    assert denied["status"] == "WAITING_FOR_OWNER_AUTHORITY"
+    assert seen == []                                            # the rule was never consulted: nothing can be closed
+
+    advance(True)                                                # control returns: the same pass may consult the rule again
+    assert seen and seen[-1]["waiting_for_memory"] is True
+
+
+def test_p2_low_disk_drops_signal(env, monkeypatch) -> None:
+    """Review P2 on #658: with tight memory the signal was set before resource admission, so a pass that then stopped for low
+    disk still told the rule memory was the blocker, and Dev Mode could close programs that cannot unblock anything."""
+    from types import SimpleNamespace as NS
+    seen = []
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw) or None)
+    monkeypatch.setattr(product_lane.pipeline_trace, "refresh", lambda root, **kw: {"by_blocker": {}})
+    policy = {**env.policy, "portfolio_rotation": {**env.policy["portfolio_rotation"],
+                                                   "dev_mode": {"auto": True, "stall_minutes": 0}}}
+    directed_env(env, [direct_item("L2-1", REPOS[0])])
+
+    def advance(resources):
+        return product_lane.advance_product_lane(
+            env.state, env.release, supervisor={}, release_sha="a" * 40, allow_dispatch=True,
+            decide=lambda: PERMIT, spawn=RoutedRunner().spawn, alive=lambda _w: False,
+            stop=lambda _w: None, resources=resources, lease_pool=env.pool, github=FakeGitHub(), sync=env.sync,
+            owned_paths=lambda r: [], gates=lambda *_a: None, memory_root=env.memory, rng=random.Random(7), policy=policy,
+            profiles=lambda: measured(**FULL), free_gib=lambda: 3.0)
+
+    low_disk = advance(lambda: {"admitted": False, "reason": "LOW_DISK"})
+    assert low_disk["status"] == "WAITING_FOR_RESOURCES"
+    assert seen and seen[-1]["waiting_for_memory"] is False          # closing programs cannot fix low disk
+
+    # the positive case (tight memory, the run starts, the rule is told) is test_tight_memory_runs_the_7b_and_tells_the_standing_rule

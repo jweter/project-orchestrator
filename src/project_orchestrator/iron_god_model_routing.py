@@ -58,7 +58,14 @@ def qualified_models(level: int, profiles: dict[str, dict[str, Any]], *, hardwar
 
 
 def required_gib(name: str) -> float:
+    """The comfortable level: what Dev Mode works toward and what the dashboard reports."""
     return lm.gate_for(name, available=lambda: 0.0).required_gib
+
+
+def start_gib(name: str) -> float:
+    """The least free memory at which the model is started (the 7B is never refused for want of comfortable memory)."""
+    gate = lm.gate_for(name, available=lambda: 0.0)
+    return gate.required_gib if gate.start_gib is None else gate.start_gib
 
 
 def route(level: Any, profiles: dict[str, dict[str, Any]], available_gib: float | None, *,
@@ -76,11 +83,12 @@ def route(level: Any, profiles: dict[str, dict[str, Any]], available_gib: float 
     if available_gib is None:  # memory unknown is not memory available
         return Route(None, "AVAILABLE_MEMORY_UNKNOWN", level, qualified=tuple(qualified))
     needs = {name: required_gib(name) for name in qualified}
-    admitted = [name for name in qualified if available_gib >= needs[name]]
+    starts = {name: start_gib(name) for name in qualified}
+    admitted = [name for name in qualified if available_gib >= starts[name]]
     if not admitted:
-        smallest = min(qualified, key=lambda n: needs[n])
+        smallest = min(qualified, key=lambda n: starts[n])
         return Route(None, (f"WAITING_FOR_MEMORY: level {level} is covered only by {', '.join(qualified)}; "
-                            f"{available_gib:.1f} GiB available < {needs[smallest]:.1f} GiB needed for the smallest, {smallest}"),
+                            f"{available_gib:.1f} GiB available < {starts[smallest]:.1f} GiB needed for the smallest, {smallest}"),
                      level, qualified=tuple(qualified), required_gib=needs[smallest], available_gib=available_gib)
     chosen = admitted[0]
     if chosen == ladder[0]:
@@ -100,7 +108,7 @@ def max_level_now(profiles: dict[str, dict[str, Any]], available_gib: float | No
         return 0
     best = 0
     for name in ladder:
-        if _valid(profiles, name, 1, hardware) is not None or available_gib < required_gib(name):
+        if _valid(profiles, name, 1, hardware) is not None or available_gib < start_gib(name):
             continue
         best = max(best, int(profiles[_full(name)].get("max_passing_level") or 0))
     return best
