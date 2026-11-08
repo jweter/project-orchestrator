@@ -49,6 +49,7 @@ from . import iron_god_cpp_lane as cpp_lane
 from . import iron_god_dev_mode as dev_mode
 from . import iron_god_execution_status as execution_status
 from . import iron_god_model_routing as model_routing
+from . import iron_god_pipeline_trace as pipeline_trace
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_roadmap_progress as roadmap_progress
@@ -187,11 +188,16 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
                     | {"worker_pid": (active.get("worker") or {}).get("pid")}) if isinstance(active, dict) else None)
     except Exception:  # noqa: BLE001
         pass
-    _dev_mode_tick(lane, payload)
+    _dev_mode_tick(lane, payload, final=True)
+    try:  # where every roadmap slice is and what stops it; the engine names its own gaps (read-only, never fatal)
+        pipeline_trace.refresh(lane.root, free_gib=available_gib(),
+                               need_gib=model_routing.required_gib(default_ollama_model().split("/", 1)[-1]))
+    except Exception:  # noqa: BLE001
+        pass
     return payload
 
 
-def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any]) -> None:
+def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any], final: bool = False) -> None:
     """Owner's standing rule (2026-11-08): if development stalls on memory, enter Dev Mode and carry on.
 
     The lane only reaches a memory wait after the owner's execution authority was verified. The rule itself needs authorised
@@ -204,9 +210,17 @@ def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any]) -> None:
     try:
         status = str(payload.get("status") or "")
         route = payload.get("route") or {}
+        waiting = status == "WAITING_FOR_MEMORY" and payload.get("work_waiting") is True
+        carried = getattr(lane, "planning_memory_wait", None)
+        if final and carried is not None:
+            # Local decomposition or drafting stalled on memory earlier in this pass. The pass's final report (often
+            # IDLE_...) must not erase that stall, or a policy with a stall time above zero could never accumulate it.
+            lane.planning_memory_wait = None
+            if not waiting:
+                waiting, route = True, carried
         out = dev_mode.engine_step(
-            lane.state_root, cfg, waiting_for_memory=(status == "WAITING_FOR_MEMORY" and payload.get("work_waiting") is True),
-            idle=status.startswith("IDLE"), required_gib=route.get("required_gib"), free_gib=route.get("available_gib"))
+            lane.state_root, cfg, waiting_for_memory=waiting,
+            idle=status.startswith("IDLE") and not waiting, required_gib=route.get("required_gib"), free_gib=route.get("available_gib"))
         if out and out.get("action") in {"ENTER", "RESTORED", "RESTORE_PENDING", "NO_HELP", "LIMIT", "COOLDOWN"}:
             execution_status.note(execution_status.execution_dir(lane.root), "devmode", **out)
             roadmap_refill.log_event(lane.root, "DEV_MODE_" + str(out["action"]), "portfolio", "dev-mode", out)
@@ -214,14 +228,53 @@ def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any]) -> None:
         pass
 
 
-def _approved_work_waiting(lane: ProductLane, release_repo: Path, config: dict[str, Any]) -> bool:
+def verified_owner_roadmaps(lane: ProductLane, repos: list[str]) -> dict[str, set[str]]:
+    """Owner-approved roadmap documents that really exist in each repository's last-synced clone (read from the document).
+
+    A roadmap counts only with an ``OWNER-APPROVED`` status line and the standing-development-authorization section, the same
+    test the roadmap refill applies. Best effort: a repository whose clone cannot be read simply has none.
+    """
+    found: dict[str, set[str]] = {}
+    for repo in repos:
+        try:
+            clone = lane.clone(repo)
+            for ref in ("origin/main", "origin/master", "HEAD"):
+                listing = _git(clone, "ls-tree", "--name-only", ref, "docs/")
+                if listing.returncode == 0:
+                    break
+            else:
+                continue
+            for path in listing.stdout.split():
+                if not roadmap_refill.OWNER_ROADMAP.fullmatch(path):
+                    continue
+                shown = _git(clone, "show", f"{ref}:{path}")
+                text = shown.stdout if shown.returncode == 0 else ""
+                if re.search(r"^Status:\s*OWNER-APPROVED", text, re.M) and "standing development authorization" in text.lower():
+                    found.setdefault(repo, set()).add(path)
+        except Exception:  # noqa: BLE001 - an unreadable clone is not evidence of approval
+            continue
+    return found
+
+
+def _repository_blockers(lane: ProductLane, remote_head: Callable[[str], str] | None) -> set[str]:
+    """Repositories that cannot start work whatever the memory: an open publication or repair, or a failing base preflight."""
+    publications = lane.publications()["items"]
+    blocked = {item["repository"] for item in publications.values() if item["state"] in PUBLICATION_OPEN | REPAIR_STATES}
+    readiness = lane._json(lane.root / "readiness.json", {"repositories": {}}).get("repositories", {})
+    return blocked | unready_repositories(readiness, remote_head or remote_main_head)
+
+
+def _approved_work_waiting(lane: ProductLane, release_repo: Path, config: dict[str, Any],
+                           exclude: set[str] = frozenset()) -> bool:  # type: ignore[assignment]
     """Is there an approved backlog item some repository could start right now (memory aside)? Cheap and side-effect free."""
     try:
         approved, _ = backlog.load_backlog(release_repo)
+        names = [n for n in product_repositories(release_repo, config) if n not in exclude]  # freeing memory cannot unblock these
+        approved = backlog.promote_by_roadmap(approved, verified_owner_roadmaps(lane, names))
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
         return any(backlog.next_item(approved, state, name, max_level=level) is not None  # the backlog keys on "owner/repo"
-                   for name in product_repositories(release_repo, config))
+                   for name in names)
     except Exception:  # noqa: BLE001 - unknown is not "work is waiting"
         return False
 
@@ -980,7 +1033,8 @@ def advance_product_lane(
             waiting_for_memory = why.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
             return _report(lane, {"status": "WAITING_FOR_MEMORY" if waiting_for_memory else "WAITING_FOR_CALIBRATION",
                                   "reason": why.reason, "route": why.as_dict(),
-                                  "work_waiting": bool(waiting_for_memory and _approved_work_waiting(lane, release_repo, config))})
+                                  "work_waiting": bool(waiting_for_memory and _approved_work_waiting(
+                                      lane, release_repo, config, _repository_blockers(lane, remote_head)))})
     else:
         refused = capability({"capability_level": int(config.get("capability_level", 3))})
         if refused:
@@ -1030,6 +1084,7 @@ def advance_product_lane(
     explained: list[dict[str, Any]] = []
     if config.get("planning") == "backlog":  # roadmap-driven: only approved slices, never self-invented ones
         approved, rejected = backlog.load_backlog(release_repo)
+        approved = backlog.promote_by_roadmap(approved, verified_owner_roadmaps(lane, repos))  # the owner's roadmap IS the approval
         state = backlog.load_state(lane.root)
         level = int(config.get("development_level", 1))
         if config.get("roadmap_refill", True):
@@ -1039,6 +1094,7 @@ def advance_product_lane(
                          "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT))},
                 record_progress=config.get("roadmap_progress", True) is True, release=(release_repo, release_sha),
                 draft_locally=config.get("local_draft_author", True) is True, lease_pool=pool)
+        repo_blocked = set(busy)  # repository-level blockers only, before the memory-derived exclusions below
         select_level = min(level, ceiling)  # a momentary memory dip must never reclassify work as "beyond the local builder"
         for name in repos:
             chosen = backlog.next_item(approved, state, name, max_level=select_level)
@@ -1046,6 +1102,19 @@ def advance_product_lane(
                 items[name] = chosen
         busy |= {name for name in repos if name not in items}
         explained = backlog.explain_candidates(approved, state, max_level=select_level)
+        if use_routing and select_level < level and not items:
+            # Approved work exists at a level the policy allows, but memory right now only admits smaller models. That is a
+            # memory wait (so the standing Dev Mode rule can act), not an idle lane.
+            held = next((x for x in (backlog.next_item(approved, state, n, max_level=level)
+                                     for n in repos if n not in repo_blocked) if x is not None), None)
+            if held is not None:
+                held_route = model_routing.route(held.get("level"), measured or {}, free)
+                if held_route.model is None:
+                    by_memory = held_route.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+                    return _report(lane, {"status": "WAITING_FOR_MEMORY" if by_memory else "WAITING_FOR_CALIBRATION",
+                                          "reason": held_route.reason, "repository": held.get("repository"),
+                                          "backlog_item": held.get("id"), "route": held_route.as_dict(),
+                                          "work_waiting": by_memory})  # a calibration gap is not a memory stall
     repo = next_repository(lane, repos, busy, rng)
     if repo is not None and local_drafter.drafting_in_progress(lane.root):
         # the single local model is planning a roadmap slice; start no builder beside it
@@ -1288,6 +1357,13 @@ def log_draft_outcomes(lane: ProductLane, name: str | None, outcomes: list[dict[
         working_memory.record(lane.state_root, repository, kind, detail=f"{outcome['id']}: {outcome.get('reason', '')}"[:200],
                               outcome="BLOCKED" if outcome["status"] in {"FAILED", "ERROR", "NEEDS_ACCEPTANCE_EXAMPLES"}
                               else None)
+    if any(o.get("status") == "WAITING_FOR_MEMORY" for o in outcomes):
+        # The local model could not start the roadmap's decomposition or drafting for lack of memory: that is a development
+        # stall too, so the owner's standing Dev Mode rule must see it (it asks only whether closing programs would help).
+        model = default_ollama_model().split("/", 1)[-1]
+        stall = {"required_gib": model_routing.required_gib(model), "available_gib": available_gib()}
+        lane.planning_memory_wait = stall  # carried to this pass's final report so the stall clock is not reset
+        _dev_mode_tick(lane, {"status": "WAITING_FOR_MEMORY", "work_waiting": True, "route": stall})
 
 
 def spawn_progress_preflight(release_repo: Path, release_sha: str, worktree: Path, result: Path,

@@ -56,6 +56,16 @@ def _execution_view(state_root:Path)->dict:
                      builder_model=lm.default_ollama_model())
         view["resources"]["top_consumers"]=_top_memory_users()
         try:
+            lane_dir=state_root/"iron-god-products"
+            rep=json.loads((lane_dir/"pipeline-report.json").read_text(encoding="utf-8"))
+            events=[json.loads(l) for l in (lane_dir/"pipeline-events.jsonl").read_text(encoding="utf-8").splitlines()[-6:] if l.strip()]
+            view["pipeline"]={"observed_at_utc":rep.get("observed_at_utc"),"requests":rep.get("requests"),"by_blocker":rep.get("by_blocker"),
+                "attention":[{k:s.get(k) for k in ("repository","slice","level","stage","status")}|{"code":(s.get("blocker") or {}).get("code"),
+                    "text":(s.get("blocker") or {}).get("text")} for s in rep.get("slices",[]) if s.get("status") in ("BLOCKED","STUCK","WAITING")][:10],
+                "recent_triggers":[{k:e.get(k) for k in ("at_utc","repository","slice","code","text")} for e in events]}
+        except (OSError,ValueError):
+            view["pipeline"]=None
+        try:
             from project_orchestrator import iron_god_dev_mode as dev
             st=dev.status(state_root/dev.STATE_NAME)
             try: auto=json.loads((state_root/dev.AUTO_NAME).read_text(encoding="utf-8"))
