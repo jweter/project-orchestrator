@@ -57,7 +57,12 @@ def _execution_view(state_root:Path)->dict:
         view["resources"]["top_consumers"]=_top_memory_users()
         try:
             from project_orchestrator import iron_god_dev_mode as dev
-            view["resources"]["dev_mode"]={"active":bool(dev.status(state_root/dev.STATE_NAME).get("active"))}
+            st=dev.status(state_root/dev.STATE_NAME)
+            try: auto=json.loads((state_root/dev.AUTO_NAME).read_text(encoding="utf-8"))
+            except (OSError,ValueError): auto={}
+            view["resources"]["dev_mode"]={"active":bool(st.get("active")),"entered_by":st.get("entered_by"),
+                "entered_at_utc":st.get("entered_at_utc"),"closed":[c.get("name") for c in st.get("closed",[])],
+                "last_decision":auto.get("last_decision")}
         except Exception:
             view["resources"]["dev_mode"]={"active":None}
         return view

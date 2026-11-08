@@ -192,7 +192,8 @@ def alive_pids(pids: list[int]) -> set[int]:
 
 def enter(groups: list[Group], state_path: Path, *, confirmed: bool, closer: Callable[..., bool] = system_closer,
           alive: Callable[[list[int]], set[int]] = alive_pids, free_gib: Callable[[], float] | None = None,
-          sleep: Callable[[float], None] = time.sleep, grace: float = GRACE_SECONDS) -> dict[str, Any]:
+          sleep: Callable[[float], None] = time.sleep, grace: float = GRACE_SECONDS, entered_by: str = "owner",
+          reason: str = "") -> dict[str, Any]:
     """Close the planned groups politely, record what was closed, and report what is still running and why."""
     if not confirmed:
         raise PermissionError("Dev Mode closes programs: pass confirmed=True (the CLI needs --yes).")
@@ -223,7 +224,8 @@ def enter(groups: list[Group], state_path: Path, *, confirmed: bool, closer: Cal
             closed.append(record)
     sleep(2.0)
     after = free_gib() if free_gib else None
-    state = {"schema_version": SCHEMA, "active": True, "entered_at_utc": _now(), "closed": closed, "refused": refused,
+    state = {"schema_version": SCHEMA, "active": True, "entered_at_utc": _now(), "entered_by": entered_by, "reason": reason,
+             "closed": closed, "refused": refused,
              "forced_helper_pids": forced, "free_gib_before": before, "free_gib_after": after}
     state_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = state_path.with_suffix(".tmp")
@@ -271,3 +273,121 @@ def status(state_path: Path) -> dict[str, Any]:
         return dict(json.loads(state_path.read_text(encoding="utf-8")))
     except (OSError, ValueError):
         return {"active": False}
+
+
+# --- the standing rule: enter automatically when development is stalled by memory ------------------------------------------
+# Owner decision 2026-11-08: "if development stalls because of RAM then enter into dev mode and try to continue". The rule is
+# deliberately narrow so it cannot misfire: it needs Take the Wheel to be active (the lane only gets here then), authorised
+# work blocked by memory alone for ``stall_minutes`` in a row, and proof that the approved close list would actually make the
+# blocked model fit. It never closes anything when that would not help, and it is rate limited.
+AUTO_NAME = "dev-mode-auto.json"
+AUTO_DEFAULTS = {"auto": False, "stall_minutes": 3.0, "exit_idle_minutes": 15.0, "cooldown_minutes": 30.0,
+                 "max_per_day": 2, "margin_gib": 0.3}
+
+
+def auto_config(raw: Any) -> dict[str, Any]:
+    """The policy's ``dev_mode`` section with safe defaults: absent or malformed means the rule is OFF."""
+    if not isinstance(raw, dict) or raw.get("auto") is not True:
+        return dict(AUTO_DEFAULTS)
+    merged = dict(AUTO_DEFAULTS)
+    merged["auto"] = True
+    for key in ("stall_minutes", "exit_idle_minutes", "cooldown_minutes", "margin_gib"):
+        value = raw.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
+            merged[key] = float(value)
+    limit = raw.get("max_per_day")
+    if isinstance(limit, int) and not isinstance(limit, bool) and limit >= 0:
+        merged["max_per_day"] = limit
+    return merged
+
+
+@dataclass(frozen=True)
+class AutoDecision:
+    action: str  # OFF, ALREADY_ACTIVE, WAIT, LIMIT, COOLDOWN, NO_HELP, ENTER
+    reason: str
+
+
+def auto_decide(config: dict[str, Any], *, now: float, stalled_since: float | None, active: bool, last_exit: float | None,
+                entries_today: int, reclaimable_gib: float, free_gib: float | None, required_gib: float | None) -> AutoDecision:
+    if not config["auto"]:
+        return AutoDecision("OFF", "the standing rule is not enabled in the policy")
+    if active:
+        return AutoDecision("ALREADY_ACTIVE", "Dev Mode is already on")
+    if stalled_since is None:
+        return AutoDecision("WAIT", "memory is not what is blocking development")
+    stalled_for = (now - stalled_since) / 60.0
+    if stalled_for < config["stall_minutes"]:
+        return AutoDecision("WAIT", f"stalled on memory for {stalled_for:.0f} of {config['stall_minutes']:.0f} minutes")
+    if entries_today >= config["max_per_day"]:
+        return AutoDecision("LIMIT", f"already entered {entries_today} time(s) today (limit {config['max_per_day']})")
+    if last_exit is not None and (now - last_exit) / 60.0 < config["cooldown_minutes"]:
+        return AutoDecision("COOLDOWN", f"left Dev Mode {(now - last_exit) / 60.0:.0f} min ago (cooldown {config['cooldown_minutes']:.0f})")
+    if free_gib is None or required_gib is None:
+        return AutoDecision("WAIT", "free or required memory is unknown, so closing programs cannot be shown to help")
+    potential = free_gib + reclaimable_gib
+    if potential < required_gib + config["margin_gib"]:
+        return AutoDecision("NO_HELP", (f"closing everything on the approved list would free about {reclaimable_gib:.1f} GiB, giving "
+                                         f"{potential:.1f} GiB; {required_gib + config['margin_gib']:.1f} GiB is needed. Nothing was closed."))
+    return AutoDecision("ENTER", f"stalled {stalled_for:.0f} min; closing the list gives about {potential:.1f} GiB of the {required_gib:.1f} GiB needed")
+
+
+def _read_auto(path: Path) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_atomic(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def engine_step(state_root: Path, raw_config: Any, *, waiting_for_memory: bool, idle: bool, required_gib: float | None,
+                free_gib: float | None, now: float | None = None, plan_fn: Callable[[], list[Group]] | None = None,
+                enter_fn: Callable[..., dict[str, Any]] | None = None,
+                restore_fn: Callable[..., dict[str, Any]] | None = None) -> dict[str, Any] | None:
+    """One tick of the standing rule, called with what the lane just observed. Returns what it did (or None: rule is off).
+
+    ``waiting_for_memory`` means authorised work exists and memory is the only thing stopping it; ``idle`` means there is no
+    work to build. Both false means the engine is doing something else, which resets both clocks.
+    """
+    config = auto_config(raw_config)
+    if not config["auto"]:
+        return None
+    now = time.time() if now is None else now
+    state_root = Path(state_root)
+    auto_path, state_path = state_root / AUTO_NAME, state_root / STATE_NAME
+    auto = _read_auto(auto_path)
+    active = bool(status(state_path).get("active"))
+    out: dict[str, Any] | None = None
+
+    auto["stalled_since"] = (auto.get("stalled_since") or now) if waiting_for_memory else None
+    auto["idle_since"] = (auto.get("idle_since") or now) if idle else None
+
+    if active and auto["idle_since"] is not None and (now - auto["idle_since"]) / 60.0 >= config["exit_idle_minutes"]:
+        result = (restore_fn or restore)(state_path, config=load_config(state_root))
+        auto["last_exit"] = now
+        auto["idle_since"] = None
+        out = {"action": "RESTORED", "reason": f"nothing to build for {config['exit_idle_minutes']:.0f} minutes",
+               "restored": [r.get("name") for r in result.get("restored", [])]}
+    elif waiting_for_memory and not active:
+        entries_today = sum(1 for t in auto.get("entries", []) if now - float(t) < 86400)
+        groups = (plan_fn or (lambda: plan(config=load_config(state_root))))()
+        reclaim = summary(groups)["reclaimable_mib"] / 1024.0
+        decision = auto_decide(config, now=now, stalled_since=auto["stalled_since"], active=active, last_exit=auto.get("last_exit"),
+                               entries_today=entries_today, reclaimable_gib=reclaim, free_gib=free_gib, required_gib=required_gib)
+        out = {"action": decision.action, "reason": decision.reason}
+        if decision.action == "ENTER":
+            state = (enter_fn or enter)(groups, state_path, confirmed=True,
+                                        free_gib=(lambda: free_gib) if free_gib is not None else None,
+                                        entered_by="engine-auto", reason=decision.reason)
+            auto["entries"] = [t for t in auto.get("entries", []) if now - float(t) < 86400] + [now]
+            auto["stalled_since"] = None
+            out.update(closed=[c["name"] for c in state.get("closed", [])], refused=[r["name"] for r in state.get("refused", [])])
+    auto["last_decision"] = {"at_utc": _now(), **(out or {"action": "NONE", "reason": "nothing for the rule to do"})}
+    _write_atomic(auto_path, auto)
+    return out

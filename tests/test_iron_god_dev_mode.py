@@ -207,3 +207,195 @@ def test_the_launchers_always_show_the_plan_first_and_only_enter_with_an_explici
     assert enter.index("dev_mode.py plan") < enter.index("pause") < enter.index("enter --yes")     # plan, confirm, then act
     assert "restore" in (folder / "Exit-Dev-Mode.bat").read_text(encoding="utf-8")
     assert " plan" in (folder / "Dev-Mode-Plan.bat").read_text(encoding="utf-8")
+
+
+# --- the owner's standing rule (2026-11-08): stalled on memory -> enter Dev Mode and carry on --------------------------------
+ON = {"auto": True, "stall_minutes": 3, "exit_idle_minutes": 15, "cooldown_minutes": 30, "max_per_day": 2, "margin_gib": 0.3}
+
+
+def test_the_rule_is_off_unless_the_policy_explicitly_turns_it_on() -> None:
+    for raw in (None, {}, "yes", {"auto": "true"}, {"auto": 1}, {"auto": False}):
+        assert dev.auto_config(raw)["auto"] is False, raw
+    assert dev.auto_config(ON)["auto"] is True
+    messy = dev.auto_config({"auto": True, "stall_minutes": -5, "max_per_day": True, "cooldown_minutes": "soon"})
+    assert messy["stall_minutes"] == 3.0 and messy["max_per_day"] == 2 and messy["cooldown_minutes"] == 30.0   # bad values fall back to safe defaults
+
+
+def decide(**over):
+    base = dict(now=10_000.0, stalled_since=10_000.0 - 4 * 60, active=False, last_exit=None, entries_today=0,
+                reclaimable_gib=2.6, free_gib=5.0, required_gib=7.3)
+    base.update(over)
+    return dev.auto_decide(dev.auto_config(ON), **base)
+
+
+def test_every_condition_must_hold_before_the_engine_closes_anything() -> None:
+    assert decide().action == "ENTER"
+    assert dev.auto_decide(dev.auto_config(None), now=1, stalled_since=0, active=False, last_exit=None, entries_today=0,
+                           reclaimable_gib=9, free_gib=1, required_gib=2).action == "OFF"
+    assert decide(active=True).action == "ALREADY_ACTIVE"
+    assert decide(stalled_since=None).action == "WAIT"                                    # memory is not what is blocking
+    assert decide(stalled_since=10_000.0 - 2 * 60).action == "WAIT"                       # not stalled long enough yet
+    assert decide(entries_today=2).action == "LIMIT"
+    assert decide(last_exit=10_000.0 - 10 * 60).action == "COOLDOWN"
+    assert decide(free_gib=None).action == "WAIT" and decide(required_gib=None).action == "WAIT"   # unknown cannot be shown to help
+
+
+def test_it_never_closes_programs_when_that_would_not_help() -> None:
+    result = decide(free_gib=3.0, reclaimable_gib=2.6, required_gib=7.3)                  # 5.6 GiB even with everything closed
+    assert result.action == "NO_HELP" and "Nothing was closed" in result.reason and "5.6" in result.reason
+    assert decide(free_gib=4.8, reclaimable_gib=2.6, required_gib=7.3).action == "NO_HELP"   # 7.4 < 7.3 + 0.3 margin
+    assert decide(free_gib=5.0, reclaimable_gib=2.6, required_gib=7.3).action == "ENTER"     # 7.6 >= 7.6
+
+
+class Clock:
+    def __init__(self, t=1_000_000.0):
+        self.t = t
+
+    def step(self, minutes):
+        self.t += minutes * 60
+        return self.t
+
+
+class Hooks:
+    def __init__(self):
+        self.entered, self.restored = [], []
+
+    def plan(self):
+        return dev.plan(MACHINE, self_pid=21)
+
+    def enter(self, groups, state_path, **kw):
+        self.entered.append(kw)
+        state = {"active": True, "closed": [{"name": "chrome"}, {"name": "OneDrive"}], "refused": []}
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        return state
+
+    def restore(self, state_path, **kw):
+        self.restored.append(1)
+        state_path.write_text(json.dumps({"active": False}), encoding="utf-8")
+        return {"restored": [{"name": "chrome"}]}
+
+
+def tick(tmp_path, clock, *, waiting=False, idle=False, free=6.0, required=7.3, hooks=None, config=ON):
+    hooks = hooks or Hooks()
+    out = dev.engine_step(tmp_path, config, waiting_for_memory=waiting, idle=idle, required_gib=required, free_gib=free,
+                          now=clock.t, plan_fn=hooks.plan, enter_fn=hooks.enter, restore_fn=hooks.restore)
+    return out, hooks
+
+
+def test_the_stall_clock_enters_exactly_once_after_the_policy_time_and_records_who_did_it(tmp_path: Path) -> None:
+    clock, hooks = Clock(), Hooks()
+    assert tick(tmp_path, clock, waiting=True, hooks=hooks)[0]["action"] == "WAIT"
+    clock.step(2)
+    assert tick(tmp_path, clock, waiting=True, hooks=hooks)[0]["action"] == "WAIT" and hooks.entered == []
+    clock.step(2)
+    out, _ = tick(tmp_path, clock, waiting=True, hooks=hooks)
+    assert out["action"] == "ENTER" and out["closed"] == ["chrome", "OneDrive"] and len(hooks.entered) == 1
+    assert hooks.entered[0]["entered_by"] == "engine-auto" and "stalled" in hooks.entered[0]["reason"] and hooks.entered[0]["confirmed"] is True
+    clock.step(5)
+    tick(tmp_path, clock, waiting=True, hooks=hooks)
+    assert len(hooks.entered) == 1                                                       # already on: never a second entry
+
+
+def test_a_stall_that_clears_resets_the_clock(tmp_path: Path) -> None:
+    clock, hooks = Clock(), Hooks()
+    tick(tmp_path, clock, waiting=True, hooks=hooks)
+    clock.step(2)
+    tick(tmp_path, clock, waiting=False, hooks=hooks)                                    # the engine did something else: memory was fine
+    clock.step(2)
+    out, _ = tick(tmp_path, clock, waiting=True, hooks=hooks)
+    assert out["action"] == "WAIT" and hooks.entered == []                               # the 2 earlier minutes do not count
+
+
+def test_when_closing_the_list_would_not_help_nothing_is_closed_and_the_reason_is_recorded(tmp_path: Path) -> None:
+    clock, hooks = Clock(), Hooks()
+    tick(tmp_path, clock, waiting=True, free=2.0, hooks=hooks)
+    clock.step(4)
+    out, _ = tick(tmp_path, clock, waiting=True, free=2.0, hooks=hooks)
+    assert out["action"] == "NO_HELP" and hooks.entered == []
+    assert "Nothing was closed" in json.loads((tmp_path / dev.AUTO_NAME).read_text(encoding="utf-8"))["last_decision"]["reason"]
+
+
+def test_it_restores_after_the_idle_time_then_respects_the_cooldown_and_the_daily_limit(tmp_path: Path) -> None:
+    clock, hooks = Clock(), Hooks()
+    tick(tmp_path, clock, waiting=True, hooks=hooks)
+    clock.step(4)
+    assert tick(tmp_path, clock, waiting=True, hooks=hooks)[0]["action"] == "ENTER"
+    tick(tmp_path, clock, idle=True, hooks=hooks)                                         # nothing to build
+    clock.step(14)
+    assert tick(tmp_path, clock, idle=True, hooks=hooks)[0] is None and hooks.restored == []
+    clock.step(2)
+    out, _ = tick(tmp_path, clock, idle=True, hooks=hooks)
+    assert out["action"] == "RESTORED" and hooks.restored == [1] and out["restored"] == ["chrome"]
+    clock.step(1)
+    tick(tmp_path, clock, waiting=True, hooks=hooks)
+    clock.step(4)
+    assert tick(tmp_path, clock, waiting=True, hooks=hooks)[0]["action"] == "COOLDOWN"    # left only a few minutes ago
+    clock.step(40)                                                                        # cooldown over and still stalled: back in
+    assert tick(tmp_path, clock, waiting=True, hooks=hooks)[0]["action"] == "ENTER" and len(hooks.entered) == 2
+    tick(tmp_path, clock, idle=True, hooks=hooks)
+    clock.step(16)
+    tick(tmp_path, clock, idle=True, hooks=hooks)
+    clock.step(35)
+    tick(tmp_path, clock, waiting=True, hooks=hooks)
+    clock.step(4)
+    assert tick(tmp_path, clock, waiting=True, hooks=hooks)[0]["action"] == "LIMIT" and len(hooks.entered) == 2   # 2 per day
+
+
+def test_a_disabled_rule_does_nothing_and_writes_nothing(tmp_path: Path) -> None:
+    out, hooks = tick(tmp_path, Clock(), waiting=True, config=None)
+    assert out is None and hooks.entered == [] and not (tmp_path / dev.AUTO_NAME).exists()
+
+
+def test_the_shipped_policy_records_the_owners_standing_rule_with_its_date_and_limits() -> None:
+    policy = json.loads((ROOT / "engineering" / "iron-god-commissioning.json").read_text(encoding="utf-8"))["portfolio_rotation"]
+    config = dev.auto_config(policy["dev_mode"])
+    assert config["auto"] is True and config["stall_minutes"] == 0 and config["max_per_day"] == 2
+    text = policy["dev_mode_decision"]
+    assert text.startswith("2026-11-08") and "never touched" in text and "politely" in text and "Take the Wheel" in text
+
+
+def lane_for(tmp_path):
+    from types import SimpleNamespace
+    return SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None)
+
+
+def test_the_lane_feeds_the_rule_only_when_approved_work_is_actually_waiting_on_memory(tmp_path, monkeypatch) -> None:
+    from project_orchestrator import iron_god_product_lane as product_lane
+
+    seen = []
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw) or None)
+    lane = lane_for(tmp_path)
+    lane.dev_mode_config = ON
+    product_lane._report(lane, {"status": "WAITING_FOR_MEMORY", "work_waiting": True, "route": {"required_gib": 7.3, "available_gib": 5.0}})
+    product_lane._report(lane, {"status": "WAITING_FOR_MEMORY", "work_waiting": False, "route": {"required_gib": 3.9, "available_gib": 2.0}})
+    product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})
+    product_lane._report(lane, {"status": "DISPATCHED"})
+    assert [(k["waiting_for_memory"], k["idle"]) for k in seen] == [(True, False), (False, False), (False, True), (False, False)]
+    assert seen[0]["required_gib"] == 7.3 and seen[0]["free_gib"] == 5.0
+    lane.dev_mode_config = None                                                          # the rule not configured: never consulted
+    seen.clear()
+    product_lane._report(lane, {"status": "WAITING_FOR_MEMORY", "work_waiting": True})
+    assert seen == []
+
+
+def test_a_failing_rule_can_never_break_the_lane(tmp_path, monkeypatch) -> None:
+    from project_orchestrator import iron_god_product_lane as product_lane
+
+    def boom(*a, **k):
+        raise RuntimeError("process list unavailable")
+
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", boom)
+    lane = lane_for(tmp_path)
+    lane.dev_mode_config = ON
+    assert product_lane._report(lane, {"status": "WAITING_FOR_MEMORY", "work_waiting": True})["status"] == "WAITING_FOR_MEMORY"
+
+
+def test_with_the_owners_zero_stall_time_the_first_memory_blocked_tick_enters_when_it_would_help(tmp_path: Path) -> None:
+    """Owner, 2026-11-08: Take the Wheel is the signal to develop; there is no waiting period before Dev Mode."""
+    policy = json.loads((ROOT / "engineering" / "iron-god-commissioning.json").read_text(encoding="utf-8"))["portfolio_rotation"]["dev_mode"]
+    clock, hooks = Clock(), Hooks()
+    out, _ = tick(tmp_path, clock, waiting=True, hooks=hooks, config=policy)
+    assert out["action"] == "ENTER" and len(hooks.entered) == 1
+    hopeless = Hooks()
+    out, _ = tick(tmp_path / "other", clock, waiting=True, free=2.0, hooks=hopeless, config=policy)
+    assert out["action"] == "NO_HELP" and hopeless.entered == []                         # no delay, but still never when it cannot help
