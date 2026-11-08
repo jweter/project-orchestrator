@@ -1046,6 +1046,18 @@ def advance_product_lane(
                 items[name] = chosen
         busy |= {name for name in repos if name not in items}
         explained = backlog.explain_candidates(approved, state, max_level=select_level)
+        if use_routing and select_level < level and not items:
+            # Approved work exists at a level the policy allows, but memory right now only admits smaller models. That is a
+            # memory wait (so the standing Dev Mode rule can act), not an idle lane.
+            held = next((x for x in (backlog.next_item(approved, state, n, max_level=level) for n in repos) if x is not None), None)
+            if held is not None:
+                held_route = model_routing.route(held.get("level"), measured or {}, free)
+                if held_route.model is None:
+                    by_memory = held_route.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+                    return _report(lane, {"status": "WAITING_FOR_MEMORY" if by_memory else "WAITING_FOR_CALIBRATION",
+                                          "reason": held_route.reason, "repository": held.get("repository"),
+                                          "backlog_item": held.get("id"), "route": held_route.as_dict(),
+                                          "work_waiting": by_memory})  # a calibration gap is not a memory stall
     repo = next_repository(lane, repos, busy, rng)
     if repo is not None and local_drafter.drafting_in_progress(lane.root):
         # the single local model is planning a roadmap slice; start no builder beside it

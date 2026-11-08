@@ -2426,3 +2426,17 @@ def test_the_routed_model_reaches_the_workers_environment(env, monkeypatch):
     pl.spawn_product_worker(env.release, env.state / "p.json", env.state / "h.json", release_sha="a" * 40,
                             log_path=env.state / "log.txt", model="qwen3.5:4b")
     assert seen["env"]["EXPONENTIAL_BUILDER_MODEL"] == "ollama/qwen3.5:4b"
+
+
+def test_approved_work_that_only_memory_holds_back_is_a_memory_wait_not_an_idle_lane(env, monkeypatch):
+    """Found live on 2026-11-08: with 5.7 GiB free only the 3B model fits, the level cap hid every level-2 item and the lane
+    reported IDLE_NO_APPROVED_BACKLOG_ITEM, so the Dev Mode rule never saw a stall. It must be a WAITING_FOR_MEMORY."""
+    directed_env(env, [direct_item("L2-1", REPOS[0])])                                                # a real, dispatchable level-2 item
+    runner = RoutedRunner()
+    waiting = routed_step(env, runner, 5.0, measured(**FULL))
+    assert waiting["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0
+    assert waiting["work_waiting"] is True and waiting["backlog_item"] == "L2-1" and waiting["repository"] == REPOS[0]
+    assert "level 2" in waiting["reason"] and waiting["route"]["required_gib"] == pytest.approx(6.1)   # what closing programs must reach
+    assert waiting["route"]["model"] is None                                                           # no downgrade to the 3B model
+    idle = routed_step(env, RoutedRunner(), 9.0, measured(**{"qwen2.5-coder:3b": 1}))                  # no model at all can take level 2
+    assert idle["status"] != "WAITING_FOR_MEMORY"                                                      # that is a calibration gap, not memory
