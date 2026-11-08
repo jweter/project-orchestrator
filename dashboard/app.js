@@ -42,9 +42,33 @@ function renderAlerts(alerts=[]){
   }).join("");
 }
 function renderMode(mode={}){
+  const known=mode.enabled===true||mode.enabled===false;
   const on=mode.enabled===true;
-  $("#mode-label").textContent=on?"Human Mode active":"Full Power active";
-  document.querySelectorAll("#mode-control button").forEach(b=>b.classList.toggle("selected",(on&&b.dataset.action==="HUMAN_MODE")||(!on&&b.dataset.action==="FULL_POWER")));
+  $("#mode-label").textContent=!known?"Controller status unknown":on?"Human Mode active":"Full Power active";
+  document.querySelectorAll("#mode-control button").forEach(b=>b.classList.toggle("selected",known&&((on&&b.dataset.action==="HUMAN_MODE")||(!on&&b.dataset.action==="FULL_POWER"))));
+}
+function renderLanes(lanes={}){
+  const descriptions=[
+    ["product","Product lane","Roadmap-derived development; a reported PID is not verified process liveness."],
+    ["canon","Iron God Canon","Commissioning and engine-development lane."],
+    ["legacy_pool","Legacy worker pool","Separate from product-lane dispatch; zero here does not imply engine idleness."],
+    ["dispatch","Legacy dispatch authority","This does not by itself authorize Canon or product execution."]
+  ];
+  $("#lanes").innerHTML=descriptions.map(([key,title,note])=>{
+    const lane=lanes[key]||{status:"UNKNOWN"},status=lane.status||"UNKNOWN",stale=status==="STALE";
+    const timestamp=Number.isFinite(lane.age_seconds)?fmtAge(lane.age_seconds):"unknown observation time";
+    const details=[note,"Reported: "+(lane.reported_status||"unknown"),"Evidence: "+timestamp];
+    if(key==="product"){
+      if(lane.repository)details.push("Repository: "+lane.repository);
+      if(lane.backlog_item||lane.packet_id)details.push("Slice: "+(lane.backlog_item||lane.packet_id));
+      if(lane.worker_pid)details.push("Reported worker PID: "+lane.worker_pid+" (not independently verified)");
+      if(lane.worker_summary)details.push("Latest result: "+lane.worker_summary);
+    }
+    if(key==="legacy_pool")details.push("Reported workers: "+(lane.running_total??"unknown"));
+    if(key==="dispatch")details.push("Controller decision: "+(lane.permitted===true?"permitted":lane.permitted===false?"denied":"unknown")+" · candidates: "+(Array.isArray(lane.candidate_products)?lane.candidate_products.length:"unknown"));
+    const cls=stale||status==="UNKNOWN"?"warn":status==="BLOCKED"?"bad":status==="DISPATCHED"?"good":"";
+    return card(title,details.map(esc).join("<br>"),'<span class="status '+cls+'">'+esc(status)+'</span>');
+  }).join("");
 }
 function renderProgress(h){
   const p=h?.command_progress,receipt=h?.last_control_receipt;
@@ -104,14 +128,16 @@ async function refresh(){
     const actionableAlerts=(h?.alerts||[]).filter(a=>a.severity!=="INFO").length;
     $("#hero-detail").textContent=overall==="LIVE"&&!snapshotFresh?"Control channels live · planner snapshot "+fmtAge(snapshot.age_seconds):actionableAlerts?actionableAlerts+" active alert"+(actionableAlerts===1?"":"s"):overall==="LIVE"?"All control channels are online":"Verifying subsystem state";
     $("#last-refresh").textContent="Heartbeat "+fmtClock(h?.recorded_at);
-    renderExecution(h?.execution);renderAlerts(h?.alerts||[]);renderMode(h?.human_mode||{});renderHealth(subs);renderMachine(h?.machine||{},h?.recorded_at);renderProgress(h);renderHistory(h?.control_history||[]);
+    renderExecution(h?.execution);renderLanes(h?.work_lanes||{});renderAlerts(h?.alerts||[]);renderMode(h?.human_mode||{});renderHealth(subs);renderMachine(h?.machine||{},h?.recorded_at);renderProgress(h);renderHistory(h?.control_history||[]);
     const c=d.outcome_counters||{},f=d.flow||{};
     $("#summary").innerHTML=[["Workers",d.active_count||0],["Verified",c.merged_verified||0],["Repairs",c.repairs||0],["Adv/hr",Number(f.verified_advancement_per_worker_hour||0).toFixed(2)]].map(x=>metric(x[1],x[0])).join("");
     const products=d.products||{};
     $("#products").innerHTML=Object.entries(products).map(([name,p])=>card(name,'Candidates '+esc(p.candidate_count||0)+' · Selected '+esc(p.selected_count||0),'<span class="status">QUEUE</span>')).join("")||card("No planner snapshot","Waiting for Foundry telemetry.");
     const grantWorkers=(d.active_work||[]).map(w=>card(w.repository||"Worker",'Slice '+esc(w.slice_id)+' · '+esc(w.runner_id),'<span class="status good">'+esc(w.state)+'</span>'));
     const poolWorkers=(d.active_worker_pool||[]).map(w=>{const s=w.activity_status||"UNKNOWN";return card(w.product||"Worker",esc(w.worker_id)+' · slot '+esc(w.slot),'<span class="status '+statusClass(s==="RUNNING"?"LIVE":s)+'">'+esc(s)+'</span>')});
-    $("#workers").innerHTML=(grantWorkers.length?grantWorkers:poolWorkers).join("")||card("No active workers","No active grant or worker-pool activity is currently reported.");
+    const product=h?.work_lanes?.product;
+    const productReport=product?.status==="DISPATCHED"?card("Product lane dispatch reported",esc(product.repository||"Unknown repository")+" · "+esc(product.backlog_item||product.packet_id||"Unknown task")+" · reported PID "+esc(product.worker_pid||"unknown"),'<span class="status warn">UNVERIFIED LIVE PID</span>'):"";
+    $("#workers").innerHTML=(grantWorkers.length?grantWorkers:poolWorkers).join("")||productReport||card("No legacy workers reported","No current legacy worker-pool activity; check the separate Canon and product lane evidence above.");
     $("#recent").innerHTML=(d.recent_completed_work||[]).slice(0,6).map(w=>card(w.repository||"Completed",esc(w.result_status)+' · '+esc(w.outcome_quality)+(w.pr_number?' · PR #'+esc(w.pr_number):''))).join("")||card("No recent work","No terminal work in the current snapshot.");
     document.body.classList.remove("dashboard-offline");
   }catch(e){

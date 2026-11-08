@@ -91,6 +91,55 @@ def _write_json(path:Path,payload:dict):
     tmp.write_text(json.dumps(payload,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     tmp.replace(path)
 
+def _reported_lane(path:Path, *, now:datetime, fields:tuple[str,...])->dict:
+    """Show only recent, attributable lane evidence; stale files never imply an active worker."""
+    row=_read_json(path)
+    if not isinstance(row,dict):
+        return {"status":"UNKNOWN","reported_status":None,"fresh":False,"age_seconds":None}
+    reported_at=row.get("observed_at_utc") or row.get("recorded_at_utc")
+    age=None
+    if isinstance(reported_at,str):
+        try:
+            stamp=datetime.fromisoformat(reported_at.replace("Z","+00:00"))
+            if stamp.tzinfo is not None:
+                delta=(now-stamp.astimezone(timezone.utc)).total_seconds()
+                age=max(0.0,delta) if delta>=-5 else None
+        except ValueError:
+            pass
+    fresh=age is not None and age<=900
+    status=str(row.get("status") or "REPORTED")
+    return {"status":status if fresh else "STALE","reported_status":status,
+            "fresh":fresh,"age_seconds":round(age,1) if age is not None else None,
+            "observed_at_utc":reported_at,**{k:row.get(k) for k in fields}}
+
+
+def _development_lanes(state_root:Path, *, now:datetime|None=None)->dict:
+    """Distinct commissioning, product and legacy-pool reports; no inferred worker process liveness."""
+    now=now or datetime.now(timezone.utc)
+    product=_reported_lane(state_root/"iron-god-products"/"lane-status.json",now=now,
+        fields=("repository","packet_id","backlog_item","worker_pid","worker_status","worker_summary"))
+    canon=_reported_lane(state_root/"iron-god-canon"/"lane-status.json",now=now,
+        fields=("awaiting_remediation",))
+    pool=_reported_lane(state_root/"parallel-worker-pool.json",now=now,fields=())
+    if pool["status"]!="UNKNOWN":
+        row=_read_json(state_root/"parallel-worker-pool.json") or {}
+        pool["running_total"]=(row.get("pool") or {}).get("running_total")
+    dispatch=_reported_lane(state_root/"supervisor-execution-authority.json",now=now,
+        fields=("permitted","candidate_products","supervisor_instance_id"))
+    return {"product":product,"canon":canon,"legacy_pool":pool,"dispatch":dispatch}
+
+
+def _owner_mode(state_root:Path)->dict:
+    """Only the authenticated owner controller is authoritative; never read retired human-mode.json."""
+    try:
+        from project_orchestrator.human_ownership import AUTHORIZED,OWNER_CONTROL_ACTIVE,owner_control_status
+        status=owner_control_status(state_root)
+        enabled=True if status==OWNER_CONTROL_ACTIVE else False if status==AUTHORIZED else None
+    except Exception:
+        status,enabled="OWNER_CONTROL_UNVERIFIED",None
+    return {"enabled":enabled,"status":status,"since":None}
+
+
 def _fallback_root(state_root:Path)->Path:
     return state_root.parent/"FallbackControl"
 
@@ -209,7 +258,7 @@ remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine
     receipt=_read_json(control_repo/"control"/"receipt.json") if control_repo else None
     progress=_read_json(fallback/"progress.json")
     history=_read_json(fallback/"history.json") or {"commands":[]}
-    human=_read_json(state_root/"human-mode.json") or {"enabled":False}
+    human=_owner_mode(state_root)
     def state(value): return "LIVE" if value else "OFFLINE"
     subsystems={
         "windows":{"status":"LIVE" if os.name=="nt" else "UNKNOWN","boot":machine.get("boot")},
@@ -235,7 +284,7 @@ remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine
         alerts.append({"severity":"WARNING","code":"MEMORY_HIGH","message":f"Memory usage is {machine['memory_percent']:.0f}%"})
     return {"recorded_at":now.isoformat(),"overall_status":overall_status,
             "subsystems":subsystems,"machine":machine,"alerts":alerts,
-            "human_mode":{"enabled":bool(human.get("enabled")),"since":human.get("since")},
+            "human_mode":human,"work_lanes":_development_lanes(state_root,now=now),
             "command_progress":progress,"control_history":list(history.get("commands",[]))[-20:],
             "last_control_receipt":receipt,"execution":_execution_view(state_root)}
 
