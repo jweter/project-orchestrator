@@ -62,14 +62,15 @@ def required_gib(name: str) -> float:
     return lm.gate_for(name, available=lambda: 0.0).required_gib
 
 
-def start_gib(name: str) -> float:
-    """The least free memory at which the model is started (the 7B is never refused for want of comfortable memory)."""
+def start_gib(name: str, after_pressure: bool = False) -> float:
+    """The least free memory at which the model is started (the 7B is never refused for want of comfortable memory),
+    except shortly after a real memory-pressure cancel, when it waits for its comfortable level (no load-cancel loop)."""
     gate = lm.gate_for(name, available=lambda: 0.0)
-    return gate.required_gib if gate.start_gib is None else gate.start_gib
+    return gate.required_gib if gate.start_gib is None or after_pressure else gate.start_gib
 
 
 def route(level: Any, profiles: dict[str, dict[str, Any]], available_gib: float | None, *,
-          hardware: dict[str, Any] | None = None, ladder: tuple[str, ...] = LADDER) -> Route:
+          hardware: dict[str, Any] | None = None, ladder: tuple[str, ...] = LADDER, after_pressure: bool = False) -> Route:
     """The model for a task of ``level`` given the measured ``profiles`` and the memory available right now."""
     if type(level) is not int or level < 1:
         return Route(None, "SLICE_CAPABILITY_LEVEL_UNDECLARED", None)
@@ -83,7 +84,7 @@ def route(level: Any, profiles: dict[str, dict[str, Any]], available_gib: float 
     if available_gib is None:  # memory unknown is not memory available
         return Route(None, "AVAILABLE_MEMORY_UNKNOWN", level, qualified=tuple(qualified))
     needs = {name: required_gib(name) for name in qualified}
-    starts = {name: start_gib(name) for name in qualified}
+    starts = {name: start_gib(name, after_pressure) for name in qualified}
     admitted = [name for name in qualified if available_gib >= starts[name]]
     if not admitted:
         smallest = min(qualified, key=lambda n: starts[n])
@@ -102,13 +103,13 @@ def route(level: Any, profiles: dict[str, dict[str, Any]], available_gib: float 
 
 
 def max_level_now(profiles: dict[str, dict[str, Any]], available_gib: float | None, *,
-                  hardware: dict[str, Any] | None = None, ladder: tuple[str, ...] = LADDER) -> int:
+                  hardware: dict[str, Any] | None = None, ladder: tuple[str, ...] = LADDER, after_pressure: bool = False) -> int:
     """The highest task level some model could take right now (0: no valid model fits in memory)."""
     if available_gib is None:
         return 0
     best = 0
     for name in ladder:
-        if _valid(profiles, name, 1, hardware) is not None or available_gib < start_gib(name):
+        if _valid(profiles, name, 1, hardware) is not None or available_gib < start_gib(name, after_pressure):
             continue
         best = max(best, int(profiles[_full(name)].get("max_passing_level") or 0))
     return best
