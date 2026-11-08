@@ -24,7 +24,9 @@ def _top_memory_users(runner=None,now=None,limit=6)->list:
     try:
         run=runner or (lambda: subprocess.run(["powershell.exe","-NoProfile","-Command",script],capture_output=True,text=True,timeout=12,check=True).stdout)
         data=json.loads(run() or "[]")
-        rows=[{"name":str(r["name"]),"count":int(r["count"]),"mib":int(r["mib"])} for r in (data if isinstance(data,list) else [data])]
+        from project_orchestrator import iron_god_dev_mode as dev
+        rows=[{"name":str(r["name"]),"count":int(r["count"]),"mib":int(r["mib"]),
+               "dev_mode":dev.classify(str(r["name"]),"")[0]} for r in (data if isinstance(data,list) else [data])]
     except (OSError,subprocess.SubprocessError,ValueError,KeyError,TypeError):
         rows=[]
     _TOP_CACHE.update(at=stamp,rows=rows)
@@ -53,6 +55,11 @@ def _execution_view(state_root:Path)->dict:
                      capability_profile=load_profile(state_root),owner_authorized=authorized,
                      builder_model=lm.default_ollama_model())
         view["resources"]["top_consumers"]=_top_memory_users()
+        try:
+            from project_orchestrator import iron_god_dev_mode as dev
+            view["resources"]["dev_mode"]={"active":bool(dev.status(state_root/dev.STATE_NAME).get("active"))}
+        except Exception:
+            view["resources"]["dev_mode"]={"active":None}
         return view
     except Exception as exc:
         return {"phase":"UNKNOWN","detail":"execution view unavailable: "+type(exc).__name__,"active":False}

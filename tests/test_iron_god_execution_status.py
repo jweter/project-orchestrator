@@ -201,7 +201,7 @@ def test_the_dashboard_names_the_biggest_memory_users_so_a_memory_wait_has_a_vis
     server = _server()
     out = json.dumps([{"name": "chrome", "count": 20, "mib": 2650}, {"name": "ollama", "count": 2, "mib": 120}])
     rows = server._top_memory_users(runner=lambda: out, now=1000.0)
-    assert rows[0] == {"name": "chrome", "count": 20, "mib": 2650}
+    assert rows[0] == {"name": "chrome", "count": 20, "mib": 2650, "dev_mode": "CLOSE"}
     calls = []
     cached = server._top_memory_users(runner=lambda: calls.append(1) or "[]", now=1005.0)   # inside ten seconds: no new probe
     assert cached == rows and calls == []
