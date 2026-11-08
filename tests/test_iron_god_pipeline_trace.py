@@ -154,7 +154,7 @@ def test_the_lane_refreshes_the_trace_on_every_report_and_a_failure_never_breaks
     monkeypatch.setattr(product_lane, "available_gib", lambda: 6.0)
     lane = SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None)
     product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})
-    assert len(calls) == 1 and calls[0][1]["free_gib"] == 6.0 and calls[0][1]["need_gib"] == pytest.approx(7.3)
+    assert len(calls) == 1 and calls[0][1]["free_gib"] == 6.0 and calls[0][1]["need_gib"] == pytest.approx(5.3)
 
     def boom(*a, **k):
         raise RuntimeError("unreadable state")

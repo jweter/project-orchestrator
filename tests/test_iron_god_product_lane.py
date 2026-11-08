@@ -2385,17 +2385,17 @@ def test_the_lane_runs_the_primary_builder_when_memory_admits_it_and_says_why(en
 
 def test_when_memory_is_short_a_smaller_model_takes_only_work_it_has_demonstrated(env):
     runner = RoutedRunner()
-    result = routed_step(env, runner, 6.5, measured(**FULL), level=2)
-    assert result["status"] == "DISPATCHED" and runner.models == ["qwen3.5:4b"]
+    result = routed_step(env, runner, 5.0, measured(**FULL), level=1)
+    assert result["status"] == "DISPATCHED" and runner.models == ["qwen2.5-coder:3b"]
     active = json.loads(pl.ProductLane(env.state).active_path.read_text(encoding="utf-8"))
-    assert active["route"]["reason"].startswith("CONSTRAINED_FALLBACK") and active["model"] == "ollama/qwen3.5:4b"
+    assert active["route"]["reason"].startswith("CONSTRAINED_FALLBACK") and active["model"] == "ollama/qwen2.5-coder:3b"
 
 
 def test_a_hard_task_waits_for_memory_instead_of_being_downgraded(env):
     runner = RoutedRunner()
-    result = routed_step(env, runner, 6.5, measured(**FULL))           # the default self-planned task is level 3: only 7B covers it
+    result = routed_step(env, runner, 5.0, measured(**FULL))           # the default self-planned task is level 3: only 7B covers it
     assert result["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0 and runner.models == []
-    assert "level 3 is covered only by qwen2.5-coder:7b" in result["reason"] and "7.3 GiB" in result["reason"]
+    assert "level 3 is covered only by qwen2.5-coder:7b" in result["reason"] and "5.3 GiB" in result["reason"]
     assert pl.ProductLane(env.state).active() is None                  # nothing was dispatched, no lease or worktree was spent
 
 
@@ -2436,7 +2436,7 @@ def test_approved_work_that_only_memory_holds_back_is_a_memory_wait_not_an_idle_
     waiting = routed_step(env, runner, 5.0, measured(**FULL))
     assert waiting["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0
     assert waiting["work_waiting"] is True and waiting["backlog_item"] == "L2-1" and waiting["repository"] == REPOS[0]
-    assert "level 2" in waiting["reason"] and waiting["route"]["required_gib"] == pytest.approx(6.1)   # what closing programs must reach
+    assert "level 2" in waiting["reason"] and waiting["route"]["required_gib"] == pytest.approx(5.3)   # what closing programs must reach
     assert waiting["route"]["model"] is None                                                           # no downgrade to the 3B model
     idle = routed_step(env, RoutedRunner(), 9.0, measured(**{"qwen2.5-coder:3b": 1}))                  # no model at all can take level 2
     assert idle["status"] != "WAITING_FOR_MEMORY"                                                      # that is a calibration gap, not memory

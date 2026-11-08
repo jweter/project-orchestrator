@@ -185,7 +185,7 @@ def test_the_command_line_tool_refuses_to_enter_without_yes_and_plans_without_ch
     monkeypatch.setattr(dev, "system_closer", lambda *a, **k: pytest.fail("plan must not close anything"))
     assert cli.main(["plan", "--state-root", str(tmp_path), "--json"]) == 0
     plan = json.loads(capsys.readouterr().out)
-    assert plan["needed_gib_for_7b"] == 7.3 and plan["reclaimable_mib"] == 1740 and {c["name"] for c in plan["close"]} >= {"chrome"}
+    assert plan["needed_gib_for_7b"] == 5.3 and plan["reclaimable_mib"] == 1740 and {c["name"] for c in plan["close"]} >= {"chrome"}
 
 
 def test_the_dashboard_tags_each_big_memory_user_with_what_dev_mode_would_do_and_shows_when_it_is_on() -> None:

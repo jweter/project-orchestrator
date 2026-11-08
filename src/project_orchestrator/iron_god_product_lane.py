@@ -188,12 +188,17 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
                     | {"worker_pid": (active.get("worker") or {}).get("pid")}) if isinstance(active, dict) else None)
     except Exception:  # noqa: BLE001
         pass
-    _dev_mode_tick(lane, payload, final=True)
     try:  # where every roadmap slice is and what stops it; the engine names its own gaps (read-only, never fatal)
-        pipeline_trace.refresh(lane.root, free_gib=available_gib(),
-                               need_gib=model_routing.required_gib(default_ollama_model().split("/", 1)[-1]))
+        need = model_routing.required_gib(default_ollama_model().split("/", 1)[-1])
+        free = available_gib()
+        trace = pipeline_trace.refresh(lane.root, free_gib=free, need_gib=need)
+        if (trace.get("by_blocker") or {}).get("DECOMPOSITION_WAITING_FOR_MEMORY") and free < need:
+            # The trace sees roadmap slices that only memory holds back, even when no planning attempt happened this pass
+            # (a stall is otherwise reported once, when the waiting author is harvested): the standing rule must see it too.
+            lane.planning_memory_wait = getattr(lane, "planning_memory_wait", None) or {"required_gib": need, "available_gib": free}
     except Exception:  # noqa: BLE001
         pass
+    _dev_mode_tick(lane, payload, final=True)
     return payload
 
 

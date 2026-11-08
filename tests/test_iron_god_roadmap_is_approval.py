@@ -114,7 +114,7 @@ def test_a_memory_stall_in_local_decomposition_or_drafting_feeds_the_standing_de
                                     [{"id": "RM-x", "status": "WAITING_FOR_MEMORY", "reason": "ModelNotAdmitted: MEMORY"}],
                                     prefix="LOCAL_DECOMPOSE_")
     assert len(seen) == 1 and seen[0]["status"] == "WAITING_FOR_MEMORY" and seen[0]["work_waiting"] is True
-    assert seen[0]["route"]["required_gib"] == pytest.approx(7.3) and seen[0]["route"]["available_gib"] == 5.6   # the primary builder's need
+    assert seen[0]["route"]["required_gib"] == pytest.approx(5.3) and seen[0]["route"]["available_gib"] == 5.6   # the primary builder's need
     seen.clear()
     product_lane.log_draft_outcomes(lane, "jweter/knowledge-engine-core", [{"id": "RM-y", "status": "FAILED", "reason": "PLAN_REJECTED"}],
                                     prefix="LOCAL_DECOMPOSE_")
@@ -166,7 +166,7 @@ def test_the_planning_hook_remembers_the_stall_for_the_final_report(tmp_path, mo
     monkeypatch.setattr(product_lane, "available_gib", lambda: 5.6)
     product_lane.log_draft_outcomes(lane, "jweter/knowledge-engine-core",
                                     [{"id": "RM-x", "status": "WAITING_FOR_MEMORY", "reason": "MEMORY"}], prefix="LOCAL_DECOMPOSE_")
-    assert lane.planning_memory_wait["required_gib"] == pytest.approx(7.3)
+    assert lane.planning_memory_wait["required_gib"] == pytest.approx(5.3)
 
 
 # --- the lane-level proof for review finding 1 (the helper alone was not enough) ----------------------------------------------
@@ -185,3 +185,31 @@ def test_the_lane_does_not_call_work_a_memory_stall_when_its_repository_cannot_s
     monkeypatch.setattr(product_lane, "unready_repositories", lambda rows, head_of: {REPOS[0]})   # the repository is blocked
     blocked = routed_step(env, RoutedRunner(), 5.0, measured(**FULL))
     assert blocked.get("work_waiting") is not True and blocked["status"] != "WAITING_FOR_MEMORY"
+
+
+# --- owner decision 2026-11-08: no padded 7B threshold, and a stall the trace sees must reach the standing rule ---------------
+def test_the_7b_is_admitted_at_its_measured_cost_and_still_refused_below_it() -> None:
+    from project_orchestrator import iron_god_local_model as lm
+
+    assert lm.gate_for("qwen2.5-coder:7b", available=lambda: 5.9).admit() == (True, "ADMITTED")   # the laptop's real free RAM
+    refused, why = lm.gate_for("qwen2.5-coder:7b", available=lambda: 5.0).admit()
+    assert refused is False and why.startswith("MEMORY: 5.0 GiB available < 5.3 GiB required")   # measured cost + 0.6 cancel floor
+
+
+def test_a_memory_stall_only_the_trace_can_see_still_reaches_the_dev_mode_rule(tmp_path, monkeypatch) -> None:
+    """Found live: 10 slices waited for memory but the lane said IDLE and the rule answered 'nothing to do', because the stall
+    is reported once (when the waiting author is harvested) and never again. The trace sees it every pass."""
+    seen = []
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw) or None)
+    monkeypatch.setattr(product_lane.pipeline_trace, "refresh",
+                        lambda root, **kw: {"by_blocker": {"DECOMPOSITION_WAITING_FOR_MEMORY": 10}})
+    monkeypatch.setattr(product_lane, "available_gib", lambda: 4.0)
+    lane = SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None,
+                           dev_mode_config={"auto": True, "stall_minutes": 0})
+    product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})
+    assert seen[-1]["waiting_for_memory"] is True and seen[-1]["free_gib"] == 4.0
+    assert seen[-1]["required_gib"] == pytest.approx(5.3)
+
+    monkeypatch.setattr(product_lane, "available_gib", lambda: 9.0)                            # memory is fine: nothing is stalled
+    product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})
+    assert seen[-1]["waiting_for_memory"] is False
