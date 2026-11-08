@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f1115">
+<title>IRON GOD Command Center</title>
+<link rel="stylesheet" href="iron-god.css">
+</head>
+<body>
+<!-- IRON GOD command center: READ-ONLY. It shows what the engine reports; it has no controls of any kind. -->
+<header class="top">
+  <div class="brand">IRON GOD</div>
+  <div class="meta"><span id="mode" class="pill">…</span><span id="age" class="muted">connecting…</span></div>
+</header>
+<main>
+  <section id="verdict" class="verdict unknown">
+    <div id="verdict-headline" class="headline">Loading…</div>
+    <div id="verdict-reason" class="reason"></div>
+  </section>
+  <div class="grid">
+    <section class="card wide"><h2>Now</h2><div id="now"></div></section>
+    <section class="card"><h2>Model</h2><div id="model"></div></section>
+    <section class="card"><h2>Engine</h2><div id="engine"></div></section>
+    <section class="card"><h2>Machine</h2><div id="resources"></div></section>
+    <section class="card wide"><h2>Delivered &amp; in progress <span class="legend"><span class="badge verified">VERIFIED</span><span class="badge planned">PLANNED</span><span class="badge attempted">ATTEMPTED</span><span class="badge failed">FAILED</span></span></h2><div id="progress"></div></section>
+    <section class="card wide"><h2>Waiting work</h2><div id="waiting"></div></section>
+    <section class="card wide"><h2>Projects</h2><div id="projects"></div></section>
+    <section class="card wide"><h2>Activity</h2><ol id="activity" class="feed"></ol></section>
+  </div>
+  <p class="foot muted">Read-only view of the engine's own records (owner control, product lane, jobs, publications, ledgers, pipeline trace, model door) and Ollama. Nothing here changes the engine.</p>
+</main>
+<script src="iron-god.js"></script>
+</body>
+</html>

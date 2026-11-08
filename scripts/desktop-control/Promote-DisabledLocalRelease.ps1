@@ -108,6 +108,23 @@ foreach($file in $desktopFiles){
   $installed=Join-Path $Base $file
   if (Test-Path -LiteralPath $installed -PathType Leaf) {Copy-Item -LiteralPath $installed -Destination (Join-Path $desktopBackup $file) -ErrorAction Stop}
 }
+# The dashboard the Dashboard Guardian serves on :8765 runs from $Base\Dashboard\live. It used to be a hand-copied
+# snapshot that never followed releases; it is now installed from the verified release (backed up for rollback). The
+# server loads the engine's read models from the pinned release, so no project code lives in the live copy.
+$dashboardFiles=@('dashboard\iron-god.html','dashboard\iron-god.js','dashboard\iron-god.css','dashboard\index.html','dashboard\app.js',
+  'dashboard\app.css','dashboard\sw.js','dashboard\manifest.webmanifest','scripts\foundry_dashboard_server.py')
+$dashboardLive=Join-Path $Base 'Dashboard\live'
+$dashboardBackup=Join-Path $backup 'dashboard-live'
+$dashboardNew=New-Object 'System.Collections.Generic.List[string]'
+foreach($file in $dashboardFiles){
+  $installed=Join-Path $dashboardLive $file
+  if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) {$dashboardNew.Add($file)}
+  if (Test-Path -LiteralPath $installed -PathType Leaf) {
+    $saved=Join-Path $dashboardBackup $file
+    New-Item -ItemType Directory -Path (Split-Path -Parent $saved) -Force -ErrorAction Stop|Out-Null
+    Copy-Item -LiteralPath $installed -Destination $saved -ErrorAction Stop
+  }
+}
 foreach($n in $names){
   [IO.File]::WriteAllText((Join-Path $backup ($n+'.xml')),
     (Export-ScheduledTask -TaskName $n -ErrorAction Stop),[Text.UTF8Encoding]::new($false))
@@ -135,6 +152,16 @@ try {
       throw ('DESKTOP_CONTROL_INSTALL_UNVERIFIED: '+$file)
     }
   }
+  foreach($file in $dashboardFiles){
+    $sourceFile=Join-Path $release $file
+    if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {throw ('VERIFIED_RELEASE_MISSING_DASHBOARD_FILE: '+$file)}
+    $target=Join-Path $dashboardLive $file
+    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force -ErrorAction Stop|Out-Null
+    Copy-Item -LiteralPath $sourceFile -Destination $target -Force -ErrorAction Stop
+    if ((Get-FileHash -LiteralPath $sourceFile).Hash -ne (Get-FileHash -LiteralPath $target).Hash) {
+      throw ('DASHBOARD_INSTALL_UNVERIFIED: '+$file)
+    }
+  }
   $readiness=Join-Path $Base 'Check-Development-ResumeReady.ps1'
   $check=@(& powershell.exe -NoProfile -NonInteractive -File $readiness 2>&1)
   if ($LASTEXITCODE -ne 0) {throw ('NEW_RELEASE_DESKTOP_READINESS_FAILED: '+($check|Out-String))}
@@ -145,6 +172,7 @@ try {
   $result=[ordered]@{status='NEW_LOCAL_RELEASE_PINNED_TASKS_DISABLED';
     accepted_sha=$NewSha;old_sha=$oldSha;backup=$backup;
     owner_control_unchanged=$true;workers_started=$false;desktop_controls_installed=$desktopFiles;
+    dashboard_installed=$dashboardFiles;
     tasks_enabled=$false;desktop_readiness=$ready.status;
     completed_at_utc=[DateTimeOffset]::UtcNow.ToString('o')}
   [IO.File]::WriteAllText((Join-Path $backup 'promotion-result.json'),
@@ -170,6 +198,18 @@ try {
       try {Copy-Item -LiteralPath $saved -Destination (Join-Path $Base $file) -Force -ErrorAction Stop}
       catch {$failures.Add('DESKTOP '+$file+': '+$_.Exception.Message)}
     }
+  }
+  foreach($file in $dashboardFiles){
+    $saved=Join-Path $dashboardBackup $file
+    if (Test-Path -LiteralPath $saved -PathType Leaf) {
+      try {Copy-Item -LiteralPath $saved -Destination (Join-Path $dashboardLive $file) -Force -ErrorAction Stop}
+      catch {$failures.Add('DASHBOARD '+$file+': '+$_.Exception.Message)}
+    }
+  }
+  # a file this promotion newly installed has no backup: remove it, or the rollback leaves a mixed-release dashboard
+  foreach($file in $dashboardNew){
+    try {Remove-Item -LiteralPath (Join-Path $dashboardLive $file) -Force -ErrorAction SilentlyContinue}
+    catch {$failures.Add('DASHBOARD_NEW '+$file+': '+$_.Exception.Message)}
   }
   throw ('LOCAL_PIN_PROMOTION_ROLLED_BACK: '+$errorText+
          '; ROLLBACK_ERRORS='+($failures -join '; ')+

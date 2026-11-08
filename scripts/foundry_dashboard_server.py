@@ -10,6 +10,37 @@ for _p in (str(_ROOT/"src"),str(_ROOT)):
 
 _TOP_CACHE={"at":0.0,"rows":[]}
 
+_RELEASE={"src":None}
+
+def _drop_release_modules()->None:
+    for name in [n for n in sys.modules if n=="project_orchestrator" or n.startswith("project_orchestrator.")]:
+        del sys.modules[name]
+
+def _ensure_release_src(state_root:Path)->None:
+    """Serve the read models of the PINNED release. The guardian runs this server from a copy in Dashboard\\live that
+    holds no project code of its own, so the engine's src/ comes from the accepted release, never a stale copy."""
+    if (_ROOT/"src"/"project_orchestrator").is_dir(): return  # a release or checkout serves its own code
+    try:
+        pin=json.loads((state_root/"supervisor-pinned-release.json").read_text(encoding="utf-8-sig"))
+        src=state_root.parent/"releases"/str(pin.get("accepted_sha"))/"src"
+        if not src.is_dir() or _RELEASE["src"]==str(src): return
+        # the pin moved (promotion or rollback): forget the previous release's modules so this release's code answers
+        if _RELEASE["src"]:
+            _drop_release_modules()
+            if _RELEASE["src"] in sys.path: sys.path.remove(_RELEASE["src"])
+        sys.path.insert(0,str(src)); _RELEASE["src"]=str(src)
+    except (OSError,ValueError,TypeError): pass
+
+def _command_center(state_root:Path)->dict:
+    """GET /api/command-center: the read-only command-center view (project_orchestrator.iron_god_command_center)."""
+    try:
+        _ensure_release_src(state_root)
+        from project_orchestrator import iron_god_command_center as cc
+        return cc.snapshot(state_root)
+    except Exception as exc:
+        return {"schema":1,"read_only":True,"verdict":{"state":"UNKNOWN","headline":"Dashboard data unavailable",
+                "reason":type(exc).__name__+": "+str(exc)[:200]}}
+
 def _top_memory_users(runner=None,now=None,limit=6)->list:
     """The biggest memory users grouped by program (Chrome is one line, not twenty), cached for ten seconds.
 
@@ -289,6 +320,7 @@ remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine
             "last_control_receipt":receipt,"execution":_execution_view(state_root)}
 
 def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_token:str|None=None):
+    _ensure_release_src(state_root)  # every endpoint (health included) imports the engine's code from the pinned release
     class Handler(BaseHTTPRequestHandler):
         def _json(self,status,payload):
             data=json.dumps(payload,sort_keys=True).encode()
@@ -337,6 +369,9 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
             path=self.path.split("?",1)[0]
             if path=="/api/health":
                 self._json(200,_health_snapshot(state_root,control_repo)); return
+            if path=="/api/command-center":
+                _ensure_release_src(state_root)  # follows a promotion or rollback without restarting the server
+                self._json(200,_command_center(state_root)); return
             if path=="/api/dashboard":
                 target=state_root/"telemetry"/"foundry-dashboard.json"
                 try: data=target.read_bytes()
@@ -344,7 +379,7 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
                     self.send_response(503); self.end_headers(); return
                 self.send_response(200); self.send_header("Content-Type","application/json; charset=utf-8")
                 self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(data); return
-            rel="index.html" if path=="/" else path.lstrip("/")
+            rel="iron-god.html" if path=="/" else path.lstrip("/")  # the command center is the front page
             target=(assets/rel).resolve()
             if assets.resolve() not in target.parents and target!=assets.resolve():
                 self.send_response(404); self.end_headers(); return

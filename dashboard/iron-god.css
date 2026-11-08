@@ -1,0 +1,49 @@
+:root{--bg:#0f1115;--card:#171a21;--line:#262b36;--text:#e6e8ee;--muted:#9aa3b2;--green:#2fbf71;--blue:#4c8dff;--amber:#e3a008;--red:#ef4444;--grey:#6b7280}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
+.brand{font-weight:800;letter-spacing:.12em}
+.meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.pill{padding:3px 10px;border-radius:999px;border:1px solid var(--line);font-size:13px;font-weight:600}
+.pill.on{border-color:var(--green);color:var(--green)}.pill.off{border-color:var(--amber);color:var(--amber)}
+.muted{color:var(--muted);font-size:13px}
+main{max-width:1280px;margin:0 auto;padding:16px}
+.verdict{border-radius:12px;padding:16px 18px;margin-bottom:16px;border:1px solid var(--line);background:var(--card)}
+.verdict .headline{font-size:22px;font-weight:750}
+.verdict .reason{color:var(--muted);margin-top:4px;word-break:break-word}
+.verdict.productive{border-color:var(--green);box-shadow:inset 6px 0 0 var(--green)}
+.verdict.working,.verdict.not_delivering{border-color:var(--amber);box-shadow:inset 6px 0 0 var(--amber)}
+.verdict.idle,.verdict.paused,.verdict.unknown{border-color:var(--grey);box-shadow:inset 6px 0 0 var(--grey)}
+.verdict.down{border-color:var(--red);box-shadow:inset 6px 0 0 var(--red)}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.card.wide{grid-column:1/-1}
+.card h2{margin:0 0 10px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.big{font-size:18px;font-weight:650;word-break:break-word}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;word-break:break-word}
+.bar{height:8px;border-radius:4px;background:#2a2f3a;overflow:hidden;margin:4px 0 8px}
+.bar>span{display:block;height:100%;background:var(--blue)}
+.bar.warn>span{background:var(--amber)}.bar.bad>span{background:var(--red)}
+.badge{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:5px;margin-right:6px;vertical-align:1px}
+.badge.verified{background:rgba(47,191,113,.15);color:var(--green)}.badge.planned{background:rgba(76,141,255,.15);color:var(--blue)}
+.badge.attempted{background:rgba(227,160,8,.15);color:var(--amber)}.badge.failed{background:rgba(239,68,68,.15);color:var(--red)}
+.legend{font-size:11px;letter-spacing:0;text-transform:none}
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.list{list-style:none;margin:0;padding:0}.list li{padding:6px 0;border-bottom:1px solid var(--line);word-break:break-word}.list li:last-child{border-bottom:0}
+.sub{color:var(--muted);font-size:13px}
+.stat{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px}.stat b{font-size:20px;display:block}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}
+.feed{list-style:none;margin:0;padding:0;max-height:520px;overflow:auto}
+.feed li{display:grid;grid-template-columns:62px 1fr;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.feed time{color:var(--muted);font-variant-numeric:tabular-nums}
+.feed .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--grey)}
+.feed .milestone .dot{background:var(--green)}.feed .progress .dot{background:var(--blue)}.feed .failure .dot{background:var(--red)}
+.feed .recovery .dot{background:var(--green)}.feed .waiting .dot{background:var(--amber)}
+.stale{color:var(--red)!important}
+@media (max-width:900px){.grid{grid-template-columns:1fr}.cols{grid-template-columns:1fr}.verdict .headline{font-size:19px}main{padding:10px}}
+@media (max-width:600px){.hide-sm{display:none}table{font-size:13px}th,td{padding:6px 4px}}
+a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+/* long engine identifiers (task ids, branch names) must wrap on a phone instead of widening the page */
+main,.top{overflow-wrap:anywhere}.meta{min-width:0}.meta .muted{max-width:60vw}
+html,body{max-width:100%;overflow-x:hidden}
