@@ -1,5 +1,16 @@
 # Roadmap
 
+## Product-first verified v1.0 delivery (2026-11-08)
+
+The active owner-directed outcome is **usable v1.0 releases** of the portfolio products,
+not PR volume or unmeasured infrastructure activity. The staged, evidence-gated
+delivery route is in [Product v1.0 delivery execution plan](PRODUCT_V1_DELIVERY_EXECUTION_PLAN.md).
+Each bounded slice must remove a measured blocker or advance a genuine user
+journey toward its repository-authoritative v1.0 acceptance. The advisory-only
+[MCP coordination contract](IRON_GOD_MCP_COORDINATION.md) defines how ChatGPT,
+Claude Code and the local engine may exchange messages without replacing the
+existing owner controller, claims, verification or publication gates.
+
 ## Owner-approved portfolio direction (2026-10-25)
 
 Iron God is a first-class hourly development workstream alongside product repositories. Isolated manual development while the supervisor is paused is permitted only through independently authorized interfaces and nonconflicting workspaces; it does not grant autonomous execution. Investigate all recorded Canon S2 failures without weakening safety tests. Product objectives and bounded slices are recorded in `docs/OWNER_APPROVED_ROADMAP_2026-10-25.md`. Reconcile newer authoritative local work before accepting or merging.
