@@ -222,6 +222,16 @@ def _migrate_v1_to_v2(db: sqlite3.Connection) -> None:
     db.execute("DROP TABLE acceptance_dispatch_claims_v1")
 
 
+def _migration_backup_path(claims_path: Path) -> Path:
+    """Never reuse a pre-migration snapshot even if Windows returns the same clock tick."""
+    return claims_path.with_name(
+        claims_path.name
+        + ".pre-migration-v1-backup-"
+        + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
+        + "-" + uuid.uuid4().hex + ".sqlite"
+    )
+
+
 def _initialize(db: sqlite3.Connection, claims_path: Path) -> None:
     """Versioned, backed-up, integrity-checked migration to the current schema.
 
@@ -241,12 +251,7 @@ def _initialize(db: sqlite3.Connection, claims_path: Path) -> None:
             raise DispatchFenceError(
                 "DISPATCH_DB_INTEGRITY_CHECK_FAILED:" + str(integrity)
             )
-        backup_path = claims_path.with_name(
-            claims_path.name
-            + ".pre-migration-v1-backup-"
-            + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
-            + ".sqlite"
-        )
+        backup_path = _migration_backup_path(claims_path)
         backup_db = sqlite3.connect(backup_path)
         try:
             db.backup(backup_db)
