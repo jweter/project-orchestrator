@@ -110,6 +110,21 @@ def _normal_path(path: Any) -> str | None:
     return path
 
 
+def normalize_examples(name: Any, examples: Any) -> Any:
+    """Replace a leading ``name(`` with ``{fn}(`` in each example call (the model's most common slip, mechanically fixed;
+    nothing else about an example is changed, so a wrong example is still rejected)."""
+    if not isinstance(examples, list) or not isinstance(name, str) or not name:
+        return examples
+    out = []
+    for example in examples:
+        if isinstance(example, dict) and isinstance(example.get("call"), str):
+            call = example["call"].strip()
+            if call.startswith(name + "(") and not call.startswith("{fn}("):
+                example = {**example, "call": "{fn}" + call[len(name):]}
+        out.append(example)
+    return out
+
+
 def _example_problems(sub: dict[str, Any]) -> list[str]:
     """Literal, well-formed, mutually consistent examples that bind to the declared signature."""
     key = sub.get("key")
@@ -235,8 +250,12 @@ def validate_plan(
     *,
     exists: Callable[[str], bool],
     read: Callable[[str], str | None] | None = None,
+    skip_criteria: frozenset[int] = frozenset(),
 ) -> tuple[dict[str, Any] | None, list[str]]:
-    """(normalized plan, []) when the proposal is acceptable, else (None, every reason it is not)."""
+    """(normalized plan, []) when the proposal is acceptable, else (None, every reason it is not).
+
+    ``skip_criteria`` (0-based) are criteria already handed to the residual by ``salvage_plan``: not required of these steps.
+    """
     if not isinstance(raw, dict):
         return None, ["PLAN_NOT_AN_OBJECT"]
     problems: list[str] = []
@@ -291,6 +310,7 @@ def validate_plan(
                 clean.append({"key": key, **edit, "depends_on": list(deps)})
             keys.append(key)
             continue
+        sub = {**sub, "acceptance_examples": normalize_examples(sub.get("function_name"), sub.get("acceptance_examples"))}
         texts = ("title", "module_path", "function_name", "signature", "done_when")
         if any(
             not isinstance(sub.get(name), str) or not sub[name].strip()
@@ -355,7 +375,7 @@ def validate_plan(
         )
     coverage = raw.get("coverage")
     criteria = [str(c) for c in request["slice_acceptance"]]
-    behaviour = [i for i, text in enumerate(criteria) if not is_gate_line(text)]
+    behaviour = [i for i, text in enumerate(criteria) if not is_gate_line(text) and i not in skip_criteria]
     mapped: dict[str, list[str]] = {}
     if not isinstance(coverage, dict):
         problems.append(
@@ -383,6 +403,76 @@ def validate_plan(
     if problems:
         return None, problems
     return {"subtasks": clean, "coverage": mapped, "oracle": "SELF_AUTHORED"}, []
+
+
+_KEY_PROBLEM = re.compile(r"^(t[1-9])\b")
+_UNCOVERED = re.compile(r"^acceptance criterion (\d+) is not covered")
+
+
+def salvage_plan(
+    raw: Any,
+    request: dict[str, Any],
+    *,
+    exists: Callable[[str], bool],
+    read: Callable[[str], str | None] | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Keep every step that passes the strict validator; hand the rest of the slice to the residual.
+
+    Owner direction 2026-11-08: a small piece of a big slice is useful work even if another slice has to finish it. A plan
+    is therefore accepted when at least one step is valid and delivers a criterion. Each kept step is validated exactly as
+    strictly as before (``validate_plan``). Steps that fail, and steps depending on them, are dropped with their reasons;
+    criteria no kept step delivers, and the model's own residual, become the plan's ``residual``. A plan with a residual is
+    never reported complete (see ``settle``): the remainder returns to the stronger builder.
+    """
+    if not isinstance(raw, dict) or not isinstance(raw.get("subtasks"), list) or not isinstance(raw.get("coverage"), dict):
+        return validate_plan(raw, request, exists=exists, read=read)
+    criteria = [str(c) for c in request["slice_acceptance"]]
+    residual = [str(r)[:300] for r in (raw.get("residual") or []) if isinstance(raw.get("residual"), list)]
+    subs = [s for s in raw["subtasks"] if isinstance(s, dict)]
+    coverage = {str(k): list(v) for k, v in raw["coverage"].items() if isinstance(v, list)}
+    skip: set[int] = set()
+    lost: set[int] = set()  # criteria that lost one of their owners: part of their work is not planned any more
+    dropped: list[dict[str, Any]] = []
+    problems: list[str] = []
+    for _round in range(2 * MAX_SUBTASKS + 2):
+        plan, problems = validate_plan({"subtasks": subs, "coverage": coverage, "residual": []}, request,
+                                       exists=exists, read=read, skip_criteria=frozenset(skip))
+        if plan is not None:
+            plan["residual"] = residual + [criteria[i][:300] for i in sorted(skip | lost)]
+            plan["dropped"] = dropped
+            return plan, []
+        bad = {m.group(1) for m in (_KEY_PROBLEM.match(p) for p in problems) if m}
+        uncovered = {int(m.group(1)) - 1 for m in (_UNCOVERED.match(p) for p in problems) if m}
+        other = [p for p in problems if not _KEY_PROBLEM.match(p) and not _UNCOVERED.match(p)]
+        if other and not bad and not uncovered:
+            return None, problems  # a structural problem no dropping can fix
+        if not bad and not (uncovered - skip):
+            return None, problems
+        skip |= {i for i in uncovered if 0 <= i < len(criteria)}
+        if bad:
+            changed = True
+            while changed:  # a step that depends on a dropped step is dropped too
+                changed = False
+                for sub in subs:
+                    if sub.get("key") not in bad and any(d in bad for d in (sub.get("depends_on") or [])):
+                        bad.add(sub["key"])
+                        changed = True
+            for sub in subs:
+                if sub.get("key") in bad:
+                    dropped.append({"title": str(sub.get("title") or sub.get("function_name") or sub.get("key"))[:120],
+                                    "problems": [p[:200] for p in problems if p.startswith(str(sub.get("key")))][:3]})
+            for number, owners in coverage.items():  # review P2 on #659: surviving owners do not make it complete
+                if any(o in bad for o in owners) and str(number).isdigit() and 0 < int(number) <= len(criteria):
+                    lost.add(int(number) - 1)
+            kept = [s for s in subs if s.get("key") not in bad]
+            renumber = {s["key"]: f"t{i}" for i, s in enumerate(kept, start=1)}
+            subs = [{**s, "key": renumber[s["key"]],
+                     "depends_on": [renumber[d] for d in (s.get("depends_on") or []) if d in renumber]} for s in kept]
+            coverage = {k: [renumber[o] for o in v if o in renumber] for k, v in coverage.items()}
+            coverage = {k: v for k, v in coverage.items() if v}
+        if not subs:
+            return None, problems
+    return None, problems
 
 
 def planning_prompt(request: dict[str, Any], brief: str, feedback: str = "") -> str:
@@ -503,6 +593,8 @@ def write_plan(
         "oracle": plan["oracle"],
         "coverage": plan["coverage"],
         "subtasks": plan["subtasks"],
+        "residual": list(plan.get("residual") or []),
+        "dropped": list(plan.get("dropped") or []),
     }
     atomic_json(plan_path(lane_root, request["id"]), record)
     return record
@@ -705,7 +797,14 @@ def settle(
             )
             for key, (status, ident) in rows.items()
         }
-        if all(v == "DONE" for v in statuses.values()):
+        if all(v == "DONE" for v in statuses.values()) and plan.get("residual"):
+            plan.update(
+                status="PARTIAL",
+                blocker="PARTIAL_PLAN_DELIVERED: every local step merged; the residual returns to the stronger builder: "
+                + "; ".join(str(r)[:120] for r in plan["residual"][:3]),
+                completed_at=_now(),
+            )
+        elif all(v == "DONE" for v in statuses.values()):
             plan.update(status="DONE", completed_at=_now())
         elif "EXHAUSTED" in statuses.values():
             key = next(k for k, v in statuses.items() if v == "EXHAUSTED")
@@ -932,7 +1031,10 @@ def harvest(
                 }
             )
             continue
-        plan, problems = validate_plan(
+        # Recomputed here against the authoritative clone at the exact base, never taken from the worker: the same
+        # deterministic salvage the proposer applied (review P1 on #659: the strict validator here rejected every
+        # partial plan the proposer had accepted, so none ever reached write_plan through the real lifecycle).
+        plan, problems = salvage_plan(
             result.get("raw"),
             request,
             exists=_exists_at(Path(job["clone"]), job["base"]),
@@ -1195,6 +1297,7 @@ def _staged_new(request, entry, index, path, ask, trail):
             bad = ["answer is not a JSON object"]
         else:
             detail["signature"] = normalize_signature(detail.get("signature"))
+            detail["acceptance_examples"] = normalize_examples(name, detail.get("acceptance_examples"))
             probe = {
                 "key": f"t{index}",
                 "signature": detail["signature"],
@@ -1321,8 +1424,9 @@ def propose_staged(
         raw = {"subtasks": subtasks, "coverage": coverage, "residual": residual}
     except Exception as exc:  # an unreachable model is a blocker to record, not a reason to crash the lane
         return {"ok": False, "reason": f"MODEL_UNAVAILABLE: {type(exc).__name__}: {str(exc)[:160]}", "trail": trail}
-    plan, problems = validate_plan(raw, request, exists=exists, read=read)
-    trail.append({"assembled": True, "problems": problems})
+    plan, problems = salvage_plan(raw, request, exists=exists, read=read)
+    trail.append({"assembled": True, "problems": problems,
+                  "dropped": (plan or {}).get("dropped", []), "residual": (plan or {}).get("residual", [])})
     if plan is None:
         return {"ok": False, "reason": "PLAN_REJECTED: " + problems[0][:240], "trail": trail, "raw": raw}
     return {"ok": True, "plan": plan, "raw": raw, "trail": trail}

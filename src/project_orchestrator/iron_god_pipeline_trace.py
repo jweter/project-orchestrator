@@ -42,6 +42,8 @@ BLOCKERS = {
     "DECOMPOSITION_PLAN_REJECTED": "The local model's breakdown was rejected by the plan validator; the reason is in the evidence.",
     "DECOMPOSITION_ATTEMPTS_EXHAUSTED": "The local model's breakdown failed every allowed attempt.",
     "DECOMPOSITION_NOT_POSSIBLE": "The slice cannot be decomposed locally (a terminal reason is recorded).",
+    "DECOMPOSITION_PLAN_BLOCKED": "The local plan for this slice stopped (a step spent its attempts); the slice is back with the stronger builder.",
+    "DECOMPOSITION_PARTIAL": "The local model delivered part of this slice; the residual it could not plan waits for the stronger builder.",
     "WAITING_FOR_CAPABLE_BUILDER_BUDGET": "The slice needs the stronger builder and today's budget is used up.",
     "CAPABLE_BUILDER_DISPATCHED": "The slice was handed to the stronger builder and is in progress there.",
     "LOCAL_BUILD_EXHAUSTED": "The local builder spent every allowed attempt on this slice.",
@@ -84,7 +86,11 @@ def gather(lane_root: Path) -> dict[str, Any]:
             jobs.setdefault(str(row.get("id")), []).append(row)
     except Exception:  # noqa: BLE001 - an unreadable job table is itself reported as "no jobs"
         pass
-    plans = {r["id"] for r in requests if decomposer.plan_path(root, r["id"]).is_file()}
+    plans: dict[str, str] = {}
+    for r in requests:
+        record = _read_json(decomposer.plan_path(root, r["id"]))
+        if isinstance(record, dict):
+            plans[r["id"]] = str(record.get("status") or "ACTIVE")
     events: dict[str, list[dict[str, Any]]] = {}
     for event in refill.load_store(root).get("ledger", []):
         if isinstance(event, dict):
@@ -153,10 +159,19 @@ def classify(request: dict[str, Any], ctx: dict[str, Any], *, now: float, free_g
             return block("LOCAL_BUILD_EXHAUSTED", "LOCAL_BUILD", attempts=state.get("attempts"), outcome=str(state.get("outcome"))[:200])
         return row
 
+    # a plan that stopped (BLOCKED) or delivered only part of the slice (PARTIAL) hands the slice back to the stronger
+    # builder: report that, never "decomposed, progressing"
+    plans = ctx["plans"] if isinstance(ctx["plans"], dict) else {p: "ACTIVE" for p in ctx["plans"]}
+    plan_status = plans.get(rid)
+    budget_out = any(isinstance(e.get("detail"), dict) and e["detail"].get("reason") == "DAILY_BUDGET_EXHAUSTED" for e in events)
+    if plan_status in {"BLOCKED", "PARTIAL"} and rid not in ctx["dispatched"] and not budget_out:
+        code = "DECOMPOSITION_PARTIAL" if plan_status == "PARTIAL" else "DECOMPOSITION_PLAN_BLOCKED"
+        return block(code, "CAPABLE_BUILDER", "WAITING", plan_status=plan_status)
+
     # a slice routed to the stronger builder because of its size is decomposed locally first
-    if decomposer.decomposable({**request, "capability_level": level}):
-        if rid in ctx["plans"]:
-            row.update(stage="DECOMPOSED", status="PROGRESSING")
+    if decomposer.decomposable({**request, "capability_level": level}) and plan_status not in {"BLOCKED", "PARTIAL"}:
+        if plan_status is not None:
+            row.update(stage="DECOMPOSED", status="DONE" if plan_status == "DONE" else "PROGRESSING")
             children = [c for c in ctx["requests"] if str(c.get("parent") or c.get("parent_id") or "") == rid]
             row["evidence"] = {"children": len(children)}
             return row
