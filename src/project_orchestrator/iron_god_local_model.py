@@ -65,6 +65,9 @@ class Gate:
     abort_below_gib: float = 0.6
     patience: int = 2
     available: Callable[[], float] = available_gib
+    # Owner decision 2026-11-08: the primary builder is never refused for want of comfortable memory. ``required_gib`` is the
+    # comfortable level (what Dev Mode works toward); ``start_gib`` is the least that lets the model load at all.
+    start_gib: float | None = None
 
     def __post_init__(self) -> None:
         self._low = 0
@@ -77,8 +80,9 @@ class Gate:
     def admit(self) -> tuple[bool, str]:
         free = self.last_free = self.available()
         self.lowest = min(self.lowest, free)
-        if free < self.required_gib:
-            return False, f"MEMORY: {free:.1f} GiB available < {self.required_gib:.1f} GiB required"
+        floor = self.required_gib if self.start_gib is None else self.start_gib
+        if free < floor:
+            return False, f"MEMORY: {free:.1f} GiB available < {floor:.1f} GiB required"
         return True, "ADMITTED"
 
     def abort_reason(self) -> str | None:
@@ -195,6 +199,7 @@ def inference_cpu_seconds() -> float:
 
 
 # --- the one shared door every local author goes through -----------------------------------------------------------------
+PRIMARY_START_GIB = 1.0  # the least free memory at which the 7B is started; below the 0.6 GiB cancel floor it could not run
 ADMISSION_WAIT_S = 600.0  # how long a worker waits for memory before reporting WAITING_FOR_MEMORY (no attempt spent)
 BUILDER_MODEL = "qwen2.5-coder:7b"  # Iron God's primary builder (owner decision 2026-11-07; level 3 on the engine ladder)
 # model name fragment -> (resident GiB, reserve GiB left for Windows and the desktop). Resident sizes are the peak Ollama
@@ -240,6 +245,8 @@ def gate_for(model: str, **probes: Any) -> Gate:
     match = _SIZE.search(bare_name(model).lower())
     key = f"{float(match.group(1)):g}b" if match else ""
     gib, reserve = PROFILES.get(key, PROFILES["7b"])
+    if key == "7b":
+        probes.setdefault("start_gib", PRIMARY_START_GIB)  # an UNPARSED name keeps the strict comfortable requirement
     return Gate(model_gib=gib, reserve_gib=reserve, **probes)
 
 

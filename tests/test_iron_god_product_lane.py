@@ -2383,25 +2383,25 @@ def test_the_lane_runs_the_primary_builder_when_memory_admits_it_and_says_why(en
     assert active["model"] == "ollama/qwen2.5-coder:7b" and active["route"]["reason"] == "PRIMARY_BUILDER"
 
 
-def test_when_memory_is_short_a_smaller_model_takes_only_work_it_has_demonstrated(env):
+def test_when_memory_is_tight_the_primary_builder_still_runs_the_work(env):
     runner = RoutedRunner()
-    result = routed_step(env, runner, 5.0, measured(**FULL), level=1)
-    assert result["status"] == "DISPATCHED" and runner.models == ["qwen2.5-coder:3b"]
+    result = routed_step(env, runner, 2.0, measured(**FULL), level=1)
+    assert result["status"] == "DISPATCHED" and runner.models == ["qwen2.5-coder:7b"]
     active = json.loads(pl.ProductLane(env.state).active_path.read_text(encoding="utf-8"))
-    assert active["route"]["reason"].startswith("CONSTRAINED_FALLBACK") and active["model"] == "ollama/qwen2.5-coder:3b"
+    assert active["route"]["reason"] == "PRIMARY_BUILDER" and active["model"] == "ollama/qwen2.5-coder:7b"
 
 
 def test_a_hard_task_waits_for_memory_instead_of_being_downgraded(env):
     runner = RoutedRunner()
-    result = routed_step(env, runner, 5.0, measured(**FULL))           # the default self-planned task is level 3: only 7B covers it
+    result = routed_step(env, runner, 0.5, measured(**FULL))           # the default self-planned task is level 3: only 7B covers it
     assert result["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0 and runner.models == []
-    assert "level 3 is covered only by qwen2.5-coder:7b" in result["reason"] and "5.3 GiB" in result["reason"]
+    assert "qwen2.5-coder:7b" in result["reason"] and "0.5 GiB available < 1.0 GiB needed" in result["reason"]
     assert pl.ProductLane(env.state).active() is None                  # nothing was dispatched, no lease or worktree was spent
 
 
 def test_when_no_calibrated_model_fits_the_lane_waits_with_the_exact_numbers(env):
     runner = RoutedRunner()
-    result = routed_step(env, runner, 2.0, measured(**FULL))
+    result = routed_step(env, runner, 0.5, measured(**FULL))
     assert result["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0 and "GiB" in result["reason"]
 
 
@@ -2433,10 +2433,10 @@ def test_approved_work_that_only_memory_holds_back_is_a_memory_wait_not_an_idle_
     reported IDLE_NO_APPROVED_BACKLOG_ITEM, so the Dev Mode rule never saw a stall. It must be a WAITING_FOR_MEMORY."""
     directed_env(env, [direct_item("L2-1", REPOS[0])])                                                # a real, dispatchable level-2 item
     runner = RoutedRunner()
-    waiting = routed_step(env, runner, 5.0, measured(**FULL))
+    waiting = routed_step(env, runner, 0.5, measured(**FULL))
     assert waiting["status"] == "WAITING_FOR_MEMORY" and runner.spawned == 0
-    assert waiting["work_waiting"] is True and waiting["backlog_item"] == "L2-1" and waiting["repository"] == REPOS[0]
-    assert "level 2" in waiting["reason"] and waiting["route"]["required_gib"] == pytest.approx(5.3)   # what closing programs must reach
+    assert waiting["work_waiting"] is True                                                              # the standing rule must see it
+    assert "0.5 GiB available" in waiting["reason"] and waiting["route"]["required_gib"] == pytest.approx(5.3)   # what Dev Mode works toward
     assert waiting["route"]["model"] is None                                                           # no downgrade to the 3B model
     idle = routed_step(env, RoutedRunner(), 9.0, measured(**{"qwen2.5-coder:3b": 1}))                  # no model at all can take level 2
     assert idle["status"] != "WAITING_FOR_MEMORY"                                                      # that is a calibration gap, not memory

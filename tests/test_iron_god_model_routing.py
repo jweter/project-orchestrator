@@ -31,7 +31,7 @@ def test_the_thresholds_are_the_measured_ones() -> None:
 @pytest.mark.parametrize("level,free,expected", [
     (3, 8.0, "qwen2.5-coder:7b"), (2, 8.0, "qwen2.5-coder:7b"), (1, 8.0, "qwen2.5-coder:7b"),   # plenty of memory: the primary builder
     (2, 5.5, "qwen2.5-coder:7b"), (3, 5.4, "qwen2.5-coder:7b"),                                   # the measured threshold admits the 7B at 5.3
-    (1, 5.0, "qwen2.5-coder:3b"), (1, 4.5, "qwen2.5-coder:3b"),                                   # constrained: smaller models take easy work
+    (3, 2.0, "qwen2.5-coder:7b"), (1, 1.5, "qwen2.5-coder:7b"),                                   # tight memory: still the 7B, never a downgrade
 ])
 def test_the_primary_builder_is_preferred_and_smaller_models_take_only_work_they_have_demonstrated(level, free, expected) -> None:
     decision = pick(level, free)
@@ -39,7 +39,7 @@ def test_the_primary_builder_is_preferred_and_smaller_models_take_only_work_they
     assert decision.level == level and expected in decision.admitted
 
 
-@pytest.mark.parametrize("level,free", [(3, 5.0), (3, 4.5), (2, 4.5), (3, 5.2)])
+@pytest.mark.parametrize("level,free", [(3, 0.5), (2, 0.9), (1, 0.5)])
 def test_a_task_is_never_downgraded_below_the_level_a_model_has_demonstrated(level, free) -> None:
     decision = pick(level, free)
     assert decision.model is None                                    # wait, do not hand it to a model that has not shown it can do it
@@ -74,14 +74,16 @@ def test_a_model_outside_the_ladder_is_never_chosen() -> None:
     assert pick(5, 40.0, odd).model is None
 
 
-def test_the_fallback_explains_itself() -> None:
-    reason = pick(1, 5.0).reason
-    assert reason.startswith("CONSTRAINED_FALLBACK") and "qwen2.5-coder:7b" in reason and "qwen2.5-coder:3b" in reason
+def test_tight_memory_does_not_push_work_to_a_smaller_model() -> None:
+    """Owner decision 2026-11-08: the 7B is started whenever it can load at all, so there is no constrained fallback."""
+    for free in (1.0, 2.0, 3.0, 4.5, 5.2):
+        decision = pick(1, free)
+        assert decision.model == "qwen2.5-coder:7b" and decision.reason == "PRIMARY_BUILDER"
 
 
 def test_the_highest_level_available_now_follows_memory() -> None:
-    levels = {free: routing.max_level_now(MEASURED, free, hardware=HW) for free in (3.0, 4.0, 5.2, 5.4)}
-    assert levels == {3.0: 0, 4.0: 1, 5.2: 1, 5.4: 3}
+    levels = {free: routing.max_level_now(MEASURED, free, hardware=HW) for free in (0.5, 1.5, 3.0, 5.4)}
+    assert levels == {0.5: 0, 1.5: 3, 3.0: 3, 5.4: 3}
     assert routing.max_level_now(MEASURED, None, hardware=HW) == 0
 
 

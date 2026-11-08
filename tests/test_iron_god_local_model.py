@@ -144,8 +144,8 @@ def test_user_activity_is_never_an_admission_condition() -> None:
     assert not hasattr(lm.Gate(model_gib=1.0), "min_idle_s")
     seven = lm.gate_for("qwen2.5-coder:7b", available=lambda: 8.0)
     assert seven.required_gib == pytest.approx(5.3) and seven.admit() == (True, "ADMITTED")   # measured 4.7 + the 0.6 cancel floor
-    refused, reason = lm.gate_for("qwen2.5-coder:7b", available=lambda: 5.0).admit()
-    assert refused is False and reason.startswith("MEMORY: 5.0 GiB available < 5.3 GiB required")
+    refused, reason = lm.gate_for("qwen2.5-coder:7b", available=lambda: 0.5).admit()
+    assert refused is False and reason.startswith("MEMORY: 0.5 GiB available < 1.0 GiB required")
 
 
 def test_abort_needs_sustained_pressure_and_remembers_the_lowest_reading() -> None:
@@ -206,7 +206,7 @@ def test_default_is_7b_and_a_task_is_never_silently_downgraded():
 def test_guarded_generate_loads_nothing_when_memory_is_short_and_always_unloads_after(tmp_path):
     fake = FakeDoor()
     with pytest.raises(lm.ModelNotAdmitted, match="MEMORY"):
-        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=0.0, client=fake, probes=door_probes(1.0), directory=tmp_path / "slot")
+        lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=0.0, client=fake, probes=door_probes(0.5), directory=tmp_path / "slot")
     assert fake.calls == [] and not (tmp_path / "slot").exists()
     reply = lm.guarded_generate("p", num_ctx=1, num_predict=1, wait_s=5, client=fake, probes=door_probes(9.0), directory=tmp_path / "slot")
     assert reply["model_used"] == "qwen2.5-coder:7b" and fake.unloaded == ["qwen2.5-coder:7b"]
@@ -303,8 +303,8 @@ def test_an_error_body_from_the_server_is_a_failure_not_an_empty_answer() -> Non
 def test_guarded_session_admits_by_memory_holds_the_slot_and_always_unloads(tmp_path):
     fake, slot = FakeDoor(), tmp_path / "slot"
     with pytest.raises(lm.ModelNotAdmitted, match="MEMORY"):
-        with lm.guarded_session(wait_s=0.0, client=fake, probes=door_probes(5.0), directory=slot):
-            pytest.fail("7B must not be admitted below its 5.3 GiB measured threshold")
+        with lm.guarded_session(wait_s=0.0, client=fake, probes=door_probes(0.5), directory=slot):
+            pytest.fail("7B must not be admitted below the 1.0 GiB it needs to load at all")
     assert fake.unloaded == [] and not slot.exists()                       # nothing loaded, slot released
 
     with lm.guarded_session(wait_s=5, client=fake, probes=door_probes(8.0), directory=slot) as gate:
