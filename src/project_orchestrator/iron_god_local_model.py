@@ -68,21 +68,21 @@ class Gate:
 
     def __post_init__(self) -> None:
         self._low = 0
-        self.lowest = self.available()
+        self.lowest = self.last_free = self.available()
 
     @property
     def required_gib(self) -> float:
         return self.model_gib + self.reserve_gib
 
     def admit(self) -> tuple[bool, str]:
-        free = self.available()
+        free = self.last_free = self.available()
         self.lowest = min(self.lowest, free)
         if free < self.required_gib:
             return False, f"MEMORY: {free:.1f} GiB available < {self.required_gib:.1f} GiB required"
         return True, "ADMITTED"
 
     def abort_reason(self) -> str | None:
-        free = self.available()
+        free = self.last_free = self.available()
         self.lowest = min(self.lowest, free)
         self._low = self._low + 1 if free < self.abort_below_gib else 0
         if self._low >= self.patience:
@@ -211,6 +211,17 @@ def default_ollama_model() -> str:
     return os.environ.get("EXPONENTIAL_BUILDER_MODEL") or f"ollama/{BUILDER_MODEL}"
 
 
+def _record(kind: str, model: str, admitted: bool, why: str, gate: "Gate | None") -> None:
+    """Report an admission decision to the dashboard's execution view; never allowed to affect the decision itself."""
+    try:
+        from . import iron_god_execution_status as status
+
+        status.record_decision(kind, model, admitted, why, available_gib=None if gate is None else gate.last_free,
+                               required_gib=None if gate is None else gate.required_gib)
+    except Exception:  # noqa: BLE001 - reporting is best effort
+        pass
+
+
 class ModelNotAdmitted(RuntimeError):
     """The memory gate did not admit the model in time; callers report WAITING, never force a load."""
 
@@ -278,6 +289,18 @@ def model_slot(wait_s: float, *, directory: Path | None = None, alive: Callable[
         shutil.rmtree(lock, ignore_errors=True)
 
 
+@contextlib.contextmanager
+def _slot_reported(wait_s: float, directory: Path | None, poll_s: float, model: str | None) -> Iterator[Path]:
+    """``model_slot`` that reports a busy slot to the execution view before raising."""
+    try:
+        with model_slot(wait_s, directory=directory, poll_s=poll_s) as slot:
+            yield slot
+    except ModelNotAdmitted as exc:
+        if "SLOT_BUSY" in str(exc):
+            _record("SLOT_BUSY", bare_name(model), False, str(exc), None)
+        raise
+
+
 def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int, num_predict: int, json_mode: bool = False,
                      timeout: float = 1800.0, wait_s: float = 900.0, temperature: float = 0.2,
                      client: OllamaClient | None = None, probes: dict[str, Any] | None = None,
@@ -290,10 +313,11 @@ def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int,
     """
     ollama = client or OllamaClient()
     deadline = time.monotonic() + wait_s
-    with model_slot(wait_s, directory=directory, poll_s=poll_s):
+    with _slot_reported(wait_s, directory, poll_s, requested):
         while True:
             name, gate = choose_model(requested, **(probes or {}))
             admitted, why = gate.admit()
+            _record("ADMITTED" if admitted else "MEMORY" if why.startswith("MEMORY") else "REFUSED", name, admitted, why, gate)
             if admitted:
                 break
             if time.monotonic() >= deadline:
@@ -303,8 +327,12 @@ def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int,
             if not ollama.unload(other):  # an unconfirmed eviction would leave two models resident
                 raise ModelNotAdmitted(f"STRAY_MODEL_RESIDENT: {other} could not be unloaded")
         try:
-            reply = ollama.generate(name, prompt, num_ctx=num_ctx, num_predict=num_predict, keep_alive=0, timeout=timeout,
-                                    should_abort=gate.abort_reason, temperature=temperature, json_mode=json_mode)
+            try:
+                reply = ollama.generate(name, prompt, num_ctx=num_ctx, num_predict=num_predict, keep_alive=0, timeout=timeout,
+                                        should_abort=gate.abort_reason, temperature=temperature, json_mode=json_mode)
+            except ModelCancelled as exc:
+                _record("CANCELLED", name, False, str(exc), gate)
+                raise
         finally:
             ollama.unload(name)
     reply["model_used"] = name
@@ -323,10 +351,11 @@ def guarded_session(model: str | None = None, *, wait_s: float = 900.0, client: 
     """
     ollama = client or OllamaClient()
     deadline = time.monotonic() + wait_s
-    with model_slot(wait_s, directory=directory, poll_s=poll_s):
+    with _slot_reported(wait_s, directory, poll_s, model):
         name, gate = choose_model(model, **(probes or {}))
         while True:
             admitted, why = gate.admit()
+            _record("ADMITTED" if admitted else "MEMORY" if why.startswith("MEMORY") else "REFUSED", name, admitted, why, gate)
             if admitted:
                 break
             if time.monotonic() >= deadline:
@@ -356,5 +385,6 @@ class MemoryChecked:
         reason = self.gate.abort_reason()
         if reason:
             self.reason = reason
+            _record("CANCELLED", "", False, reason, self.gate)
             raise ModelCancelled(reason)
 

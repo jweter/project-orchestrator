@@ -43,6 +43,7 @@ for _path in (str(ROOT / "src"), str(ROOT)):
 from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
 from project_orchestrator.execution_runtime import NativeWindowsRuntime, RuntimeRequest  # noqa: E402
 from project_orchestrator.iron_god_calibration import remove_tree  # noqa: E402
+from project_orchestrator import iron_god_execution_status as execution_status  # noqa: E402
 from project_orchestrator.iron_god_local_model import default_ollama_model  # noqa: E402
 from scripts.iron_god_canon_worker import (  # noqa: E402
     _git,
@@ -879,6 +880,16 @@ def execute_product_packet(
     directed_tests: Callable[[Path, str, str, Callable[[], None]], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Plan and implement one product turn; returns the Canon handback (never raises for work failures)."""
+    trace = execution_status.Trace(execution_status.dir_from_env(), packet_id=packet["packet_id"],
+                                   repository=packet["repository"], model=default_ollama_model())
+    trace.phase("PLANNING", "preparing the turn")  # each step below reports its phase the moment it starts
+    plan = trace.wrap("PLANNING", plan)
+    run_agent = trace.wrap("CODING", run_agent)
+    generate = trace.wrap("CODING", generate)
+    directed_tests = trace.wrap("TESTING", directed_tests)
+    gates = trace.wrap("VERIFYING", gates)
+    preflight = trace.wrap("VERIFYING", preflight)
+    format_files = trace.wrap("VERIFYING", format_files)
     worktree = Path(packet["worktree"])
     base = packet["base_sha"]
     handback: dict[str, Any] = {
@@ -1322,6 +1333,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--packet", required=True)
     parser.add_argument("--handback", required=True)
     args = parser.parse_args(argv)
+    os.environ.setdefault(execution_status.ENV_DIR, str(Path(args.handback).parent.parent / "execution"))
     packet = json.loads(Path(args.packet).read_text(encoding="utf-8"))
     release = os.environ.get("IRON_GOD_ACCEPTED_SHA")
 

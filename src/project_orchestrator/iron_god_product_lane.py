@@ -46,6 +46,7 @@ from typing import Any, Callable
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_cpp_lane as cpp_lane
+from . import iron_god_execution_status as execution_status
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_roadmap_progress as roadmap_progress
@@ -56,6 +57,7 @@ from . import iron_god_roadmap_refill as roadmap_refill
 from . import iron_god_working_memory as working_memory
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .iron_god_calibration import capability_gate, load_profile, remove_tree
+from .iron_god_local_model import default_ollama_model
 from .iron_god_canon_lane import (
     WORKER_LEASE_ID,
     WORKER_LEASE_RUNTIME,
@@ -172,6 +174,17 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
     payload = {"schema_version": 1, "observed_at_utc": _now(), **payload}
     lane.root.mkdir(parents=True, exist_ok=True)
     atomic_json(lane.root / "lane-status.json", payload)
+    try:  # the dashboard's execution view; never allowed to affect the lane
+        active = lane.active()
+        execution_status.note(
+            execution_status.execution_dir(lane.root), "lane", status=payload.get("status"),
+            reason=payload.get("reason"), detail=str(payload.get("detail") or "")[:300],
+            repository=payload.get("repository"), observed_at_utc=payload["observed_at_utc"],
+            active=({k: active.get(k) for k in ("packet_id", "repository", "task_id", "title", "capability_level",
+                                                "model", "dispatched_at_utc")}
+                    | {"worker_pid": (active.get("worker") or {}).get("pid")}) if isinstance(active, dict) else None)
+    except Exception:  # noqa: BLE001
+        pass
     return payload
 
 
@@ -696,6 +709,10 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
                                   outcome="BLOCKED", blocker=item["reason"])
         events.append({"packet_id": packet_id, "state": item["state"], "reason": item.get("reason")})
         _save_publications(lane, items)
+    in_flight = [f"{pid}: {it['state']}" + (f" PR #{it['pr']['number']}" if it.get("pr") else "")
+                 for pid, it in sorted(items.items()) if it.get("state") in PUBLICATION_OPEN]
+    execution_status.note(execution_status.execution_dir(lane.root), "delivery",
+                          phase="DELIVERING" if in_flight else "IDLE", detail="; ".join(in_flight)[:300])
     return events
 
 
@@ -1380,7 +1397,11 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
                    log_path=lane.reports / f"{packet_id}-worker.log")
     atomic_json(lane.active_path, {"packet_id": packet_id, "repository": repo, "worker": worker,
                                    "worktree": str(worktree), "dispatched_at_utc": _now(), "base_sha": base,
-                                   "lease_id": lease_id})
+                                   "lease_id": lease_id,
+                                   "task_id": item["id"] if item is not None else None,
+                                   "title": item["title"] if item is not None else None,
+                                   "capability_level": (item or {}).get("level") or (item or {}).get("capability_level"),
+                                   "model": default_ollama_model()})
     _advance_cursor(lane, repo, packet_id)
     if item is not None:
         backlog.record_item(lane.root, item["id"], packet_id=packet_id, outcome="DISPATCHED")
