@@ -49,6 +49,7 @@ from . import iron_god_cpp_lane as cpp_lane
 from . import iron_god_dev_mode as dev_mode
 from . import iron_god_execution_status as execution_status
 from . import iron_god_model_routing as model_routing
+from . import iron_god_pipeline_trace as pipeline_trace
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_roadmap_progress as roadmap_progress
@@ -188,6 +189,11 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         pass
     _dev_mode_tick(lane, payload, final=True)
+    try:  # where every roadmap slice is and what stops it; the engine names its own gaps (read-only, never fatal)
+        pipeline_trace.refresh(lane.root, free_gib=available_gib(),
+                               need_gib=model_routing.required_gib(default_ollama_model().split("/", 1)[-1]))
+    except Exception:  # noqa: BLE001
+        pass
     return payload
 
 

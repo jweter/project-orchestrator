@@ -81,6 +81,10 @@ function renderExecution(x){
     '<span class="status '+(Number.isFinite(r.available_gib)&&Number.isFinite(r.required_gib)&&r.available_gib<r.required_gib?"warn":"good")+'">'+(Number.isFinite(r.available_gib)&&Number.isFinite(r.required_gib)&&r.available_gib<r.required_gib?"BELOW THRESHOLD":"OK")+'</span>'));
   if(x.waiting)rows.push(card("Waiting: "+(x.waiting.code||""),esc(x.waiting.text||""),'<span class="status warn">WAITING</span>'));
   if(x.blocked)rows.push(card("Blocked: "+(x.blocked.code||""),esc(x.blocked.text||"")+(x.blocked.detail?'<br>'+esc(x.blocked.detail):""),'<span class="status bad">BLOCKED</span>'));
+  const pl=x.pipeline;
+  if(pl){const counts=Object.entries(pl.by_blocker||{}).map(([k,v])=>esc(k)+" "+v).join(" · ");
+    rows.push(card("Roadmap pipeline",esc(pl.requests)+" roadmap slices · "+(counts||"no data")+(pl.attention&&pl.attention.length?'<br>'+pl.attention.map(a=>esc((a.repository||"").split("/").pop())+" · "+esc(a.slice)+" (L"+esc(a.level??"?")+") · "+esc(a.stage)+" · <b>"+esc(a.code||a.status)+"</b>").join('<br>'):"")+(pl.recent_triggers&&pl.recent_triggers.length?'<br><b>Recent triggers:</b><br>'+pl.recent_triggers.slice().reverse().map(t=>esc(fmtClock(t.at_utc))+" · "+esc((t.repository||"").split("/").pop())+" · "+esc(t.code)).join('<br>'):""),
+      '<span class="status '+((pl.by_blocker||{}).UNEXPLAINED_NO_PROGRESS?"bad":"warn")+'">TRACE</span>'));}
   const dec=(x.admission||[]).slice(-5).reverse();
   if(dec.length)rows.push(card("Memory admission decisions",dec.map(d=>esc(fmtClock(d.at_utc))+" · "+esc(d.kind)+" · "+esc(d.model||"")+" · "+(d.admitted?"admitted":"not admitted")+(Number.isFinite(d.available_gib)?" · free "+d.available_gib+" GiB":"")+(d.why&&!d.admitted?" · "+esc(d.why):"")).join("<br>")));
   if(x.detail&&!x.waiting&&!x.blocked)rows.push(card("Current step",esc(x.detail)));
