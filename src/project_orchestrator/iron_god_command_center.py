@@ -67,6 +67,7 @@ LANE_TEXT = {
     "IDLE_NO_APPROVED_BACKLOG_ITEM": "No build is ready right now; planning and drafting continue in the background",
     "IDLE_ALL_REPOSITORIES_AWAITING_CI": "Every repository is waiting for CI on an open pull request",
     "BLOCKED_CONFLICT": "Another open pull request owns the files this task needs",
+    "PARKED": "The last build was paused and is waiting to resume",
 }
 
 
@@ -232,7 +233,11 @@ def _current_work(lane_dir: Path, now: datetime) -> dict[str, Any]:
                 "worker_pid": job.get("pid"), "since_age_s": _age_s(job.get("started_at"), now),
                 "text": f"{verb} {job.get('id')} in {_short_repo(job.get('repository'))}"}
     text = LANE_TEXT.get(status, status or "Lane status unknown")
-    if status == "BLOCKED" and lane.get("worker_status"):
+    summary = str(lane.get("worker_summary") or "")
+    if status == "PARKED" and "AUTHORITY_REVOKED" in summary:
+        text = (f"The last build ({lane.get('packet_id')}, {_short_repo(lane.get('repository'))}) was paused when you took control "
+                "mid-build. That costs it nothing; it resumes when the engine runs again.")
+    elif status == "BLOCKED" and lane.get("worker_status"):
         text = (f"Between builds. The last build ({lane.get('packet_id')}) in {_short_repo(lane.get('repository'))} "
                 f"ended {lane.get('worker_status')}: {lane.get('worker_summary')}")
     return {"busy": False, "kind": "idle", "repository": lane.get("repository"), "task": None,
