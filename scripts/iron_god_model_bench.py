@@ -31,7 +31,10 @@ import threading
 import time
 from pathlib import Path
 
-import psutil
+try:  # only the live benchmark needs it; importing the module (tests, tooling) must not
+    import psutil
+except ImportError:  # pragma: no cover - exercised on machines without it
+    psutil = None
 
 ROOT = Path(__file__).resolve().parents[1]
 for _path in (str(ROOT), str(ROOT / "src")):
@@ -113,6 +116,8 @@ class Sampler:
     """Polls system memory, the Ollama processes' memory and CPU while a model works."""
 
     def __init__(self, journal: "Journal | None" = None, model: str = "") -> None:
+        if psutil is None:
+            raise RuntimeError("the live benchmark needs psutil (pip install psutil)")
         self.journal, self.model = journal, model
         self.stop_flag = threading.Event()
         self.min_available = psutil.virtual_memory().available / GIB
@@ -489,6 +494,8 @@ def bench_model(model: str, workloads: list[str], args: argparse.Namespace, tmp:
         return {**out, "status": "NOT_ADMITTED", "reason": str(exc)}
     for stray in [m for m in client.loaded() if m != model]:
         client.unload(stray)
+    if psutil is None:
+        return {**out, "status": "UNAVAILABLE", "reason": "the live benchmark needs psutil (pip install psutil)"}
     baseline = psutil.virtual_memory().available / GIB
     journal.add("progress", model, state="STARTED", baseline_available_gib=round(baseline, 2))
     meter = Meter(client, model, args.ctx, journal)
