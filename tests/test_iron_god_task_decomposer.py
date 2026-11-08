@@ -731,20 +731,63 @@ def test_the_staged_proposal_asks_small_questions_and_assembles_a_plan_that_vali
     assert plan["subtasks"][1]["depends_on"] == ["t1"] and plan["coverage"] == {"1": ["t1"], "2": ["t2"]}
 
 
-def test_a_residual_the_model_reports_blocks_the_slice_instead_of_being_hidden() -> None:
+def test_a_residual_the_model_reports_is_recorded_on_the_plan_never_hidden() -> None:
+    """Owner direction 2026-11-08: a partial plan is useful work; what it leaves is recorded and returns to the stronger builder."""
     outline = {**OUTLINE, "residual": ["wire the helpers into the existing handler"]}
     result = td.propose_staged(PARENT, "", staged_ask(outline), exists=lambda _p: False)
-    assert not result["ok"] and "RESIDUAL_NOT_LOCAL" in result["reason"]
+    assert result["ok"] and result["plan"]["residual"] == ["wire the helpers into the existing handler"]
+    assert [s["function_name"] for s in result["plan"]["subtasks"]] == ["slugify", "clamp"]
 
 
-def test_a_function_whose_examples_stay_unusable_is_rejected_after_one_retry_with_the_reason() -> None:
+def test_a_function_whose_examples_stay_unusable_is_retried_then_dropped_and_its_criterion_left_for_others() -> None:
     prompts: list[str] = []
     broken = {**DETAIL, "clamp": {"signature": "def clamp(value: int) -> int:", "done_when": "x",
-                                  "acceptance_examples": [{"call": "clamp(1)", "expected": 1, "why": "no placeholder"}]}}
+                                  "acceptance_examples": [{"call": "{fn}(undefined_name)", "expected": 1, "why": "not a literal"}]}}
     result = td.propose_staged(PARENT, "", staged_ask(detail=broken, prompts=prompts), exists=lambda _p: False)
-    assert not result["ok"] and result["reason"].startswith("PLAN_REJECTED")
-    assert sum("named clamp" in p for p in prompts) == td.MAX_FUNCTION_TRIES
+    assert sum("named clamp" in p for p in prompts) == td.MAX_FUNCTION_TRIES             # retried once, with the reason
     assert any("was rejected" in p for p in prompts if "named clamp" in p)
+    assert result["ok"]                                                                    # slugify is still useful work
+    plan = result["plan"]
+    assert [s["function_name"] for s in plan["subtasks"]] == ["slugify"] and plan["coverage"] == {"1": ["t1"]}
+    assert plan["residual"] == [PARENT["slice_acceptance"][1]]                             # clamp's criterion is left, named
+    assert plan["dropped"][0]["title"] and plan["dropped"][0]["problems"]
+
+
+def test_the_models_name_slip_is_repaired_mechanically_and_nothing_else_is_changed() -> None:
+    examples = [{"call": "clamp(1, 0, 3)", "expected": 1, "why": "in range"}, {"call": "{fn}(9, 0, 3)", "expected": 3, "why": "x"},
+                {"call": "other(1)", "expected": 1, "why": "a different function stays wrong"}]
+    fixed = td.normalize_examples("clamp", examples)
+    assert [e["call"] for e in fixed] == ["{fn}(1, 0, 3)", "{fn}(9, 0, 3)", "other(1)"]
+    assert [e["expected"] for e in fixed] == [1, 3, 1] and examples[0]["call"] == "clamp(1, 0, 3)"   # input untouched
+    prompts: list[str] = []
+    slipped = {**DETAIL, "clamp": {**DETAIL["clamp"], "acceptance_examples": [
+        {**e, "call": e["call"].replace("{fn}", "clamp")} for e in DETAIL["clamp"]["acceptance_examples"]]}}
+    result = td.propose_staged(PARENT, "", staged_ask(detail=slipped, prompts=prompts), exists=lambda _p: False)
+    assert result["ok"] and not result["plan"]["residual"]                                  # the whole slice, no retry spent
+    assert sum("named clamp" in p for p in prompts) == 1
+
+
+def test_a_step_that_depends_on_a_dropped_step_is_dropped_too_and_nothing_valid_means_no_plan() -> None:
+    broken_slugify = {**DETAIL, "slugify": {"signature": "def slugify(title: str) -> str:", "done_when": "x",
+                                            "acceptance_examples": [{"call": "{fn}(t)", "expected": "a", "why": "no literal"}]}}
+    result = td.propose_staged(PARENT, "", staged_ask(detail=broken_slugify), exists=lambda _p: False)
+    assert not result["ok"] and result["reason"].startswith("PLAN_REJECTED")     # clamp depends on slugify: nothing is left
+
+
+def test_a_partial_plan_is_never_reported_complete(tmp_path: Path) -> None:
+    lane = tmp_path / "lane"
+    result = td.propose_staged(PARENT, "", staged_ask({**OUTLINE, "residual": ["wire it into the handler"]}), exists=lambda _p: False)
+    td.write_plan(lane, PARENT, result["plan"], planner="test")
+    items = [{"id": f"{PARENT['id']}-t1"}, {"id": f"{PARENT['id']}-t2"}]
+    state = {"items": {i["id"]: {"status": "done", "outcome": "MERGED"} for i in items}}
+    original = td.refill._slice_status
+    try:
+        td.refill._slice_status = lambda base, _items, _state: ("DONE", base)
+        changes = td.settle(lane, items, state)
+    finally:
+        td.refill._slice_status = original
+    assert changes and changes[0]["status"] == "PARTIAL" and "wire it into the handler" in changes[0]["blocker"]
+    assert td.done_parent_ids(lane) == frozenset() and td.active_parent_ids(lane) == frozenset()   # not done, not held
 
 
 @pytest.mark.parametrize("outline", [{}, {"functions": []}, {"functions": ["x"]},

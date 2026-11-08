@@ -180,3 +180,15 @@ def test_the_dashboard_carries_the_pipeline_and_the_page_renders_it(tmp_path: Pa
     assert server._execution_view(tmp_path / "empty").get("pipeline") in (None, {})
     script = (ROOT / "dashboard" / "app.js").read_text(encoding="utf-8")
     assert "Roadmap pipeline" in script and "Recent triggers" in script
+
+
+def test_a_stopped_or_partial_plan_is_reported_as_such_never_as_progress() -> None:
+    """A plan file used to mean "decomposed, progressing" whatever its status, so a BLOCKED plan looked like progress."""
+    blocked = run(request(), context=ctx(plans={"RM-a": "BLOCKED"}))
+    assert blocked["blocker"]["code"] == "DECOMPOSITION_PLAN_BLOCKED" and blocked["status"] == "WAITING"
+    partial = run(request(), context=ctx(plans={"RM-a": "PARTIAL"}))
+    assert partial["blocker"]["code"] == "DECOMPOSITION_PARTIAL" and partial["stage"] == "CAPABLE_BUILDER"
+    taken = run(request(), context=ctx(plans={"RM-a": "PARTIAL"}, dispatched={"RM-a": "2026-11-08T14:00:00Z"}))
+    assert taken["blocker"]["code"] == "CAPABLE_BUILDER_DISPATCHED"                 # the stronger builder has the residual
+    active = run(request(), context=ctx(plans={"RM-a": "ACTIVE"}))
+    assert active["stage"] == "DECOMPOSED" and active["status"] == "PROGRESSING"
