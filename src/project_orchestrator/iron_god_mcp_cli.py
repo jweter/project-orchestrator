@@ -28,6 +28,7 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -39,6 +40,20 @@ KEYS = ("IRON_GOD_MCP_COORDINATION_DB", "IRON_GOD_MCP_STATE_ROOT", "IRON_GOD_MCP
 WRITES = "IRON_GOD_MCP_ALLOW_ADVISORY_WRITES"
 MAX_WAIT_S = 300
 POLL_S = 2.0
+
+
+def _unacknowledged(database: Path, label: str) -> tuple[int, bool]:
+    """(unacknowledged count across the WHOLE inbox, whether the database exists). Read-only: it never creates the database."""
+    after, count, exists = 0, 0, True
+    while True:
+        page = coord.list_messages(database, recipient_label=label, after_seq=after, limit=coord.MAX_PAGE)
+        if page.get("status") == "UNINITIALIZED":
+            return 0, False
+        messages = page["messages"]
+        count += sum(1 for m in messages if not m["acknowledged"])
+        if len(messages) < coord.MAX_PAGE:
+            return count, exists
+        after = page["next_seq"]
 
 
 def _emit(out: TextIO, payload: dict[str, Any]) -> None:
@@ -81,11 +96,9 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
         coord._check_principal(label)
         writes = env.get(WRITES) == "1"
         if args.command == "status":
-            coord.initialize(database)
-            waiting = coord.list_messages(database, recipient_label=label, after_seq=0, limit=coord.MAX_PAGE)["messages"]
-            unacked = [m for m in waiting if not m["acknowledged"]]
-            _emit(out, {"status": "OK", "participant": label, "writes_enabled": writes, "unacknowledged": len(unacked),
-                        "engine": coord.engine_snapshot(state_root)})
+            unacked, exists = _unacknowledged(database, label)   # a status read never initializes or writes the database
+            _emit(out, {"status": "OK", "participant": label, "writes_enabled": writes, "unacknowledged": unacked,
+                        "database_initialized": exists, "engine": coord.engine_snapshot(state_root)})
         elif args.command == "targets":
             _emit(out, {"status": "OK", "targets": coord.targets_snapshot(repo_root)})
         elif args.command == "read":
@@ -107,7 +120,7 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
                                                                   body=text, idempotency_key=key, reference=args.reference)})
             else:
                 _emit(out, {"status": "OK", **coord.ack_message(database, recipient_label=label, message_id=args.id)})
-    except (ValueError, OSError) as exc:  # validation and storage problems are reported, never raised into the caller's shell
+    except (ValueError, OSError, sqlite3.Error) as exc:  # validation and storage problems (locked, corrupt, unwritable) are reported as JSON
         _emit(out, {"status": "REFUSED", "detail": str(exc)[:300]})
         return 1
     return 0

@@ -136,3 +136,31 @@ def test_a_huge_wait_is_capped_so_an_agent_can_never_block_forever(world):
 
     assert cli.run(["read", "--wait", "99999999"], env=env, out=io.StringIO(), sleep=sleep, clock=lambda: ticks["t"]) == 0
     assert len(slept) == int(cli.MAX_WAIT_S / cli.POLL_S)                                # gave up at the 300 s ceiling
+
+
+# --- review findings on #669: each of these failed before its fix ---------------------------------------------------------
+def test_a_status_read_never_creates_or_initializes_the_database(world):
+    code, result = call(world, "chatgpt", "status")
+    assert code == 0 and result["unacknowledged"] == 0 and result["database_initialized"] is False
+    assert not world["db"].exists()                                                    # read-only really means read-only
+
+
+def test_status_counts_unacknowledged_messages_beyond_the_first_page(world):
+    coord.initialize(world["db"])
+    for n in range(coord.MAX_PAGE + 5):
+        coord.post_message(world["db"], sender_label="claude-code", recipient="chatgpt", kind="status", body=f"m{n}",
+                           idempotency_key=f"k{n}")
+    first_page = coord.list_messages(world["db"], recipient_label="chatgpt", limit=coord.MAX_PAGE)["messages"]
+    for m in first_page:                                                               # the oldest 100 are all acknowledged
+        coord.ack_message(world["db"], recipient_label="chatgpt", message_id=m["message_id"])
+    code, result = call(world, "chatgpt", "status")
+    assert code == 0 and result["unacknowledged"] == 5 and result["database_initialized"] is True   # the newer 5 still wait
+
+
+def test_a_corrupt_database_is_reported_as_json_not_a_traceback(world):
+    world["db"].write_bytes(b"this is not a sqlite database at all" * 40)
+    for argv in (("read",), ("status",)):
+        code, result = call(world, "chatgpt", *argv)
+        assert code == 1 and result["status"] == "REFUSED" and result["detail"]
+    code, result = call(world, "claude-code", "post", "--to", "chatgpt", "--kind", "status", "--body", "x", writes=True)
+    assert code == 1 and result["status"] == "REFUSED"
