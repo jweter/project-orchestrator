@@ -119,3 +119,51 @@ def test_a_memory_stall_in_local_decomposition_or_drafting_feeds_the_standing_de
     product_lane.log_draft_outcomes(lane, "jweter/knowledge-engine-core", [{"id": "RM-y", "status": "FAILED", "reason": "PLAN_REJECTED"}],
                                     prefix="LOCAL_DECOMPOSE_")
     assert seen == []                                                                                            # only a memory wait counts
+
+
+def test_memory_wait_search_ignores_repositories_that_cannot_start_work_anyway(tmp_path, monkeypatch) -> None:
+    """Review finding: freeing memory cannot help a repository blocked by an open publication or a failing preflight."""
+    asked = []
+    monkeypatch.setattr(product_lane.backlog, "load_backlog", lambda root: ([{"id": "x"}], {}))
+    monkeypatch.setattr(product_lane.backlog, "load_state", lambda root: {})
+    monkeypatch.setattr(product_lane, "product_repositories", lambda root, cfg: ["jweter/a", "jweter/b"])
+    monkeypatch.setattr(product_lane, "verified_owner_roadmaps", lambda lane, names: {})
+    monkeypatch.setattr(product_lane.backlog, "next_item",
+                        lambda approved, state, repo, max_level: asked.append(repo) or {"id": repo})
+    lane = SimpleNamespace(root=tmp_path)
+    assert product_lane._approved_work_waiting(lane, tmp_path, {"development_level": 2}, {"jweter/a"}) is True
+    assert asked == ["jweter/b"]                                                          # a is blocked: never considered
+    asked.clear()
+    assert product_lane._approved_work_waiting(lane, tmp_path, {"development_level": 2}, {"jweter/a", "jweter/b"}) is False
+    assert asked == []
+
+
+def test_repository_blockers_are_open_publications_and_failed_preflights(tmp_path, monkeypatch) -> None:
+    pubs = {"p1": {"repository": "jweter/a", "state": "AWAITING_CI"}, "p2": {"repository": "jweter/b", "state": "MERGED"}}
+    lane = SimpleNamespace(root=tmp_path, publications=lambda: {"items": pubs}, _json=lambda path, default: {"repositories": {}})
+    monkeypatch.setattr(product_lane, "unready_repositories", lambda rows, head_of: {"jweter/c"})
+    assert product_lane._repository_blockers(lane, None) == {"jweter/a", "jweter/c"}
+
+
+def test_a_planning_memory_stall_survives_to_the_passs_final_report(tmp_path, monkeypatch) -> None:
+    """Review finding: with a stall time above zero, the final IDLE report used to reset the clock the planning stall started."""
+    seen = []
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw) or None)
+    lane = SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None,
+                           dev_mode_config={"auto": True, "stall_minutes": 5})
+    lane.planning_memory_wait = {"required_gib": 7.3, "available_gib": 5.6}
+    product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})                       # the pass's final report
+    assert seen[-1]["waiting_for_memory"] is True and seen[-1]["idle"] is False                    # the stall continues, not reset
+    assert seen[-1]["required_gib"] == 7.3 and seen[-1]["free_gib"] == 5.6
+    assert lane.planning_memory_wait is None                                                       # consumed once
+    product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})                       # the next pass is genuinely idle
+    assert seen[-1]["waiting_for_memory"] is False and seen[-1]["idle"] is True
+
+
+def test_the_planning_hook_remembers_the_stall_for_the_final_report(tmp_path, monkeypatch) -> None:
+    lane = product_lane.ProductLane(tmp_path)
+    monkeypatch.setattr(product_lane, "_dev_mode_tick", lambda lane_, payload, final=False: None)
+    monkeypatch.setattr(product_lane, "available_gib", lambda: 5.6)
+    product_lane.log_draft_outcomes(lane, "jweter/knowledge-engine-core",
+                                    [{"id": "RM-x", "status": "WAITING_FOR_MEMORY", "reason": "MEMORY"}], prefix="LOCAL_DECOMPOSE_")
+    assert lane.planning_memory_wait["required_gib"] == pytest.approx(7.3)
