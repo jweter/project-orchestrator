@@ -127,6 +127,31 @@ def conflicts(item: dict[str, Any], items: list[dict[str, Any]]) -> list[str]:
             and other["status"] == "approved" and other.get("assignee") != AGENT_ID and files & edit_files(other)]
 
 
+ROADMAP_REF = re.compile(r"^(docs/OWNER_APPROVED_ROADMAP_[A-Za-z0-9._-]+\.md)(?![A-Za-z0-9._-])")
+
+
+def promote_by_roadmap(items: list[dict[str, Any]], verified_roadmaps: dict[str, set[str]]) -> list[dict[str, Any]]:
+    """A ``proposed`` item that cites its repository's verified owner-approved roadmap is approved by that roadmap.
+
+    Owner decision (repeated 2026-11-07/08): the roadmap the owner wrote is the approval; nothing is approved twice.
+    ``verified_roadmaps`` maps a repository to the roadmap paths that really are owner-approved at its head (checked from the
+    document itself, see ``verified_owner_roadmaps`` in the product lane), so a made-up reference approves nothing. Items that do
+    not cite such a roadmap (for example engine-originated audit findings) keep their status, as do retired and done items and
+    any item that would be malformed once approved (an approved level 1 or 2 item must carry its build spec or direction).
+    """
+    promoted: list[dict[str, Any]] = []
+    for item in items:
+        match = ROADMAP_REF.match(str(item.get("roadmap_ref") or ""))
+        if (item.get("status") != "proposed" or match is None
+                or match.group(1) not in verified_roadmaps.get(str(item.get("repository")), set())):
+            promoted.append(item)
+            continue
+        candidate = {**item, "status": "approved", "assignee": item.get("assignee") or AGENT_ID,
+                     "approved_by": f"OWNER_ROADMAP:{match.group(1)}"}
+        promoted.append(candidate if not item_problems(candidate) else item)
+    return promoted
+
+
 def load_backlog(release_repo: Path) -> tuple[list[dict[str, Any]], dict[str, list[str]]]:
     """Well-formed items, and the problems of every rejected one (a malformed item is never dispatched)."""
     try:
