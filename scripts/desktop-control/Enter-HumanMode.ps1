@@ -145,6 +145,20 @@ $taskRunning = @($taskNames | ForEach-Object {
 $ownerActive = Get-OwnerState
 $remainingRemote = @(Find-RemoteProcesses)
 $status = if(-not $ownerActive){'FAILED_MARKER'} elseif($remaining.Count -ne 0 -or $taskRunning.Count -ne 0){'PARTIAL'} elseif($remainingRemote.Count -ne 0 -and -not $KeepRemote){'PARTIAL_REMOTE_ACTIVE'} else {'OWNER_CONTROL_GRANTED'}
+# Owner decision 2026-11-08: Take the Wheel is the signal to develop (Dev Mode may close the approved memory hogs), and
+# Give Me Control gives the laptop back. If Dev Mode closed programs, relaunch them now.
+# Best effort and detached: it cannot delay, fail or change the handoff above, and it never runs in an audit or self-test.
+if(-not $AuditOnly) {
+ try {
+  $pinForDevMode = Get-IronGodPinnedRelease $state
+  $pythonForDevMode = Get-IronGodPython
+  $devModeScript = if($pinForDevMode) { Join-Path $pinForDevMode.Repo 'scripts\iron_god_dev_mode.py' } else { $null }
+  if($pythonForDevMode -and $devModeScript -and (Test-Path -LiteralPath $devModeScript -PathType Leaf)) {
+   Start-Process -FilePath $pythonForDevMode -ArgumentList @($devModeScript,'restore','--state-root',$state) -WindowStyle Hidden | Out-Null
+   $events.Add('DEV_MODE_RESTORE_STARTED')
+  } else { $diagnostics.Add('DEV_MODE_RESTORE_UNAVAILABLE_IN_PINNED_RELEASE') }
+ } catch { $diagnostics.Add('DEV_MODE_RESTORE_FAILED: ' + $_.Exception.Message) }
+}
 $report = [ordered]@{
  schema_version=1
  checked_at=[DateTimeOffset]::UtcNow.ToString('o')

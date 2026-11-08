@@ -201,3 +201,18 @@ def test_watchdog_gate_is_the_controller():
     assert ". (Join-Path $PSScriptRoot 'desktop-control\\IronGodOwnerControl.ps1')" in source
     assert "(Get-IronGodOwnerStatus $StateRoot) -ceq 'AUTHORIZED'" in source
     assert "human-mode.json" not in source
+
+
+def test_give_me_control_gives_the_laptop_back_by_restoring_dev_mode_without_ever_blocking_the_handoff() -> None:
+    """Owner, 2026-11-08: Take the Wheel implies Dev Mode; Give Me Control returns the laptop and restores the programs."""
+    text = HUMAN.read_text(encoding="utf-8")
+    start = text.index("# Owner decision 2026-11-08")
+    end = text.index("$report = [ordered]@{")
+    block = text[start:end]
+    assert start < end and "if(-not $AuditOnly)" in block                                   # never during an audit or self-test
+    assert "Get-IronGodPinnedRelease" in block and "iron_god_dev_mode.py" in block and "'restore'" in block
+    assert "Start-Process" in block and "-WindowStyle Hidden" in block and "-Wait" not in block   # detached: no delay to the handoff
+    assert block.count("try {") == 1 and "catch {" in block and "diagnostics.Add" in block      # a failure is only a diagnostic
+    assert "exit" not in block and "throw" not in block.lower()                              # it can never change the handoff's result
+    after = text[end:]
+    assert "OWNER_CONTROL_GRANTED" in text[:start] and "$status -ne 'OWNER_CONTROL_GRANTED'" in after   # the success rule is untouched
