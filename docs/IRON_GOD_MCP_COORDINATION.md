@@ -129,6 +129,49 @@ runtime/report roots. Launch
 client. Optional `IRON_GOD_MCP_ALLOW_ADVISORY_WRITES=1` enables only
 advisory post/ack; do not enable without verifying filesystem permissions.
 
+### Claude Code in PowerShell (after the owner-controlled release update)
+
+Claude Code uses the same `stdio` MCP protocol whether launched from Windows
+Terminal, PowerShell or Command Prompt. Configure a **local**, project-scoped
+connection from the terminal, NOT from within an active Claude Code chat:
+
+```powershell
+$repo = 'C:\ev\rel-src'  # must be the newly installed, verified release
+$python = 'C:\ev\iron-god-mcp-venv\Scripts\python.exe' # venv with project-orchestrator[mcp]
+$state = Join-Path $env:LOCALAPPDATA 'ExponentialEngine\flow-state'
+$inbox = Join-Path $env:LOCALAPPDATA 'ExponentialEngine\coordination\advisory.sqlite'
+New-Item -ItemType Directory -Force (Split-Path $inbox) | Out-Null
+Set-Location $repo
+claude mcp add --transport stdio --scope local `
+  --env "IRON_GOD_MCP_COORDINATION_DB=$inbox" `
+  --env "IRON_GOD_MCP_STATE_ROOT=$state" `
+  --env "IRON_GOD_MCP_REPO_ROOT=$repo" `
+  --env 'IRON_GOD_MCP_CLIENT_LABEL=claude-code' `
+  --env 'IRON_GOD_MCP_ALLOW_ADVISORY_WRITES=1' `
+  iron-god -- $python -m project_orchestrator.iron_god_mcp_server
+claude mcp get iron-god
+```
+
+Replace the venv path with the actual approved interpreter and install
+`.[mcp]` in that isolated venv. This example is **instructions only**; the
+server is not yet installed in the pinned resident release, and nothing is
+registered in Claude Code automatically by this PR. Run `/mcp` inside Claude
+Code to confirm its health once installed. If several projects should use the
+same connection, switch to `--scope user` after reviewing which projects and
+users can see the server's tools; `--scope local` is safer for the first pilot.
+
+For the separate local resident agent, launch another stdio MCP server with
+`IRON_GOD_MCP_CLIENT_LABEL=iron-god` and the **same** SQLite path. Each
+client has its own inbox and receipt cursor. Remote ChatGPT remains a later
+authenticated connection; merely naming a local client `chatgpt` does not
+connect this chat session or prove identity.
+
+MCP makes tools available when a client invokes them. It does not, by itself,
+provide background polling, instant alerts, a continuously active Claude
+session, or global communication delivery. Those require the separately
+authorized inbox notification/polling slice (MCP-5). Preserve the distinction
+between a durable message and actual delivery to a live client.
+
 **Not supported yet**: ChatGPT direct local access, arbitrary peer-to-peer
 agents, an externally reachable server, webhook notifications, runnable
 task submission, control actions, remote authorization or automatic
