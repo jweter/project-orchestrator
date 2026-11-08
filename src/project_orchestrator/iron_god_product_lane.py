@@ -979,7 +979,6 @@ def advance_product_lane(
     config = rotation_config(policy if policy is not None else load_policy(release_repo))
     if config is None:
         return {"status": "PORTFOLIO_ROTATION_DISABLED"}
-    lane.dev_mode_config = config.get("dev_mode")  # the owner's standing Dev Mode rule, if the policy enables it
     pool = lease_pool if lease_pool is not None else default_lease_pool()
     if decide is None:
         decision = acknowledge_and_evaluate(owner_controller.control_root(state_root),
@@ -1011,6 +1010,9 @@ def advance_product_lane(
             return _report(lane, {"status": "WORKER_STOPPED_AUTHORITY_REVOKED", "packet_id": active["packet_id"],
                                   "worktree_preserved": active.get("worktree")})
         return _report(lane, {"status": "WAITING_FOR_OWNER_AUTHORITY", "reasons": reasons})
+    # The owner's standing Dev Mode rule exists only on an AUTHORIZED pass. It is attached after the authority check on purpose:
+    # both denied-authority exits above report without it, so nothing can close the owner's programs while they hold control.
+    lane.dev_mode_config = config.get("dev_mode")
     merge = "review" if config.get("merge") == "review" else "auto"
     published = advance_publications(lane, release_repo, github=github or GitHub(release_repo), memory_root=memory_root,
                                      merge=merge)
@@ -1138,6 +1140,10 @@ def advance_product_lane(
             return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",
                                   "reason": decision.reason, "repository": repo, "route": decision.as_dict(),
                                   "work_waiting": bool(why_waiting)})
+    if decision is not None and decision.model is not None and decision.required_gib and decision.available_gib is not None             and decision.available_gib < decision.required_gib:
+        # Below the comfortable level the model still runs (owner decision 2026-11-08); the standing rule is told so it can
+        # free memory while the run proceeds. Sustained real pressure still cancels the run.
+        lane.planning_memory_wait = {"required_gib": decision.required_gib, "available_gib": decision.available_gib}
     admission = resources()
     if not admission.get("admitted"):
         return _report(lane, {"status": "WAITING_FOR_RESOURCES", "repository": repo, "admission": admission})
