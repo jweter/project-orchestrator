@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import select
 import socket
@@ -296,3 +297,69 @@ def test_an_error_body_from_the_server_is_a_failure_not_an_empty_answer() -> Non
             fake.client().generate("m:7b", "x", num_ctx=512, num_predict=10, keep_alive="0", timeout=30, should_abort=lambda: None, poll_s=0.1)
     finally:
         fake.close()
+
+
+# --- the Aider build path gets the same protections as guarded_generate -------------------------------------------------
+def test_guarded_session_admits_by_memory_holds_the_slot_and_always_unloads(tmp_path):
+    fake, slot = FakeDoor(), tmp_path / "slot"
+    with pytest.raises(lm.ModelNotAdmitted, match="MEMORY"):
+        with lm.guarded_session(wait_s=0.0, client=fake, probes=door_probes(6.0), directory=slot):
+            pytest.fail("7B must not be admitted below its 7.3 GiB threshold")
+    assert fake.unloaded == [] and not slot.exists()                       # nothing loaded, slot released
+
+    with lm.guarded_session(wait_s=5, client=fake, probes=door_probes(8.0), directory=slot) as gate:
+        assert gate.required_gib == 7.3 and slot.exists()                  # one model at a time: the slot is held
+        with pytest.raises(lm.ModelNotAdmitted, match="SLOT_BUSY"):
+            with lm.guarded_session(wait_s=0.0, client=FakeDoor(), probes=door_probes(8.0), directory=slot, poll_s=0.01):
+                pass
+    assert fake.unloaded == ["qwen2.5-coder:7b"] and not slot.exists()     # unloaded on exit so Windows gets the memory back
+
+
+def test_guarded_session_unloads_even_when_the_build_raises(tmp_path):
+    fake = FakeDoor()
+    with pytest.raises(RuntimeError, match="boom"):
+        with lm.guarded_session(wait_s=5, client=fake, probes=door_probes(9.0), directory=tmp_path / "slot"):
+            raise RuntimeError("boom")
+    assert fake.unloaded == ["qwen2.5-coder:7b"] and not (tmp_path / "slot").exists()
+
+
+def test_memory_checked_runs_the_authority_check_first_then_cancels_on_sustained_pressure():
+    calls = []
+    readings = iter([9.0, 9.0, 0.3, 0.2, 0.2])
+    gate = lm.Gate(model_gib=5.3, reserve_gib=2.0, available=lambda: next(readings, 0.2))
+    watched = lm.MemoryChecked(lambda: calls.append("authority"), gate)
+    watched()                                                              # healthy: nothing raised
+    watched()                                                              # one low reading is not sustained pressure
+    assert watched.reason == ""
+    with pytest.raises(lm.ModelCancelled, match="MEMORY_PRESSURE"):
+        watched()
+    assert watched.reason.startswith("MEMORY_PRESSURE") and calls == ["authority"] * 3
+
+    def revoked():
+        raise RuntimeError("EXECUTION_AUTHORITY_REVOKED")
+
+    with pytest.raises(RuntimeError, match="EXECUTION_AUTHORITY_REVOKED"):  # Give Me Control still wins, and says why
+        lm.MemoryChecked(revoked, lm.Gate(model_gib=1.0, available=lambda: 9.0))()
+
+
+def test_both_workers_wrap_the_aider_run_in_the_memory_session_and_report_waits_without_failing(tmp_path, monkeypatch):
+    """The build path used to hold only a lock; it now waits for memory (no attempt spent) and cancels on pressure."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    sys.path[:0] = [str(root), str(root / "src")]
+    for name in ("iron_god_product_worker", "iron_god_canon_worker"):
+        spec = importlib.util.spec_from_file_location(name, root / "scripts" / f"{name}.py")
+        worker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(worker)
+
+        @contextlib.contextmanager
+        def never_admitted(*_a, **_k):
+            raise lm.ModelNotAdmitted("MEMORY: 5.0 GiB available < 7.3 GiB required")
+            yield
+
+        monkeypatch.setattr(lm, "guarded_session", never_admitted)
+        with pytest.raises(RuntimeError, match="WAITING_FOR_MEMORY"):
+            worker.production_agent(tmp_path, "message", ["a.py"], lambda: None)

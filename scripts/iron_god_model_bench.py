@@ -468,8 +468,8 @@ def run_cpp(meter: Meter, journal: Journal, clone: Path, base: str, work: Path) 
 def admit(model: str, wait_s: float) -> tuple[lm.Gate, str]:
     match = lm._SIZE.search(lm.bare_name(model).lower())
     key = f"{float(match.group(1)):g}b" if match else "7b"
-    gib, reserve, _idle = lm.PROFILES.get(key, lm.PROFILES["7b"])
-    gate = lm.Gate(model_gib=gib, reserve_gib=reserve, min_idle_s=0.0)  # the owner is supervising: idle is not required here
+    gib, reserve = lm.PROFILES.get(key, lm.PROFILES["7b"])
+    gate = lm.Gate(model_gib=gib, reserve_gib=reserve)
     deadline = time.monotonic() + wait_s
     while True:
         ok, why = gate.admit()
