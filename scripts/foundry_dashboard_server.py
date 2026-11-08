@@ -8,6 +8,28 @@ _ROOT=Path(__file__).resolve().parents[1]
 for _p in (str(_ROOT/"src"),str(_ROOT)):
     if _p not in sys.path: sys.path.insert(0,_p)
 
+_TOP_CACHE={"at":0.0,"rows":[]}
+
+def _top_memory_users(runner=None,now=None,limit=6)->list:
+    """The biggest memory users grouped by program (Chrome is one line, not twenty), cached for ten seconds.
+
+    Read-only and best effort: it only ever REPORTS who is using memory so the owner can see why the engine is waiting;
+    nothing here closes or changes any process.
+    """
+    stamp=time.time() if now is None else now
+    if stamp-_TOP_CACHE["at"]<10 and _TOP_CACHE["rows"]: return _TOP_CACHE["rows"]
+    script=("Get-Process | Group-Object Name | ForEach-Object { [pscustomobject]@{name=$_.Name;count=$_.Count;"
+            "mib=[int](($_.Group | Measure-Object WorkingSet64 -Sum).Sum/1MB)} } | Sort-Object mib -Descending | "
+            f"Select-Object -First {int(limit)} | ConvertTo-Json -Compress")
+    try:
+        run=runner or (lambda: subprocess.run(["powershell.exe","-NoProfile","-Command",script],capture_output=True,text=True,timeout=12,check=True).stdout)
+        data=json.loads(run() or "[]")
+        rows=[{"name":str(r["name"]),"count":int(r["count"]),"mib":int(r["mib"])} for r in (data if isinstance(data,list) else [data])]
+    except (OSError,subprocess.SubprocessError,ValueError,KeyError,TypeError):
+        rows=[]
+    _TOP_CACHE.update(at=stamp,rows=rows)
+    return rows
+
 def _execution_view(state_root:Path)->dict:
     """What Iron God is doing right now (model, task, phase, worker, memory, why it waits). Unknown stays unknown."""
     try:
@@ -27,9 +49,11 @@ def _execution_view(state_root:Path)->dict:
             from project_orchestrator.human_ownership import AUTHORIZED,owner_control_status
             authorized=owner_control_status(state_root)==AUTHORIZED
         except Exception: pass
-        return es.view(state_root/"iron-god-products",loaded_models=loaded,available_gib=free,
-                       capability_profile=load_profile(state_root),owner_authorized=authorized,
-                       builder_model=lm.default_ollama_model())
+        view=es.view(state_root/"iron-god-products",loaded_models=loaded,available_gib=free,
+                     capability_profile=load_profile(state_root),owner_authorized=authorized,
+                     builder_model=lm.default_ollama_model())
+        view["resources"]["top_consumers"]=_top_memory_users()
+        return view
     except Exception as exc:
         return {"phase":"UNKNOWN","detail":"execution view unavailable: "+type(exc).__name__,"active":False}
 
