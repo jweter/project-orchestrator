@@ -1,8 +1,37 @@
 #!/usr/bin/env python3
-import argparse,json,mimetypes,os,secrets,subprocess,time,uuid
+import argparse,json,mimetypes,os,secrets,subprocess,sys,time,uuid
 from datetime import datetime,timedelta,timezone
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
+
+_ROOT=Path(__file__).resolve().parents[1]
+for _p in (str(_ROOT/"src"),str(_ROOT)):
+    if _p not in sys.path: sys.path.insert(0,_p)
+
+def _execution_view(state_root:Path)->dict:
+    """What Iron God is doing right now (model, task, phase, worker, memory, why it waits). Unknown stays unknown."""
+    try:
+        import urllib.request
+        from project_orchestrator import iron_god_execution_status as es
+        from project_orchestrator import iron_god_local_model as lm
+        from project_orchestrator.iron_god_calibration import load_profile
+        loaded=None
+        try:
+            with urllib.request.urlopen(os.environ.get("OLLAMA_API_BASE","http://127.0.0.1:11434").rstrip("/")+"/api/ps",timeout=3) as r:
+                loaded=[str(m.get("name") or m.get("model")) for m in json.load(r).get("models",[])]
+        except (OSError,ValueError): pass
+        try: free=lm.available_gib()
+        except Exception: free=None
+        authorized=None
+        try:
+            from project_orchestrator.human_ownership import AUTHORIZED,owner_control_status
+            authorized=owner_control_status(state_root)==AUTHORIZED
+        except Exception: pass
+        return es.view(state_root/"iron-god-products",loaded_models=loaded,available_gib=free,
+                       capability_profile=load_profile(state_root),owner_authorized=authorized,
+                       builder_model=lm.default_ollama_model())
+    except Exception as exc:
+        return {"phase":"UNKNOWN","detail":"execution view unavailable: "+type(exc).__name__,"active":False}
 
 def _read_json(path:Path):
     try:
@@ -162,7 +191,7 @@ remote_control=[bool]($p|Where-Object{$_.Name -eq 'node.exe' -and $_.CommandLine
             "subsystems":subsystems,"machine":machine,"alerts":alerts,
             "human_mode":{"enabled":bool(human.get("enabled")),"since":human.get("since")},
             "command_progress":progress,"control_history":list(history.get("commands",[]))[-20:],
-            "last_control_receipt":receipt}
+            "last_control_receipt":receipt,"execution":_execution_view(state_root)}
 
 def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_token:str|None=None):
     class Handler(BaseHTTPRequestHandler):

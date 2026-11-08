@@ -41,7 +41,8 @@ from . import iron_god_capable_builder as capable_builder
 from . import iron_god_development_memory as development_memory
 from .capability_authority import CapabilityAuthorityError, compile_capability_authority
 from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
-from .iron_god_calibration import capability_gate, load_profile
+from . import iron_god_model_routing as model_routing
+from .iron_god_calibration import DEFAULT_MODEL, capability_gate, load_profile, load_profiles
 from .iron_god_ambiguity_detector import CLEAR, detect_ambiguity
 from .iron_god_capability_graph_parser import CapabilityGraphInvalidError, parse_capability_graph
 from .iron_god_dependency_resolution import DependencyResolutionError, resolve_dependencies
@@ -338,6 +339,7 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
             "capability_level": declared.get((capability_id, chosen["slice_id"]), {}).get("capability_level"),
             "acceptance_examples": declared.get((capability_id, chosen["slice_id"]), {}).get("acceptance_examples", []),
             "directed_edit": declared.get((capability_id, chosen["slice_id"]), {}).get("directed_edit"),
+            "cpp": declared.get((capability_id, chosen["slice_id"]), {}).get("cpp"),
             "max_builder_level": max(backlog.BUILDABLE_LEVELS),
             "needs": "a backlog item (level 1 build spec, or level 2 directed edit with approved tests that fail at "
                      "exact_head) whose id and roadmap_ref equal this request's, written to the drafts directory"})
@@ -345,7 +347,7 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
 
 
 def route(request: dict[str, Any], *, profile: dict[str, Any] | None, max_level: int,
-          unsupported: str | None = None) -> dict[str, Any]:
+          unsupported: str | None = None, expected_model: str = DEFAULT_MODEL) -> dict[str, Any]:
     """Which builder may take a request, from declared level + the measured profile + the lane's buildable levels.
 
     The local worker is only assigned work inside what was measured: the slice must declare ``capability_level``,
@@ -360,7 +362,7 @@ def route(request: dict[str, Any], *, profile: dict[str, Any] | None, max_level:
         return {"builder": builder, "reason": unsupported, "level": level}
     if request.get("force_builder") == CAPABLE:  # an exhausted local slice or a planning task: a stronger builder only
         return {"builder": CAPABLE, "reason": str(request.get("force_reason") or "STRONGER_BUILDER_REQUIRED"), "level": level}
-    gate = capability_gate(profile, {"capability_level": level})
+    gate = capability_gate(profile, {"capability_level": level}, model=expected_model)
     if gate is not None:
         # An undeclared or uncalibrated level is not evidence the local builder can do it.
         return {"builder": CAPABLE, "reason": gate, "level": level}
@@ -669,7 +671,10 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         rules = development_memory.rules_for(lane_root, repository)
     except Exception:  # memory is advisory evidence for the planner, never a gate
         rules = []
-    profile = load_profile(state_root)
+    # "can any local model ever do this?" is answered by the best valid profile, never by what fits in memory this minute
+    best = model_routing.best_profile(load_profiles(state_root))
+    profile = best or load_profile(state_root)
+    expected_model = best["model"] if best else DEFAULT_MODEL  # only a validated best profile may stand for a non-default model
     try:
         repo_problem = unsupported(clone, head) if unsupported else None
     except Exception as exc:  # an unreadable tree is not evidence the repository can be built
@@ -677,7 +682,8 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
     for request in derived["requests"]:
         request["development_rules"] = rules
         request["graph_path"] = source  # the declared graph: the one file any capable session may also edit to record delivery
-        request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem)
+        request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem,
+                                 expected_model=expected_model)
         report["routed"][request["route"]["builder"]].append(request["id"])
     for request in derived["requests"]:
         # Open pull requests own files; a capable slice may touch anything its allowed paths cover.

@@ -50,7 +50,9 @@ def classify_gate(command_line: str) -> str | None:
 
 
 def builder_name() -> str:
-    return os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:3b").split("/", 1)[-1]
+    from .iron_god_local_model import default_ollama_model
+
+    return default_ollama_model().split("/", 1)[-1]
 
 
 def resident_models(base: str | None = None, timeout: float = 3.0) -> list[str] | None:

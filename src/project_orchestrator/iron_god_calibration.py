@@ -19,6 +19,7 @@ import ctypes
 import json
 import os
 import platform
+import re
 import shutil
 import stat
 import statistics
@@ -29,13 +30,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import iron_god_owner_control as owner_controller
+from .iron_god_local_model import default_ollama_model
 from .state_io import atomic_json
 
 PROFILE_NAME = "iron-god-capability-profile.json"
 LADDER_VERSION = 1
 CALIBRATION_LEASE_ID = "iron-god-calibration"
 # Same default as scripts/autonomous_slice_builder.MODEL (asserted by tests).
-DEFAULT_MODEL = os.environ.get("EXPONENTIAL_BUILDER_MODEL", "ollama/qwen2.5-coder:3b")
+DEFAULT_MODEL = default_ollama_model()
 
 _PLANNING = {
     "vision_ref": "calibration ladder (owner-held capability measurement)",
@@ -157,8 +159,19 @@ def remove_tree(path: Path) -> None:
         shutil.rmtree(path, onexc=clear_readonly)
 
 
-def profile_path(state_root: Path) -> Path:
-    return Path(state_root) / PROFILE_NAME
+PROFILES_DIR = "iron-god-capability-profiles"  # one measured profile per model: routing needs all of them, not just one
+
+
+def model_slug(model: str) -> str:
+    """A file-name-safe, prefix-free spelling of a model name (``ollama/qwen2.5-coder:7b`` -> ``qwen2.5-coder_7b``)."""
+    return re.sub(r"[^a-z0-9.]+", "_", str(model).lower().removeprefix("ollama/")).strip("_")
+
+
+def profile_path(state_root: Path, model: str | None = None) -> Path:
+    """The legacy single profile (no model) or that model's own profile file."""
+    if model is None:
+        return Path(state_root) / PROFILE_NAME
+    return Path(state_root) / PROFILES_DIR / f"{model_slug(model)}.json"
 
 
 def hardware_fingerprint() -> dict[str, Any]:
@@ -279,7 +292,9 @@ def run_calibration(
         "calibrated_at_utc": _now(), "levels": levels,
         "max_passing_level": max_level, "recommended_worker_timeout_s": timeout,
     }
-    atomic_json(profile_path(state_root), profile)
+    atomic_json(profile_path(state_root, model), profile)
+    if model == DEFAULT_MODEL:  # the legacy single-profile readers keep seeing the primary builder's profile
+        atomic_json(profile_path(state_root), profile)
     return profile
 
 
@@ -341,6 +356,21 @@ def load_profile(state_root: Path) -> dict[str, Any] | None:
         return json.loads(profile_path(state_root).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def load_profiles(state_root: Path) -> dict[str, dict[str, Any]]:
+    """Every readable measured profile, keyed by the model it was measured for (per-model files plus the legacy one)."""
+    found: dict[str, dict[str, Any]] = {}
+    directory = Path(state_root) / PROFILES_DIR
+    paths = sorted(directory.glob("*.json")) if directory.is_dir() else []
+    for path in [*paths, profile_path(state_root)]:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and isinstance(data.get("model"), str):
+            found.setdefault(data["model"], data)  # a per-model file wins over the legacy copy of the same model
+    return found
 
 
 def capability_gate(profile: dict[str, Any] | None, spec: dict[str, Any], *, model: str = DEFAULT_MODEL,

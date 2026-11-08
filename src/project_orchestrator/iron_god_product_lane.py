@@ -45,6 +45,9 @@ from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
+from . import iron_god_cpp_lane as cpp_lane
+from . import iron_god_execution_status as execution_status
+from . import iron_god_model_routing as model_routing
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_roadmap_progress as roadmap_progress
@@ -54,7 +57,8 @@ from . import iron_god_owner_control as owner_controller
 from . import iron_god_roadmap_refill as roadmap_refill
 from . import iron_god_working_memory as working_memory
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
-from .iron_god_calibration import capability_gate, load_profile, remove_tree
+from .iron_god_calibration import capability_gate, load_profile, load_profiles, remove_tree
+from .iron_god_local_model import available_gib, default_ollama_model
 from .iron_god_canon_lane import (
     WORKER_LEASE_ID,
     WORKER_LEASE_RUNTIME,
@@ -171,6 +175,17 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
     payload = {"schema_version": 1, "observed_at_utc": _now(), **payload}
     lane.root.mkdir(parents=True, exist_ok=True)
     atomic_json(lane.root / "lane-status.json", payload)
+    try:  # the dashboard's execution view; never allowed to affect the lane
+        active = lane.active()
+        execution_status.note(
+            execution_status.execution_dir(lane.root), "lane", status=payload.get("status"),
+            reason=payload.get("reason"), detail=str(payload.get("detail") or "")[:300],
+            repository=payload.get("repository"), observed_at_utc=payload["observed_at_utc"], route=payload.get("route"),
+            active=({k: active.get(k) for k in ("packet_id", "repository", "task_id", "title", "capability_level",
+                                                "model", "dispatched_at_utc", "route")}
+                    | {"worker_pid": (active.get("worker") or {}).get("pid")}) if isinstance(active, dict) else None)
+    except Exception:  # noqa: BLE001
+        pass
     return payload
 
 
@@ -355,8 +370,10 @@ def build_product_packet(repo: str, *, packet_id: str, base: str, worktree: Path
 
 
 def spawn_product_worker(release_repo: Path, packet_path: Path, handback_path: Path, *, release_sha: str,
-                         log_path: Path) -> dict[str, Any]:
+                         log_path: Path, model: str | None = None) -> dict[str, Any]:
     env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
+    if model:  # the model routing chose for THIS task; the worker, its Aider run and the door all read it from here
+        env['EXPONENTIAL_BUILDER_MODEL'] = f'ollama/{model}'
     log_path.parent.mkdir(parents=True, exist_ok=True)
     flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     with log_path.open("ab") as log:
@@ -695,6 +712,10 @@ def advance_publications(lane: ProductLane, release_repo: Path, *, github: GitHu
                                   outcome="BLOCKED", blocker=item["reason"])
         events.append({"packet_id": packet_id, "state": item["state"], "reason": item.get("reason")})
         _save_publications(lane, items)
+    in_flight = [f"{pid}: {it['state']}" + (f" PR #{it['pr']['number']}" if it.get("pr") else "")
+                 for pid, it in sorted(items.items()) if it.get("state") in PUBLICATION_OPEN]
+    execution_status.note(execution_status.execution_dir(lane.root), "delivery",
+                          phase="DELIVERING" if in_flight else "IDLE", detail="; ".join(in_flight)[:300])
     return events
 
 
@@ -847,8 +868,15 @@ def advance_product_lane(
     memory_root: Path | None = None,
     rng: random.Random | None = None,
     policy: dict[str, Any] | None = None,
+    profiles: Callable[[], dict[str, dict[str, Any]]] | None = None,
+    free_gib: Callable[[], float | None] | None = None,
 ) -> dict[str, Any]:
-    """Advance the product rotation by one fail-closed step."""
+    """Advance the product rotation by one fail-closed step.
+
+    Model choice is capability-aware (see ``iron_god_model_routing``): each task goes to a model whose measured profile
+    covers its level, the primary builder first, a smaller model only for work it has demonstrated, and a wait (never a
+    downgrade) when memory does not admit a qualifying model. Passing ``capability`` keeps the older single-profile gate.
+    """
     from .iron_god_canon_lane import load_policy
 
     lane = ProductLane(state_root)
@@ -902,10 +930,22 @@ def advance_product_lane(
         return result
     if not allow_dispatch:
         return _report(lane, {"status": "WAITING_FOR_COMMISSIONING_LANE", "publications": published})
-    refused = (capability or (lambda s: capability_gate(load_profile(state_root), s)))(
-        {"capability_level": int(config.get("capability_level", 3))})
-    if refused:
-        return _report(lane, {"status": "WAITING_FOR_CALIBRATION", "reason": refused})
+    use_routing = capability is None
+    ceiling = 9
+    measured = free = None
+    if use_routing:
+        measured = (profiles or (lambda: load_profiles(state_root)))()
+        free = (free_gib or available_gib)()
+        ceiling = model_routing.max_level_now(measured, free)
+        if ceiling == 0:
+            why = model_routing.route(1, measured, free)
+            waiting_for_memory = why.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+            return _report(lane, {"status": "WAITING_FOR_MEMORY" if waiting_for_memory else "WAITING_FOR_CALIBRATION",
+                                  "reason": why.reason, "route": why.as_dict()})
+    else:
+        refused = capability({"capability_level": int(config.get("capability_level", 3))})
+        if refused:
+            return _report(lane, {"status": "WAITING_FOR_CALIBRATION", "reason": refused})
     publications = lane.publications()["items"]
     stranded = [pid for pid, item in publications.items() if item["state"] == "REPAIRING"]
     for pid in stranded:  # no worker is active, so a REPAIRING publication lost its repair (e.g. a crash)
@@ -960,12 +1000,13 @@ def advance_product_lane(
                          "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT))},
                 record_progress=config.get("roadmap_progress", True) is True, release=(release_repo, release_sha),
                 draft_locally=config.get("local_draft_author", True) is True, lease_pool=pool)
+        select_level = min(level, ceiling)  # a momentary memory dip must never reclassify work as "beyond the local builder"
         for name in repos:
-            chosen = backlog.next_item(approved, state, name, max_level=level)
+            chosen = backlog.next_item(approved, state, name, max_level=select_level)
             if chosen is not None:
                 items[name] = chosen
         busy |= {name for name in repos if name not in items}
-        explained = backlog.explain_candidates(approved, state, max_level=level)
+        explained = backlog.explain_candidates(approved, state, max_level=select_level)
     repo = next_repository(lane, repos, busy, rng)
     if repo is not None and local_drafter.drafting_in_progress(lane.root):
         # the single local model is planning a roadmap slice; start no builder beside it
@@ -974,6 +1015,15 @@ def advance_product_lane(
         idle = "IDLE_NO_APPROVED_BACKLOG_ITEM" if config.get("planning") == "backlog" and not items else (
             "IDLE_ALL_REPOSITORIES_AWAITING_CI")
         return _report(lane, {"status": idle, "publications": published, **idle_diagnostics(lane, explained, rejected)})
+    decision = None
+    if use_routing:
+        chosen_item = items.get(repo)
+        task_level = chosen_item.get("level") if chosen_item is not None else int(config.get("capability_level", 3))
+        decision = model_routing.route(task_level, measured or {}, (free_gib or available_gib)())
+        if decision.model is None:  # wait, never downgrade; no attempt is spent
+            why_waiting = decision.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+            return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",
+                                  "reason": decision.reason, "repository": repo, "route": decision.as_dict()})
     admission = resources()
     if not admission.get("admitted"):
         return _report(lane, {"status": "WAITING_FOR_RESOURCES", "repository": repo, "admission": admission})
@@ -984,7 +1034,9 @@ def advance_product_lane(
                               "detail": f"{type(exc).__name__}: {str(exc)[:200]}"})
     try:
         result = dispatch(lane, release_repo, ledger, repo, release_sha=release_sha, spawn=spawn, sync=sync,
-                          owned_paths=owned_paths, lease_id=lease.lease_id, item=items.get(repo))
+                          owned_paths=owned_paths, lease_id=lease.lease_id, item=items.get(repo),
+                          model=decision.model if decision is not None else None,
+                          route=decision.as_dict() if decision is not None else None)
     except BaseException:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
         raise
@@ -1025,6 +1077,8 @@ def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any]
     With the local builder on, a slice that has not yet been tried locally waits for its local decomposition first.
     """
     for request in report.get("capable_requests", []):
+        if cpp_lane.classify(request) is not None:  # native work is built by the local C++ lane, never by the paid builder
+            continue
         if hold_for_local and task_decomposer.decomposable(request) and not task_decomposer.plan_path(
                 lane.root, request["id"]).is_file():
             roadmap_refill.log_event(lane.root, "CAPABLE_HELD_FOR_LOCAL_DECOMPOSITION", name, request["id"],
@@ -1087,6 +1141,54 @@ def draft_with_local_builder(lane: ProductLane, name: str, report: dict[str, Any
     except Exception as exc:  # drafting is best-effort; other repositories and the rotation continue
         outcomes = [{"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
     log_draft_outcomes(lane, name, outcomes)
+
+
+def spawn_cpp_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str, result: Path,
+                     log_path: Path) -> int:
+    """Launch the local C++ author like a product worker: release-bound, its own process."""
+    env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    with log_path.open("ab") as log:
+        return subprocess.Popen(
+            [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_cpp_author.py"), "--request", str(request_file),
+             "--clone", str(clone), "--base", base, "--result", str(result)],
+            cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            creationflags=flags).pid
+
+
+def build_native_requests(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
+                          release: tuple[Path, str] | None) -> None:
+    """Advance the local C++ lane for this repository's native requests; outcomes are logged, never fatal."""
+    native = [r for r in report.get("capable_requests", []) if cpp_lane.classify(r) is not None]
+    if not native or release is None:
+        return
+    release_repo, release_sha = release
+    try:
+        outcomes = cpp_lane.advance(
+            lane.root, native,
+            may_start=lane.active() is None and not roadmap_progress.verifying(lane.workspaces / "progress"),
+            spawn=lambda request_file, result: spawn_cpp_author(
+                release_repo, release_sha, request_file, clone, head, result, lane.reports / f"cpp-{result.stem}.log"),
+            alive=lambda pid: owner_controller.process_start_fingerprint(pid) is not None)
+    except Exception as exc:  # native building is best-effort; the rest of the rotation continues
+        outcomes = [{"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}]
+    try:
+        def add_publication(packet_id: str, item: dict[str, Any]) -> None:
+            items = lane.publications()["items"]
+            items.setdefault(packet_id, item)
+            _save_publications(lane, items)
+
+        if lane.active() is None:
+            outcomes += cpp_lane.finalize(
+                lane.root, native, add_publication=add_publication,
+                save_report=lambda verifier, data: atomic_json(lane.reports / f"{verifier}-verification.json", data))
+    except Exception as exc:  # a failed hand-off is recorded and retried next cycle
+        outcomes.append({"id": name, "status": "ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"})
+    for row in outcomes:
+        roadmap_refill.log_event(lane.root, "CPP_" + str(row["status"]), name, str(row["id"]), {"reason": row.get("reason", "")})
+        working_memory.record(lane.state_root, name, "CPP_" + str(row["status"]), detail=f"{row['id']}: {row.get('reason', '')}",
+                              outcome=None if row["status"] in ("STARTED", "BUILT_AND_VERIFIED", "PUBLICATION_REGISTERED") else "BLOCKED")
 
 
 def spawn_decompose_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str,
@@ -1259,6 +1361,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
         hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None)
+        build_native_requests(lane, name, report, clone, head, release)
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
             planning_later.append((name, report, clone, head))
@@ -1280,7 +1383,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
 def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo: str, *, release_sha: str,
              spawn: Callable[..., dict[str, Any]], sync: Callable[[ProductLane, str], tuple[Path, str]],
              owned_paths: Callable[[str], list[str]], lease_id: str,
-             item: dict[str, Any] | None = None) -> dict[str, Any]:
+             item: dict[str, Any] | None = None, model: str | None = None,
+             route: dict[str, Any] | None = None) -> dict[str, Any]:
     name = repo.split("/", 1)[-1]
     packet_id = f"PRODUCT-{name.upper()}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
     try:
@@ -1325,10 +1429,14 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
     atomic_json(packet_path, packet)
     handback_path.unlink(missing_ok=True)
     worker = spawn(release_repo, packet_path, handback_path, release_sha=release_sha,
-                   log_path=lane.reports / f"{packet_id}-worker.log")
+                   log_path=lane.reports / f"{packet_id}-worker.log", **({"model": model} if model else {}))
     atomic_json(lane.active_path, {"packet_id": packet_id, "repository": repo, "worker": worker,
                                    "worktree": str(worktree), "dispatched_at_utc": _now(), "base_sha": base,
-                                   "lease_id": lease_id})
+                                   "lease_id": lease_id,
+                                   "task_id": item["id"] if item is not None else None,
+                                   "title": item["title"] if item is not None else None,
+                                   "capability_level": (item or {}).get("level") or (item or {}).get("capability_level"),
+                                   "model": f"ollama/{model}" if model else default_ollama_model(), "route": route})
     _advance_cursor(lane, repo, packet_id)
     if item is not None:
         backlog.record_item(lane.root, item["id"], packet_id=packet_id, outcome="DISPATCHED")

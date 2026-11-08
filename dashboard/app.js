@@ -60,6 +60,30 @@ function renderHistory(rows=[]){
   const list=[...rows].reverse().slice(0,10);
   $("#history").innerHTML=list.map(r=>'<div class="history-row"><div><b>'+esc(actionLabel(r.action))+'</b><span>'+esc(fmtTime(r.at))+'</span></div><span class="status '+statusClass(r.status)+'">'+esc(r.status)+'</span></div>').join("")||'<div class="command-card muted">No phone commands recorded yet.</div>';
 }
+const phaseClass=p=>["PLANNING","CODING","TESTING","COMPILING","VERIFYING","DELIVERING"].includes(p)?"good":p==="WAITING"||p==="UNKNOWN"?"warn":p==="BLOCKED"?"bad":"";
+const gib=v=>Number.isFinite(v)?v.toFixed(1)+" GiB":"unknown";
+function renderExecution(x){
+  const el=$("#execution"),pill=$("#exec-phase");
+  if(!x){pill.textContent="UNKNOWN";pill.className="pill warn";el.innerHTML=card("No execution data","The dashboard host did not return the development view.");return}
+  const phase=x.phase||"UNKNOWN";pill.textContent=phase+(x.stuck?" · STUCK?":"");pill.className="pill "+(x.stuck?"bad":phaseClass(phase));
+  const t=x.task||{},m=x.model||{},w=x.worker||{},r=x.resources||{},rows=[];
+  rows.push(card(x.repository||"No repository","Task: "+esc(t.title||t.id||"none")+(t.id&&t.title?' ('+esc(t.id)+')':'')+" · capability level "+esc(t.capability_level??"—"),
+    '<span class="status '+(x.owner_authorized===true?"good":x.owner_authorized===false?"bad":"warn")+'">'+(x.owner_authorized===true?"TAKE THE WHEEL":x.owner_authorized===false?"OWNER HOLDS CONTROL":"CONTROL UNKNOWN")+'</span>'));
+  const levelNote=m.level_ok===false?'<br><b class="bad">Task level '+esc(t.capability_level)+' is above the calibrated maximum '+esc(m.calibrated_max_level)+'</b>':"";
+  const why=m.route&&m.route.reason?'<br>Why this model: '+esc(m.route.reason):"";
+  rows.push(card("Model: "+(m.name||"unknown"),"Calibrated for "+esc(m.calibrated_for||"nothing")+" · demonstrated max level "+esc(m.calibrated_max_level??"—")+levelNote+why,
+    '<span class="status '+(m.calibrated_for&&m.name&&String(m.calibrated_for).endsWith(String(m.name).replace(/^ollama\//,""))?"good":"warn")+'">'+(m.calibrated_for&&String(m.calibrated_for).endsWith(String(m.name||"").replace(/^ollama\//,""))?"CALIBRATED":"NOT CALIBRATED")+'</span>'));
+  if(x.active||w.pid)rows.push(card("Worker "+(w.pid??"—"),"Elapsed "+(Number.isFinite(w.elapsed_s)?Math.round(w.elapsed_s/60*10)/10+" min":"—")+" · last progress: "+esc(w.last_progress||"—")+" ("+fmtAge(w.last_progress_age_s)+")"+(x.stuck?'<br><b class="bad">No progress reported for a long time</b>':""),
+    '<span class="status '+phaseClass(phase)+'">'+esc(phase)+'</span>'));
+  rows.push(card("Memory","Free RAM "+esc(gib(r.available_gib))+(r.required_gib?" · model needs "+esc(gib(r.required_gib))+" free":"")+" · Ollama loaded: "+esc((r.loaded_models||[]).join(", ")||(r.loaded_models?"nothing":"unknown")),
+    '<span class="status '+(Number.isFinite(r.available_gib)&&Number.isFinite(r.required_gib)&&r.available_gib<r.required_gib?"warn":"good")+'">'+(Number.isFinite(r.available_gib)&&Number.isFinite(r.required_gib)&&r.available_gib<r.required_gib?"BELOW THRESHOLD":"OK")+'</span>'));
+  if(x.waiting)rows.push(card("Waiting: "+(x.waiting.code||""),esc(x.waiting.text||""),'<span class="status warn">WAITING</span>'));
+  if(x.blocked)rows.push(card("Blocked: "+(x.blocked.code||""),esc(x.blocked.text||"")+(x.blocked.detail?'<br>'+esc(x.blocked.detail):""),'<span class="status bad">BLOCKED</span>'));
+  const dec=(x.admission||[]).slice(-5).reverse();
+  if(dec.length)rows.push(card("Memory admission decisions",dec.map(d=>esc(fmtClock(d.at_utc))+" · "+esc(d.kind)+" · "+esc(d.model||"")+" · "+(d.admitted?"admitted":"not admitted")+(Number.isFinite(d.available_gib)?" · free "+d.available_gib+" GiB":"")+(d.why&&!d.admitted?" · "+esc(d.why):"")).join("<br>")));
+  if(x.detail&&!x.waiting&&!x.blocked)rows.push(card("Current step",esc(x.detail)));
+  el.innerHTML=rows.join("");
+}
 async function refresh(){
   try{
     const [r,hr]=await Promise.all([fetch("/api/dashboard",{cache:"no-store"}),fetch("/api/health",{cache:"no-store"})]);
@@ -74,7 +98,7 @@ async function refresh(){
     const actionableAlerts=(h?.alerts||[]).filter(a=>a.severity!=="INFO").length;
     $("#hero-detail").textContent=overall==="LIVE"&&!snapshotFresh?"Control channels live · planner snapshot "+fmtAge(snapshot.age_seconds):actionableAlerts?actionableAlerts+" active alert"+(actionableAlerts===1?"":"s"):overall==="LIVE"?"All control channels are online":"Verifying subsystem state";
     $("#last-refresh").textContent="Heartbeat "+fmtClock(h?.recorded_at);
-    renderAlerts(h?.alerts||[]);renderMode(h?.human_mode||{});renderHealth(subs);renderMachine(h?.machine||{},h?.recorded_at);renderProgress(h);renderHistory(h?.control_history||[]);
+    renderExecution(h?.execution);renderAlerts(h?.alerts||[]);renderMode(h?.human_mode||{});renderHealth(subs);renderMachine(h?.machine||{},h?.recorded_at);renderProgress(h);renderHistory(h?.control_history||[]);
     const c=d.outcome_counters||{},f=d.flow||{};
     $("#summary").innerHTML=[["Workers",d.active_count||0],["Verified",c.merged_verified||0],["Repairs",c.repairs||0],["Adv/hr",Number(f.verified_advancement_per_worker_hour||0).toFixed(2)]].map(x=>metric(x[1],x[0])).join("");
     const products=d.products||{};

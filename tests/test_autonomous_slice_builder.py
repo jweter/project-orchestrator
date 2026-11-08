@@ -419,7 +419,6 @@ def test_build_once_rejects_grant_when_pre_mutation_head_moved(tmp_path, monkeyp
     # Test only: simulate an authorized owner state to reach downstream logic.
     # Live consent enforcement remains unchanged and is tested separately.
     monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
-    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
     monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
@@ -438,7 +437,6 @@ def test_build_once_requires_bounded_slice_before_claim_or_mutation(tmp_path, mo
     # Test only: simulate an authorized owner state to reach downstream logic.
     # Live consent enforcement remains unchanged and is tested separately.
     monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
-    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
     monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
@@ -464,7 +462,6 @@ def test_build_once_uses_bounded_prompt_after_exact_head_authority(tmp_path, mon
     # Test only: simulate an authorized owner state to reach downstream logic.
     # Live consent enforcement remains unchanged and is tested separately.
     monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
-    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
     monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
@@ -496,7 +493,6 @@ def test_build_once_retains_runner_output_when_success_makes_no_changes(tmp_path
     # Test only: simulate an authorized owner state to reach downstream logic.
     # Live consent enforcement remains unchanged and is tested separately.
     monkeypatch.setattr(builder,"owner_control_status",lambda _root:builder.AUTHORIZED)
-    monkeypatch.setattr(builder,"windows_idle_seconds",lambda:None)
     monkeypatch.setattr(builder,"select_repo",lambda *a,**k:"jweter/rocksmith-cdlc-generator")
     ws=tmp_path/"rocksmith-cdlc-generator"; ws.mkdir()
     monkeypatch.setattr(builder,"ensure_workspace",lambda *a,**k:ws)
@@ -805,29 +801,24 @@ def test_atomic_json_fails_closed_after_windows_rename_denied(tmp_path,monkeypat
 def test_manual_human_mode_marker_blocks_new_builder_work(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
     revoke_owner_authority(tmp_path)
-    monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
 
 
-def test_disabled_owner_marker_allows_builder_to_reach_idle_gate(tmp_path, monkeypatch):
+def test_an_authorized_builder_never_waits_for_user_inactivity(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
     grant_owner_authority(tmp_path)
-    monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
+    monkeypatch.setattr(b,"select_repo",lambda *a,**k:None)  # hermetic: past the old idle gate, stop before any GitHub call
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
-    assert result["status"]=="USER_ACTIVE"
-    assert result["idle_seconds"]==0
-    assert "manual_human_mode" not in result
+    assert result["status"]!="USER_ACTIVE"
+    assert "idle_seconds" not in result and "manual_human_mode" not in result
+    assert not hasattr(b,"windows_idle_seconds")
 
 
-def test_tampered_owner_controller_fails_closed_before_idle_probe(tmp_path, monkeypatch):
+def test_tampered_owner_controller_fails_closed(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
     grant_owner_authority(tmp_path)
     tamper_owner_authority(tmp_path)
-    monkeypatch.setattr(
-        b,"windows_idle_seconds",
-        lambda: (_ for _ in ()).throw(AssertionError("idle probe must not run")),
-    )
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
     assert result=={"status":"USER_ACTIVE","manual_human_mode":True}
 
@@ -838,20 +829,18 @@ def test_nested_worker_state_uses_flow_state_owner_marker(tmp_path, monkeypatch)
     worker.mkdir(parents=True)
     state=worker/"builder.json"
     revoke_owner_authority(flow)
-    monkeypatch.setattr(b,"windows_idle_seconds",lambda:9999)
     assert b.build_once(tmp_path/"workspaces",state,dry_run=True)=={
         "status":"USER_ACTIVE","manual_human_mode":True
     }
 
 
-def test_full_power_absence_leaves_normal_idle_gate(tmp_path, monkeypatch):
+def test_full_power_has_no_inactivity_gate(tmp_path, monkeypatch):
     state=tmp_path/"builder.json"
-    # Test only: owner released, so the normal idle gate is what is under test.
     monkeypatch.setattr(b,"owner_control_status",lambda _root:b.AUTHORIZED)
-    monkeypatch.setattr(b,"windows_idle_seconds",lambda:0)
+    monkeypatch.setattr(b,"select_repo",lambda *a,**k:None)  # hermetic: no GitHub call, so this passes without gh or a token
     result=b.build_once(tmp_path/"workspaces",state,dry_run=True)
-    assert result["status"]=="USER_ACTIVE"
-    assert result["idle_seconds"]==0
+    assert result["status"]!="USER_ACTIVE"
+    assert "idle_seconds" not in result
 
 
 def test_repair_prompt_reuses_matching_promoted_capability(tmp_path):
@@ -935,7 +924,6 @@ def test_injected_owner_veto_precedes_grant_checkout_and_worker_dispatch(tmp_pat
         return call
 
     monkeypatch.setattr(builder, "owner_control_status", lambda _root: owner_status)
-    monkeypatch.setattr(builder, "windows_idle_seconds", forbidden("idle probe"))
     monkeypatch.setattr(builder, "select_repo", forbidden("repository selection"))
     monkeypatch.setattr(builder, "ensure_workspace", forbidden("worktree mutation"))
     monkeypatch.setattr(builder, "run", forbidden("git execution"))
