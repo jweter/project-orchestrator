@@ -71,6 +71,19 @@ def test_waiting_and_blocked_carry_a_specific_reason(tmp_path: Path) -> None:
     assert v["phase"] == "BLOCKED" and v["blocked"]["code"] == "WORKTREE_PROVISION_FAILED" and "path too long" in v["blocked"]["detail"]
 
 
+@pytest.mark.parametrize("uncertain_status", [
+    "ACTIVE_WORKER_STATE_UNVERIFIED",
+    "WORKER_LAUNCH_UNCONFIRMED",
+    "ORPHANED_PRODUCT_WORKER_OWNERSHIP",
+])
+def test_uncertain_product_dispatch_must_appear_blocked_not_idle(tmp_path: Path, uncertain_status: str) -> None:
+    seed(tmp_path, lane={"status": uncertain_status, "active": None})
+    view = es.view(tmp_path, now=NOW)
+    assert view["phase"] == "BLOCKED"
+    assert view["blocked"]["code"] == uncertain_status
+    assert view["active"] is False
+
+
 def test_nothing_recorded_is_idle_and_reports_unknown_facts_as_unknown(tmp_path: Path) -> None:
     v = es.view(tmp_path, now=NOW)
     assert v["phase"] == "IDLE" and v["active"] is False and v["repository"] is None

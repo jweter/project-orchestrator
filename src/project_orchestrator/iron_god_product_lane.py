@@ -164,7 +164,8 @@ class ProductLane:
             return default
 
     def active(self) -> dict[str, Any] | None:
-        return self._json(self.active_path, None)
+        row = self._json(self.active_path, None)
+        return row if isinstance(row, dict) and row else None
 
     def rotation(self) -> dict[str, Any]:
         return self._json(self.rotation_path, {"schema_version": 1, "order": [], "cursor": -1, "turns": {}})
@@ -993,6 +994,23 @@ def advance_product_lane(
         decision = decide()
     ledger = lane.ledger()
     active = lane.active()
+    # An unreadable active record is not evidence that its worker is absent.
+    # Never create a second branch/worker while ownership evidence is uncertain.
+    if lane.active_path.exists() and not active:
+        return _report(lane, {"status": "ACTIVE_WORKER_STATE_UNVERIFIED",
+                              "detail": "Preserve the existing active record and reconcile its identity before dispatch"})
+    if active and active.get("launch_state") == "SPAWN_UNCONFIRMED":
+        # The process may have started just before the previous supervisor
+        # crashed, but no authenticated PID was durably recorded. Do not
+        # assume an exception, restart, or owner revocation proves non-execution.
+        return _report(lane, {"status": "WORKER_LAUNCH_UNCONFIRMED",
+                              "packet_id": active.get("packet_id"),
+                              "repository": active.get("repository"),
+                              "branch": active.get("branch"),
+                              "base_sha": active.get("base_sha"),
+                              "unfinished_criteria": active.get("unfinished_criteria"),
+                              "next_action": active.get("next_action"),
+                              "owner_authorized": getattr(decision, "permitted", False) is True})
     if not getattr(decision, "permitted", False):
         reasons = list(getattr(decision, "reasons", ()) or ("EXECUTION_AUTHORITY_DENIED",))
         if active:
@@ -1032,6 +1050,16 @@ def advance_product_lane(
         result = harvest(lane, release_repo, ledger, active, gates=gates or default_gates(release_repo))
         _release(pool, active)
         return result
+    # If the ledger says a worker owns a slice but its active.json is gone,
+    # absence of the file is NOT evidence that the worker never launched.
+    # Reconcile the exact packet/lease/worktree before consuming new capacity.
+    orphaned = sorted(pid for pid, row in ledger["packets"].items()
+                      if row.get("state") in ACTIVE_STATES) if not active else []
+    if orphaned:
+        return _report(lane, {"status": "ORPHANED_PRODUCT_WORKER_OWNERSHIP",
+                              "packet_ids": orphaned[:20],
+                              "next_action": "RECONCILE_LEDGER_PACKET_LEASE_AND_WORKTREE_BEFORE_DISPATCH",
+                              "publications": published})
     if not allow_dispatch:
         return _report(lane, {"status": "WAITING_FOR_COMMISSIONING_LANE", "publications": published})
     use_routing = capability is None
@@ -1167,9 +1195,13 @@ def advance_product_lane(
                           model=decision.model if decision is not None else None,
                           route=decision.as_dict() if decision is not None else None)
     except BaseException:
-        pool.release(WORKER_LEASE_ID, lease.lease_id)
+        # A worker can have started immediately before its PID handback
+        # failed. Preserve the model lease while launch certainty is unknown.
+        reservation = lane.active()
+        if not reservation or reservation.get("launch_state") != "SPAWN_UNCONFIRMED":
+            pool.release(WORKER_LEASE_ID, lease.lease_id)
         raise
-    if result["status"] != "DISPATCHED":
+    if result["status"] not in {"DISPATCHED", "WORKER_LAUNCH_UNCONFIRMED"}:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
     return result
 
@@ -1564,15 +1596,33 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
     handback_path = lane.handbacks / f"{packet_id}.json"
     atomic_json(packet_path, packet)
     handback_path.unlink(missing_ok=True)
+    # Reserve the exact branch, base, scope and unfinished criteria BEFORE a
+    # worker can exist. A crash between Popen and PID recording must never
+    # silently free this slice for a duplicate dispatch.
+    reservation = {"packet_id": packet_id, "repository": repo,
+                   "branch": branch, "worktree": str(worktree),
+                   "dispatched_at_utc": _now(), "base_sha": base, "lease_id": lease_id,
+                   "task_id": item["id"] if item is not None else None,
+                   "title": item["title"] if item is not None else None,
+                   "capability_level": (item or {}).get("level") or (item or {}).get("capability_level"),
+                   "unfinished_criteria": list(packet["planning"]["acceptance_criteria"]),
+                   "next_action": "RECONCILE_WORKER_IDENTITY_BEFORE_RETRY",
+                   "launch_state": "SPAWN_UNCONFIRMED",
+                   "model": f"ollama/{model}" if model else default_ollama_model(), "route": route}
+    atomic_json(lane.active_path, reservation)
     worker = spawn(release_repo, packet_path, handback_path, release_sha=release_sha,
                    log_path=lane.reports / f"{packet_id}-worker.log", **({"model": model} if model else {}))
-    atomic_json(lane.active_path, {"packet_id": packet_id, "repository": repo, "worker": worker,
-                                   "worktree": str(worktree), "dispatched_at_utc": _now(), "base_sha": base,
-                                   "lease_id": lease_id,
-                                   "task_id": item["id"] if item is not None else None,
-                                   "title": item["title"] if item is not None else None,
-                                   "capability_level": (item or {}).get("level") or (item or {}).get("capability_level"),
-                                   "model": f"ollama/{model}" if model else default_ollama_model(), "route": route})
+    if not isinstance(worker, dict) or not (worker.get("pid") and
+            worker.get("process_start_fingerprint") and worker.get("host")):
+        # Record the claimed identity without treating an unverified process
+        # as dead. The supervisor must not harvest it or launch a replacement.
+        atomic_json(lane.active_path, {**reservation, "worker": worker if isinstance(worker, dict) else None})
+        return _report(lane, {"status": "WORKER_LAUNCH_UNCONFIRMED", "packet_id": packet_id,
+                              "repository": repo, "branch": branch,
+                              "next_action": reservation["next_action"]})
+    atomic_json(lane.active_path, {**reservation, "worker": worker,
+                                   "launch_state": "SPAWN_CONFIRMED",
+                                   "next_action": "WAIT_FOR_WORKER_THEN_VERIFY_EXACT_HEAD"})
     _advance_cursor(lane, repo, packet_id)
     if item is not None:
         backlog.record_item(lane.root, item["id"], packet_id=packet_id, outcome="DISPATCHED")
