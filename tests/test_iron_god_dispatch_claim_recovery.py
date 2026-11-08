@@ -228,6 +228,27 @@ def test_case_e_concurrent_recovery_only_one_wins(demo):
 # active claims --------------------------------------------------------------
 
 
+def test_case_f_backup_names_never_collide_with_same_windows_clock_tick(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    import project_orchestrator.local_dispatch_event_claim as module
+
+    frozen = datetime(2026, 11, 8, 18, 30, tzinfo=timezone.utc)
+
+    class FixedClock:
+        @staticmethod
+        def now(_tz):
+            return frozen
+
+    monkeypatch.setattr(module, "datetime", FixedClock)
+    source = tmp_path / "claims.sqlite"
+    first = module._migration_backup_path(source)
+    second = module._migration_backup_path(source)
+    assert first != second
+    assert first.name.startswith("claims.sqlite.pre-migration-v1-backup-")
+    assert second.name.startswith("claims.sqlite.pre-migration-v1-backup-")
+    assert first.suffix == second.suffix == ".sqlite"
+
+
 def test_case_f_interrupted_migration_leaves_original_schema_intact(
     demo, monkeypatch, tmp_path
 ):
