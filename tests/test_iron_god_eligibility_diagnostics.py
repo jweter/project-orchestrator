@@ -148,3 +148,37 @@ def test_admission_drops_a_revision_that_does_not_prove_its_authorized_level(tmp
     hand_made = item("RM-X-r4", authorization={"declared_capability_level": 1})  # not roadmap-derived
     refill._mutate(tmp_path, lambda store: store["items"].extend([good, forged, understated, hand_made]))
     assert [i["id"] for i in refill.admitted_items(tmp_path)] == ["RM-X-r1"]
+
+
+FAILED = "FAIL: SLICE_TESTS_FAILED"
+
+
+def test_a_plan_step_that_keeps_failing_its_tests_is_capped_across_its_repairs() -> None:
+    """Issue #673: t1, t1-r1, t1-r2, t1-r3 each had their own 2 attempts, so one step burned 8 packets on the 7B."""
+    items = [item("RM-x-t1"), item("RM-x-t1-r1"), item("RM-x-t1-r2"), item("RM-x-t1-r3"), item("RM-x-t2")]
+    state = {"items": {"RM-x-t1": {"attempts": 2, "outcome": FAILED}, "RM-x-t1-r1": {"attempts": 1, "outcome": FAILED}}}
+    got = reasons(items, state)
+    assert got["RM-x-t1-r1"] == "NEEDS_DIFFERENT_CAPABILITY"
+    assert got["RM-x-t1-r2"] == got["RM-x-t1-r3"] == "NEEDS_DIFFERENT_CAPABILITY"  # new repairs never start
+    assert got["RM-x-t2"] == "ELIGIBLE"  # a distinct, independent step is untouched
+    (row,) = [r for r in backlog.explain_candidates(items, state, max_level=1) if r["id"] == "RM-x-t1-r2"]
+    assert "3 slice-test failures across RM-x-t1" in row["detail"]
+
+
+def test_the_lineage_cap_counts_only_slice_test_failures_and_never_touches_in_flight_work() -> None:
+    items = [item("RM-y-t1"), item("RM-y-t1-r1")]
+    env_failures = {"items": {"RM-y-t1": {"attempts": 2, "outcome": "ENVIRONMENT_FAILURE: x"},
+                              "RM-y-t1-r1": {"attempts": 1, "outcome": "FAIL: memory"}}}
+    assert reasons(items, env_failures)["RM-y-t1-r1"] != "NEEDS_DIFFERENT_CAPABILITY"
+    two = {"items": {"RM-y-t1": {"attempts": 2, "outcome": FAILED}}}
+    assert reasons(items, two)["RM-y-t1-r1"] == "ELIGIBLE"  # below the cap: the first repair still runs
+    flying = {"items": {"RM-y-t1": {"attempts": 2, "outcome": FAILED}, "RM-y-t1-r1": {"attempts": 1, "outcome": "DISPATCHED"}}}
+    assert reasons(items, flying)["RM-y-t1-r1"] == "IN_FLIGHT"
+
+
+def test_the_refill_stops_re_authoring_a_capped_step_and_escalates_it_to_the_owner() -> None:
+    from project_orchestrator import iron_god_roadmap_refill as refill
+
+    items = [item("RM-z-t1"), item("RM-z-t1-r1")]
+    state = {"items": {"RM-z-t1": {"attempts": 2, "outcome": FAILED}, "RM-z-t1-r1": {"attempts": 1, "outcome": FAILED}}}
+    assert refill._slice_status("RM-z-t1", items, state) == ("EXHAUSTED", "RM-z-t1-r1")  # not FAILED -> no -r2 is authored
