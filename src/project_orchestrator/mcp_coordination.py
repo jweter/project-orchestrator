@@ -234,6 +234,27 @@ def list_pending_messages(path: Path, *, recipient_label: str,
             "wrapped": wrapped}
 
 
+def lookup_posted_message(path: Path, *, sender_label: str,
+                          idempotency_key: str) -> dict | None:
+    """Read an existing idempotent outbound message without creating a DB.
+
+    Used to recover a posted-but-not-yet-acknowledged advisory response after
+    a crash. The caller must verify the envelope before treating it as handled.
+    """
+    _check_principal(sender_label)
+    if not isinstance(idempotency_key, str) or not _KEY.fullmatch(idempotency_key):
+        raise ValueError("INVALID_IDEMPOTENCY_KEY")
+    db_path = _path(path)
+    if not db_path.exists():
+        return None
+    with closing(_connect(db_path, read_only=True)) as db:
+        row = db.execute(
+            "SELECT * FROM messages WHERE sender_label=? AND idempotency_key=?",
+            (sender_label, idempotency_key),
+        ).fetchone()
+    return _message(row) if row is not None else None
+
+
 def ack_message(path: Path, *, recipient_label: str, message_id: str) -> dict:
     """Append a consumption receipt; never releases any ownership claim."""
     _check_principal(recipient_label)
