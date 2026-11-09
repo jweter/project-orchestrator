@@ -128,3 +128,37 @@ def test_valid_self_authored_example_retains_provisional_provenance_in_draft():
     assert any("(self-authored decomposition, unverified)" in c
                for c in draft["acceptance_criteria"])
     assert not any("(roadmap acceptance)" in c for c in draft["acceptance_criteria"])
+
+
+def test_self_authored_oracle_blocker_logged_once_over_two_supervisor_passes(tmp_path):
+    from types import SimpleNamespace
+
+    from project_orchestrator import iron_god_product_lane as lane_mod
+    from project_orchestrator import iron_god_roadmap_refill as refill
+    from project_orchestrator import iron_god_working_memory as memory
+
+    lane = SimpleNamespace(root=tmp_path / "lane", state_root=tmp_path / "state")
+    item = request(json.dumps({"sections": [{"content": "..."}]}))
+    launches = []
+
+    for _pass in range(2):
+        outcomes = drafter.advance(
+            lane.root, [item], tmp_path, "a" * 40,
+            spawn=lambda *args: launches.append(args) or 1234,
+        )
+        assert [row["status"] for row in outcomes] == ["NEEDS_INDEPENDENT_ACCEPTANCE_EVIDENCE"]
+        lane_mod.log_draft_outcomes(lane, item["repository"], outcomes)
+
+    events = [
+        row for row in refill.load_store(lane.root)["ledger"]
+        if row["kind"] == "LOCAL_DRAFT_NEEDS_INDEPENDENT_ACCEPTANCE_EVIDENCE"
+    ]
+    assert len(events) == 1
+    assert events[0]["id"] == item["id"]
+    assert "SELF_AUTHORED_ACCEPTANCE_PLACEHOLDER" in events[0]["detail"]["reason"]
+    board = memory.load(lane.state_root)
+    assert board["repositories"][item["repository"]]["last_outcome"] == "BLOCKED"
+    assert [row["event"] for row in board["recent"]] == [
+        "LOCAL_DRAFT_NEEDS_INDEPENDENT_ACCEPTANCE_EVIDENCE"
+    ]
+    assert not launches
