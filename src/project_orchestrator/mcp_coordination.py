@@ -288,6 +288,47 @@ def ack_message(path: Path, *, recipient_label: str, message_id: str) -> dict:
             raise
 
 
+
+def delivery_snapshot(path: Path) -> dict:
+    """Read-only per-recipient delivery and acknowledgment metrics.
+
+    Acknowledgment is a mailbox receipt, not proof of completed engineering or
+    owner authorization. Never return message bodies, references, IDs or secrets.
+    Broadcast messages count independently for every recipient.
+    """
+    db_path = _path(path)
+    if not db_path.exists():
+        return {"status": "UNINITIALIZED", "participants": {}}
+    participants = {}
+    with closing(_connect(db_path, read_only=True)) as db:
+        for label in ("chatgpt", "claude-code", "iron-god", "operator"):
+            row = db.execute(
+                "SELECT COUNT(*) AS addressed, "
+                "COALESCE(SUM(CASE WHEN r.message_id IS NULL THEN 1 ELSE 0 END), 0) AS unacknowledged, "
+                "COALESCE(MAX(m.seq), 0) AS latest_seq, "
+                "MIN(CASE WHEN r.message_id IS NULL THEN m.created_at_utc END) AS oldest_pending_at_utc, "
+                "MAX(r.acknowledged_at_utc) AS latest_acknowledged_at_utc "
+                "FROM messages AS m LEFT JOIN receipts AS r "
+                "ON r.message_id=m.message_id AND r.recipient_label=? "
+                "WHERE m.recipient=? OR m.recipient='all'",
+                (label, label),
+            ).fetchone()
+            total = int(row["addressed"])
+            pending = int(row["unacknowledged"])
+            participants[label] = {
+                "addressed": total,
+                "acknowledged": total - pending,
+                "unacknowledged": pending,
+                "latest_seq": int(row["latest_seq"]),
+                "oldest_pending_at_utc": row["oldest_pending_at_utc"],
+                "latest_acknowledged_at_utc": row["latest_acknowledged_at_utc"],
+            }
+    return {
+        "status": "OK",
+        "participants": participants,
+        "note": "Advisory receipt metrics only; acknowledgment is not completion or execution authority",
+    }
+
 def targets_snapshot(repo_root: Path) -> dict:
     """Versioned targets, not a claim of fresh product acceptance."""
     path = Path(repo_root) / "engineering" / "product-usability-gates.json"
