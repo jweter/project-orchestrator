@@ -255,6 +255,10 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
         ):
             unique.append(failed_source_fingerprint)
         row["repeated_failed_source"] = len(set(by_packet.values())) < len(by_packet)
+    if outcome.startswith(LINEAGE_FAILURE_OUTCOME):
+        failed = row.setdefault("test_failed_packets", [])
+        if packet_id not in failed:  # replaying one packet is not a second failure
+            failed.append(packet_id)
     row.update(outcome=outcome, updated_at_utc=_now())
     if outcome == "MERGED":
         row["merged_at_utc"] = _now()
@@ -326,7 +330,7 @@ def slice_state(item: dict[str, Any], row: dict[str, Any], *, done: set[str], co
     return "READY"
 
 
-LINEAGE_FAILURE_CAP = 3  # slice-test failures across a plan step and all its -rN repairs before it needs a different capability
+LINEAGE_FAILURE_CAP = 4  # slice-test failures across a plan step and all its -rN repairs (one repair after a failed first item)
 LINEAGE_FAILURE_OUTCOME = "FAIL: SLICE_TESTS_FAILED"
 _REPAIR_SUFFIX = re.compile(r"(-r\d+)+$")
 
@@ -343,8 +347,16 @@ def lineage_test_failures(state: dict[str, Any], item_id: str) -> int:
     ``MAX_ITEMS_PER_SLICE x MAX_ITEM_ATTEMPTS`` attempts, with different bytes every time.
     """
     base = lineage_base(item_id)
-    return sum(int(row.get("attempts", 0)) for key, row in state.get("items", {}).items()
-               if lineage_base(key) == base and str(row.get("outcome", "")).startswith(LINEAGE_FAILURE_OUTCOME))
+    total = 0
+    for key, row in state.get("items", {}).items():
+        if lineage_base(key) != base:
+            continue
+        packets = row.get("test_failed_packets")
+        if isinstance(packets, list):
+            total += len(set(packets))  # per-packet evidence: other outcomes neither add to nor erase test failures
+        elif str(row.get("outcome", "")).startswith(LINEAGE_FAILURE_OUTCOME):
+            total += int(row.get("attempts", 0))  # rows recorded before this evidence existed
+    return total
 
 
 def lineage_capped(state: dict[str, Any], item_id: str) -> bool:
