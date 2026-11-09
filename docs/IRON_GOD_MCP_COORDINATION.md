@@ -160,11 +160,70 @@ Code to confirm its health once installed. If several projects should use the
 same connection, switch to `--scope user` after reviewing which projects and
 users can see the server's tools; `--scope local` is safer for the first pilot.
 
-For the separate local resident agent, launch another stdio MCP server with
-`IRON_GOD_MCP_CLIENT_LABEL=iron-god` and the **same** SQLite path. Each
-client has its own inbox and receipt cursor. Remote ChatGPT remains a later
-authenticated connection; merely naming a local client `chatgpt` does not
-connect this chat session or prove identity.
+For a separate stand-alone local agent, launch another stdio MCP server
+with `IRON_GOD_MCP_CLIENT_LABEL=iron-god` and the **same** SQLite path.
+The **resident supervisor**, however, uses a bounded direct Python adapter
+rather than spawning another server or another controller. Each client retains
+its own addressed inbox; remote ChatGPT is currently reached through the
+existing Remote Desktop Commander bridge and the local advisory CLI. Merely
+naming a local client `chatgpt` does not authenticate an internet client.
+
+### MCP-ENGINE-01: resident supervisor advisory bridge (development slice)
+
+`project_orchestrator.iron_god_advisory_mailbox.advisory_supervisor_pass`
+is called **after** the existing supervisor generation and owner gates, near
+the end of each iteration. It is optional best-effort communication and never
+affects dispatch, model selection, CI, leases, owner control or merge readiness.
+The adapter accepts only the configured local state root
+`%LOCALAPPDATA%\\ExponentialEngine\\flow-state`, and reuses the shared
+`%LOCALAPPDATA%\\ExponentialEngine\\mailbox\\coordination.sqlite`.
+If the mailbox does not yet exist, no new DB is created and the supervisor
+continues normally. No network endpoint, background task or extra process
+is started.
+
+- **Outbound:** Allowlisted product/canon *execution* statuses come from
+  their lane status files. Product PR and merge states (`PUBLISH_PENDING`,
+  `AWAITING_CI`, `REPAIR_PENDING`, `MERGED`) come from the separate
+  `iron-god-products/publications.json` ledger, **not** from the top-level
+  execution status. These records produce machine-readable `status`
+  messages addressed to `chatgpt` and `claude-code`, with stable
+  idempotency keys across restarts. A persisted publication-packet cursor
+  progresses through a large ledger in bounded batches and wraps to
+  revisit changed records; historical records cannot permanently hide
+  newer merge notifications. Notices are **reported state**, not independently
+  verified root causes, human acceptance or execution grants. Never forward
+  a free-text failure reason, secrets, grant token, or model prompt.
+- **Inbound:** Read a bounded page of only **unacknowledged** messages to
+  `iron-god` (including `all`); acknowledged historical messages do not
+  consume the page limit. A cursor saved to
+  `iron-god-mailbox-observation.json` advances across pending messages and
+  wraps when the end is reached. `pending_unacknowledged` counts the
+  entire inbox, not just that page. Write only safe
+  sender/kind/message-ID/reference envelopes, marked
+  `UNTRUSTED_ADVISORY_NOT_AUTHORIZATION`. Raw message bodies remain in
+  SQLite for explicit MCP/CLI retrieval; they are **not** injected into
+  builder prompts, selected as roadmap slices, or converted into commands.
+- **Acknowledgments:** Do not automatically acknowledge unread or merely
+  observed messages. A future independently authorized processing step must
+  determine what was handled, then acknowledge the exact message ID. Delivery
+  and task completion are different facts.
+- **Failure:** Missing DB, corrupted messages, locked files or failed
+  observation writes return a diagnostic status to the caller; none can stop
+  the resident engineering loop or alter its protected state.
+- **Rollout:** GitHub merge + normal controlled owner/Claude release
+  promotion are prerequisites before claiming resident integration. No
+  scripts should modify the live release in place for this pilot.
+
+Acceptance for this slice: deterministic tests prove no additional owner
+authority, one replay-safe event per unchanged lane state, no arbitrary
+message execution, no implicit ack, safe handling of failed mailbox reads and
+cross-process compatibility with the existing CLI. **Operational acceptance
+remains pending** until a deployed, authenticated supervisor visibly emits a
+real lane event and its two assistants receive it through the actual mailbox.
+
+The next slice (MCP-ENGINE-02) should introduce *evidence-verified advisory
+response generation and explicit handled/ack transitions* without weakening
+existing owner/supervisor gates; no automatic execution of inbox text.
 
 MCP makes tools available when a client invokes them. It does not, by itself,
 provide background polling, instant alerts, a continuously active Claude

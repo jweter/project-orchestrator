@@ -33,6 +33,7 @@ from project_orchestrator import parallel_runtime as _parallel_runtime
 from project_orchestrator import telemetry_continuation as _telemetry
 from project_orchestrator import activation_capability as _authority
 from project_orchestrator import supervisor_runtime as _supervisor_runtime
+from project_orchestrator import iron_god_advisory_mailbox as _advisory_mailbox
 from project_orchestrator.frontier_replenishment import replenish_frontiers, reconcile_issue_cycle
 from project_orchestrator.human_ownership import human_mode_active
 
@@ -888,6 +889,14 @@ def main()->int:
         try:
             write_dashboard_snapshot(state)
         except (OSError,TypeError,ValueError):
+            pass
+        # Advisory-only MCP communication: observe incoming handoffs and send
+        # idempotent canonical lane-status notices after the authenticated
+        # generation/owner gates. Never dispatch, grant, merge, or stall here.
+        # A missing or corrupt mailbox must not affect the development loop.
+        try:
+            _advisory_mailbox.advisory_supervisor_pass(state)
+        except Exception:
             pass
         record["burst_pass"]=burst_pass
         atomic(state/"continuation-current-burst.json",{"schema_version":2,"burst_id":burst_id,
