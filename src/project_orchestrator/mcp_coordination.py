@@ -191,6 +191,49 @@ def list_messages(path: Path, *, recipient_label: str, after_seq: int = 0,
             "next_seq": messages[-1]["seq"] if messages else after_seq}
 
 
+def list_pending_messages(path: Path, *, recipient_label: str,
+                          after_seq: int = 0, limit: int = 30) -> dict:
+    """Read only unacknowledged advisories, independent of historical acks.
+
+    A bounded cursor advances across pending rows and wraps when it reaches
+    the end. It cannot be permanently stranded behind old acknowledged rows.
+    pending_total describes the full inbox, not only this page.
+    """
+    _check_principal(recipient_label)
+    if not isinstance(after_seq, int) or isinstance(after_seq, bool) or after_seq < 0:
+        raise ValueError("INVALID_CURSOR")
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_PAGE:
+        raise ValueError("INVALID_PAGE_SIZE")
+    db_path = _path(path)
+    if not db_path.exists():
+        return {"status": "UNINITIALIZED", "pending_total": 0, "messages": [],
+                "next_seq": after_seq, "wrapped": False}
+    condition = ("(m.recipient=? OR m.recipient='all') "
+                 "AND NOT EXISTS (SELECT 1 FROM receipts AS r "
+                 "WHERE r.message_id=m.message_id AND r.recipient_label=?)")
+    args = (recipient_label, recipient_label)
+    with closing(_connect(db_path, read_only=True)) as db:
+        total = db.execute(
+            "SELECT COUNT(*) FROM messages AS m WHERE " + condition, args
+        ).fetchone()[0]
+        rows = db.execute(
+            "SELECT m.* FROM messages AS m WHERE " + condition +
+            " AND m.seq>? ORDER BY m.seq ASC LIMIT ?",
+            (*args, after_seq, limit),
+        ).fetchall()
+        wrapped = bool(total and not rows and after_seq > 0)
+        if wrapped:
+            rows = db.execute(
+                "SELECT m.* FROM messages AS m WHERE " + condition +
+                " ORDER BY m.seq ASC LIMIT ?",
+                (*args, limit),
+            ).fetchall()
+    messages = [_message(row) for row in rows]
+    return {"status": "OK", "pending_total": total, "messages": messages,
+            "next_seq": messages[-1]["seq"] if messages else after_seq,
+            "wrapped": wrapped}
+
+
 def ack_message(path: Path, *, recipient_label: str, message_id: str) -> dict:
     """Append a consumption receipt; never releases any ownership claim."""
     _check_principal(recipient_label)

@@ -181,20 +181,28 @@ If the mailbox does not yet exist, no new DB is created and the supervisor
 continues normally. No network endpoint, background task or extra process
 is started.
 
-- **Outbound:** Only allowlisted material product/canon lane state changes
-  (such as `BLOCKED`, `MERGED`, `AWAITING_CI`) produce machine-readable
-  `status` messages addressed to `chatgpt` and `claude-code`, with a
-  stable idempotency key across restarts. Repeat cycles cannot flood inboxes.
-  These notices are **reported state**, not verified root causes, human
-  acceptance or execution grants. Never forward a free-text failure reason,
-  secrets, grant token, or model prompt.
-- **Inbound:** Read up to a bounded message page for the `iron-god` inbox
-  (including `all`). Write only safe sender/kind/message-ID/reference
-  envelopes into `iron-god-mailbox-observation.json`, marked
-  `UNTRUSTED_ADVISORY_NOT_AUTHORIZATION`. Raw message bodies remain in the
-  SQLite inbox available through the explicit MCP/CLI interface; they are
-  **not** injected into builder prompts, selected as roadmap slices, or
-  converted into commands by this adapter.
+- **Outbound:** Allowlisted product/canon *execution* statuses come from
+  their lane status files. Product PR and merge states (`PUBLISH_PENDING`,
+  `AWAITING_CI`, `REPAIR_PENDING`, `MERGED`) come from the separate
+  `iron-god-products/publications.json` ledger, **not** from the top-level
+  execution status. These records produce machine-readable `status`
+  messages addressed to `chatgpt` and `claude-code`, with stable
+  idempotency keys across restarts. A persisted publication-packet cursor
+  progresses through a large ledger in bounded batches and wraps to
+  revisit changed records; historical records cannot permanently hide
+  newer merge notifications. Notices are **reported state**, not independently
+  verified root causes, human acceptance or execution grants. Never forward
+  a free-text failure reason, secrets, grant token, or model prompt.
+- **Inbound:** Read a bounded page of only **unacknowledged** messages to
+  `iron-god` (including `all`); acknowledged historical messages do not
+  consume the page limit. A cursor saved to
+  `iron-god-mailbox-observation.json` advances across pending messages and
+  wraps when the end is reached. `pending_unacknowledged` counts the
+  entire inbox, not just that page. Write only safe
+  sender/kind/message-ID/reference envelopes, marked
+  `UNTRUSTED_ADVISORY_NOT_AUTHORIZATION`. Raw message bodies remain in
+  SQLite for explicit MCP/CLI retrieval; they are **not** injected into
+  builder prompts, selected as roadmap slices, or converted into commands.
 - **Acknowledgments:** Do not automatically acknowledge unread or merely
   observed messages. A future independently authorized processing step must
   determine what was handled, then acknowledge the exact message ID. Delivery
