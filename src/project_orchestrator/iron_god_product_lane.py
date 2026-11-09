@@ -45,6 +45,7 @@ from typing import Any, Callable
 
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
+from . import iron_god_capable_admission as capable_admission
 from . import iron_god_cpp_lane as cpp_lane
 from . import iron_god_dev_mode as dev_mode
 from . import iron_god_execution_status as execution_status
@@ -1232,7 +1233,7 @@ def repository_unsupported(clone: Path, head: str) -> str | None:
 
 
 def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any], capable: dict[str, Any],
-                            hold_for_local: bool = False) -> None:
+                            hold_for_local: bool = False, queue: list[dict[str, Any]] | None = None) -> None:
     """Dispatch CAPABLE-routed requests within budget and record every outcome; failures never stop the rotation.
 
     With the local builder on, a slice that has not yet been tried locally waits for its local decomposition first.
@@ -1245,16 +1246,43 @@ def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any]
             roadmap_refill.log_event(lane.root, "CAPABLE_HELD_FOR_LOCAL_DECOMPOSITION", name, request["id"],
                                      {"reason": "the local builder tries to decompose this slice first"})
             continue
-        try:
-            result = capable_builder.dispatch_request(request, lane_root=lane.root, enabled=capable["enabled"],
-                                                      daily_limit=capable["daily_limit"])
-        except Exception as exc:  # a routine API error is a recorded blocker, not a crash
-            result = {"dispatched": False, "reason": f"CAPABLE_BUILDER_ERROR: {type(exc).__name__}"}
-        kind = "CAPABLE_DISPATCHED" if result.get("dispatched") else "CAPABLE_NOT_DISPATCHED"
-        roadmap_refill.log_event(lane.root, kind, name, request["id"],
-                                 {key: value for key, value in result.items() if key != "dispatched"})
-        working_memory.record(lane.state_root, name, kind, detail=f"{request['id']}: {result.get('reason')}",
-                              outcome=None if result.get("dispatched") else "BLOCKED")
+        if queue is not None:  # admitted for the whole pass by admit_capable_requests, not by visiting order
+            queue.append({"name": name, "request": request})
+            continue
+        _dispatch_capable(lane, name, request, capable)
+
+
+def _dispatch_capable(lane: ProductLane, name: str, request: dict[str, Any], capable: dict[str, Any]) -> None:
+    try:
+        result = capable_builder.dispatch_request(request, lane_root=lane.root, enabled=capable["enabled"],
+                                                  daily_limit=capable["daily_limit"])
+    except Exception as exc:  # a routine API error is a recorded blocker, not a crash
+        result = {"dispatched": False, "reason": f"CAPABLE_BUILDER_ERROR: {type(exc).__name__}"}
+    kind = "CAPABLE_DISPATCHED" if result.get("dispatched") else "CAPABLE_NOT_DISPATCHED"
+    roadmap_refill.log_event(lane.root, kind, name, request["id"],
+                             {key: value for key, value in result.items() if key != "dispatched"})
+    working_memory.record(lane.state_root, name, kind, detail=f"{request['id']}: {result.get('reason')}",
+                          outcome=None if result.get("dispatched") else "BLOCKED")
+
+
+def admit_capable_requests(lane: ProductLane, queue: list[dict[str, Any]], capable: dict[str, Any]) -> None:
+    """Admit this pass's capable candidates together: fair, deterministic, and never the whole budget in one burst."""
+    if not queue:
+        return
+    now = time.time()
+    rows = capable_builder._rows(capable_builder.dispatch_state(lane.root))
+    if not capable["enabled"]:  # nothing is spent while disabled; each request still records its exact reason
+        for item in capable_admission.sorted_candidates(queue, rows, now):
+            _dispatch_capable(lane, item["name"], item["request"], capable)
+        return
+    verdict = capable_admission.plan(queue, rows, capable["daily_limit"], now)
+    for held in verdict["deferred"]:
+        item = held["candidate"]
+        roadmap_refill.log_event(lane.root, "CAPABLE_NOT_DISPATCHED", item["name"], item["request"]["id"],
+                                 {"reason": held["reason"], "remaining": verdict["remaining"],
+                                  "pass_cap": verdict["pass_cap"], "next_slot_at": verdict["next_slot_at"]})
+    for item in verdict["admit"]:
+        _dispatch_capable(lane, item["name"], item["request"], capable)
 
 
 def spawn_draft_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str, result: Path,
@@ -1513,6 +1541,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, "<portfolio>", "CAPABLE_RECONCILE_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
     planning_later: list[tuple[str, dict[str, Any], Path, str]] = []
+    capable_queue: list[dict[str, Any]] = []
     for name in repos:
         if name in busy or backlog.next_item(approved, state, name, max_level=level) is not None:
             continue
@@ -1528,7 +1557,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
-        hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None)
+        hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None,
+                                queue=capable_queue)
         build_native_requests(lane, name, report, clone, head, release)
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
@@ -1538,6 +1568,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
         working_memory.record(lane.state_root, name, "ROADMAP_REFILL", detail=roadmap_refill.summarize(report),
                               outcome="DIRECTION_REQUIRED" if report["direction_required"] and not report["requests"] else None)
         approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
+    admit_capable_requests(lane, capable_queue, capable)
     # Planning is the lowest-priority use of the one local model: it starts only when no repository has an admitted item
     # waiting for a worker and every repository's ready drafting has had its turn.
     work_waiting = any(backlog.next_item(approved, state, repo, max_level=level) is not None for repo in repos) or (
