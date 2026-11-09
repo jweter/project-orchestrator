@@ -41,8 +41,16 @@ def guide_text(request: dict[str, Any]) -> str:
     ]
     given = [e for e in request.get("acceptance_examples", []) if isinstance(e, dict) and "call" in e and "expected" in e]
     if given:
-        lines.append("The owner's acceptance examples (your function name replaces {fn}; they are added to your tests "
-                     "and your function MUST satisfy every one; never contradict them):")
+        decomposition = request.get("decomposition") or {}
+        self_authored = (isinstance(decomposition, dict)
+                         and decomposition.get("oracle") == "SELF_AUTHORED")
+        if self_authored:
+            lines.append("PROVENANCE: these acceptance examples were proposed by a model, NOT independently "
+                         "approved by the owner. They are provisional and cannot certify online evidence. "
+                         "Never invent results or placeholder content to satisfy them:")
+        else:
+            lines.append("The owner's acceptance examples (your function name replaces {fn}; they are added to "
+                         "your tests and your function MUST satisfy every one; never contradict them):")
         lines += [f"- {e['call']} -> {json.dumps(e['expected'])}" for e in given]
     if request.get("prior_failures"):
         lines.append("Earlier attempts failed; plan differently: " + json.dumps(request["prior_failures"])[:600])

@@ -168,6 +168,9 @@ def _example_problems(sub: dict[str, Any]) -> list[str]:
             problems.append(
                 f"{key}: contradictory expected values for {example['call']}"
             )
+        if drafter._unresolved_placeholder(example["expected"]):
+            problems.append(f"{key}: SELF_AUTHORED_ACCEPTANCE_PLACEHOLDER: "
+                            "model-proposed exact output contains unresolved placeholder values")
         seen[example["call"]] = example["expected"]
     try:
         stub = ast.parse(sub["signature"].rstrip() + "\n    ...").body[0]
