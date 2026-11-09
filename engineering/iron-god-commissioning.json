@@ -263,7 +263,7 @@
     "roadmap_progress": true,
     "roadmap_progress_decision": "2026-11-01: after a slice merges, one mechanical pull request per repository records it as VERIFIED_COMPLETE in the declared capability graph (state and verification only, validated before publishing); the existing green-PR merger merges it once checks pass",
     "capable_builder": true,
-    "capable_builder_daily_limit": 4,
+    "capable_builder_daily_limit": 6,
     "capable_builder_decision": "2026-11-02: owner turned it ON (daily limit 2); dispatch still fires nothing and records a blocker until the portfolio_builder routine token is configured by the owner. Originally 2026-11-01: OFF by default. When the owner enables it and the portfolio_builder routine token is configured, roadmap requests the local builder cannot take are handed to the existing claude_dispatch routine within a daily budget; the routine opens an ordinary pull request that meets the repository gates",
     "roadmap_refill_decision": "2026-11-01: owner-approved roadmaps are standing development authorization (issue #594); an exhausted backlog is refilled from each repository's declared capability graph through the strict admission gate in iron_god_roadmap_refill.py",
     "development_level": 2,

@@ -138,3 +138,16 @@ def test_a_refused_top_candidate_does_not_use_up_a_pass_slot_for_an_eligible_one
                for e in refill_mod.load_store(lane.root)["ledger"] if e["kind"] == "CAPABLE_NOT_DISPATCHED"}
     assert "ATTEMPTS_EXHAUSTED" in reasons.values() and "REQUEST_ALREADY_DELIVERED_OR_PENDING" in reasons.values()
     assert "PASS_SHARE_REACHED" in reasons.values()  # RM-3 waits for the share, not because of a refused neighbour
+
+
+def test_the_shipped_limit_admits_six_eligible_requests_in_a_window_and_denies_the_seventh():
+    import json
+    from pathlib import Path
+
+    limit = json.loads((Path(__file__).parents[1] / "engineering" / "iron-god-commissioning.json")
+                       .read_text(encoding="utf-8"))["portfolio_rotation"]["capable_builder_daily_limit"]
+    assert limit == 6  # owner-approved 2026-11-09 (issue #673 phase 1); lowering it later never cancels running work
+    rows = [row(f"RM-{i}", f"jweter/repo-{i}", 60 * i) for i in range(limit)]
+    assert adm.remaining_slots(rows, limit, NOW) == 0
+    assert adm.plan([cand(6, "jweter/repo-6")], rows, limit, NOW)["admit"] == []
+    assert adm.remaining_slots(rows[:-1], limit, NOW) == 1
