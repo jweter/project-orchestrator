@@ -227,6 +227,25 @@ def _reported_status_snapshot(state_root: Path, *, response_to: str) -> str:
     }, sort_keys=True)
 
 
+def _verified_replay_body(previous: Mapping[str, Any],
+                          request: Mapping[str, Any]) -> str:
+    """Never mark a query handled based on an unrelated or forged prior post."""
+    if (previous.get("recipient") != request["sender_label"]
+            or previous.get("kind") != "status"
+            or previous.get("reference") != _STATUS_QUERY_REFERENCE):
+        raise ValueError("STATUS_REPLY_REPLAY_MISMATCH")
+    try:
+        payload = json.loads(previous["body"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("STATUS_REPLY_REPLAY_INVALID") from exc
+    if (not isinstance(payload, dict)
+            or payload.get("response_to") != request["message_id"]
+            or payload.get("status") != "REPORTED_NOT_INDEPENDENTLY_VERIFIED"
+            or payload.get("authority") != "ADVISORY_ONLY_NO_OWNER_GRANTS"):
+        raise ValueError("STATUS_REPLY_REPLAY_INVALID")
+    return previous["body"]
+
+
 def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> list[dict[str, str]]:
     """Only exact read-only protocol queries receive a response and consumption ack.
 
@@ -247,13 +266,30 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> lis
                 or message["body"] != _STATUS_QUERY_BODY
                 or message["reference"] != _STATUS_QUERY_REFERENCE):
             continue
-        text = _reported_status_snapshot(state_root, response_to=message["message_id"])
-        response = mcp_coordination.post_message(
-            db, sender_label="iron-god", recipient=message["sender_label"],
-            kind="status", body=text,
-            idempotency_key="engine-status-response:" + message["message_id"],
-            reference=_STATUS_QUERY_REFERENCE,
+        reply_key = "engine-status-response:" + message["message_id"]
+        previous = mcp_coordination.lookup_posted_message(
+            db, sender_label="iron-god", idempotency_key=reply_key,
         )
+        text = (_verified_replay_body(previous, message) if previous
+                else _reported_status_snapshot(state_root, response_to=message["message_id"]))
+        try:
+            response = mcp_coordination.post_message(
+                db, sender_label="iron-god", recipient=message["sender_label"],
+                kind="status", body=text, idempotency_key=reply_key,
+                reference=_STATUS_QUERY_REFERENCE,
+            )
+        except ValueError as exc:
+            if str(exc) != "IDEMPOTENCY_CONFLICT":
+                raise
+            # A second actor may have posted the same response concurrently.
+            # Re-read its immutable contents rather than sending a duplicate.
+            prior = mcp_coordination.lookup_posted_message(
+                db, sender_label="iron-god", idempotency_key=reply_key,
+            )
+            if prior is None:
+                raise
+            _verified_replay_body(prior, message)
+            response = prior
         receipt = mcp_coordination.ack_message(
             db, recipient_label="iron-god", message_id=message["message_id"],
         )
