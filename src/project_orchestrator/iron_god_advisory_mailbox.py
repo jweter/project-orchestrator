@@ -41,6 +41,9 @@ _PACKET = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")
 _MAX_INBOX = 30
 _MAX_REPORT_MESSAGES = 30
 _MAX_PUBLICATIONS = 30
+_STATUS_QUERY_BODY = "engine_status_v1"
+_STATUS_QUERY_REFERENCE = "protocol:engine-status-v1"
+_MAX_STATUS_REPLIES_PER_PASS = 5
 
 
 def _safe(value: Any, pattern: re.Pattern[str]) -> str:
@@ -202,6 +205,103 @@ def _read_inbox(db: Path, *, after_seq: int = 0) -> dict[str, Any]:
     }
 
 
+def _reported_status_snapshot(state_root: Path, *, response_to: str) -> str:
+    """Bounded advisory reply; *reported* statuses are never owner or CI authority."""
+    sources = mcp_coordination.engine_snapshot(state_root).get("sources", {})
+    rows: dict[str, dict[str, str]] = {}
+    allowed = {"status": _TOKEN, "repository": _REPO, "packet_id": _PACKET,
+               "actor_revision": _SHA}
+    for label in ("product", "canon", "supervisor"):
+        source = sources.get(label, {}) if isinstance(sources, dict) else {}
+        row = source if isinstance(source, dict) else {}
+        values = {field: _safe(row.get(field), pattern)
+                  for field, pattern in allowed.items()}
+        rows[label] = {key: value for key, value in values.items() if value}
+        rows[label].setdefault("status", "UNAVAILABLE")
+    return json.dumps({
+        "schema_version": 1,
+        "response_to": response_to,
+        "status": "REPORTED_NOT_INDEPENDENTLY_VERIFIED",
+        "sources": rows,
+        "authority": "ADVISORY_ONLY_NO_OWNER_GRANTS",
+    }, sort_keys=True)
+
+
+def _verified_replay_body(previous: Mapping[str, Any],
+                          request: Mapping[str, Any]) -> str:
+    """Never mark a query handled based on an unrelated or forged prior post."""
+    if (previous.get("recipient") != request["sender_label"]
+            or previous.get("kind") != "status"
+            or previous.get("reference") != _STATUS_QUERY_REFERENCE):
+        raise ValueError("STATUS_REPLY_REPLAY_MISMATCH")
+    try:
+        payload = json.loads(previous["body"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("STATUS_REPLY_REPLAY_INVALID") from exc
+    if (not isinstance(payload, dict)
+            or payload.get("response_to") != request["message_id"]
+            or payload.get("status") != "REPORTED_NOT_INDEPENDENTLY_VERIFIED"
+            or payload.get("authority") != "ADVISORY_ONLY_NO_OWNER_GRANTS"):
+        raise ValueError("STATUS_REPLY_REPLAY_INVALID")
+    return previous["body"]
+
+
+def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> list[dict[str, str]]:
+    """Only exact read-only protocol queries receive a response and consumption ack.
+
+    Handoffs, owner-like instructions, mismatched references and broadcasts stay
+    unacknowledged for explicit review. The response is durable *before* ack.
+    If an ack fails, the same idempotency key replays the reply on the next pass.
+    """
+    page = mcp_coordination.list_pending_messages(
+        db, recipient_label="iron-god", after_seq=after_seq, limit=_MAX_INBOX,
+    )
+    results: list[dict[str, str]] = []
+    for message in page["messages"]:
+        if len(results) >= _MAX_STATUS_REPLIES_PER_PASS:
+            break
+        if (message["recipient"] != "iron-god"
+                or message["sender_label"] not in _RECIPIENTS
+                or message["kind"] != "question"
+                or message["body"] != _STATUS_QUERY_BODY
+                or message["reference"] != _STATUS_QUERY_REFERENCE):
+            continue
+        reply_key = "engine-status-response:" + message["message_id"]
+        previous = mcp_coordination.lookup_posted_message(
+            db, sender_label="iron-god", idempotency_key=reply_key,
+        )
+        text = (_verified_replay_body(previous, message) if previous
+                else _reported_status_snapshot(state_root, response_to=message["message_id"]))
+        try:
+            response = mcp_coordination.post_message(
+                db, sender_label="iron-god", recipient=message["sender_label"],
+                kind="status", body=text, idempotency_key=reply_key,
+                reference=_STATUS_QUERY_REFERENCE,
+            )
+        except ValueError as exc:
+            if str(exc) != "IDEMPOTENCY_CONFLICT":
+                raise
+            # A second actor may have posted the same response concurrently.
+            # Re-read its immutable contents rather than sending a duplicate.
+            prior = mcp_coordination.lookup_posted_message(
+                db, sender_label="iron-god", idempotency_key=reply_key,
+            )
+            if prior is None:
+                raise
+            _verified_replay_body(prior, message)
+            response = prior
+        receipt = mcp_coordination.ack_message(
+            db, recipient_label="iron-god", message_id=message["message_id"],
+        )
+        results.append({
+            "request_id": message["message_id"],
+            "response_id": response["message_id"],
+            "recipient": message["sender_label"],
+            "acknowledged_at_utc": receipt["acknowledged_at_utc"],
+        })
+    return results
+
+
 def _inbox_cursor(state_root: Path) -> int:
     """Recover the last completed scan, not an unpersisted process cursor."""
     path = state_root / "iron-god-mailbox-observation.json"
@@ -251,7 +351,9 @@ def advisory_supervisor_pass(
     if not db.is_file():
         return {"status": "MAILBOX_NOT_INITIALIZED"}
     try:
-        inbox = _read_inbox(db, after_seq=_inbox_cursor(state_root))
+        cursor = _inbox_cursor(state_root)
+        handled = _answer_status_queries(db, state_root, after_seq=cursor) if publish else []
+        inbox = _read_inbox(db, after_seq=cursor)
         publication_cursor = _publication_cursor(state_root)
         if publish:
             posted, publication_cursor = _publish_lane_events(
@@ -267,6 +369,7 @@ def advisory_supervisor_pass(
             "last_message_seq": inbox["next_seq"],
             "last_publication_packet": publication_cursor,
             "inbox": inbox, "published": posted,
+            "handled_status_requests": handled,
             "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
         }
         # Recording observations is not an acknowledgement. The engine should

@@ -221,9 +221,41 @@ cross-process compatibility with the existing CLI. **Operational acceptance
 remains pending** until a deployed, authenticated supervisor visibly emits a
 real lane event and its two assistants receive it through the actual mailbox.
 
-The next slice (MCP-ENGINE-02) should introduce *evidence-verified advisory
-response generation and explicit handled/ack transitions* without weakening
-existing owner/supervisor gates; no automatic execution of inbox text.
+### MCP-ENGINE-02: safe two-way status question (proposed code, pending rollout)
+
+Only an **exact** local advisory message addressed specifically to `iron-god`,
+with `kind=question`, `body=engine_status_v1`, and
+`reference=protocol:engine-status-v1`, is eligible for deterministic
+automatic handling. The supervisor reads a bounded pending-inbox page and
+replies to the originating `chatgpt` or `claude-code` label with sanitized,
+explicitly **unverified** product, canon and supervisor status fields. The
+response includes `response_to` for durable correlation. After the
+response has been successfully persisted, the engine appends the request's
+consumption acknowledgment.
+
+A crash between the response and its receipt replays the **same** idempotent
+response on retry, even if the engine's reported status changed in the meantime.
+The adapter verifies the original response's recipient, protocol and correlation
+before acknowledging the request; conflicting or forged prior records fail
+closed rather than being accepted. General questions, handoffs, commands,
+broadcasts, owner-like instructions and unknown schemas are left unread/
+unacknowledged for explicit human or qualified assistant review. `publish=False`
+keeps read-only diagnostic behavior. Incoming messages never issue grants,
+change the execution plan, run a builder, update GitHub, or authorize anything.
+
+Example sender CLI after this code is approved and deployed:
+
+```powershell
+powershell -NoProfile -File C:\\Users\\jerem\\Documents\\IronGod-Reports\\ig-mailbox.ps1 post --to iron-god --kind question --body "engine_status_v1" --reference "protocol:engine-status-v1"
+```
+
+The sender retrieves the response through its existing mailbox `read` command
+and may acknowledge that response. The labels are **not authenticated remote
+identities**. No arbitrary-text AI inference or GitHub verification is claimed.
+The current PR implements this *specific machine-verifiable read-only request
+contract*; broader evidence-verified handoff handling remains a later slice.
+Runtime acceptance is pending the owner's controlled release promotion and a
+real end-to-end response through the live mailbox.
 
 MCP makes tools available when a client invokes them. It does not, by itself,
 provide background polling, instant alerts, a continuously active Claude
