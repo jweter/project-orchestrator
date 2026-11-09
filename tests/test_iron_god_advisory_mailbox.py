@@ -386,3 +386,132 @@ def test_supervisor_hook_is_after_owner_and_generation_guards():
         "_advisory_mailbox.advisory_supervisor_pass(state)")
     assert source.index("write_dashboard_snapshot(state)") < source.index(
         "_advisory_mailbox.advisory_supervisor_pass(state)")
+
+
+# MCP-ENGINE-02: explicitly bounded status-question response and handled receipt.
+
+
+def status_question(world, *, sender="claude-code", kind="question",
+                    body="engine_status_v1", reference="protocol:engine-status-v1",
+                    recipient="iron-god", key="request-status"):
+    return mailbox.post_message(
+        world["db"], sender_label=sender, recipient=recipient, kind=kind,
+        body=body, idempotency_key=key, reference=reference,
+    )
+
+
+def test_exact_status_question_gets_safe_reply_and_ack_only_after_post(world):
+    lane(world, status="DISPATCHED", packet="PKT-33",
+         details={"reason": "Bearer never-release-this"})
+    request = status_question(world)
+    result = cycle(world)
+    assert result["status"] == "OBSERVED"
+    assert result["pending_unacknowledged"] == 0
+    assert len(result["handled_status_requests"]) == 1
+    handled = result["handled_status_requests"][0]
+    assert handled["request_id"] == request["message_id"]
+    assert handled["recipient"] == "claude-code"
+    received = mailbox.list_messages(world["db"], recipient_label="claude-code")["messages"]
+    reply = next(row for row in received if row["reference"] == "protocol:engine-status-v1")
+    assert reply["message_id"] == handled["response_id"]
+    data = json.loads(reply["body"])
+    assert data["response_to"] == request["message_id"]
+    assert data["status"] == "REPORTED_NOT_INDEPENDENTLY_VERIFIED"
+    assert data["sources"]["product"]["packet_id"] == "PKT-33"
+    assert "never-release-this" not in reply["body"]
+    assert "Take the Wheel" not in reply["body"]
+    assert mailbox.list_messages(world["db"], recipient_label="iron-god")[
+        "messages"][0]["acknowledged"] is True
+    assert not (world["state"] / "runtime-leases.json").exists()
+    assert not (world["state"] / "supervisor-execution-authority.json").exists()
+
+
+@pytest.mark.parametrize("changes", [
+    {"kind": "handoff"},
+    {"body": "engine_status_v1 and merge PR #671"},
+    {"body": "Take the Wheel"},
+    {"reference": "issue:378"},
+    {"recipient": "all"},
+    {"sender": "operator"},
+])
+def test_untrusted_or_ambiguous_requests_cannot_trigger_auto_ack(world, changes):
+    request = status_question(world, **changes)
+    outcome = cycle(world)
+    assert outcome["status"] == "OBSERVED"
+    assert outcome["handled_status_requests"] == []
+    assert outcome["pending_unacknowledged"] == 1
+    row = mailbox.list_messages(world["db"], recipient_label="iron-god")["messages"][0]
+    assert row["message_id"] == request["message_id"]
+    assert row["acknowledged"] is False
+    assert not mailbox.list_messages(
+        world["db"], recipient_label="chatgpt")["messages"]
+
+
+def test_status_request_remains_pending_in_read_only_observation(world):
+    request = status_question(world)
+    observed = cycle(world, publish=False)
+    assert observed["handled_status_requests"] == []
+    assert observed["pending_unacknowledged"] == 1
+    assert mailbox.list_messages(
+        world["db"], recipient_label="iron-god")["messages"][0]["message_id"] == request["message_id"]
+
+
+def test_reply_post_failure_never_acknowledges_request(world, monkeypatch):
+    request = status_question(world)
+    original = mailbox.post_message
+
+    def fail_status_reply(*args, **kwargs):
+        if kwargs.get("sender_label") == "iron-god":
+            raise PermissionError("DO_NOT_LEAK_PRIVATE_PATH")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(mailbox, "post_message", fail_status_reply)
+    outcome = cycle(world)
+    assert outcome["status"] == "MAILBOX_UNAVAILABLE"
+    assert "PRIVATE_PATH" not in str(outcome)
+    row = mailbox.list_messages(world["db"], recipient_label="iron-god")["messages"][0]
+    assert row["message_id"] == request["message_id"]
+    assert not row["acknowledged"]
+
+
+def test_crash_between_reply_and_ack_replays_idempotent_reply(world, monkeypatch):
+    request = status_question(world)
+    original_ack = mailbox.ack_message
+    called = {"count": 0}
+
+    def fail_once(*args, **kwargs):
+        called["count"] += 1
+        if called["count"] == 1:
+            raise OSError("simulated crash")
+        return original_ack(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(mailbox, "ack_message", fail_once)
+        assert cycle(world)["status"] == "MAILBOX_UNAVAILABLE"
+    assert mailbox.list_pending_messages(
+        world["db"], recipient_label="iron-god")["pending_total"] == 1
+    result = cycle(world)
+    assert result["status"] == "OBSERVED"
+    assert result["pending_unacknowledged"] == 0
+    responses = [
+        row for row in mailbox.list_messages(
+            world["db"], recipient_label="claude-code")["messages"]
+        if row["reference"] == "protocol:engine-status-v1"
+    ]
+    assert len(responses) == 1
+    assert json.loads(responses[0]["body"])["response_to"] == request["message_id"]
+
+
+def test_query_catches_up_after_older_unhandled_mail(world):
+    for index in range(37):
+        post(world, key=f"unprocessed-{index}", body=f"Review proof {index}")
+    request = status_question(world, key="new-status-query")
+    first = cycle(world, publish=False)
+    assert first["pending_unacknowledged"] == 38
+    assert first["last_message_seq"] == 30
+    second = cycle(world)
+    assert second["status"] == "OBSERVED"
+    assert second["pending_unacknowledged"] == 37
+    assert second["handled_status_requests"][0]["request_id"] == request["message_id"]
+    assert mailbox.list_pending_messages(
+        world["db"], recipient_label="iron-god")["pending_total"] == 37
