@@ -226,3 +226,36 @@ def test_a_database_path_with_uri_metacharacters_posts_and_reads_the_same_file(t
     assert sorted(p.name for p in tmp_path.iterdir() if p.suffix == ".sqlite") == ["100%.sqlite", "a%20b.sqlite", "advisory#pilot.sqlite"]
     assert not (tmp_path / "advisory").exists()                                       # no stray file from a truncated name
 
+
+
+def test_delivery_snapshot_uninitialized_is_read_only(database):
+    summary = co.delivery_snapshot(database)
+    assert summary == {"status": "UNINITIALIZED", "participants": {}}
+    assert not database.exists()
+
+
+def test_delivery_snapshot_tracks_each_receipt_without_claiming_completion(database):
+    direct = post(database, recipient="chatgpt", idempotency_key="direct", body="PRIVATE_CHAT_BODY")
+    broadcast = post(database, recipient="all", idempotency_key="broadcast", body="PRIVATE_BROADCAST_BODY")
+    co.ack_message(database, recipient_label="chatgpt", message_id=direct["message_id"])
+    summary = co.delivery_snapshot(database)
+    assert summary["status"] == "OK"
+    people = summary["participants"]
+    assert people["chatgpt"]["addressed"] == 2
+    assert people["chatgpt"]["acknowledged"] == 1
+    assert people["chatgpt"]["unacknowledged"] == 1
+    assert people["chatgpt"]["latest_seq"] == broadcast["seq"]
+    assert people["chatgpt"]["oldest_pending_at_utc"]
+    assert people["chatgpt"]["latest_acknowledged_at_utc"]
+    assert people["operator"]["unacknowledged"] == 1
+    assert people["claude-code"]["unacknowledged"] == 1
+    assert people["iron-god"]["unacknowledged"] == 1
+    co.ack_message(database, recipient_label="iron-god", message_id=broadcast["message_id"])
+    after = co.delivery_snapshot(database)["participants"]
+    assert after["iron-god"]["unacknowledged"] == 0
+    assert after["iron-god"]["acknowledged"] == 1
+    assert after["chatgpt"]["unacknowledged"] == 1
+    assert "PRIVATE_CHAT_BODY" not in str(summary)
+    assert "PRIVATE_BROADCAST_BODY" not in str(summary)
+    assert direct["message_id"] not in str(summary)
+    assert broadcast["message_id"] not in str(summary)

@@ -42,20 +42,6 @@ MAX_WAIT_S = 300
 POLL_S = 2.0
 
 
-def _unacknowledged(database: Path, label: str) -> tuple[int, bool]:
-    """(unacknowledged count across the WHOLE inbox, whether the database exists). Read-only: it never creates the database."""
-    after, count, exists = 0, 0, True
-    while True:
-        page = coord.list_messages(database, recipient_label=label, after_seq=after, limit=coord.MAX_PAGE)
-        if page.get("status") == "UNINITIALIZED":
-            return 0, False
-        messages = page["messages"]
-        count += sum(1 for m in messages if not m["acknowledged"])
-        if len(messages) < coord.MAX_PAGE:
-            return count, exists
-        after = page["next_seq"]
-
-
 def _emit(out: TextIO, payload: dict[str, Any]) -> None:
     out.write(json.dumps(payload, sort_keys=True) + "\n")
 
@@ -96,9 +82,12 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
         coord._check_principal(label)
         writes = env.get(WRITES) == "1"
         if args.command == "status":
-            unacked, exists = _unacknowledged(database, label)   # a status read never initializes or writes the database
+            delivery = coord.delivery_snapshot(database)  # a status read never initializes or writes the database
+            exists = delivery["status"] == "OK"
+            unacked = delivery["participants"].get(label, {}).get("unacknowledged", 0)
             _emit(out, {"status": "OK", "participant": label, "writes_enabled": writes, "unacknowledged": unacked,
-                        "database_initialized": exists, "engine": coord.engine_snapshot(state_root)})
+                        "database_initialized": exists, "delivery": delivery,
+                        "engine": coord.engine_snapshot(state_root)})
         elif args.command == "targets":
             _emit(out, {"status": "OK", "targets": coord.targets_snapshot(repo_root)})
         elif args.command == "read":

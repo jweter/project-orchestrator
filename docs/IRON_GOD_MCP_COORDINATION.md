@@ -98,6 +98,22 @@ and only the portfolio contract under an explicit repo root. Redact freeform
 diagnostics that could contain sensitive transcript or credentials. Local
 integration must use the pinned release's policy and strict paths.
 
+### Issue #675 M1: read-only mailbox receipt health
+
+The advisory CLI `status` now includes a `delivery` summary for each fixed
+participant. `addressed` counts queued messages, including `all` broadcasts
+independently per recipient; `acknowledged` and `unacknowledged` derive from
+append-only recipient-specific receipts. `latest_seq`, oldest pending UTC time
+and latest acknowledged UTC time make a nonresponsive recipient visible
+without exposing message IDs, bodies, private references or secrets.
+
+An addressed/queued message is **not proof that a model has read it**.
+An acknowledgment records advisory consumption, not completed engineering,
+response quality, owner consent, or permission to execute. This feature is
+read-only and never starts an AI session, opens a port, polls in a new process,
+or modifies a running release. Agent wake-up and escalation require separately
+reviewed follow-on changes and acceptance tests.
+
 ## Production hardening gates (follow-on slices)
 
 1. **MCP-1**: SQLite schema v1, immutable messages/receipts, WAL/FULL durability,
