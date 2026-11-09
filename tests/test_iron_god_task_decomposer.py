@@ -1152,3 +1152,22 @@ def test_a_native_cpp_slice_is_never_decomposed_into_python_steps() -> None:
     assert not td.native_scope({**everward, "allowed_paths": ["tools/**", "docs/**"]})     # Python tooling only: allowed
     assert td.decomposable({**everward, "allowed_paths": ["tools/**", "tests/**"]})
     assert not td.native_scope(PARENT) and td.decomposable(PARENT)                         # a Python repository is unchanged
+
+
+def test_model_authored_nested_placeholder_oracle_is_rejected_before_child_admission() -> None:
+    plan = mutated(lambda p: p["subtasks"][0]["acceptance_examples"][0].update(
+        expected=json.dumps({"sections": [{"title": "Results", "content": "..."}]})
+    ))
+    built, problems = check(plan)
+    assert built is None
+    assert any("t1: SELF_AUTHORED_ACCEPTANCE_PLACEHOLDER" in problem for problem in problems)
+    accepted, clean = check(GOOD)
+    assert clean == [] and accepted is not None
+
+
+def test_decomposition_with_literal_ellipsis_punctuation_is_not_rejected_as_placeholder() -> None:
+    plan = mutated(lambda p: p["subtasks"][0]["acceptance_examples"][0].update(
+        expected="First... then done"
+    ))
+    accepted, problems = check(plan)
+    assert accepted is not None and problems == []

@@ -60,6 +60,46 @@ class ContradictsRoadmap(ValueError):
     """The plan's own examples disagree with the roadmap's acceptance examples."""
 
 
+def _unresolved_placeholder(value: Any) -> bool:
+    """Conservatively identify literal placeholder values in a test oracle.
+
+    A string containing an ellipsis as punctuation is not a placeholder.
+    A JSON-string expected value may itself contain nested placeholder
+    values; inspect only parseable JSON containers and never execute code.
+    """
+    if isinstance(value, str):
+        if value.strip() in {"...", "…", "TODO", "TBD", "<placeholder>"}:
+            return True
+        if len(value) <= 16_000 and value.lstrip().startswith(("{", "[")):
+            try:
+                return _unresolved_placeholder(json.loads(value))
+            except (ValueError, TypeError):
+                return False
+        return False
+    if isinstance(value, dict):
+        return any(_unresolved_placeholder(part) for part in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_unresolved_placeholder(part) for part in value)
+    return False
+
+
+def self_authored_example_problems(request: dict[str, Any]) -> list[str]:
+    """Reject invented exact-output examples with unresolved placeholders.
+
+    This only applies to SELF_AUTHORED decomposition examples. An owner-declared
+    acceptance test can intentionally require the literal string "..." and is
+    not rewritten or overridden by this safeguard.
+    """
+    decomposition = request.get("decomposition") or {}
+    if not isinstance(decomposition, dict) or decomposition.get("oracle") != "SELF_AUTHORED":
+        return []
+    problems = []
+    for index, example in enumerate(request.get("acceptance_examples") or [], 1):
+        if isinstance(example, dict) and _unresolved_placeholder(example.get("expected")):
+            problems.append(f"SELF_AUTHORED_ACCEPTANCE_PLACEHOLDER: example {index} has no verified exact output")
+    return problems
+
+
 def _jobs(lane_root: Path) -> list[dict[str, Any]]:
     directory = Path(lane_root) / JOBS
     rows = []
@@ -147,7 +187,9 @@ def eligible(request: dict[str, Any]) -> bool:
         return False
     if request.get("capability_level") == DIRECTED_LEVEL:
         return directed_spec(request) is not None
-    return request.get("capability_level") == SUPPORTED_LEVEL and len(roadmap_examples(request)) >= MIN_ROADMAP_EXAMPLES
+    return (request.get("capability_level") == SUPPORTED_LEVEL
+            and len(roadmap_examples(request)) >= MIN_ROADMAP_EXAMPLES
+            and not self_authored_example_problems(request))
 
 
 def missing_directed_edit(request: dict[str, Any]) -> bool:
@@ -199,6 +241,9 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
     own - and the draft is defined by the roadmap alone. The model keeps only what the roadmap leaves open: the module,
     the signature and the test location, all still checked by the worker's validator and the roadmap's examples.
     """
+    problems = self_authored_example_problems(request)
+    if problems:
+        raise ContradictsRoadmap("; ".join(problems))
     name = validated["function_name"]
     given = {" ".join(call.split()): example for example in roadmap_examples(request)
              for call in [example["call"].replace("{fn}", name)]}
@@ -216,7 +261,12 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
             continue
         if call not in given:
             own.append({"call": call, "why": " ".join(str(e.get("why", "")).split()), "expected": e["expected"]})
-    injected = [{"call": call, "why": "roadmap acceptance example: " + example["why"], "expected": example["expected"]}
+    decomposition = request.get("decomposition") or {}
+    self_authored = isinstance(decomposition, dict) and decomposition.get("oracle") == "SELF_AUTHORED"
+    origin = ("self-authored decomposition example (unverified): " if self_authored
+              else "roadmap acceptance example: ")
+    criteria_origin = "self-authored decomposition, unverified" if self_authored else "roadmap acceptance"
+    injected = [{"call": call, "why": origin + example["why"], "expected": example["expected"]}
                 for call, example in given.items()]
     if misread:
         own = []
@@ -227,7 +277,7 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
     # become a conflicting completion gate for the local builder.
     criteria = ([*request.get("slice_acceptance", [])] if misread
                 else [*validated["acceptance_criteria"]])
-    criteria.extend(f"{e['call']} returns {e['expected']!r} (roadmap acceptance)"
+    criteria.extend(f"{e['call']} returns {e['expected']!r} ({criteria_origin})"
                     for e in injected)
     roadmap_part = " ".join(str(request["objective"]).split())[:ROADMAP_OBJECTIVE_CHARS]
     objective = (f"Roadmap slice goal: {roadmap_part}" if misread
@@ -379,6 +429,10 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
     """
     outcomes = harvest(lane_root, now=now, release=release)
     for request in requests:
+        oracle_problems = self_authored_example_problems(request)
+        if oracle_problems and (request.get("route") or {}).get("builder") == refill.LOCAL:
+            outcomes.append({"id": request["id"], "status": "NEEDS_INDEPENDENT_ACCEPTANCE_EVIDENCE",
+                             "reason": "; ".join(oracle_problems), "repository": request.get("repository")})
         if missing_directed_edit(request):
             outcomes.append({"id": request["id"], "status": "NEEDS_ACCEPTANCE_EXAMPLES",
                              "reason": f"declare directed_edit on Level 2 slice {request['slice']} (module_path, named "

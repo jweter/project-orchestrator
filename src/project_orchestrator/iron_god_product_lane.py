@@ -1441,13 +1441,14 @@ def log_draft_outcomes(lane: ProductLane, name: str | None, outcomes: list[dict[
     for outcome in outcomes:
         repository = outcome.get("repository") or name or "<portfolio>"  # a harvested job belongs to ITS repository
         kind = prefix + outcome["status"]
-        if outcome["status"] == "NEEDS_ACCEPTANCE_EXAMPLES" and any(
+        standing_ask = {"NEEDS_ACCEPTANCE_EXAMPLES", "NEEDS_INDEPENDENT_ACCEPTANCE_EVIDENCE"}
+        if outcome["status"] in standing_ask and any(
                 e["kind"] == kind and e["id"] == outcome["id"] and e["detail"].get("reason") == outcome.get("reason")
                 for e in recent):
-            continue  # a standing question is asked once, not on every pass
+            continue  # standing blockers are logged once, not on every supervisor pass
         roadmap_refill.log_event(lane.root, kind, repository, outcome["id"], outcome)
         working_memory.record(lane.state_root, repository, kind, detail=f"{outcome['id']}: {outcome.get('reason', '')}"[:200],
-                              outcome="BLOCKED" if outcome["status"] in {"FAILED", "ERROR", "NEEDS_ACCEPTANCE_EXAMPLES"}
+                              outcome="BLOCKED" if outcome["status"] in {"FAILED", "ERROR", *standing_ask}
                               else None)
     if any(o.get("status") == "WAITING_FOR_MEMORY" for o in outcomes):
         # The local model could not start the roadmap's decomposition or drafting for lack of memory: that is a development
