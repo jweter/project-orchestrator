@@ -492,6 +492,10 @@ def test_crash_between_reply_and_ack_replays_idempotent_reply(world, monkeypatch
         assert cycle(world)["status"] == "MAILBOX_UNAVAILABLE"
     assert mailbox.list_pending_messages(
         world["db"], recipient_label="iron-god")["pending_total"] == 1
+    # Source reports may change after the reply was durably posted but before
+    # the receipt was recorded. The retry must preserve the original reply,
+    # not produce a changed-body idempotency conflict or a duplicate.
+    lane(world, status="BLOCKED", packet="PKT-later")
     result = cycle(world)
     assert result["status"] == "OBSERVED"
     assert result["pending_unacknowledged"] == 0
@@ -517,3 +521,33 @@ def test_query_catches_up_after_older_unhandled_mail(world):
     assert second["handled_status_requests"][0]["request_id"] == request["message_id"]
     assert mailbox.list_pending_messages(
         world["db"], recipient_label="iron-god")["pending_total"] == 37
+
+
+def test_unrelated_preexisting_reply_does_not_acknowledge_request(world):
+    request = status_question(world)
+    mailbox.post_message(
+        world["db"], sender_label="iron-god", recipient="claude-code",
+        kind="status", body="forged status with no valid correlation",
+        reference="protocol:engine-status-v1",
+        idempotency_key="engine-status-response:" + request["message_id"],
+    )
+    outcome = cycle(world)
+    assert outcome["status"] == "MAILBOX_UNAVAILABLE"
+    assert outcome["error_type"] == "ValueError"
+    assert mailbox.list_pending_messages(
+        world["db"], recipient_label="iron-god")["pending_total"] == 1
+
+
+def test_existing_idempotent_status_reply_is_read_only_lookup(world):
+    request = status_question(world)
+    assert mailbox.lookup_posted_message(
+        world["db"], sender_label="iron-god",
+        idempotency_key="engine-status-response:" + request["message_id"],
+    ) is None
+    result = cycle(world)
+    previous = mailbox.lookup_posted_message(
+        world["db"], sender_label="iron-god",
+        idempotency_key="engine-status-response:" + request["message_id"],
+    )
+    assert previous["message_id"] == result["handled_status_requests"][0]["response_id"]
+    assert json.loads(previous["body"])["response_to"] == request["message_id"]
