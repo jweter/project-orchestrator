@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any, Mapping, TextIO
 
 from . import mcp_coordination as coord
+from . import mcp_coordination_accountability as accountability
 
 KEYS = ("IRON_GOD_MCP_COORDINATION_DB", "IRON_GOD_MCP_STATE_ROOT", "IRON_GOD_MCP_REPO_ROOT", "IRON_GOD_MCP_CLIENT_LABEL")
 WRITES = "IRON_GOD_MCP_ALLOW_ADVISORY_WRITES"
@@ -65,6 +66,22 @@ def _parser() -> argparse.ArgumentParser:
     post.add_argument("--key", default="", help="idempotency key; default is a hash of sender, recipient, kind and body")
     ack = sub.add_parser("ack")
     ack.add_argument("--id", required=True)
+    requests = sub.add_parser("requests", help="read-only tracked handoff states; no message bodies")
+    requests.add_argument("--role", choices=("incoming", "outgoing", "all"), default="incoming")
+    requests.add_argument("--limit", type=int, default=30)
+    handoff = sub.add_parser("handoff", help="post an idempotent actionable request")
+    handoff.add_argument("--to", required=True)
+    handoff.add_argument("--body", required=True)
+    handoff.add_argument("--reference", required=True)
+    handoff.add_argument("--key", required=True)
+    handoff.add_argument("--deadline-utc")
+    disposition = sub.add_parser("disposition", help="record a correlated response to a tracked request")
+    disposition.add_argument("--id", required=True)
+    disposition.add_argument("--state", required=True)
+    disposition.add_argument("--evidence", default="")
+    disposition.add_argument("--key", default="")
+    repair = sub.add_parser("repair-replies", help="retry prior recorded responses after a crash; no model use")
+    repair.add_argument("--limit", type=int, default=10)
     return parser
 
 
@@ -87,6 +104,7 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
             unacked = delivery["participants"].get(label, {}).get("unacknowledged", 0)
             _emit(out, {"status": "OK", "participant": label, "writes_enabled": writes, "unacknowledged": unacked,
                         "database_initialized": exists, "delivery": delivery,
+                        "handoffs": accountability.requests_snapshot(database, participant=label),
                         "engine": coord.engine_snapshot(state_root)})
         elif args.command == "targets":
             _emit(out, {"status": "OK", "targets": coord.targets_snapshot(repo_root)})
@@ -98,11 +116,26 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
                     break
                 sleep(POLL_S)
             _emit(out, result)
-        elif args.command in ("post", "ack"):
+        elif args.command == "requests":
+            _emit(out, accountability.requests_snapshot(database, participant=label,
+                                                        role=args.role, limit=args.limit))
+        elif args.command in ("post", "ack", "handoff", "disposition", "repair-replies"):
             if not writes:
                 _emit(out, {"status": "READ_ONLY", "detail": f"advisory writes are off; set {WRITES}=1 to post or acknowledge"})
                 return 1
-            if args.command == "post":
+            if args.command == "handoff":
+                _emit(out, {"status": "OK", **accountability.open_request(
+                    database, sender_label=label, recipient=args.to, body=args.body,
+                    reference=args.reference, idempotency_key=args.key,
+                    deadline_at_utc=args.deadline_utc)})
+            elif args.command == "disposition":
+                _emit(out, {"status": "OK", **accountability.record_disposition(
+                    database, actor_label=label, request_id=args.id,
+                    state=args.state, evidence_reference=args.evidence, event_key=args.key)})
+            elif args.command == "repair-replies":
+                _emit(out, accountability.recover_pending_replies(
+                    database, actor_label=label, limit=args.limit))
+            elif args.command == "post":
                 text = (stdin or sys.stdin).read() if args.body_stdin else args.body
                 key = args.key or hashlib.sha256("\x1f".join((label, args.to, args.kind, text)).encode("utf-8")).hexdigest()[:48]
                 _emit(out, {"status": "OK", **coord.post_message(database, sender_label=label, recipient=args.to, kind=args.kind,
