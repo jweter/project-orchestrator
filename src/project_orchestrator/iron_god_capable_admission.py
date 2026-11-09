@@ -33,7 +33,7 @@ def next_slot_at(rows: list[dict[str, Any]], daily_limit: int, now: float) -> fl
 
 
 def per_pass_cap(remaining: int) -> int:
-    """At most half of what is left per pass (at least one), so a burst cannot take every slot at once."""
+    """Per-pass share only (not time pacing: several rapid passes can still use every slot). At most half of what is left per pass (at least one), so a burst cannot take every slot at once."""
     return 0 if remaining <= 0 else max(1, math.ceil(remaining / 2))
 
 

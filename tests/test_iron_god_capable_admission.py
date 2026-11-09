@@ -99,6 +99,7 @@ def test_the_lane_admits_a_fair_share_and_logs_why_the_rest_wait(tmp_path, monke
         return {"dispatched": True, "reason": "DISPATCHED"}
 
     monkeypatch.setattr(cap, "dispatch_request", fake_dispatch)
+    monkeypatch.setattr(cap, "decide", lambda *_a, **_k: {"dispatch": True, "reason": "WITHIN_BUDGET"})
     queue = []
     for i in (3, 1, 0, 2):  # arbitrary visiting order
         pl.hand_to_capable_builder(lane, REPOS[0], {"capable_requests": [cand(i)["request"]]},
@@ -120,3 +121,20 @@ def test_a_disabled_builder_still_records_each_exact_reason_and_spends_nothing(t
     queue = [cand(0), cand(1)]
     pl.admit_capable_requests(lane, queue, {"enabled": False, "daily_limit": 6})
     assert fired == ["RM-0", "RM-1"]  # dispatch_request itself refuses; admission never bypasses it
+
+
+def test_a_refused_top_candidate_does_not_use_up_a_pass_slot_for_an_eligible_one(tmp_path, monkeypatch):
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(tmp_path / "state")
+    fired = []
+    monkeypatch.setattr(cap, "dispatch_request", lambda r, **_k: fired.append(r["id"]) or {"dispatched": True})
+    refused = {"RM-0": "ATTEMPTS_EXHAUSTED", "RM-1": "REQUEST_ALREADY_DELIVERED_OR_PENDING"}
+    monkeypatch.setattr(cap, "decide", lambda r, **_k: {"dispatch": r["id"] not in refused,
+                                                         "reason": refused.get(r["id"], "WITHIN_BUDGET")})
+    pl.admit_capable_requests(lane, [cand(i) for i in range(4)], {"enabled": True, "daily_limit": 2})
+    assert fired == ["RM-2"]  # cap is 1 of 2; the two top-ranked refused requests no longer take it
+    reasons = {e["id"] if "id" in e else e.get("subject"): e["detail"]["reason"]
+               for e in refill_mod.load_store(lane.root)["ledger"] if e["kind"] == "CAPABLE_NOT_DISPATCHED"}
+    assert "ATTEMPTS_EXHAUSTED" in reasons.values() and "REQUEST_ALREADY_DELIVERED_OR_PENDING" in reasons.values()
+    assert "PASS_SHARE_REACHED" in reasons.values()  # RM-3 waits for the share, not because of a refused neighbour

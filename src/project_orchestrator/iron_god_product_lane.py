@@ -1275,7 +1275,19 @@ def admit_capable_requests(lane: ProductLane, queue: list[dict[str, Any]], capab
         for item in capable_admission.sorted_candidates(queue, rows, now):
             _dispatch_capable(lane, item["name"], item["request"], capable)
         return
-    verdict = capable_admission.plan(queue, rows, capable["daily_limit"], now)
+    eligible = []
+    for item in queue:  # a request the existing guards would refuse must not use up a pass slot (read-only check)
+        try:
+            guard = capable_builder.decide(item["request"], lane_root=lane.root, enabled=True,
+                                           daily_limit=capable["daily_limit"], now=now)
+        except Exception:
+            guard = {"dispatch": True, "reason": "WITHIN_BUDGET"}  # let the dispatch-time guard decide and record it
+        if guard["dispatch"] or guard["reason"] == "DAILY_BUDGET_EXHAUSTED":
+            eligible.append(item)
+        else:
+            roadmap_refill.log_event(lane.root, "CAPABLE_NOT_DISPATCHED", item["name"], item["request"]["id"],
+                                     {key: value for key, value in guard.items() if key != "dispatch"})
+    verdict = capable_admission.plan(eligible, rows, capable["daily_limit"], now)
     for held in verdict["deferred"]:
         item = held["candidate"]
         roadmap_refill.log_event(lane.root, "CAPABLE_NOT_DISPATCHED", item["name"], item["request"]["id"],
