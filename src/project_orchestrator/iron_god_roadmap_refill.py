@@ -192,6 +192,9 @@ def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, An
     # it is as finished as an item with no attempts left (VoiceStudio S2-r1, 2026-11-03: stuck at 2 of 3 attempts).
     out_of_attempts = row.get("attempts", 0) >= limit or backlog.repeated_failed_source(row)
     failed = str(row.get("outcome", "")).startswith(RE_AUTHORABLE) and out_of_attempts
+    if row.get("outcome") not in backlog.IN_FLIGHT and backlog.lineage_capped(state, latest["id"]):
+        # the same step keeps failing its tests (even if its newest repair never started): stop re-authoring, the owner decides
+        return "EXHAUSTED", latest["id"]
     if failed and len(chain) >= MAX_ITEMS_PER_SLICE:
         return "EXHAUSTED", latest["id"]  # terminal failure must reach the durable owner-decision ledger
     if failed or latest.get("status") == "retired":

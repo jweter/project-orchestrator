@@ -148,3 +148,62 @@ def test_admission_drops_a_revision_that_does_not_prove_its_authorized_level(tmp
     hand_made = item("RM-X-r4", authorization={"declared_capability_level": 1})  # not roadmap-derived
     refill._mutate(tmp_path, lambda store: store["items"].extend([good, forged, understated, hand_made]))
     assert [i["id"] for i in refill.admitted_items(tmp_path)] == ["RM-X-r1"]
+
+
+FAILED = "FAIL: SLICE_TESTS_FAILED"
+
+
+def failed_row(*packets: str, attempts: int | None = None, outcome: str = FAILED) -> dict:
+    return {"attempts": attempts if attempts is not None else len(packets), "outcome": outcome,
+            "test_failed_packets": list(packets)}
+
+
+def test_a_plan_step_that_keeps_failing_its_tests_is_capped_across_its_repairs() -> None:
+    """Issue #673: t1, t1-r1, t1-r2, t1-r3 each had their own 2 attempts, so one step burned 8 packets on the 7B."""
+    items = [item("RM-x-t1"), item("RM-x-t1-r1"), item("RM-x-t1-r2"), item("RM-x-t1-r3"), item("RM-x-t2")]
+    state = {"items": {"RM-x-t1": failed_row("p1", "p2"), "RM-x-t1-r1": failed_row("p3", "p4")}}
+    got = reasons(items, state)
+    assert got["RM-x-t1-r1"] == "NEEDS_DIFFERENT_CAPABILITY"
+    assert got["RM-x-t1-r2"] == got["RM-x-t1-r3"] == "NEEDS_DIFFERENT_CAPABILITY"  # new repairs never start
+    assert got["RM-x-t2"] == "ELIGIBLE"  # a distinct, independent step is untouched
+    (row,) = [r for r in backlog.explain_candidates(items, state, max_level=1) if r["id"] == "RM-x-t1-r2"]
+    assert "4 slice-test failures across RM-x-t1" in row["detail"]
+
+
+def test_the_cap_counts_packets_that_failed_their_tests_not_total_attempts_or_the_latest_outcome() -> None:
+    items = [item("RM-y-t1"), item("RM-y-t1-r1")]
+    # timeout + two test failures is 3 attempts but only 2 test failures: below the cap, so the repair still runs
+    mixed = {"items": {"RM-y-t1": failed_row("p1", "p2", attempts=3, outcome="ENVIRONMENT_FAILURE: timeout")}}
+    assert backlog.lineage_test_failures(mixed, "RM-y-t1") == 2
+    assert reasons(items, mixed)["RM-y-t1-r1"] == "ELIGIBLE"
+    # a later non-test outcome does not erase earlier test failures
+    erased = {"items": {"RM-y-t1": failed_row("p1", "p2", outcome="ENVIRONMENT_FAILURE: x"),
+                        "RM-y-t1-r1": failed_row("p3", "p4", outcome="ENVIRONMENT_FAILURE: y")}}
+    assert backlog.lineage_capped(erased, "RM-y-t1")
+    # replaying the same packet is not a second failure
+    replay = {"items": {"RM-y-t1": failed_row("p1", "p1", "p1")}}
+    assert backlog.lineage_test_failures(replay, "RM-y-t1") == 1
+    # rows recorded before packet evidence existed fall back to their attempts
+    legacy = {"items": {"RM-y-t1": {"attempts": 2, "outcome": FAILED}, "RM-y-t1-r1": {"attempts": 2, "outcome": FAILED}}}
+    assert backlog.lineage_capped(legacy, "RM-y-t1-r1")
+    flying = {"items": {"RM-y-t1": failed_row("p1", "p2"), "RM-y-t1-r1": {**failed_row("p3", "p4"), "outcome": "DISPATCHED"}}}
+    assert reasons(items, flying)["RM-y-t1-r1"] == "IN_FLIGHT"
+
+
+def test_recording_a_slice_test_failure_persists_the_packet_once(tmp_path) -> None:
+    backlog.record_item(tmp_path, "RM-q-t1", packet_id="P1", outcome=FAILED)
+    backlog.record_item(tmp_path, "RM-q-t1", packet_id="P1", outcome=FAILED)
+    row = backlog.record_item(tmp_path, "RM-q-t1", packet_id="P2", outcome="ENVIRONMENT_FAILURE: timeout")
+    assert row["test_failed_packets"] == ["P1"]
+
+
+def test_the_refill_stops_re_authoring_a_capped_step_and_escalates_it_to_the_owner() -> None:
+    from project_orchestrator import iron_god_roadmap_refill as refill
+
+    items = [item("RM-z-t1"), item("RM-z-t1-r1")]
+    state = {"items": {"RM-z-t1": failed_row("p1", "p2"), "RM-z-t1-r1": failed_row("p3", "p4")}}
+    assert refill._slice_status("RM-z-t1", items, state) == ("EXHAUSTED", "RM-z-t1-r1")  # not FAILED -> no -r2 is authored
+    # a repair admitted but not yet dispatched when the cap is reached must not strand the step as PENDING
+    unstarted = {"items": {"RM-z-t1": failed_row("p1", "p2"), "RM-z-t1-r1": failed_row("p3", "p4")}}
+    items3 = [item("RM-z-t1"), item("RM-z-t1-r1"), item("RM-z-t1-r2")]
+    assert refill._slice_status("RM-z-t1", items3, unstarted) == ("EXHAUSTED", "RM-z-t1-r2")
