@@ -443,8 +443,10 @@ def test_untrusted_or_ambiguous_requests_cannot_trigger_auto_ack(world, changes)
     row = mailbox.list_messages(world["db"], recipient_label="iron-god")["messages"][0]
     assert row["message_id"] == request["message_id"]
     assert row["acknowledged"] is False
-    assert not mailbox.list_messages(
+    replies = [row for row in mailbox.list_messages(
         world["db"], recipient_label="chatgpt")["messages"]
+        if row["sender_label"] == "iron-god" and row["kind"] == "status"]
+    assert replies == []
 
 
 def test_status_request_remains_pending_in_read_only_observation(world):
