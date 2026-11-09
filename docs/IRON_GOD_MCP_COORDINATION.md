@@ -234,7 +234,10 @@ response has been successfully persisted, the engine appends the request's
 consumption acknowledgment.
 
 A crash between the response and its receipt replays the **same** idempotent
-response on retry, not a duplicate. General questions, handoffs, commands,
+response on retry, even if the engine's reported status changed in the meantime.
+The adapter verifies the original response's recipient, protocol and correlation
+before acknowledging the request; conflicting or forged prior records fail
+closed rather than being accepted. General questions, handoffs, commands,
 broadcasts, owner-like instructions and unknown schemas are left unread/
 unacknowledged for explicit human or qualified assistant review. `publish=False`
 keeps read-only diagnostic behavior. Incoming messages never issue grants,
