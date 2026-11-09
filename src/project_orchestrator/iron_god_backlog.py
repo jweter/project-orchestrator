@@ -255,6 +255,10 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
         ):
             unique.append(failed_source_fingerprint)
         row["repeated_failed_source"] = len(set(by_packet.values())) < len(by_packet)
+    if outcome.startswith(LINEAGE_FAILURE_OUTCOME):
+        failed = row.setdefault("test_failed_packets", [])
+        if packet_id not in failed:  # replaying one packet is not a second failure
+            failed.append(packet_id)
     row.update(outcome=outcome, updated_at_utc=_now())
     if outcome == "MERGED":
         row["merged_at_utc"] = _now()
@@ -326,6 +330,39 @@ def slice_state(item: dict[str, Any], row: dict[str, Any], *, done: set[str], co
     return "READY"
 
 
+LINEAGE_FAILURE_CAP = 4  # slice-test failures across a plan step and all its -rN repairs (one repair after a failed first item)
+LINEAGE_FAILURE_OUTCOME = "FAIL: SLICE_TESTS_FAILED"
+_REPAIR_SUFFIX = re.compile(r"(-r\d+)+$")
+
+
+def lineage_base(item_id: str) -> str:
+    """The plan step an item belongs to: ``...-t1-r2`` and ``...-t1`` are the same step."""
+    return _REPAIR_SUFFIX.sub("", item_id)
+
+
+def lineage_test_failures(state: dict[str, Any], item_id: str) -> int:
+    """Slice-test failures recorded across one plan step and every repair of it (issue #673 root cause).
+
+    The attempt cap is per item and each repair is a new item, so a step the local model cannot do got
+    ``MAX_ITEMS_PER_SLICE x MAX_ITEM_ATTEMPTS`` attempts, with different bytes every time.
+    """
+    base = lineage_base(item_id)
+    total = 0
+    for key, row in state.get("items", {}).items():
+        if lineage_base(key) != base:
+            continue
+        packets = row.get("test_failed_packets")
+        if isinstance(packets, list):
+            total += len(set(packets))  # per-packet evidence: other outcomes neither add to nor erase test failures
+        elif str(row.get("outcome", "")).startswith(LINEAGE_FAILURE_OUTCOME):
+            total += int(row.get("attempts", 0))  # rows recorded before this evidence existed
+    return total
+
+
+def lineage_capped(state: dict[str, Any], item_id: str) -> bool:
+    return lineage_test_failures(state, item_id) >= LINEAGE_FAILURE_CAP
+
+
 def repeated_failed_source(row: dict[str, Any]) -> bool:
     """Two distinct packets failed on byte-identical source. Derived from the packet evidence, never the cached flag."""
     packet_fingerprints = row.get("failed_source_by_packet", {})
@@ -359,6 +396,8 @@ def exclusion(item: dict[str, Any], state: dict[str, Any], *, items: list[dict[s
         return "LEVEL_NOT_BUILDABLE_LOCALLY", f"level {item['level']}"
     if attempts >= MAX_ITEM_ATTEMPTS:
         return "ATTEMPTS_EXHAUSTED", f"{attempts} of {MAX_ITEM_ATTEMPTS}: {outcome}"
+    if row.get("outcome") not in IN_FLIGHT and lineage_capped(state, item["id"]):
+        return "NEEDS_DIFFERENT_CAPABILITY", f"{lineage_test_failures(state, item['id'])} slice-test failures across {lineage_base(item['id'])}"
     if repeated_failed_source(row):
         return "REPEATED_FAILED_SOURCE", outcome  # byte-identical failed source: a new revision must change the source
     # a directed slice that the model failed is not retried: it needs decomposition (an interrupted or
