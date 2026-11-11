@@ -78,3 +78,38 @@ def test_a_head_that_moves_during_verification_cannot_pass(tmp_path: Path) -> No
                        head=lambda _tree: next(heads))
 
     assert result["ok"] is False and "HEAD MOVED" in result["output_tail"]
+
+
+def test_a_long_failing_output_keeps_the_first_failure_not_only_the_summary_tail() -> None:
+    early = "mypy: src/pkg/mod.py:12: error: Incompatible return value type"
+    long_output = "collected 8700 items\n" + early + "\n" + ("noise line\n" * 600) + "Found 1 error in 1 file"
+
+    kept = runner.evidence_of(long_output)
+
+    assert early in kept
+    assert kept.endswith("Found 1 error in 1 file")
+    assert "characters omitted" in kept and len(kept) <= runner.EVIDENCE_LIMIT + 60
+
+
+def test_short_output_is_kept_whole_and_output_without_a_failure_marker_keeps_its_tail() -> None:
+    assert runner.evidence_of("28 passed") == "28 passed"
+    plain = "line\n" * 1000 + "all done"
+    kept = runner.evidence_of(plain)
+    assert kept == plain[-runner.EVIDENCE_LIMIT:] and kept.endswith("all done")
+
+
+def test_the_recorded_result_uses_the_failure_digest(tmp_path: Path) -> None:
+    early = "ruff: src/a.py:3: error: unused import"
+    noisy = early + "\n" + "x\n" * 2000 + "1 failed"
+    result = result_of(tmp_path, preflight=lambda *_a: {"ok": False, "returncode": 1, "output_tail": noisy},
+                       authority=lambda: True)
+
+    assert early in result["output_tail"] and result["output_tail"].endswith("1 failed")
+
+
+def test_an_uppercase_failed_marker_without_a_traceback_is_found() -> None:
+    early = "FAILED tests/test_worker_identity.py::test_corrupt_key - assert False"
+    kept = runner.evidence_of(early + "\n" + "ok line\n" * 800 + "1 failed, 8699 passed")
+
+    assert kept.startswith(early[:40]) or early in kept
+    assert kept.endswith("1 failed, 8699 passed")
