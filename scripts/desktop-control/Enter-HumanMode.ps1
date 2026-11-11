@@ -33,6 +33,25 @@ $taskNames = @(
 )
 $workerPattern = 'watch_pinned_continuous_flow\.ps1|launch_local_actor\.ps1|continuous_flow_supervisor|independent_pr_controller\.py|green_pr_watch_loop\.py|github_evidence_watch_loop\.py|autonomous_slice_builder\.py|laptop_actor_bootstrap\.py|portfolio-idle-worker\.ps1|--unattended-worker|Idle-App-Watcher\.ps1|Ensure-IdleMineRunning\.ps1|Guard-GitHubMailbox\.ps1|Watch-GitHubMailbox\.ps1|foundry_dashboard_server\.py|DashboardGuardian\.ps1|DashboardTelemetryRefresher\.ps1|RemoteBridgeGuardian\.ps1|RemoteBridgeSupervisor\.ps1'
 $remotePattern = 'desktop-commander|@wonderwhy-er[/\\]desktop-commander'
+function Get-OllamaBase {
+ # Only ever the local server; a configured non-loopback endpoint is ignored rather than contacted.
+ $base = if($env:OLLAMA_API_BASE) { $env:OLLAMA_API_BASE.TrimEnd('/') } else { 'http://127.0.0.1:11434' }
+ if($base -match '^https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$') { return $base }
+ return 'http://127.0.0.1:11434'
+}
+function Get-LoadedOllamaModels {
+ try {
+  $ps = Invoke-RestMethod -Uri ((Get-OllamaBase) + '/api/ps') -Method Get -TimeoutSec 3 -ErrorAction Stop
+  return @($ps.models | ForEach-Object { [string]$_.name } | Where-Object { $_ })
+ } catch { return @() }
+}
+function Unload-OllamaModel([string]$Name) {
+ try {
+  $body = @{ model = $Name; keep_alive = 0 } | ConvertTo-Json -Compress
+  Invoke-RestMethod -Uri ((Get-OllamaBase) + '/api/generate') -Method Post -Body $body -ContentType 'application/json' -TimeoutSec 10 -ErrorAction Stop | Out-Null
+  return $true
+ } catch { return $false }
+}
 function Find-OwnerWorkers {
  @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
   if(-not $_.CommandLine -or $_.ProcessId -eq $PID) { return $false }
@@ -112,6 +131,12 @@ if(-not $AuditOnly) {
  foreach($p in $targets) {
   try {Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $events.Add('KILL_WORKER '+$p.ProcessId)}
   catch {$events.Add('KILL_WORKER_FAIL '+$p.ProcessId)}
+ }
+ # Owner 2026-11-10: Give Me Control gives the laptop back for Rocksmith, so a model that is still resident (several GiB of
+ # RAM, all-core llama-server work) must not linger after the worker is gone. Ask the local Ollama (loopback only) to unload
+ # whatever it reports as loaded; best effort, bounded, and it never fails or delays the handoff.
+ foreach($loaded in @(Get-LoadedOllamaModels)) {
+  if(Unload-OllamaModel $loaded) { $events.Add('OLLAMA_UNLOADED '+$loaded) } else { $events.Add('OLLAMA_UNLOAD_FAILED '+$loaded) }
  }
  if(-not $KeepRemote) {
  # Early stage: revoke remote access before slower maintenance cleanup; the local process continues and writes its receipt.
