@@ -103,6 +103,22 @@ def configured_endpoint() -> tuple[str, int]:
     return parsed.hostname or "127.0.0.1", parsed.port or 11434
 
 
+THREAD_ENV = "IRON_GOD_OLLAMA_NUM_THREAD"
+
+
+def inference_threads(cores: int | None = None, env: dict[str, str] | None = None) -> int:
+    """CPU threads one generation may use: half the logical cores unless ``IRON_GOD_OLLAMA_NUM_THREAD`` says otherwise.
+
+    Owner 2026-11-10: the laptop froze three times in a day while a 7B ran on every core. A free-running llama-server
+    leaves nothing for the UI, the antivirus or the watchdog, so a generation is capped (never below one thread).
+    """
+    total = max(1, cores if cores is not None else (os.cpu_count() or 2))
+    raw = (env if env is not None else os.environ).get(THREAD_ENV, "").strip()
+    if raw.isdigit() and int(raw) >= 1:
+        return min(int(raw), total)
+    return max(1, total // 2)
+
+
 class OllamaClient:
     def __init__(self, host: str | None = None, port: int | None = None) -> None:
         default_host, default_port = configured_endpoint()
@@ -121,7 +137,8 @@ class OllamaClient:
                  temperature: float = 0.0, json_mode: bool = False) -> dict[str, Any]:
         """One non-streaming generation that a guard can cancel: the connection is shut down, the server cancels."""
         payload: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False, "keep_alive": keep_alive,
-                                   "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": num_predict}}
+                                   "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": num_predict,
+                                               "num_thread": inference_threads()}}
         if json_mode:
             payload["format"] = "json"
         if model.lower().startswith("qwen3"):
