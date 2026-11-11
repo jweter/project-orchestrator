@@ -12,6 +12,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -19,7 +20,34 @@ from pathlib import Path
 from typing import Any, Callable
 
 PREFLIGHT_TIMEOUT_S = 7200
-ROOT = Path(__file__).resolve().parents[1]
+EVIDENCE_LIMIT = 1500
+FAILURE_MARKER = re.compile(r"Traceback|: error:|(?<![A-Za-z])(?:FAILED|FAIL|ERROR)(?![A-Za-z])")
+
+
+def evidence_of(text: str, limit: int = EVIDENCE_LIMIT) -> str:
+    """Keep the FIRST failure in a long preflight output, not just its tail.
+
+    The tail of a long run is usually the summary line, which hides the check that actually failed. When the output
+    fits, it is kept whole. Otherwise the text from the first failure marker is kept (about two thirds of the budget),
+    then a short omitted-marker, then the very end (the summary). Nothing is invented: both parts are verbatim slices.
+    """
+    text = str(text or "")
+    if len(text) <= limit:
+        return text
+    tail_budget = limit // 3
+    head_budget = limit - tail_budget
+    found = FAILURE_MARKER.search(text[: max(0, len(text) - tail_budget)])
+    if found is None:
+        return text[-limit:]
+    start = max(0, found.start() - 80)
+    head = text[start : start + head_budget]
+    omitted = len(text) - len(head) - start - tail_budget
+    if omitted <= 0:
+        return text[-limit:]
+    return f"{head}\n[... {omitted} characters omitted ...]\n{text[-tail_budget:]}"
+
+
+ROOT =Path(__file__).resolve().parents[1]
 
 
 def head_of(worktree: Path) -> str:
@@ -40,7 +68,7 @@ def run(worktree: Path, result_path: Path, *, preflight: Callable[[Path, Callabl
         check()
         outcome = preflight(worktree, check, PREFLIGHT_TIMEOUT_S)
         result = {"ok": bool(outcome.get("ok")), "returncode": outcome.get("returncode"),
-                  "output_tail": str(outcome.get("output_tail", ""))[-1500:]}
+                  "output_tail": evidence_of(outcome.get("output_tail", ""))}
     except Exception as exc:  # a failed run must be recorded, not raised into a silent hang
         result = {"ok": False, "returncode": None, "output_tail": f"{type(exc).__name__}: {str(exc)[:600]}"}
     if head(worktree) != commit:
