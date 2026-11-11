@@ -277,6 +277,16 @@ def test_a_stray_resident_model_is_evicted_before_the_run_and_thinking_is_off_fo
     finally:
         hc.HTTPConnection.request = original
     assert json.loads(sent["body"])["think"] is False
+    assert json.loads(sent["body"])["options"]["num_thread"] == lm.inference_threads()
+
+
+def test_a_generation_never_gets_more_than_half_the_cores_unless_the_owner_sets_it_and_never_zero():
+    assert lm.inference_threads(20, {}) == 10 and lm.inference_threads(8, {}) == 4
+    assert lm.inference_threads(1, {}) == 1 and lm.inference_threads(3, {}) == 1
+    assert lm.inference_threads(20, {lm.THREAD_ENV: "6"}) == 6
+    assert lm.inference_threads(4, {lm.THREAD_ENV: "64"}) == 4                       # never above the real core count
+    for junk in ("0", "-2", "abc", ""):
+        assert lm.inference_threads(20, {lm.THREAD_ENV: junk}) == 10                 # junk falls back to the safe default
 
 
 def test_a_stray_model_that_cannot_be_unloaded_blocks_the_run_and_loads_nothing(tmp_path):
