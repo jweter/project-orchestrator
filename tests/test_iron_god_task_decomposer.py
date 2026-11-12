@@ -1255,3 +1255,33 @@ def test_the_plan_trail_shows_every_snap_made_by_code() -> None:
     assert result["ok"], result
     snaps = [step for step in result["trail"] if "snapped_targets" in step]
     assert snaps and snaps[0]["snapped_targets"][0]["from"] == "on" and snaps[0]["snapped_targets"][0]["to"] == "one"
+
+
+# ---- a "pure function" that needs a file cannot be specified by literal examples ---------------------------------------
+
+def _io_sub(signature: str, calls: list[tuple[str, object]]) -> dict:
+    return {"key": "t1", "signature": signature,
+            "acceptance_examples": [{"call": call, "expected": expected, "why": "documented behaviour"} for call, expected in calls]}
+
+
+def test_a_function_whose_examples_name_a_media_file_is_rejected_before_any_worker_attempt() -> None:
+    """The 7B planned analyze_guide_vocal('path/to/guide_vocal.wav') with exact F0 values; the file never exists."""
+    sub = _io_sub("def analyze_guide_vocal(path: str) -> dict:",
+                  [("{fn}('path/to/guide_vocal.wav')", {"f0": [220.0]}), ("{fn}('a/b/take1.mp3')", {"f0": [247.0]}),
+                   ("{fn}('x.flac')", {"f0": []})])
+    problems = td._example_problems(sub)
+    assert any("names a file that does not exist" in p and "pass the data itself" in p for p in problems)
+
+
+def test_a_path_or_stream_annotation_marks_the_function_as_not_pure() -> None:
+    sub = _io_sub("def load_notes(source: Path) -> list:",
+                  [("{fn}(1)", [1]), ("{fn}(2)", [2]), ("{fn}(3)", [3])])
+    assert any("takes a file or stream" in p for p in td._example_problems(sub))
+
+
+def test_a_pure_string_function_that_merely_mentions_a_source_file_name_is_not_rejected() -> None:
+    sub = _io_sub("def module_name(path: str) -> str:",
+                  [("{fn}('pkg/mod.py')", "pkg.mod"), ("{fn}('pkg/sub/other.py')", "pkg.sub.other"),
+                   ("{fn}('top.py')", "top")])
+    problems = td._example_problems(sub)
+    assert not any("file" in p and "pure function" in p for p in problems), problems

@@ -146,6 +146,34 @@ def normalize_examples(name: Any, examples: Any) -> Any:
     return out
 
 
+IO_ANNOTATIONS = {"Path", "PurePath", "PathLike", "IO", "BinaryIO", "TextIO", "BufferedReader"}
+BINARY_FILE_LITERAL = re.compile(
+    r"""['"][^'"\n]*\.(?:wav|mp3|flac|ogg|m4a|aac|mp4|mkv|avi|mov|png|jpe?g|gif|bmp|pdf|psarc|sqlite3?|db|zip|gguf|onnx|pth?)['"]"""
+    r"""|['"]path/to/""",
+    re.IGNORECASE,
+)
+
+
+def _io_problems(key: Any, stub: Any, usable: list[dict[str, Any]]) -> list[str]:
+    """Reject a 'pure function' that reads a file: literal examples cannot specify it.
+
+    Measured 2026-11-11: the 7B planned ``analyze_guide_vocal('path/to/guide_vocal.wav')`` with exact F0 values; the worker
+    failed twice because the file does not exist, and no literal example could ever have been right. A function that
+    needs a file belongs with the stronger builder (or takes the data itself as its argument).
+    """
+    arguments = stub.args
+    for arg in [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]:
+        text = ast.unparse(arg.annotation) if arg.annotation is not None else ""
+        if any(part in IO_ANNOTATIONS for part in re.findall(r"[A-Za-z_]+", text)):
+            return [f"{key}: {stub.name} takes a file or stream ({arg.arg}: {text}); a pure function with literal examples "
+                    "cannot be specified against files - pass the data itself"]
+    for example in usable:
+        if BINARY_FILE_LITERAL.search(str(example["call"])):
+            return [f"{key}: {example['call']} names a file that does not exist at the base; a pure function with literal "
+                    "examples cannot be specified against files - pass the data itself"]
+    return []
+
+
 def _example_problems(sub: dict[str, Any]) -> list[str]:
     """Literal, well-formed, mutually consistent examples that bind to the declared signature."""
     key = sub.get("key")
@@ -180,6 +208,7 @@ def _example_problems(sub: dict[str, Any]) -> list[str]:
     positional = [a.arg for a in [*arguments.posonlyargs, *arguments.args]]
     required = len(positional) - len(arguments.defaults)
     accepted = {*positional, *(a.arg for a in arguments.kwonlyargs)}
+    problems.extend(_io_problems(key, stub, usable))
     for example in usable:
         call = ast.parse(example["call"].replace("{fn}", "fn", 1), mode="eval").body
         names = [k.arg for k in call.keywords]
