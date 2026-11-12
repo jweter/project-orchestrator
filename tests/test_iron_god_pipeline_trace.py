@@ -203,3 +203,71 @@ def test_a_native_slice_without_a_cpp_spec_names_the_gap_instead_of_looking_stuc
     assert row["blocker"]["code"] == "NATIVE_SLICE_NEEDS_CPP_SPEC" and row["status"] == "WAITING"
     with_spec = request("RM-ew", repository="jweter/Project-Everward", allowed_paths=["src/simulation/**"], cpp={"test": "x"})
     assert (run(with_spec)["blocker"] or {}).get("code") != "NATIVE_SLICE_NEEDS_CPP_SPEC"   # a declared cpp spec routes on
+
+
+def _write_request(directory: Path, rid: str, head: str | None, repository: str = "jweter/knowledge-engine-core") -> None:
+    body = {k: v for k, v in request(rid, repository=repository).items() if k != "_file_mtime"}
+    if head is not None:
+        body["exact_head"] = head
+    (directory / f"{rid}.json").write_text(json.dumps(body), encoding="utf-8")
+
+
+def _record_checked_head(lane_root: Path, repository: str, head: str) -> None:
+    from project_orchestrator import iron_god_roadmap_refill as refill
+
+    store = refill.load_store(lane_root)
+    store["checked"][repository] = {"at": "2026-11-11T21:00:00+00:00", "head": head}
+    refill.store_path(lane_root).parent.mkdir(parents=True, exist_ok=True)
+    refill.store_path(lane_root).write_text(json.dumps(store), encoding="utf-8")
+
+
+def test_requests_from_an_older_repository_head_are_history_not_live_work(tmp_path: Path) -> None:
+    """A stale request file once made the dashboard say 'decomposition not started for 7 days' about work that was done."""
+    requests_dir = tmp_path / "roadmap-requests"
+    requests_dir.mkdir()
+    _write_request(requests_dir, "RM-live", "head-new")
+    _write_request(requests_dir, "RM-old", "head-old")
+    _record_checked_head(tmp_path, "jweter/knowledge-engine-core", "head-new")
+
+    report = pt.scan(tmp_path, now=NOW)
+
+    assert [row["id"] for row in report["slices"]] == ["RM-live"] and report["requests"] == 1
+    assert report["superseded_requests"] == 1 and report["superseded"][0]["id"] == "RM-old"
+    assert report["superseded"][0]["exact_head"] == "head-old"
+
+
+def test_a_live_request_is_never_hidden_because_its_file_is_old(tmp_path: Path) -> None:
+    """File age is not currency: an unchanged live request can be many hours old. Only the head decides."""
+    import os
+
+    requests_dir = tmp_path / "roadmap-requests"
+    requests_dir.mkdir()
+    _write_request(requests_dir, "RM-live-but-old-file", "head-new")
+    os.utime(requests_dir / "RM-live-but-old-file.json", (NOW - 30 * 3600, NOW - 30 * 3600))
+    _record_checked_head(tmp_path, "jweter/knowledge-engine-core", "head-new")
+
+    report = pt.scan(tmp_path, now=NOW)
+
+    assert [row["id"] for row in report["slices"]] == ["RM-live-but-old-file"] and report["superseded_requests"] == 0
+
+
+def test_without_a_recorded_head_or_an_exact_head_nothing_is_hidden(tmp_path: Path) -> None:
+    requests_dir = tmp_path / "roadmap-requests"
+    requests_dir.mkdir()
+    _write_request(requests_dir, "RM-no-head", None)
+    _write_request(requests_dir, "RM-unchecked-repo", "head-x", repository="jweter/never-refilled")
+    _record_checked_head(tmp_path, "jweter/knowledge-engine-core", "head-new")
+
+    report = pt.scan(tmp_path, now=NOW)
+
+    assert sorted(row["id"] for row in report["slices"]) == ["RM-no-head", "RM-unchecked-repo"]
+    assert report["superseded_requests"] == 0
+
+
+def test_is_superseded_compares_only_the_head_of_the_requests_own_repository() -> None:
+    checked = {"jweter/a": {"head": "h1"}, "jweter/b": {"head": "h2"}}
+    assert pt.is_superseded({"repository": "jweter/a", "exact_head": "h0"}, checked) is True
+    assert pt.is_superseded({"repository": "jweter/a", "exact_head": "h1"}, checked) is False
+    assert pt.is_superseded({"repository": "jweter/b", "exact_head": "h1"}, checked) is True
+    assert pt.is_superseded({"repository": "jweter/a"}, checked) is False
+    assert pt.is_superseded({"repository": "jweter/a", "exact_head": "h0"}, "not a mapping") is False
