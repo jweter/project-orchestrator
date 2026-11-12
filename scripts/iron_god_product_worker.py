@@ -704,7 +704,7 @@ def production_gates(worktree: Path, base: str, paths: list[str]) -> str | None:
 
 
 ENV_INSTALL_SECONDS = 3600
-ENV_RECIPE = "2"  # bump when the install recipe changes, so existing environments are rebuilt (2: git pins)
+ENV_RECIPE = "3"  # bump when the install recipe changes, so existing environments are rebuilt (2: git pins, 3: forced git pin reinstall)
 
 
 def poetry_lock_pins(lock: Path) -> list[str]:
@@ -740,6 +740,18 @@ def poetry_lock_pins(lock: Path) -> list[str]:
             indexes.add(f"--extra-index-url {source['url']}")  # e.g. the PyTorch CPU wheel index
         pins.append(f"{package['name']}=={package['version']}")
     return [*sorted(indexes), *sorted(pins)]
+
+
+def git_pin_reinstall_argv(python: str, pins: list[str]) -> tuple[str, ...] | None:
+    """pip argv that force-installs the exact commit of every ``name @ git+https://...@<sha>`` pin, or None without any.
+
+    ``--no-deps`` because the ordinary install already resolved the dependencies; only the pinned commit must win.
+    """
+    git_pins = [pin.strip() for pin in pins if " @ git+https://" in pin]
+    if not git_pins:
+        return None
+    return (python, "-m", "pip", "install", "--disable-pip-version-check", "-q", "--no-deps", "--force-reinstall",
+            *git_pins)
 
 
 def repository_environment(worktree: Path, check: Callable[[], None]) -> dict[str, Any]:
@@ -794,6 +806,17 @@ def repository_environment(worktree: Path, check: Callable[[], None]) -> dict[st
     )
     if result.returncode != 0:
         raise RuntimeError(f"ENVIRONMENT_INSTALL_FAILED: {_tail((result.stdout or '') + (result.stderr or ''))[-400:]}")
+    git_argv = git_pin_reinstall_argv(str(python), requirements.read_text(encoding="utf-8").splitlines()) \
+        if kind == "poetry" else None
+    if git_argv is not None:
+        # pip treats an installed git dependency with the same name and version as satisfied, so a moved commit pin is
+        # silently ignored and the environment keeps the old code (measured: KE-web typed against a stale knowledge-engine-ai)
+        reinstalled = NativeWindowsRuntime().execute_supervised(
+            RuntimeRequest(git_argv, worktree, {**os.environ, **overrides}, ENV_INSTALL_SECONDS), check, interval=2.0,
+        )
+        if reinstalled.returncode != 0:
+            raise RuntimeError("ENVIRONMENT_GIT_PIN_INSTALL_FAILED: "
+                               f"{_tail((reinstalled.stdout or '') + (reinstalled.stderr or ''))[-400:]}")
     marker.write_text(json.dumps({"lock_sha256": digest, "kind": kind}), encoding="utf-8")
     record["status"] = "INSTALLED"
     return record
