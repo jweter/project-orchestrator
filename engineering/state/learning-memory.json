@@ -44,7 +44,7 @@
       "evidence_state": "VERIFIED"
     },
     {
-      "lesson_id": "5e91759aabede419d22f",
+      "lesson_id": "649cfeda021218bdaf3f",
       "project": "portfolio",
       "repository": "jweter/project-orchestrator",
       "source_type": "governance",
@@ -53,8 +53,8 @@
       "root_cause": "Both claims were built from unfiltered listings of flow-state/iron-god-products/roadmap-requests/, which keeps stale request files for days (iron_god_pipeline_trace.gather enumerates every file), plus an unreproduced reading of the code. A directory listing is not the engine's current state.",
       "fix": "Prove a claim is about CURRENT state before reporting it: run the engine's own function over live files filtered by regeneration time or identity, label anything else UNVERIFIED, and correct a wrong claim in the same channel immediately. An independent reviewer refused to implement a speculative scheduler change on the unverified lead.",
       "verification": "Both claims were retracted with evidence in mailbox seq 175; the reviewer's agreement is mailbox seq 177 and 178. Request-file ages were measured (4443 minutes stale for the blamed request) and the engine functions were rerun on current requests only.",
-      "regression_protection": "ChatGPT recommended a read-only regression fixture with stale and fresh requests and a separate pull request filtering the pipeline trace by authoritative current request identity (mailbox seq 178); not yet written.",
-      "residual_risk": "iron_god_pipeline_trace still counts stale request files as current DECOMPOSITION_NOT_STARTED, so the dashboard overstates stuck work until that change lands.",
+      "regression_protection": "ChatGPT recommended a regression fixture with stale and fresh requests and a separate pull request filtering the pipeline trace by authoritative current request identity (mailbox seq 178). Orchestrator pull request 689 is that change, OPEN and not merged at the time of recording: it filters by the head the refill recorded, keeps every in-flight request visible, and has tests for stale, fresh, old-file-current-head, in-flight and missing-head cases.",
+      "residual_risk": "Until pull request 689 merges and a release is promoted, iron_god_pipeline_trace still counts stale request files as current DECOMPOSITION_NOT_STARTED and the dashboard overstates stuck work. Even after it, a request still at the current head stays listed when the latest pass stopped deriving it (visible by design, not hidden).",
       "evidence_state": "VERIFIED"
     },
     {
@@ -128,7 +128,7 @@
       "evidence_state": "VERIFIED"
     },
     {
-      "lesson_id": "0140f5935fb3d167e2a8",
+      "lesson_id": "323c936c93e569e735b7",
       "project": "portfolio",
       "repository": "jweter/project-orchestrator",
       "source_type": "governance",
@@ -138,7 +138,7 @@
       "fix": "At the start and end of each session check the mailbox, reply and acknowledge only messages that were actually handled, track every action in GitHub, never treat a receipt as completion, and triage the backlog by newest and open work with no bulk acknowledgement.",
       "verification": "Practised during this retrospective: the new messages were read, answered with GitHub references, and acknowledged individually.",
       "regression_protection": "None automated.",
-      "residual_risk": "Old unacknowledged messages remain and may be stale; they have not been triaged.",
+      "residual_risk": "Historical snapshot, not a current count: on 2026-11-12 around 10:00 UTC the mailbox showed zero pending for ChatGPT, 67 for claude-code and 14 for the engine. Those old unacknowledged messages may be stale and have not been triaged.",
       "evidence_state": "VERIFIED"
     },
     {
@@ -195,6 +195,20 @@
       "verification": "Fails on the affected machine without PYTHONPATH and passes with it; with the checkout's own src the whole suite is 2221 passed, 3 skipped; CI passed on the pull request.",
       "regression_protection": "tests/test_checkout_import_path.py.",
       "residual_risk": "Only the Rocksmith repository has the guard; other repositories can hit the same shadowing.",
+      "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "8a7811866dff6e1871c7",
+      "project": "knowledge-engine",
+      "repository": "jweter/knowledge-engine-ai",
+      "source_type": "success_pattern",
+      "source_ref": "knowledge-engine-ai#211 (capable builder plan session, 2026-11-12)",
+      "symptom": "I judged from the roadmap documents that knowledge-engine-ai had no remaining executable slice and that its automatic plan-next-work request would waste a capable-builder slot.",
+      "root_cause": "A documents-only audit read what the roadmap said was delivered; it did not read the tests. The builder read the tests and found that every online-evidence test builds its own hand-authored bundle, so none of them parse knowledge-engine-core's committed golden bundle and a field-level drift between the two parsers would go undetected.",
+      "fix": "The builder's pull request 211 added one PLANNED slice (vendor core's golden bundle at a pinned commit and test the adapter and report projection against it), marked nothing complete, and stated what its sandbox could not run.",
+      "verification": "Evidence state CODE_MERGED for the planning change only (knowledge-engine-ai 211); the slice itself is PLANNED and unimplemented. The merged pull request body, the added slice and its acceptance criteria were reviewed after the merge and no problem was found.",
+      "regression_protection": "None: the practice (read the tests as well as the docs before declaring no gap) is not automated.",
+      "residual_risk": "The slice is not implemented, so the drift risk still exists; the engine merged the pull request before an independent review, so review happened after the fact.",
       "evidence_state": "VERIFIED"
     }
   ]
