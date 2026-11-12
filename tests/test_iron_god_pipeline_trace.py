@@ -271,3 +271,52 @@ def test_is_superseded_compares_only_the_head_of_the_requests_own_repository() -
     assert pt.is_superseded({"repository": "jweter/b", "exact_head": "h1"}, checked) is True
     assert pt.is_superseded({"repository": "jweter/a"}, checked) is False
     assert pt.is_superseded({"repository": "jweter/a", "exact_head": "h0"}, "not a mapping") is False
+
+
+def _stale_request_files(tmp_path: Path, *ids: str) -> Path:
+    requests_dir = tmp_path / "roadmap-requests"
+    requests_dir.mkdir(exist_ok=True)
+    for rid in ids:
+        _write_request(requests_dir, rid, "head-old")
+    _record_checked_head(tmp_path, "jweter/knowledge-engine-core", "head-new")
+    return requests_dir
+
+
+def test_an_in_flight_capable_dispatch_stays_visible_when_an_unrelated_merge_moved_the_head(tmp_path: Path) -> None:
+    """Review (Codex P2): the refill does not re-derive an open request, so its file keeps the old head while it is live."""
+    _stale_request_files(tmp_path, "RM-in-flight", "RM-finished")
+    dispatches = tmp_path / "capable-dispatches"
+    dispatches.mkdir()
+    (dispatches / "a.json").write_text(json.dumps({"task_key": "RM-in-flight#a0", "status": "DISPATCHED"}), encoding="utf-8")
+    (dispatches / "b.json").write_text(json.dumps({"task_key": "RM-finished#a0", "status": "PASS"}), encoding="utf-8")
+
+    report = pt.scan(tmp_path, now=NOW)
+
+    assert [row["id"] for row in report["slices"]] == ["RM-in-flight"]
+    assert [row["id"] for row in report["superseded"]] == ["RM-finished"]
+
+
+def test_a_request_with_a_running_job_or_an_active_plan_stays_visible(tmp_path: Path) -> None:
+    _stale_request_files(tmp_path, "RM-planning", "RM-active-plan", "RM-done-plan")
+    jobs = tmp_path / decomposer.JOBS
+    jobs.mkdir(parents=True)
+    (jobs / "RM-planning.a0.json").write_text(json.dumps({"id": "RM-planning", "stage": "PLANNING", "started_at": NOW}), encoding="utf-8")
+    plans = tmp_path / decomposer.PLANS
+    plans.mkdir(parents=True)
+    (plans / "RM-active-plan.json").write_text(json.dumps({"parent_id": "RM-active-plan", "status": "ACTIVE"}), encoding="utf-8")
+    (plans / "RM-done-plan.json").write_text(json.dumps({"parent_id": "RM-done-plan", "status": "DONE"}), encoding="utf-8")
+
+    report = pt.scan(tmp_path, now=NOW)
+
+    assert sorted(row["id"] for row in report["slices"]) == ["RM-active-plan", "RM-planning"]
+    assert [row["id"] for row in report["superseded"]] == ["RM-done-plan"]
+
+
+def test_a_request_at_the_current_head_is_kept_even_if_the_last_pass_stopped_deriving_it(tmp_path: Path) -> None:
+    """The documented limit: the head rule never hides live work, so a same-head leftover stays listed (visible side)."""
+    requests_dir = tmp_path / "roadmap-requests"
+    requests_dir.mkdir()
+    _write_request(requests_dir, "RM-same-head", "head-new")
+    _record_checked_head(tmp_path, "jweter/knowledge-engine-core", "head-new")
+
+    assert [row["id"] for row in pt.scan(tmp_path, now=NOW)["slices"]] == ["RM-same-head"]

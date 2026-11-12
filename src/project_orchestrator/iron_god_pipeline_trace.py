@@ -76,13 +76,14 @@ def gather(lane_root: Path) -> dict[str, Any]:
     """Everything the classifier needs, read once. Nothing here changes any state."""
     root = Path(lane_root)
     checked = refill.load_store(root).get("checked", {})
+    in_flight = _in_flight_ids(root)
     requests = []
     superseded: list[dict[str, Any]] = []
     for path in sorted((root / refill.REQUESTS).glob("*.json")) if (root / refill.REQUESTS).is_dir() else []:
         data = _read_json(path)
         if isinstance(data, dict) and data.get("id"):
             data["_file_mtime"] = path.stat().st_mtime
-            if is_superseded(data, checked):
+            if is_superseded(data, checked) and str(data["id"]) not in in_flight:
                 superseded.append({"id": str(data["id"]), "repository": data.get("repository"), "slice": data.get("slice"),
                                    "exact_head": data.get("exact_head")})
             else:
@@ -116,12 +117,44 @@ def gather(lane_root: Path) -> dict[str, Any]:
             "backlog": backlog_state.get("items", {}) if isinstance(backlog_state, dict) else {}}
 
 
+def _in_flight_ids(root: Path) -> set[str]:
+    """Requests that are being worked right now, whatever head their file carries.
+
+    The refill does not re-derive a request that is already open (a capable dispatch, a running planning or drafting job, an
+    ACTIVE plan holding the parent), so such a file keeps its old head while the work is live. Those must stay visible.
+    """
+    ids: set[str] = set()
+    directory = root / "capable-dispatches"
+    for path in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+        data = _read_json(path)
+        if isinstance(data, dict) and str(data.get("status")) == "DISPATCHED":
+            key = str(data.get("task_key") or data.get("request_id") or "").split("#", 1)[0]
+            if key:
+                ids.add(key)
+    for reader in (decomposer._jobs, decomposer.drafter._jobs):
+        try:
+            for row in reader(root):
+                if row.get("stage") in {"PLANNING", "DRAFTING", "VERIFYING"}:
+                    ids.add(str(row.get("id")))
+        except Exception:  # noqa: BLE001 - an unreadable job table must not hide live work: it just adds nothing here
+            pass
+    plans = root / decomposer.PLANS
+    for path in sorted(plans.glob("*.json")) if plans.is_dir() else []:
+        record = _read_json(path)
+        if isinstance(record, dict) and str(record.get("status") or "ACTIVE") == "ACTIVE":
+            ids.add(str(record.get("parent_id") or path.stem))
+    return ids
+
+
 def is_superseded(request: dict[str, Any], checked: Any) -> bool:
     """True when the request was derived at a repository head the refill has since moved past.
 
     Every refill pass rewrites each request it still derives at the repository's current head and records that head, so a
     request file carrying an older ``exact_head`` is history, not live work. File age is NOT used: an unchanged live request
     can be many hours old. Without a recorded head or without an ``exact_head`` the request is kept (fail visible).
+
+    Known limits, both in the visible direction: a request still at the current head stays listed even if the latest pass
+    stopped deriving it, and ``gather`` additionally keeps every in-flight request (see ``_in_flight_ids``).
     """
     row = checked.get(request.get("repository")) if isinstance(checked, dict) else None
     head, current = request.get("exact_head"), row.get("head") if isinstance(row, dict) else None
