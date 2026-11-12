@@ -1333,17 +1333,22 @@ def ground_edit_targets(
         if not real or not isinstance(targets, list):
             grounded.append(entry)
             continue
-        fixed, missing = [], []
+        fixed, missing, snapped = [], [], []
+        purpose_words = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", str(entry.get("purpose", ""))))
         for target in (str(t) for t in targets):
             near = [] if target in real else difflib.get_close_matches(target, sorted(real), n=2, cutoff=NEAR_MISS_CUTOFF)
+            # a close name is only a typo when the model's own purpose does not point at a different real unit
+            elsewhere = sorted((purpose_words & real) - set(near))
             if target in real:
                 fixed.append(target)
-            elif len(near) == 1:
+            elif len(near) == 1 and not elsewhere:
                 fixed.append(near[0])
+                snapped.append({"module": module, "from": target, "to": near[0],
+                                "similarity": round(difflib.SequenceMatcher(None, target, near[0]).ratio(), 3)})
             else:
                 fixed.append(target)
                 missing.append(target)
-        grounded.append({**entry, "targets": list(dict.fromkeys(fixed))})
+        grounded.append({**entry, "targets": list(dict.fromkeys(fixed)), **({"snapped": snapped} if snapped else {})})
         if missing:
             problems.append(f"units {missing} do not exist in {module}; the real units are {sorted(real)[:25]}")
     return grounded, problems
@@ -1464,6 +1469,9 @@ def propose_staged(
                 second, still = ground_edit_targets(second[:MAX_SUBTASKS], units_of)
                 trail.append({"grounding_retry": True, "first": ungrounded, "remaining": still})
                 outline, entries = again, second
+        snaps = [s for e in entries for s in e.get("snapped", [])]
+        if snaps:  # every correction the code made is visible in the plan trail: original name -> real unit
+            trail.append({"snapped_targets": snaps})
         names = [str(e.get("name", "")) for e in entries]
         if len(set(names)) != len(names) or not all(NAME_OK.match(n) for n in names):
             return {"ok": False, "reason": "PLAN_REJECTED: function names must be unique snake_case", "trail": trail}

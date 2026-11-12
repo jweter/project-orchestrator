@@ -1224,3 +1224,34 @@ def test_a_made_up_unit_name_that_survives_the_retry_is_still_rejected() -> None
 
     result = td.propose_staged(PARENT, "", ask, exists=file_exists, read=file_read)
     assert not result["ok"] and "align_notes" in result["reason"]
+
+
+def test_a_snapped_target_is_recorded_original_to_real_and_kept_in_the_plan_trail() -> None:
+    entries = [{"name": "bump", "kind": "edit", "module": "pkg/core.py", "targets": ["on"], "purpose": "make it return two"}]
+    fixed, problems = td.ground_edit_targets(entries, lambda _m: {"one", "other_thing"})
+    assert problems == [] and fixed[0]["targets"] == ["one"]
+    assert fixed[0]["snapped"] == [{"module": "pkg/core.py", "from": "on", "to": "one", "similarity": 0.8}]
+
+
+def test_a_close_name_is_not_snapped_when_the_purpose_points_at_a_different_real_unit() -> None:
+    """One close match is not proof of intent: if the model's own purpose names another real function, ask again instead."""
+    entries = [{"name": "bump", "kind": "edit", "module": "pkg/core.py", "targets": ["align_notes"],
+                "purpose": "fix refine_tempo so it handles an empty list"}]
+    fixed, problems = td.ground_edit_targets(entries, lambda _m: {"align_note", "refine_tempo"})
+    assert fixed[0]["targets"] == ["align_notes"] and "snapped" not in fixed[0]
+    assert len(problems) == 1 and "align_notes" in problems[0] and "refine_tempo" in problems[0]
+
+
+def test_the_plan_trail_shows_every_snap_made_by_code() -> None:
+    real = edit_ask()
+
+    def ask(prompt: str) -> Any:
+        out = real(prompt)
+        if prompt.startswith("Split"):
+            out["functions"][0]["targets"] = ["on"]
+        return out
+
+    result = td.propose_staged(PARENT, "", ask, exists=file_exists, read=file_read)
+    assert result["ok"], result
+    snaps = [step for step in result["trail"] if "snapped_targets" in step]
+    assert snaps and snaps[0]["snapped_targets"][0]["from"] == "on" and snaps[0]["snapped_targets"][0]["to"] == "one"
