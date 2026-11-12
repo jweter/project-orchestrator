@@ -1285,3 +1285,30 @@ def test_a_pure_string_function_that_merely_mentions_a_source_file_name_is_not_r
                    ("{fn}('top.py')", "top")])
     problems = td._example_problems(sub)
     assert not any("file" in p and "pure function" in p for p in problems), problems
+
+
+def test_a_pure_filename_parser_with_a_media_name_is_not_rejected() -> None:
+    """Review (Codex P2, ChatGPT seq 232/236): a quoted media filename alone is not file access."""
+    sub = _io_sub("def extension(filename: str) -> str:",
+                  [("{fn}('song.wav')", "wav"), ("{fn}('take1.final.mp3')", "mp3"), ("{fn}('cover.png')", "png")])
+    assert not any("pure function" in p for p in td._example_problems(sub))
+
+
+def test_a_path_named_parameter_with_a_scalar_answer_is_a_name_check_not_a_read() -> None:
+    sub = _io_sub("def is_audio_name(path: str) -> bool:",
+                  [("{fn}('song.wav')", True), ("{fn}('notes.txt')", False), ("{fn}('mix.flac')", True)])
+    assert not any("pure function" in p for p in td._example_problems(sub))
+
+
+def test_a_path_parameter_with_a_media_file_and_structured_data_expected_is_a_read_and_is_rejected() -> None:
+    sub = _io_sub("def read_samples(path: str) -> list:",
+                  [("{fn}('take1.wav')", [0.1, 0.2]), ("{fn}('take2.wav')", [0.3]), ("{fn}('take3.wav')", [])])
+    assert any("names a file that does not exist" in p for p in td._example_problems(sub))
+
+
+def test_the_real_failed_voicestudio_plan_is_still_rejected_after_narrowing() -> None:
+    expected = "{'f0_track': [220.0, 247.0, 262.0, 294.0, 330.0], 'voiced_segments': [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]]}"
+    sub = _io_sub("def analyze_guide_vocal(audio_file_path: str) -> dict:",
+                  [("{fn}('path/to/guide_vocal.wav')", expected), ("{fn}('path/to/another_guide_vocal.wav')", expected),
+                   ("{fn}('path/to/third.wav')", expected)])
+    assert any("names a file that does not exist" in p for p in td._example_problems(sub))
