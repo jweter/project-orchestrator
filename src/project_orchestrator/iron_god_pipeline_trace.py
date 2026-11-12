@@ -48,6 +48,7 @@ BLOCKERS = {
     "WAITING_FOR_CAPABLE_BUILDER_BUDGET": "The slice needs the stronger builder and today's budget is used up.",
     "CAPABLE_BUILDER_DISPATCHED": "The slice was handed to the stronger builder and is in progress there.",
     "LOCAL_BUILD_EXHAUSTED": "The local builder spent every allowed attempt on this slice.",
+    "LOCAL_NEEDS_DRAFT": "Routed to the local builder, but it cannot start: a Level 1 slice needs at least two independently authored acceptance examples and a Level 2 slice needs a complete directed edit. Until a stronger agent supplies them in the graph or as a draft, no builder will take it.",
     "REPOSITORY_HEAD_MOVED": "The repository moved on since this request was derived; it is being re-derived.",
     "UNEXPLAINED_NO_PROGRESS": "Nothing has moved for a long time and no known rule explains it. The evidence is attached so it can be diagnosed.",
 }
@@ -70,6 +71,11 @@ def _epoch(stamp: Any) -> float | None:
         return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
     except ValueError:
         return None
+
+
+def refill_can_start(request: dict[str, Any]) -> bool:
+    """Whether the local drafter can take this LOCAL-routed request (same rule the refill uses for its lookahead)."""
+    return refill.can_start_locally({**request, "route": {**(request.get("route") or {}), "builder": refill.LOCAL}})
 
 
 def gather(lane_root: Path) -> dict[str, Any]:
@@ -210,6 +216,9 @@ def classify(request: dict[str, Any], ctx: dict[str, Any], *, now: float, free_g
         state = ctx["backlog"].get(rid, {}) if isinstance(ctx["backlog"], dict) else {}
         if int(state.get("attempts", 0) or 0) >= 3 or last_kind == "EXHAUSTED":
             return block("LOCAL_BUILD_EXHAUSTED", "LOCAL_BUILD", attempts=state.get("attempts"), outcome=str(state.get("outcome"))[:200])
+        if rid not in ctx["backlog"] and not any(e.get("kind") == "ADMITTED" for e in events) and not refill_can_start(request):
+            return block("LOCAL_NEEDS_DRAFT", "LOCAL_BUILD", "WAITING", level=level,
+                         missing="directed_edit" if level == 2 else "acceptance_examples")
         return row
 
     # a plan that stopped (BLOCKED) or delivered only part of the slice (PARTIAL) hands the slice back to the stronger
