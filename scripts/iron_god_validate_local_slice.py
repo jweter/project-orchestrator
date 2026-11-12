@@ -24,6 +24,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_TEXT = 1200  # the Canon worker bounds the objective and each acceptance criterion
+# What the engine's compiler reports when a graph or slice can never be executed (as opposed to waiting its turn).
+AUTHORITY_ERRORS = {"CAPABILITY_GRAPH_INVALID", "SLICE_AUTHORITY_INCOMPLETE", "ALLOWED_PATHS_MISSING"}
 
 
 def _slice_of(graph: dict[str, Any], slice_id: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
@@ -46,7 +48,7 @@ def check_slice(graph: dict[str, Any], slice_id: str, repository: str, *, profil
     found = _slice_of(graph, slice_id)
     if found is None:
         return {"problems": [f"slice {slice_id!r} is not in the graph"], "notes": [], "executable_now": False}
-    _capability, spec = found
+    capability_row, spec = found
 
     level = spec.get("capability_level")
     if level not in (1, 2):
@@ -90,15 +92,26 @@ def check_slice(graph: dict[str, Any], slice_id: str, repository: str, *, profil
             problems.append("a Level 2 slice needs a complete directed_edit (module_path, test_path, test_source, targets) with a NEW approved test file "
                             "that fails at the base for the right reason")
 
-    executable_now = False
-    derived = refill.derive(repository, "0" * 40, graph, "engineering/capability-graph.json", items=[], state={})
-    mine = [r for r in derived["requests"] if r.get("slice") == slice_id]
-    if mine:
-        executable_now = True
-    else:
-        reasons = [d.get("reason") for d in derived.get("direction_required", [])]
-        notes.append("not executable right now (a dependency or an earlier slice of its capability comes first)"
-                     + (f"; engine says {reasons}" if reasons else ""))
+    # Ask the engine's compiler about the whole graph first (an invalid graph can never be built), then about this slice's
+    # capability on its own: put first in the roadmap so the compiler examines it instead of whatever sits at the head of the
+    # line. Authority errors are problems; waiting behind a dependency or an earlier slice is only a note.
+    source = "engineering/capability-graph.json"
+    whole = refill.derive(repository, "0" * 40, graph, source, items=[], state={})
+    order = list(graph.get("roadmap") or [])
+    focused_graph = {**graph, "roadmap": [capability_row["id"], *[c for c in order if c != capability_row["id"]]]}
+    focused = refill.derive(repository, "0" * 40, focused_graph, source, items=[], state={})
+    seen: set[str] = set()
+    for derived_rows in (whole.get("direction_required", []), focused.get("direction_required", [])):
+        for row in derived_rows:
+            reason = str(row.get("reason"))
+            if reason in AUTHORITY_ERRORS and reason not in seen:
+                seen.add(reason)
+                problems.append(f"the engine rejects this graph or slice: {reason} {str(row.get('evidence'))[:300]}")
+    executable_now = any(r.get("slice") == slice_id for r in focused["requests"])
+    if not executable_now and not seen:
+        waiting = [d.get("reason") for d in focused.get("direction_required", [])]
+        notes.append("not next in its capability yet (a dependency or an earlier slice comes first)"
+                     + (f"; engine says {waiting}" if waiting else ""))
 
     if skip_route:
         notes.append("routing check skipped (no measured-capability profile supplied)")
@@ -137,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"note: {note}")
     for problem in result["problems"]:
         print(f"PROBLEM: {problem}")
-    print(("PASS" if not result["problems"] else "FAIL") + f" {args.slice_id} (executable now: {result['executable_now']})")
+    print(("PASS" if not result["problems"] else "FAIL") + f" {args.slice_id} (next in its capability: {result['executable_now']})")
     return 0 if not result["problems"] else 1
 
 

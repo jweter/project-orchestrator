@@ -375,7 +375,11 @@ def local_lookahead(repository: str, head: str, payload: dict[str, Any], source:
         derived = derive(repository, head, {**payload, "roadmap": roadmap}, source, items=items, state=state,
                          external_pending=external_pending, external_done=external_done)
         fresh = [request for request in derived["requests"] if str(request.get("capability")) not in skipped]
-        if not fresh:
+        # A capability whose request is already open in the capable lane (or already done) yields no request but is reported
+        # under ``skipped``: set it aside too and keep looking, or the search would pick it again and stop.
+        passed_over = {str(row["capability"]) for row in derived.get("skipped", []) if row.get("capability")} - skipped
+        skipped |= passed_over
+        if not fresh and not passed_over:
             break
         for request in fresh:
             skipped.add(str(request["capability"]))
@@ -736,7 +740,8 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
 
             extra = local_lookahead(
                 repository, head, payload, source, items=items, state=state, route_request=route_request,
-                skip={str(r["capability"]) for r in derived["requests"] if r.get("capability")},
+                skip={str(r["capability"]) for r in derived["requests"] if r.get("capability")}
+                | {str(row["capability"]) for row in derived["skipped"] if row.get("capability")},
                 external_pending=frozenset(capable_builder.open_request_ids(lane_root))
                 | decomposer_lookahead.active_parent_ids(lane_root),
                 external_done=frozenset(capable_builder.merged_request_ids(lane_root))

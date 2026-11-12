@@ -1163,3 +1163,47 @@ def test_a_lookahead_failure_leaves_the_head_of_line_behaviour_unchanged(tmp_pat
 
     assert [r["slice"] for r in report["capable_requests"]] == ["big"] and report["local_requests"] == []
     assert report["local_lookahead"] == []
+
+
+def _lookahead_payload(caps: list[dict]) -> dict:
+    return {"schema_version": 1, "repository": PORTFOLIO[0], "capabilities": caps, "roadmap": [c["id"] for c in caps]}
+
+
+def _route_by_level(request: dict) -> dict:
+    builder = refill.LOCAL if request["capability_level"] == 1 else refill.CAPABLE
+    request["route"] = {"builder": builder, "reason": "test"}
+    return request["route"]
+
+
+def test_a_head_capability_already_open_in_the_capable_lane_is_looked_past(tmp_path: Path) -> None:
+    """Review (Codex P2): derive() returns nothing for a capability with an open capable request and lists it under skipped."""
+    repository = PORTFOLIO[0]
+    caps = [capability("cap-big", BIG), capability("cap-small", small_slice())]
+    open_head = frozenset({refill.item_id(repository, "cap-big", "big")})
+
+    found = refill.local_lookahead(repository, HEAD, _lookahead_payload(caps), SOURCE, items=[], state={},
+                                   route_request=_route_by_level, skip=set(), external_pending=open_head)
+
+    assert [r["slice"] for r in found] == ["small"]
+
+
+def test_a_pending_capability_in_the_middle_does_not_stop_the_search(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    caps = [capability("cap-big", BIG), capability("cap-mid", {**BIG, "id": "mid"}), capability("cap-small", small_slice())]
+    open_mid = frozenset({refill.item_id(repository, "cap-mid", "mid")})
+
+    found = refill.local_lookahead(repository, HEAD, _lookahead_payload(caps), SOURCE, items=[], state={},
+                                   route_request=_route_by_level, skip={"cap-big"}, external_pending=open_mid)
+
+    assert [r["slice"] for r in found] == ["small"]
+
+
+def test_the_refill_looks_past_a_head_of_line_request_that_is_already_pending_with_the_capable_builder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repository = PORTFOLIO[0]
+    head_id = refill.item_id(repository, "cap-big", "big")
+    monkeypatch.setattr(refill.capable_builder, "open_request_ids", lambda lane_root: frozenset({head_id}))
+
+    report = lookahead_report(tmp_path, [capability("cap-big", BIG), capability("cap-small", small_slice())])
+
+    assert report["capable_requests"] == [] and [r["slice"] for r in report["local_requests"]] == ["small"]
+    assert report["local_lookahead"] == [r["id"] for r in report["local_requests"]]

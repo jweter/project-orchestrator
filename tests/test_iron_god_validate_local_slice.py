@@ -109,7 +109,7 @@ def test_a_slice_blocked_behind_an_earlier_one_is_a_note_not_a_failure() -> None
     graph = graph_with({"depends_on": ["first"]}, extra_slices=[first])
     result = check(graph)
     assert result["problems"] == [] and result["executable_now"] is False
-    assert any("not executable right now" in note for note in result["notes"])
+    assert any("not next in its capability yet" in note for note in result["notes"])
 
 
 def test_a_level_the_measured_profile_does_not_cover_is_routed_to_the_capable_builder(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,3 +127,26 @@ def test_the_command_line_prints_pass_or_fail_and_sets_the_exit_status(tmp_path:
     assert validator.main(["--graph", str(bad), "--repository", "jweter/example", "--slice", "local-seconds-to-ms"]) == 1
     out = capsys.readouterr().out
     assert "PROBLEM:" in out and "FAIL local-seconds-to-ms" in out
+
+
+def test_a_slice_the_engine_would_reject_for_incomplete_authority_does_not_pass() -> None:
+    """Review (Codex P2): an empty acceptance list made derive() report SLICE_AUTHORITY_INCOMPLETE but the check printed PASS."""
+    result = check(graph_with({"acceptance": []}))
+    assert any("SLICE_AUTHORITY_INCOMPLETE" in p for p in result["problems"])
+
+
+def test_the_authority_check_examines_the_slice_even_when_other_capabilities_sit_ahead_of_it() -> None:
+    ahead = {"id": "cap-ahead", "state": "PLANNED", "capability": "an earlier capability", "completion_evidence": ["x"], "depends_on": [],
+             "slices": [{"id": "ahead-1", "state": "PLANNED", "capability_level": 3, "depends_on": [], "objective": "big",
+                         "acceptance": ["done"], "allowed_paths": ["pkg/**"], "forbidden_paths": FORBIDDEN,
+                         "runner_requirements": ["code"], "runtime_requirements": []}]}
+    graph = graph_with({"acceptance": []})
+    graph["capabilities"].insert(0, ahead)
+    graph["roadmap"] = ["cap-ahead", "cap"]
+    assert any("SLICE_AUTHORITY_INCOMPLETE" in p for p in check(graph)["problems"])
+
+
+def test_an_invalid_graph_is_a_problem_not_a_note() -> None:
+    graph = graph_with()
+    graph["roadmap"] = []
+    assert any("CAPABILITY_GRAPH_INVALID" in p for p in check(graph)["problems"])
