@@ -1171,3 +1171,56 @@ def test_decomposition_with_literal_ellipsis_punctuation_is_not_rejected_as_plac
     ))
     accepted, problems = check(plan)
     assert accepted is not None and problems == []
+
+
+# ---- grounding the model's edit targets in the module's real units -----------------------------------------------------
+
+def test_a_misspelled_target_is_snapped_to_the_one_real_unit_it_nearly_matches() -> None:
+    entries = [{"name": "bump", "kind": "edit", "module": "pkg/core.py", "targets": ["on"]}]
+    fixed, problems = td.ground_edit_targets(entries, lambda _m: {"one", "other_thing"})
+    assert fixed[0]["targets"] == ["one"] and problems == []
+
+
+def test_a_target_that_does_not_exist_is_reported_with_the_real_unit_names() -> None:
+    entries = [{"name": "bump", "kind": "edit", "module": "pkg/core.py", "targets": ["align_notes"]},
+               {"name": "slugify", "kind": "new"}]
+    fixed, problems = td.ground_edit_targets(entries, lambda _m: {"align_onsets_to_beats", "refine_tempo"})
+    assert fixed[0]["targets"] == ["align_notes"] and fixed[1] == entries[1]
+    assert len(problems) == 1 and "align_notes" in problems[0] and "align_onsets_to_beats" in problems[0]
+
+
+def test_unreadable_or_non_edit_entries_are_left_for_the_existing_validation() -> None:
+    entries = [{"name": "bump", "kind": "edit", "module": "pkg/missing.py", "targets": ["whatever"]}]
+    assert td.ground_edit_targets(entries, lambda _m: None) == (entries, [])
+
+
+def test_a_made_up_unit_name_gets_one_more_outline_with_the_real_names_and_then_passes() -> None:
+    prompts: list[str] = []
+    real = edit_ask(prompts)
+
+    def ask(prompt: str) -> Any:
+        if prompt.startswith("Split") and "do not exist" not in prompt:
+            first = real(prompt)
+            first["functions"][0]["targets"] = ["align_notes"]  # the slip: a plausible unit that is not in the module
+            return first
+        return real(prompt)
+
+    result = td.propose_staged(PARENT, "", ask, exists=file_exists, read=file_read)
+    assert result["ok"], result
+    retry = [p for p in prompts if p.startswith("Split") and "do not exist" in p]
+    assert len(retry) == 1 and "align_notes" in retry[0] and "'one'" in retry[0]
+    assert result["plan"]["subtasks"][0]["targets"] == ["one"]
+    assert any(step.get("grounding_retry") for step in result["trail"])
+
+
+def test_a_made_up_unit_name_that_survives_the_retry_is_still_rejected() -> None:
+    real = edit_ask()
+
+    def ask(prompt: str) -> Any:
+        out = real(prompt)
+        if prompt.startswith("Split"):
+            out["functions"][0]["targets"] = ["align_notes"]
+        return out
+
+    result = td.propose_staged(PARENT, "", ask, exists=file_exists, read=file_read)
+    assert not result["ok"] and "align_notes" in result["reason"]

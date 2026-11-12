@@ -1231,7 +1231,7 @@ def outline_prompt(request: dict[str, Any], brief: str, feedback: str = "") -> s
         'Answer JSON only: {"functions":[{"name":"snake_case_label","kind":"new","purpose":"one sentence",'
         '"criteria":[1],"depends_on":[]},{"name":"other_label","kind":"edit","module":"pkg/existing.py",'
         '"targets":["existing_function"],"purpose":"required behaviour","criteria":[2],"depends_on":[]}],"residual":[]}'
-        + (f"\nYour previous answer was rejected: {feedback[:300]}" if feedback else "")
+        + (f"\nYour previous answer was rejected: {feedback[:900]}" if feedback else "")
     )
 
 
@@ -1308,6 +1308,45 @@ def _outline_entries(outline: Any) -> list[dict[str, Any]] | None:
     if isinstance(entries, list) and entries and all(isinstance(e, dict) for e in entries):
         return entries
     return None
+
+
+NEAR_MISS_CUTOFF = 0.8  # a named unit this close to exactly one real unit is a typo, not a different function
+
+
+def ground_edit_targets(
+    entries: list[dict[str, Any]], units_of: Callable[[str], set[str] | None]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Correct edit targets the model misspelled and report the ones that do not exist.
+
+    The 7B model often names a plausible unit that is not in the module (measured: ``align_notes`` for a module that has
+    other names). A target within ``NEAR_MISS_CUTOFF`` of exactly one real unit is replaced by it; anything else is
+    reported with the module's real unit names so the model can be asked once more with the truth in front of it.
+    Entries that are not edits, or whose module cannot be read, are left for the existing validation to judge.
+    """
+    import difflib
+
+    grounded: list[dict[str, Any]] = []
+    problems: list[str] = []
+    for entry in entries:
+        module, targets = str(entry.get("module", "")), entry.get("targets")
+        real = units_of(module) if entry.get("kind") == "edit" and module else None
+        if not real or not isinstance(targets, list):
+            grounded.append(entry)
+            continue
+        fixed, missing = [], []
+        for target in (str(t) for t in targets):
+            near = [] if target in real else difflib.get_close_matches(target, sorted(real), n=2, cutoff=NEAR_MISS_CUTOFF)
+            if target in real:
+                fixed.append(target)
+            elif len(near) == 1:
+                fixed.append(near[0])
+            else:
+                fixed.append(target)
+                missing.append(target)
+        grounded.append({**entry, "targets": list(dict.fromkeys(fixed))})
+        if missing:
+            problems.append(f"units {missing} do not exist in {module}; the real units are {sorted(real)[:25]}")
+    return grounded, problems
 
 
 def _staged_new(request, entry, index, path, ask, trail):
@@ -1408,6 +1447,23 @@ def propose_staged(
         if entries is None:
             return {"ok": False, "reason": "PLAN_REJECTED: the outline lists no functions", "trail": trail}
         entries = entries[:MAX_SUBTASKS]
+
+        def units_of(module: str) -> set[str] | None:
+            if read is None or not _normal_path(module) or not exists(module):
+                return None
+            try:
+                return set(directed_edit.units(read(module) or ""))
+            except SyntaxError:
+                return None
+
+        entries, ungrounded = ground_edit_targets(entries, units_of)
+        if ungrounded:  # one more outline with the module's real unit names, never a guess by code
+            again = ask(outline_prompt(request, brief, "; ".join(ungrounded)[:900]))
+            second = _outline_entries(again)
+            if second is not None:
+                second, still = ground_edit_targets(second[:MAX_SUBTASKS], units_of)
+                trail.append({"grounding_retry": True, "first": ungrounded, "remaining": still})
+                outline, entries = again, second
         names = [str(e.get("name", "")) for e in entries]
         if len(set(names)) != len(names) or not all(NAME_OK.match(n) for n in names):
             return {"ok": False, "reason": "PLAN_REJECTED: function names must be unique snake_case", "trail": trail}
