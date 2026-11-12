@@ -7,6 +7,7 @@ import json
 import os
 import random
 import subprocess
+import types
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -2537,3 +2538,37 @@ def test_approved_work_that_only_memory_holds_back_is_a_memory_wait_not_an_idle_
     assert waiting["route"]["model"] is None                                                           # no downgrade to the 3B model
     idle = routed_step(env, RoutedRunner(), 9.0, measured(**{"qwen2.5-coder:3b": 1}))                  # no model at all can take level 2
     assert idle["status"] != "WAITING_FOR_MEMORY"                                                      # that is a calibration gap, not memory
+
+
+def test_git_pin_reinstall_argv_forces_only_the_exact_git_commits():
+    assert WORKER.git_pin_reinstall_argv("py", ["--extra-index-url https://x/whl/cpu", "ruff==0.17.1"]) is None
+    pin = "knowledge-engine-ai @ git+https://github.com/jweter/knowledge-engine-ai.git@" + "a" * 40
+    argv = WORKER.git_pin_reinstall_argv("py", ["ruff==0.17.1", pin, "--extra-index-url https://x/whl/cpu"])
+    assert argv[:3] == ("py", "-m", "pip") and "--force-reinstall" in argv and "--no-deps" in argv
+    assert argv[-1] == pin and "ruff==0.17.1" not in argv
+
+
+def test_a_rebuilt_environment_force_reinstalls_the_pinned_git_commit(env, monkeypatch):
+    """pip keeps an installed git dependency of the same name and version, so a moved commit pin must be forced."""
+    lane = pl.ProductLane(env.state)
+    clone, base = env.sync(lane, REPOS[0])
+    worktree = env.tmp / "envwt2"
+    git(clone, "worktree", "add", "-q", "--detach", str(worktree), base)
+    (worktree / "poetry.lock").write_text(LOCK, encoding="utf-8")
+    envdir = clone.parent / ".envs" / clone.name
+    (envdir / "Scripts").mkdir(parents=True)
+    (envdir / "Scripts" / "python.exe").write_text("", encoding="utf-8")
+    (envdir / ".iron-god-env.json").write_text(json.dumps({"lock_sha256": "stale"}), encoding="utf-8")
+    calls = []
+
+    class FakeRuntime:
+        def execute_supervised(self, request, check, interval=2.0):
+            calls.append(tuple(request.argv))
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(WORKER, "NativeWindowsRuntime", FakeRuntime)
+    record = WORKER.repository_environment(worktree, lambda: None)
+    assert record["status"] == "INSTALLED" and len(calls) == 2
+    assert "-r" in calls[0] and "--force-reinstall" not in calls[0]
+    assert "--force-reinstall" in calls[1] and "--no-deps" in calls[1]
+    assert calls[1][-1].endswith("@2eee4cc9ba76f99e669d2e52669e84d8b5199a41")
