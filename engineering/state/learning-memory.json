@@ -210,6 +210,76 @@
       "regression_protection": "None: the practice (read the tests as well as the docs before declaring no gap) is not automated.",
       "residual_risk": "The slice is not implemented, so the drift risk still exists; the engine merged the pull request before an independent review, so review happened after the fact.",
       "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "b04f8c59472a5ad6c035",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "review_finding",
+      "source_ref": "project-orchestrator#689 (Codex P2, ChatGPT mailbox seq 233)",
+      "symptom": "The first version of the pipeline-trace fix hid requests that were still being worked: after an unrelated merge moved a repository's head, a request in flight kept its old exact_head and was classified as history.",
+      "root_cause": "The refill does not re-derive a request that is already open (a capable dispatch, a running planning or drafting job, a plan holding the parent), so such a request file keeps the head it was written at while it is live. A head comparison alone cannot tell history from live work.",
+      "fix": "gather() keeps every in-flight request visible: a capable dispatch with status DISPATCHED, a decomposer or drafter job in PLANNING, DRAFTING or VERIFYING, and a parent held by an ACTIVE plan. Finished dispatches and DONE plans with an old head are still history. A request still at the current head stays listed even if the latest pass stopped deriving it (visible by design).",
+      "verification": "Evidence state CODE_MERGED (orchestrator 689, merged by the owner), not RELEASE_DEPLOYED. Checked read-only on the live engine state: 57 of 64 request files were history and the dispatched Everward, Rocksmith, VoiceStudio and knowledge-engine requests showed as current; a request 21 hours old was correctly kept, which a file-age rule would have hidden.",
+      "regression_protection": "tests/test_iron_god_pipeline_trace.py: stale versus fresh, old file with current head, in-flight dispatch, running job and active plan, missing head, same-head leftover.",
+      "residual_risk": "Not deployed until a release is promoted. The same-head leftover case stays listed, so the dashboard can still overstate by a little. Diagnostics only: it changes what is reported, not what is built.",
+      "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "23353654d29af765b659",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "review_finding",
+      "source_ref": "project-orchestrator#690 (Codex P2, ChatGPT mailbox seq 232 and 236)",
+      "symptom": "A planning guard meant to stop the 7B inventing a pure function that reads a file (analyze_guide_vocal on path/to/guide_vocal.wav, failed twice by the worker) also rejected legitimate pure filename parsers such as extension('song.wav').",
+      "root_cause": "The first rule treated any quoted media filename in an example as file access. A filename on its own is not file access; the failing plan had a path-like parameter, a path/to/ placeholder and structured data expected.",
+      "fix": "The guard now needs file-access evidence: a Path or stream annotation, a path/to/ placeholder, or a media, archive, model or database file literal passed to a path-like parameter with structured data (dict, list, tuple, set) expected. A filename parser (scalar answer, or a filename parameter) is accepted. The real failed plan is still rejected.",
+      "verification": "Evidence state CODE_MERGED (orchestrator 690, merged by the owner), not RELEASE_DEPLOYED. Verified against the engine's own handback diagnostics of the real failed plan, 112 decomposer tests, and regression tests for the false positive that two independent reviewers found before merge.",
+      "regression_protection": "tests/test_iron_god_task_decomposer.py: media-file example rejected, Path annotation rejected, pure filename parser accepted, path-named parameter with a scalar answer accepted, the real failed plan still rejected.",
+      "residual_risk": "Dynamic I/O that matches none of the evidence patterns is still left to the worker's own attempt bounds. Not deployed until a release is promoted.",
+      "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "1ae357f6b52a6f160237",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "governance",
+      "source_ref": "project-orchestrator#691 (Codex P2 x2, ChatGPT mailbox seq 245)",
+      "symptom": "With the capable builder's budget spent, the engine reported NO_READY_EXECUTION_SLICE although small locally buildable slices existed: the local builder was offered nothing from a repository whose head-of-line slice only the capable builder could take (observed 2026-11-12 on Rocksmith).",
+      "root_cause": "The compiler yields work for one capability per repository at a time, in roadmap order, and the graph contract forbids dropping an unfinished capability from the roadmap. The shortage was structural as well as a budget limit.",
+      "fix": "local_lookahead() asks the compiler again with the capabilities already offered moved behind the rest of the roadmap (reordered in memory, none dropped), keeps only requests that route LOCAL, looks at most four capabilities down, never offers a capability with unfinished dependencies, runs only when nothing on the head of the line routes LOCAL, and leaves the old behaviour if it fails. Review found two more gaps, both fixed with tests: a head capability already open with the capable builder is reported under skipped and must be set aside too, and the slice validator must fail on authority errors (SLICE_AUTHORITY_INCOMPLETE, CAPABILITY_GRAPH_INVALID, ALLOWED_PATHS_MISSING) instead of printing PASS. A validator script and docs/LOCAL_WORK_BACKLOG.md give authors the contract.",
+      "verification": "Evidence state CODE_MERGED (orchestrator 691), not RELEASE_DEPLOYED and not PRODUCT_VERIFIED. Real-repository probe in a throwaway lane with the live measured profile: the Rocksmith repair slice stayed with the capable builder and a local-sized slice behind it was offered to the local builder. 225 tests across the affected files at the first push, 124 after the fixes.",
+      "regression_protection": "tests/test_iron_god_roadmap_refill.py lookahead tests (head capable and local behind, no lookahead when the head is local, depth bound, dependencies respected, pending head capability, pending middle capability, failure leaves behaviour unchanged) and tests/test_iron_god_validate_local_slice.py.",
+      "residual_risk": "No local build has run on a lookahead slice yet, so it is not shown that the 7B produces working code from these slices. A reviewer raised an unproven gap: a head that routes LOCAL but cannot run downstream suppresses the lookahead; it is judged bounded and transient but has not been reproduced. Not deployed until the owner promotes a release.",
+      "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "18ecb4fd776597985e75",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "governance",
+      "source_ref": "project-orchestrator#691 merge, mailbox seq 244-246",
+      "symptom": "Orchestrator 691 was merged at 21:46 UTC with an independent review already posted at 21:26 UTC that I had not read: it contained two actionable findings (a possible starvation gap and an ambiguity in a Rocksmith slice I wrote).",
+      "root_cause": "I treated the review request as pending and merged on the owner's instruction to build the update; the mailbox was not checked immediately before the merge, and the reviewer's status messages (WAITING_FOR_REVIEW) were the only ones I had seen.",
+      "fix": "The findings were read straight after the merge and acted on: the Rocksmith slice was corrected before the builder started it (rocksmith 763) and the lookahead gap was handed over for reproduction. Practice recorded: read the mailbox for the requested review immediately before merging a pull request a reviewer was asked to look at, and say in the merge message if a review is still outstanding.",
+      "verification": "Evidence state OBSERVED and corrected. Neither finding was a regression in merged behaviour: one concerned an unbuilt slice, the other an unproven gap.",
+      "regression_protection": "None automated.",
+      "residual_risk": "The same ordering mistake can recur; nothing checks the mailbox at merge time.",
+      "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "a2bf77d0addf8a761701",
+      "project": "rocksmith",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "source_type": "success_pattern",
+      "source_ref": "rocksmith-cdlc-generator#763 (ChatGPT mailbox seq 245)",
+      "symptom": "A locally buildable slice I authored for section agreement said each generated section may satisfy at most one reference section, which allows first-come greedy pairing; the reviewer's counter-example scores 0.5 greedily but 1.0 with a maximum matching.",
+      "root_cause": "A prose rule such as at most one-to-one does not fix an algorithm, and the 7B follows the literal examples, so an under-specified rule plus examples that do not separate the algorithms would have been built wrong and accepted.",
+      "fix": "The slice now states the exact two-pointer algorithm that is maximum for start times on a line, defines a negative tolerance as zero, and pins the counter-example. An independent script implementing the stated algorithm was run against every example before committing and reproduced all seven answers.",
+      "verification": "Evidence state CODE_MERGED for the planning change only (rocksmith 763); the slice itself is PLANNED and unbuilt.",
+      "regression_protection": "Practice: for a locally built slice, name the algorithm when the choice matters and check the examples with an independent implementation. The slice validator checks example shape, not example correctness.",
+      "residual_risk": "The independent check was run by hand and is not part of the validator; a wrong example would still pass the validator.",
+      "evidence_state": "VERIFIED"
     }
   ]
 }
