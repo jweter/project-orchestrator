@@ -1255,3 +1255,60 @@ def test_the_plan_trail_shows_every_snap_made_by_code() -> None:
     assert result["ok"], result
     snaps = [step for step in result["trail"] if "snapped_targets" in step]
     assert snaps and snaps[0]["snapped_targets"][0]["from"] == "on" and snaps[0]["snapped_targets"][0]["to"] == "one"
+
+
+# ---- a "pure function" that needs a file cannot be specified by literal examples ---------------------------------------
+
+def _io_sub(signature: str, calls: list[tuple[str, object]]) -> dict:
+    return {"key": "t1", "signature": signature,
+            "acceptance_examples": [{"call": call, "expected": expected, "why": "documented behaviour"} for call, expected in calls]}
+
+
+def test_a_function_whose_examples_name_a_media_file_is_rejected_before_any_worker_attempt() -> None:
+    """The 7B planned analyze_guide_vocal('path/to/guide_vocal.wav') with exact F0 values; the file never exists."""
+    sub = _io_sub("def analyze_guide_vocal(path: str) -> dict:",
+                  [("{fn}('path/to/guide_vocal.wav')", {"f0": [220.0]}), ("{fn}('a/b/take1.mp3')", {"f0": [247.0]}),
+                   ("{fn}('x.flac')", {"f0": []})])
+    problems = td._example_problems(sub)
+    assert any("names a file that does not exist" in p and "pass the data itself" in p for p in problems)
+
+
+def test_a_path_or_stream_annotation_marks_the_function_as_not_pure() -> None:
+    sub = _io_sub("def load_notes(source: Path) -> list:",
+                  [("{fn}(1)", [1]), ("{fn}(2)", [2]), ("{fn}(3)", [3])])
+    assert any("takes a file or stream" in p for p in td._example_problems(sub))
+
+
+def test_a_pure_string_function_that_merely_mentions_a_source_file_name_is_not_rejected() -> None:
+    sub = _io_sub("def module_name(path: str) -> str:",
+                  [("{fn}('pkg/mod.py')", "pkg.mod"), ("{fn}('pkg/sub/other.py')", "pkg.sub.other"),
+                   ("{fn}('top.py')", "top")])
+    problems = td._example_problems(sub)
+    assert not any("file" in p and "pure function" in p for p in problems), problems
+
+
+def test_a_pure_filename_parser_with_a_media_name_is_not_rejected() -> None:
+    """Review (Codex P2, ChatGPT seq 232/236): a quoted media filename alone is not file access."""
+    sub = _io_sub("def extension(filename: str) -> str:",
+                  [("{fn}('song.wav')", "wav"), ("{fn}('take1.final.mp3')", "mp3"), ("{fn}('cover.png')", "png")])
+    assert not any("pure function" in p for p in td._example_problems(sub))
+
+
+def test_a_path_named_parameter_with_a_scalar_answer_is_a_name_check_not_a_read() -> None:
+    sub = _io_sub("def is_audio_name(path: str) -> bool:",
+                  [("{fn}('song.wav')", True), ("{fn}('notes.txt')", False), ("{fn}('mix.flac')", True)])
+    assert not any("pure function" in p for p in td._example_problems(sub))
+
+
+def test_a_path_parameter_with_a_media_file_and_structured_data_expected_is_a_read_and_is_rejected() -> None:
+    sub = _io_sub("def read_samples(path: str) -> list:",
+                  [("{fn}('take1.wav')", [0.1, 0.2]), ("{fn}('take2.wav')", [0.3]), ("{fn}('take3.wav')", [])])
+    assert any("names a file that does not exist" in p for p in td._example_problems(sub))
+
+
+def test_the_real_failed_voicestudio_plan_is_still_rejected_after_narrowing() -> None:
+    expected = "{'f0_track': [220.0, 247.0, 262.0, 294.0, 330.0], 'voiced_segments': [[0.0, 1.0], [2.0, 3.0], [4.0, 5.0]]}"
+    sub = _io_sub("def analyze_guide_vocal(audio_file_path: str) -> dict:",
+                  [("{fn}('path/to/guide_vocal.wav')", expected), ("{fn}('path/to/another_guide_vocal.wav')", expected),
+                   ("{fn}('path/to/third.wav')", expected)])
+    assert any("names a file that does not exist" in p for p in td._example_problems(sub))

@@ -146,6 +146,55 @@ def normalize_examples(name: Any, examples: Any) -> Any:
     return out
 
 
+IO_ANNOTATIONS = {"Path", "PurePath", "PathLike", "IO", "BinaryIO", "TextIO", "BufferedReader"}
+PLACEHOLDER_PATH = re.compile(r"""['"](?:\./|/)?path/to/""", re.IGNORECASE)
+MEDIA_FILE_LITERAL = re.compile(
+    r"""['"][^'"\n]*\.(?:wav|mp3|flac|ogg|m4a|aac|mp4|mkv|avi|mov|png|jpe?g|gif|bmp|pdf|psarc|sqlite3?|db|zip|gguf|onnx|pth?)['"]""",
+    re.IGNORECASE,
+)
+PATH_LIKE_PARAMETER = re.compile(r"(?:^|_)(?:path|paths|dir|directory|folder)$", re.IGNORECASE)
+
+
+def _structured_expected(expected: Any) -> bool:
+    """True when the expected value is data a file read would produce (dict/list/tuple/set), not a scalar a name parser returns."""
+    if isinstance(expected, str):
+        try:
+            expected = ast.literal_eval(expected)
+        except (SyntaxError, ValueError):
+            return False
+    return isinstance(expected, (dict, list, tuple, set))
+
+
+def _io_problems(key: Any, stub: Any, usable: list[dict[str, Any]]) -> list[str]:
+    """Reject a 'pure function' that reads a file: literal examples cannot specify it.
+
+    Measured 2026-11-11: the 7B planned ``analyze_guide_vocal(audio_file_path)`` with ``'path/to/guide_vocal.wav'`` and exact
+    F0 values; the worker failed twice because the file does not exist, and no literal example could ever have been right.
+    A function that needs a file belongs with the stronger builder (or takes the data itself as its argument).
+
+    The rule needs file-access evidence, not a file name alone, so a pure filename parser such as ``extension('song.wav')``
+    is accepted: (1) a Path/stream annotation, (2) a ``path/to/`` placeholder, or (3) a media/archive/model/database file
+    literal passed to a path-like parameter (``path``, ``audio_file_path``, ``dir``...) where the expected value is
+    structured data a read would produce. Dynamic I/O that matches none of these is still left to the worker's own bounds.
+    """
+    arguments = stub.args
+    parameters = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+    for arg in parameters:
+        text = ast.unparse(arg.annotation) if arg.annotation is not None else ""
+        if any(part in IO_ANNOTATIONS for part in re.findall(r"[A-Za-z_]+", text)):
+            return [f"{key}: {stub.name} takes a file or stream ({arg.arg}: {text}); a pure function with literal examples "
+                    "cannot be specified against files - pass the data itself"]
+    path_like = any(PATH_LIKE_PARAMETER.search(arg.arg) for arg in parameters)
+    for example in usable:
+        call = str(example["call"])
+        if PLACEHOLDER_PATH.search(call) or (
+            path_like and MEDIA_FILE_LITERAL.search(call) and _structured_expected(example["expected"])
+        ):
+            return [f"{key}: {call} names a file that does not exist at the base; a pure function with literal "
+                    "examples cannot be specified against files - pass the data itself"]
+    return []
+
+
 def _example_problems(sub: dict[str, Any]) -> list[str]:
     """Literal, well-formed, mutually consistent examples that bind to the declared signature."""
     key = sub.get("key")
@@ -180,6 +229,7 @@ def _example_problems(sub: dict[str, Any]) -> list[str]:
     positional = [a.arg for a in [*arguments.posonlyargs, *arguments.args]]
     required = len(positional) - len(arguments.defaults)
     accepted = {*positional, *(a.arg for a in arguments.kwonlyargs)}
+    problems.extend(_io_problems(key, stub, usable))
     for example in usable:
         call = ast.parse(example["call"].replace("{fn}", "fn", 1), mode="eval").body
         names = [k.arg for k in call.keywords]
