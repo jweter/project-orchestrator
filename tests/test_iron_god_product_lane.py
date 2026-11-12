@@ -2572,3 +2572,35 @@ def test_a_rebuilt_environment_force_reinstalls_the_pinned_git_commit(env, monke
     assert "-r" in calls[0] and "--force-reinstall" not in calls[0]
     assert "--force-reinstall" in calls[1] and "--no-deps" in calls[1]
     assert calls[1][-1].endswith("@2eee4cc9ba76f99e669d2e52669e84d8b5199a41")
+
+
+def test_a_failed_git_pin_reinstall_reports_it_and_leaves_the_environment_marker_stale(env, monkeypatch):
+    """A half-built environment must not be reused: the marker is only written after both installs succeed."""
+    lane = pl.ProductLane(env.state)
+    clone, base = env.sync(lane, REPOS[0])
+    worktree = env.tmp / "envwt3"
+    git(clone, "worktree", "add", "-q", "--detach", str(worktree), base)
+    (worktree / "poetry.lock").write_text(LOCK, encoding="utf-8")
+    envdir = clone.parent / ".envs" / clone.name
+    (envdir / "Scripts").mkdir(parents=True)
+    (envdir / "Scripts" / "python.exe").write_text("", encoding="utf-8")
+    marker = envdir / ".iron-god-env.json"
+    marker.write_text(json.dumps({"lock_sha256": "stale"}), encoding="utf-8")
+    calls = []
+
+    class FailsOnGitPins:
+        def execute_supervised(self, request, check, interval=2.0):
+            calls.append(tuple(request.argv))
+            forced = "--force-reinstall" in request.argv
+            return types.SimpleNamespace(returncode=1 if forced else 0, stdout="", stderr="could not clone" if forced else "")
+
+    monkeypatch.setattr(WORKER, "NativeWindowsRuntime", FailsOnGitPins)
+    with pytest.raises(RuntimeError, match="ENVIRONMENT_GIT_PIN_INSTALL_FAILED"):
+        WORKER.repository_environment(worktree, lambda: None)
+    assert len(calls) == 2
+    assert json.loads(marker.read_text(encoding="utf-8")) == {"lock_sha256": "stale"}  # not rewritten, so it is rebuilt next time
+    # and production_preflight turns the exception into a failed result with the reason, not a crash
+    monkeypatch.setattr(WORKER, "release_builder_model", lambda: None, raising=False)
+    result = WORKER.production_preflight(worktree, lambda: None, 60)
+    assert result["ok"] is False and "ENVIRONMENT_GIT_PIN_INSTALL_FAILED" in result["output_tail"]
+    assert result["environment"] == "FAILED"
