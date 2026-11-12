@@ -100,7 +100,7 @@
       "evidence_state": "VERIFIED"
     },
     {
-      "lesson_id": "4de989abf4aa72c1d4c6",
+      "lesson_id": "a169002692804e24707e",
       "project": "rocksmith",
       "repository": "jweter/rocksmith-cdlc-generator",
       "source_type": "review_finding",
@@ -108,20 +108,20 @@
       "symptom": "The first differential comparator passed a synthetic happy path while two P1 review findings showed it could pass a repeated riff shifted in time and ignore residual onset error.",
       "root_cause": "The acceptance metrics were exercised only on benign synthetic inputs; common bass riffs repeat pitch, so nearest-neighbour pairing camouflaged a global shift, and the fitted clock hid cancelling per-note errors.",
       "fix": "Replaced nearest-onset pairing with an order-preserving alignment, added jitter, mistimed-note fraction and a competing-alignment guard to the verdict, and added the reviewers' exact cases as adversarial mutation tests.",
-      "verification": "Evidence state REPRODUCED and fixed on the pull request branch (22 tests); not CODE_MERGED at the time of recording unless the pull request status says otherwise.",
+      "verification": "Evidence state CODE_MERGED (rocksmith 758 merged after an independent exact-head review; 22 comparator tests), not RELEASE_DEPLOYED and not PRODUCT_VERIFIED: it has never been run against a real reference.",
       "regression_protection": "tests/test_corpus_differential.py adversarial cases: repeated-pitch riff, riff shifted by a beat, a bar and a period, cancelling errors, a few mistimed notes, a late first note.",
       "residual_risk": "A synthetic happy path is not sufficient for acceptance metrics; thresholds still need calibration on real references before any PRODUCT_VERIFIED claim.",
       "evidence_state": "VERIFIED"
     },
     {
-      "lesson_id": "a72bac19397f59793f4a",
+      "lesson_id": "a29941915f549c6eb570",
       "project": "portfolio",
       "repository": "jweter/project-orchestrator",
       "source_type": "governance",
       "source_ref": "mailbox seq 198 (contributed by ChatGPT): evidence-state vocabulary",
       "symptom": "Reports during the stall collapsed different levels of certainty into one word such as fixed or verified, so merged code was read as a deployed fix and a pull request as proof of product behaviour.",
       "root_cause": "There was no shared vocabulary separating what was seen, what was reproduced, what was merged, what is running, and what a person confirmed on the real product.",
-      "fix": "Adopt five evidence states and name them in every status report and every lesson: OBSERVED, REPRODUCED, CODE_MERGED, RELEASE_DEPLOYED, PRODUCT_VERIFIED. Do not collapse them; a merge is not a deployment and a deployment is not product verification.",
+      "fix": "Adopt five evidence states and name them in every status report and every lesson: OBSERVED, REPRODUCED, CODE_MERGED, RELEASE_DEPLOYED, PRODUCT_VERIFIED. Do not collapse them; a merge is not a deployment and a deployment is not product verification. In this store evidence_state VERIFIED means only that the lesson's own evidence was validated; it never means the fix is RELEASE_DEPLOYED or PRODUCT_VERIFIED, so read the verification and residual_risk text for the real state.",
       "verification": "Applied in this learning-memory entry set: each fix lesson states its evidence state and what is not yet true (for example orchestrator 685 is CODE_MERGED, not RELEASE_DEPLOYED).",
       "regression_protection": "Review of status reports against the vocabulary; no automated check.",
       "residual_risk": "Not enforced by code; reports can still use the words loosely.",
