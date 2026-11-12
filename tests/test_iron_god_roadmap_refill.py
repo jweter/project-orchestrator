@@ -1084,3 +1084,126 @@ def test_an_item_blocked_by_a_repeated_failed_source_is_re_authored_not_left_pen
     assert refill._slice_status(base, items, {"items": {base: distinct}})[0] == "PENDING"  # an attempt is left
     env = {**row, "outcome": "ENVIRONMENT_FAILURE: X"}
     assert refill._slice_status(base, items, {"items": {base: env}})[0] == "PENDING"  # not the plan's fault
+
+
+# ---- local lookahead: the free local builder is not starved by a head-of-line slice only a stronger builder can take ----------
+
+BIG = {"id": "big", "state": "PLANNED", "capability_level": 3, "objective": "A large slice above the local builder.",
+       "acceptance": ["it is done"], "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"]}
+SMALL_EXAMPLES = [{"call": "{fn}(1.5)", "expected": 1500, "why": "1.5 seconds is 1500 milliseconds"},
+                  {"call": "{fn}(0.0)", "expected": 0, "why": "zero stays zero"}]
+
+
+def small_slice(slice_id: str = "small") -> dict:
+    return {"id": slice_id, "state": "PLANNED", "capability_level": 1, "objective": "Add one pure helper.",
+            "acceptance": ["the helper matches the examples"], "acceptance_examples": SMALL_EXAMPLES,
+            "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"]}
+
+
+def capability(cap_id: str, slice_row: dict, *, depends_on: tuple[str, ...] = ()) -> dict:
+    return {"id": cap_id, "capability": f"capability {cap_id}", "state": "PLANNED", "depends_on": list(depends_on),
+            "completion_evidence": ["docs/ROADMAP.md"], "slices": [slice_row]}
+
+
+def lookahead_report(tmp_path: Path, caps: list[dict]) -> dict:
+    repository = PORTFOLIO[0]
+    payload = {"schema_version": 1, "repository": repository, "capabilities": caps, "roadmap": [c["id"] for c in caps]}
+    clone, head = product(tmp_path, repository, payload)
+    return run_refill(tmp_path, repository, clone, head)
+
+
+def test_a_head_of_line_slice_for_the_stronger_builder_does_not_starve_a_local_sized_slice_behind_it(tmp_path: Path) -> None:
+    report = lookahead_report(tmp_path, [capability("cap-big", BIG), capability("cap-small", small_slice())])
+
+    assert [r["slice"] for r in report["capable_requests"]] == ["big"]
+    assert [r["slice"] for r in report["local_requests"]] == ["small"]
+    assert report["local_lookahead"] == [r["id"] for r in report["local_requests"]]
+    assert report["routed"][refill.LOCAL] == report["local_lookahead"]
+    ledger = refill.load_store(tmp_path / "lane")["ledger"]
+    assert [e["kind"] for e in ledger if e["kind"] == "LOCAL_LOOKAHEAD"] == ["LOCAL_LOOKAHEAD"]
+
+
+def test_no_lookahead_when_the_head_of_the_line_is_already_local(tmp_path: Path) -> None:
+    report = lookahead_report(tmp_path, [capability("cap-first", small_slice("first")), capability("cap-second", small_slice("second"))])
+
+    assert [r["slice"] for r in report["local_requests"]] == ["first"] and report["local_lookahead"] == []
+
+
+def test_the_lookahead_steps_past_several_stronger_builder_slices_but_only_a_few(tmp_path: Path) -> None:
+    caps = [capability(f"cap-big-{n}", {**BIG, "id": f"big-{n}"}) for n in range(3)] + [capability("cap-small", small_slice())]
+    assert [r["slice"] for r in lookahead_report(tmp_path / "near", caps)["local_requests"]] == ["small"]
+
+    far = [capability(f"cap-big-{n}", {**BIG, "id": f"big-{n}"}) for n in range(refill.LOCAL_LOOKAHEAD_CAPABILITIES + 1)]
+    far.append(capability("cap-small", small_slice()))
+    assert lookahead_report(tmp_path / "far", far)["local_requests"] == []  # out of reach, not unbounded scanning
+
+
+def test_the_lookahead_never_offers_a_capability_that_depends_on_an_unfinished_one(tmp_path: Path) -> None:
+    caps = [capability("cap-big", BIG), capability("cap-small", small_slice(), depends_on=("cap-big",))]
+
+    report = lookahead_report(tmp_path, caps)
+
+    assert [r["slice"] for r in report["capable_requests"]] == ["big"]
+    assert report["local_requests"] == [] and report["local_lookahead"] == []
+
+
+def test_a_local_sized_slice_behind_a_stronger_one_still_needs_its_independent_examples_to_route_local(tmp_path: Path) -> None:
+    no_examples = {**small_slice(), "capability_level": 3}  # level 3 is above the local lane, so it is not looked-ahead into
+    report = lookahead_report(tmp_path, [capability("cap-big", BIG), capability("cap-also-big", no_examples)])
+
+    assert report["local_requests"] == [] and report["local_lookahead"] == []
+
+
+def test_a_lookahead_failure_leaves_the_head_of_line_behaviour_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args, **kwargs):
+        raise RuntimeError("compiler exploded")
+
+    monkeypatch.setattr(refill, "local_lookahead", boom)
+    report = lookahead_report(tmp_path, [capability("cap-big", BIG), capability("cap-small", small_slice())])
+
+    assert [r["slice"] for r in report["capable_requests"]] == ["big"] and report["local_requests"] == []
+    assert report["local_lookahead"] == []
+
+
+def _lookahead_payload(caps: list[dict]) -> dict:
+    return {"schema_version": 1, "repository": PORTFOLIO[0], "capabilities": caps, "roadmap": [c["id"] for c in caps]}
+
+
+def _route_by_level(request: dict) -> dict:
+    builder = refill.LOCAL if request["capability_level"] == 1 else refill.CAPABLE
+    request["route"] = {"builder": builder, "reason": "test"}
+    return request["route"]
+
+
+def test_a_head_capability_already_open_in_the_capable_lane_is_looked_past(tmp_path: Path) -> None:
+    """Review (Codex P2): derive() returns nothing for a capability with an open capable request and lists it under skipped."""
+    repository = PORTFOLIO[0]
+    caps = [capability("cap-big", BIG), capability("cap-small", small_slice())]
+    open_head = frozenset({refill.item_id(repository, "cap-big", "big")})
+
+    found = refill.local_lookahead(repository, HEAD, _lookahead_payload(caps), SOURCE, items=[], state={},
+                                   route_request=_route_by_level, skip=set(), external_pending=open_head)
+
+    assert [r["slice"] for r in found] == ["small"]
+
+
+def test_a_pending_capability_in_the_middle_does_not_stop_the_search(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    caps = [capability("cap-big", BIG), capability("cap-mid", {**BIG, "id": "mid"}), capability("cap-small", small_slice())]
+    open_mid = frozenset({refill.item_id(repository, "cap-mid", "mid")})
+
+    found = refill.local_lookahead(repository, HEAD, _lookahead_payload(caps), SOURCE, items=[], state={},
+                                   route_request=_route_by_level, skip={"cap-big"}, external_pending=open_mid)
+
+    assert [r["slice"] for r in found] == ["small"]
+
+
+def test_the_refill_looks_past_a_head_of_line_request_that_is_already_pending_with_the_capable_builder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repository = PORTFOLIO[0]
+    head_id = refill.item_id(repository, "cap-big", "big")
+    monkeypatch.setattr(refill.capable_builder, "open_request_ids", lambda lane_root: frozenset({head_id}))
+
+    report = lookahead_report(tmp_path, [capability("cap-big", BIG), capability("cap-small", small_slice())])
+
+    assert report["capable_requests"] == [] and [r["slice"] for r in report["local_requests"]] == ["small"]
+    assert report["local_lookahead"] == [r["id"] for r in report["local_requests"]]
