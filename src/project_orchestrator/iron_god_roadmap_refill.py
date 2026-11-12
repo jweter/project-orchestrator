@@ -349,6 +349,41 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
     return result
 
 
+LOCAL_LOOKAHEAD_CAPABILITIES = 4  # how many roadmap capabilities the local lane may look down past a slice it cannot build
+
+
+def local_lookahead(repository: str, head: str, payload: dict[str, Any], source: str, *, items: list[dict[str, Any]],
+                    state: dict[str, Any], route_request: Callable[[dict[str, Any]], dict[str, Any]], skip: set[str],
+                    external_pending: frozenset[str] = frozenset(), external_done: frozenset[str] = frozenset()
+                    ) -> list[dict[str, Any]]:
+    """Slices further down the roadmap that the LOCAL builder may take while the head of the line waits for a stronger one.
+
+    The compiler yields work for one capability at a time, in roadmap order. When that slice needs the capable builder, the
+    repository would offer the free local builder nothing, however many small slices sit behind it. This looks past it: each
+    capability already offered is set aside, the compiler is asked again, and only the requests that route LOCAL are kept (a
+    request that routes elsewhere is set aside too and the search goes on, up to ``LOCAL_LOOKAHEAD_CAPABILITIES``).
+    Nothing is reordered, no gate is relaxed, a capability that depends on an unfinished one is still not offered, and the
+    head slice keeps its place for the stronger builder.
+    """
+    skipped = set(skip)
+    found: list[dict[str, Any]] = []
+    for _ in range(LOCAL_LOOKAHEAD_CAPABILITIES):
+        # The graph contract requires the roadmap to list every unfinished capability, so none is dropped: the ones already
+        # offered are moved behind the rest, which makes the compiler pick the next one in order.
+        order = list(payload.get("roadmap", []))
+        roadmap = [c for c in order if c not in skipped] + [c for c in order if c in skipped]
+        derived = derive(repository, head, {**payload, "roadmap": roadmap}, source, items=items, state=state,
+                         external_pending=external_pending, external_done=external_done)
+        fresh = [request for request in derived["requests"] if str(request.get("capability")) not in skipped]
+        if not fresh:
+            break
+        for request in fresh:
+            skipped.add(str(request["capability"]))
+            if route_request(request).get("builder") == LOCAL:
+                found.append(request)
+    return found
+
+
 def route(request: dict[str, Any], *, profile: dict[str, Any] | None, max_level: int,
           unsupported: str | None = None, expected_model: str = DEFAULT_MODEL) -> dict[str, Any]:
     """Which builder may take a request, from declared level + the measured profile + the lane's buildable levels.
@@ -682,12 +717,36 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         repo_problem = unsupported(clone, head) if unsupported else None
     except Exception as exc:  # an unreadable tree is not evidence the repository can be built
         repo_problem = f"REPOSITORY_UNREADABLE: {type(exc).__name__}"
-    for request in derived["requests"]:
+    def route_request(request: dict[str, Any]) -> dict[str, Any]:
         request["development_rules"] = rules
         request["graph_path"] = source  # the declared graph: the one file any capable session may also edit to record delivery
         request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem,
                                  expected_model=expected_model)
+        return request["route"]
+
+    for request in derived["requests"]:
+        route_request(request)
         report["routed"][request["route"]["builder"]].append(request["id"])
+    report["local_lookahead"] = []
+    if payload is not None and not repo_problem and not any(r["route"]["builder"] == LOCAL for r in derived["requests"]):
+        # The head of the line needs a stronger builder (above Level 2, or its budget is spent): the free local builder
+        # would be offered nothing from this repository however many small slices sit behind it. Look past it.
+        try:
+            from . import iron_god_task_decomposer as decomposer_lookahead
+
+            extra = local_lookahead(
+                repository, head, payload, source, items=items, state=state, route_request=route_request,
+                skip={str(r["capability"]) for r in derived["requests"] if r.get("capability")},
+                external_pending=frozenset(capable_builder.open_request_ids(lane_root))
+                | decomposer_lookahead.active_parent_ids(lane_root),
+                external_done=frozenset(capable_builder.merged_request_ids(lane_root))
+                | decomposer_lookahead.done_parent_ids(lane_root))
+        except Exception:  # the lookahead is an optimisation: failing it leaves the head-of-line behaviour exactly as it was
+            extra = []
+        for request in extra:
+            derived["requests"].append(request)
+            report["routed"][LOCAL].append(request["id"])
+        report["local_lookahead"] = [request["id"] for request in extra]
     for request in derived["requests"]:
         # Open pull requests own files; a capable slice may touch anything its allowed paths cover.
         # The graph is part of the effective scope: a capable session may edit it to record an already-delivered slice.
@@ -711,6 +770,10 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         for ident in report["requests"]:
             if not any(e["kind"] == "GENERATED" and e["id"] == ident and e["detail"].get("head") == head for e in recent):
                 _log(store, "GENERATED", repository, ident, {"head": head})
+        for ident in report.get("local_lookahead", []):
+            if not any(e["kind"] == "LOCAL_LOOKAHEAD" and e["id"] == ident and e["detail"].get("head") == head for e in recent):
+                _log(store, "LOCAL_LOOKAHEAD", repository, ident,
+                     {"head": head, "reason": "the head of the line needs a stronger builder; this slice is offered to the local builder"})
         for builder in (CAPABLE, NONE):
             for ident in report["routed"][builder]:
                 reason = next(r["route"]["reason"] for r in derived["requests"] if r["id"] == ident)
