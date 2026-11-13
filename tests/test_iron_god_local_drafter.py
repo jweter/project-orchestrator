@@ -834,3 +834,36 @@ def test_standalone_evaluation_uses_the_app_dir_import_root(tmp_path: Path) -> N
     assert WORKER.actual_result(repo, plan, "demo(1)") == "{'x': 1}"
     ordinary = {"module_path": "backend/services/demo.py", "function_name": "demo", "import_path": "backend.services.demo"}
     assert WORKER.actual_result(repo, ordinary, "demo(1)") == "{'x': 1}"  # the default form still resolves
+
+
+# --- 2026-11-13: the builder must see the roadmap's rule, not its first 160 characters ------------------------------
+
+ARRANGEMENT_OBJECTIVE = (
+    "Issue #693 slice 5 lists arrangement presence and Bass/Lead/Rhythm symmetry among the differential metrics the comparator "
+    "does not yet have (docs/private-rocksmith-library-regression-corpus.md, Differential metrics). Add one pure helper, in a "
+    "new module of its own, that takes the arrangement names found in a package and returns a dict with the boolean keys bass, "
+    "lead and rhythm and a boolean key symmetric that is true only when all three are present.")
+
+
+def test_the_roadmap_rule_reaches_the_builder_even_when_background_comes_first() -> None:
+    """The real failed slice: its rule sat after 160 characters of background and was cut off."""
+    assert "true only when all three are present" not in ARRANGEMENT_OBJECTIVE[:160]
+
+    objective = drafter.build_objective("Report which arrangements are present and whether they are symmetric.",
+                                        ARRANGEMENT_OBJECTIVE)
+
+    assert "symmetric that is true only when all three are present" in objective
+    assert len(objective) <= drafter.BUILD_OBJECTIVE_CHARS
+
+
+def test_the_roadmap_goal_wins_the_room_and_the_planner_restatement_is_kept_only_whole() -> None:
+    long_goal = "Return x. " + "r" * 700
+    own = "The planner's own restatement of the goal."
+
+    crowded = drafter.build_objective(own, long_goal)
+    roomy = drafter.build_objective(own, "Return the newest entries.")
+
+    assert crowded.startswith(drafter.ROADMAP_GOAL_PREFIX) and own not in crowded  # never half a sentence of the planner's
+    assert len(crowded) == drafter.BUILD_OBJECTIVE_CHARS
+    assert roomy == f"{own} {drafter.ROADMAP_GOAL_PREFIX}Return the newest entries."
+    assert drafter.build_objective("", "Return x.") == f"{drafter.ROADMAP_GOAL_PREFIX}Return x."
