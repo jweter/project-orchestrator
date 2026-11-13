@@ -53,7 +53,19 @@ MAX_INTERRUPTIONS = 20  # a bound, so a request that is always interrupted canno
 DRAFT_TIMEOUT_S = 30 * 60
 SUPPORTED_LEVEL = 1
 MIN_ROADMAP_EXAMPLES = 2
-ROADMAP_OBJECTIVE_CHARS = 160  # the worker re-validates a build objective at 600 characters
+BUILD_OBJECTIVE_CHARS = 600  # the worker re-validates a build objective at this length
+ROADMAP_GOAL_PREFIX = "Roadmap slice goal: "
+# The roadmap's objective is the authority, so it is given the room. Measured 2026-11-13: at 160 characters the rule of
+# corpus-metric-arrangement-presence ("symmetric is true only when all three are present") was cut off, the builder guessed,
+# and 3 of 5 roadmap examples failed. scripts/iron_god_validate_local_slice.py refuses a Level 1 objective longer than this.
+ROADMAP_OBJECTIVE_CHARS = BUILD_OBJECTIVE_CHARS - len(ROADMAP_GOAL_PREFIX)
+
+
+def build_objective(own: str, roadmap_objective: Any) -> str:
+    """The objective the builder sees: the roadmap's own words in full, plus the planner's restatement only if it fits whole."""
+    goal = ROADMAP_GOAL_PREFIX + " ".join(str(roadmap_objective).split())[:ROADMAP_OBJECTIVE_CHARS]
+    own = " ".join(str(own or "").split())
+    return f"{own} {goal}" if own and len(own) + 1 + len(goal) <= BUILD_OBJECTIVE_CHARS else goal
 
 
 class ContradictsRoadmap(ValueError):
@@ -210,7 +222,9 @@ def direct_to_draft(request: dict[str, Any], validated: dict[str, Any]) -> dict[
     """A backlog draft (Level 2 directed edit) from the owner's declared edit that the worker's validator accepted."""
     slice_text = f"roadmap slice {request['slice']} of capability {request['capability']}"
     direction = validated["direction"]
-    objective = " ".join(str(request["objective"]).split())[:ROADMAP_OBJECTIVE_CHARS]
+    # the owner's declared direction comes first and whole; the roadmap goal takes what is left of the worker's bound
+    room = max(BUILD_OBJECTIVE_CHARS - len(direction) - 1 - len(ROADMAP_GOAL_PREFIX), 0)
+    objective = " ".join(str(request["objective"]).split())[:room]
     return {
         "id": request["id"], "repository": request["repository"],
         "title": f"{', '.join(validated['targets'])} for {request['slice']}"[:120],
@@ -279,9 +293,7 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
                 else [*validated["acceptance_criteria"]])
     criteria.extend(f"{e['call']} returns {e['expected']!r} ({criteria_origin})"
                     for e in injected)
-    roadmap_part = " ".join(str(request["objective"]).split())[:ROADMAP_OBJECTIVE_CHARS]
-    objective = (f"Roadmap slice goal: {roadmap_part}" if misread
-                 else f"{validated['objective']} Roadmap slice goal: {roadmap_part}")[:600]
+    objective = build_objective("" if misread else validated["objective"], request["objective"])
     slice_text = f"roadmap slice {request['slice']} of capability {request['capability']}"
     return {
         "id": request["id"], "repository": request["repository"],

@@ -54,7 +54,12 @@ Rules, each one learned from a failure:
    tolerance" means at the boundary). The 7B guesses anything left open.
 4. **New module only, in an existing package.** `allowed_paths` must hold a code pattern such as `pkg/**`, not only tests,
    docs or json. Do not ask it to wire the helper anywhere; wiring is a separate slice.
-5. **Each text field at most 1200 characters.**
+5. **Each text field at most 1200 characters, and a Level 1 objective at most 580.** The builder is shown the objective's
+   first 580 characters and nothing after them, so the validator refuses a longer one. **State the rule in the first
+   sentence** ("Return ... ; X is true only when ...") and put background (issue numbers, documents, history) last or in an
+   example's `why`. Measured 2026-11-13: an objective that opened with background lost its rule at the old 160-character cut,
+   the 7B guessed what "symmetric" meant, and 3 of 5 correct examples failed. Correct examples do not rescue a missing rule:
+   the 7B does not reliably infer a rule from examples or from failing tests.
 6. **It must serve a stated roadmap outcome.** Say which one in the objective. Small slices that exist only to keep the lane
    busy are not allowed: the engine's own rule is that repeated adjacent activity is evidence to redesign, not to add more.
 7. One slice per capability runs at a time (the engine's contract), so chain related slices with `depends_on` and keep each
