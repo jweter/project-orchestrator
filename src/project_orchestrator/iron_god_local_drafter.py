@@ -310,7 +310,7 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
         "build": {"module_path": validated["module_path"], "function_name": name,
                   "signature": validated["signature"], "objective": objective, "examples": examples,
                   # what this slice's earlier attempts actually hit; the worker shows it to the builder
-                  "avoid": refill.failure_lessons(request)[:AVOID_LESSONS],
+                  "avoid": refill.failure_lessons(request)[-AVOID_LESSONS:],  # oldest first, so the NEWEST are the tail
                   "note": ("the planner's own objective and examples contradicted the roadmap and were discarded; "
                            + str(validated.get("note", ""))).strip() if misread else validated.get("note", "")},
     }
