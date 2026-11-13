@@ -66,6 +66,11 @@ def check_slice(graph: dict[str, Any], slice_id: str, repository: str, *, profil
         problems.append("allowed_paths is empty: the local builder needs to know where the code may go")
 
     if level == 1:
+        objective_text = " ".join(str(spec.get("objective") or "").split())
+        if len(objective_text) > drafter.ROADMAP_OBJECTIVE_CHARS:
+            problems.append(f"the objective is {len(objective_text)} characters but the local builder is shown only the first "
+                            f"{drafter.ROADMAP_OBJECTIVE_CHARS}: state the rule first and move background to the acceptance text "
+                            "or the examples' 'why' (a rule the builder never sees is guessed)")
         raw = spec.get("acceptance_examples")
         if not isinstance(raw, list) or not raw:
             problems.append("a Level 1 slice needs acceptance_examples authored by a stronger agent, not left for the 7B to invent "

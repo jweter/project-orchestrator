@@ -150,3 +150,16 @@ def test_an_invalid_graph_is_a_problem_not_a_note() -> None:
     graph = graph_with()
     graph["roadmap"] = []
     assert any("CAPABILITY_GRAPH_INVALID" in p for p in check(graph)["problems"])
+
+
+def test_a_level_1_objective_longer_than_the_builder_is_shown_is_rejected() -> None:
+    """2026-11-13: a rule the local builder never sees is guessed (the arrangement-presence failure)."""
+    from project_orchestrator import iron_god_local_drafter as drafter
+
+    fits = "Return x. " + "b" * (drafter.ROADMAP_OBJECTIVE_CHARS - 10)
+    cut = fits + " and the rule that matters comes last."
+
+    assert not any("shown only the first" in p for p in check(
+        graph_with({"objective": fits}))["problems"])
+    assert any("shown only the first" in p and "state the rule first" in p for p in check(
+        graph_with({"objective": cut}))["problems"])

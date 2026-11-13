@@ -165,6 +165,11 @@ def _structured_expected(expected: Any) -> bool:
     return isinstance(expected, (dict, list, tuple, set))
 
 
+def _no_result(expected: Any) -> bool:
+    """None, or the text 'None' (the planner often writes the literal as a string)."""
+    return expected is None or (isinstance(expected, str) and expected.strip() == "None")
+
+
 def _io_problems(key: Any, stub: Any, usable: list[dict[str, Any]]) -> list[str]:
     """Reject a 'pure function' that reads a file: literal examples cannot specify it.
 
@@ -192,6 +197,11 @@ def _io_problems(key: Any, stub: Any, usable: list[dict[str, Any]]) -> list[str]
         ):
             return [f"{key}: {call} names a file that does not exist at the base; a pure function with literal "
                     "examples cannot be specified against files - pass the data itself"]
+    if usable and all(_no_result(example["expected"]) for example in usable):
+        # Measured 2026-11-13: the 7B planned copy_vendored_fixture(source_path, target_path) with every example expecting
+        # None. A function whose only effect is outside its return value cannot be specified by literal examples.
+        return [f"{key}: every example of {stub.name} expects None, so the function is specified only by a side effect "
+                "(copying, writing, printing); a pure function with literal examples must return the value it computes"]
     return []
 
 

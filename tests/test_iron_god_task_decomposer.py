@@ -1312,3 +1312,18 @@ def test_the_real_failed_voicestudio_plan_is_still_rejected_after_narrowing() ->
                   [("{fn}('path/to/guide_vocal.wav')", expected), ("{fn}('path/to/another_guide_vocal.wav')", expected),
                    ("{fn}('path/to/third.wav')", expected)])
     assert any("names a file that does not exist" in p for p in td._example_problems(sub))
+
+
+def test_a_function_whose_every_example_expects_none_is_an_effect_not_a_pure_function() -> None:
+    """Measured 2026-11-13 (knowledge-engine-ai): copy_vendored_fixture(source_path, target_path) -> None; its tests failed."""
+    for nothing in (None, "None"):
+        sub = _io_sub("def copy_vendored_fixture(source_path: str, target_path: str) -> None:",
+                      [("{fn}('core/tests/fixtures/', 'ai/tests/fixtures/')", nothing), ("{fn}('a/', 'b/')", nothing),
+                       ("{fn}('c/', 'd/')", nothing)])
+        assert any("specified only by a side effect" in p for p in td._example_problems(sub)), nothing
+
+
+def test_a_function_that_returns_none_for_only_some_examples_is_still_a_pure_function() -> None:
+    sub = _io_sub("def first_even(values: list) -> int | None:",
+                  [("{fn}([1, 2, 3])", 2), ("{fn}([1, 3])", None), ("{fn}([])", None)])
+    assert not any("side effect" in p for p in td._example_problems(sub))
