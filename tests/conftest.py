@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -32,6 +33,9 @@ def pytest_sessionstart(session) -> None:
         )
 
 
+ROUTINE_TOKEN_PREFIX = "CLAUDE_ROUTINE_"
+
+
 @pytest.fixture(autouse=True)
 def _isolate_live_owner_state(tmp_path_factory, monkeypatch):
     """Never let a test resolve the machine's live owner-control state.
@@ -45,3 +49,9 @@ def _isolate_live_owner_state(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path_factory.mktemp("localappdata")))
     # The single model slot and the memory-pressure stamp beside it default to the home folder: never the live ones.
     monkeypatch.setenv("EXPONENTIAL_OLLAMA_LOCK_DIR", str(tmp_path_factory.mktemp("ollama-locks") / "ollama-aider"))
+    # A developer machine holds the real routine tokens. A test that reaches the capable-builder dispatch with them set
+    # fires a real, paid cloud run carrying fixture data (measured 2026-11-12: a release preflight opened
+    # rocksmith-cdlc-generator#764 from the 'cap-extra/extra-helper' fixture). No test inherits them; a test that needs
+    # a token sets its own fake one.
+    for name in [key for key in os.environ if key.startswith(ROUTINE_TOKEN_PREFIX)]:
+        monkeypatch.delenv(name)
