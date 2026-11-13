@@ -280,6 +280,34 @@
       "regression_protection": "Practice: for a locally built slice, name the algorithm when the choice matters and check the examples with an independent implementation. The slice validator checks example shape, not example correctness.",
       "residual_risk": "The independent check was run by hand and is not part of the validator; a wrong example would still pass the validator.",
       "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "1a11fb29d977b886334a",
+      "project": "portfolio",
+      "repository": "jweter/project-orchestrator",
+      "source_type": "governance",
+      "source_ref": "project-orchestrator#694; rocksmith-cdlc-generator#764 (closed unmerged)",
+      "symptom": "During the release preflight for 61d46f0, with the owner holding control and the engine stopped, an unrequested draft pull request appeared on rocksmith-cdlc-generator from a cloud run whose payload named a test fixture (cap-extra/extra-helper, add_two).",
+      "root_cause": "A product-lane test publishes a fixture graph with no measured local profile, so its slice routes CAPABLE, and the lane called the capable dispatch with the real process environment and the real network opener. The owner's laptop holds the real routine token, so the test fired a real, paid routine. The test lane is temporary, so the run was outside the six-per-day ledger. CI has no tokens and was never affected.",
+      "fix": "tests/conftest.py removes every CLAUDE_ROUTINE_ variable for every test, so the dispatch fails closed as CAPABLE_BUILDER_UNCONFIGURED; tests that need a token set a fake one. The unrequested pull request was closed unmerged at the owner's decision so the local builder could attempt the slice.",
+      "verification": "Evidence state CODE_MERGED (orchestrator 694). Mechanism read from the cloud run's own description, the fixture in tests/test_iron_god_product_lane.py and the lane's dispatch call. Two regression tests fail without the fixture change when a token is present.",
+      "regression_protection": "tests/test_no_live_routine_tokens.py.",
+      "residual_risk": "Earlier preflights on the laptop were not audited for the same spend. The default opener is still the real network call: the credential is removed, the network is not blocked. Practice: a test suite that runs on a machine holding live credentials must strip them centrally, not rely on each test.",
+      "evidence_state": "VERIFIED"
+    },
+    {
+      "lesson_id": "6abf9799636e2e9a3fe8",
+      "project": "rocksmith",
+      "repository": "jweter/rocksmith-cdlc-generator",
+      "source_type": "product_reality",
+      "source_ref": "project-orchestrator#695; rocksmith-cdlc-generator#765; engine handback PRODUCT-ROCKSMITH-CDLC-GENERATOR-20261113T002025Z",
+      "symptom": "The first local build reached through the lookahead (corpus-metric-arrangement-presence, release 61d46f0) failed 3 of 5 roadmap examples: the symmetric flag was wrong, and one repair turn did not fix it. Nothing merged.",
+      "root_cause": "The local drafter passed only the first 160 characters of the slice objective to the builder. The slice author (Claude) had opened the objective with background, so the rule (symmetric is true only when all three are present) was cut off and the 7B guessed. The slice validator passed and the examples had been checked by an independent script, but neither check looked at what the builder would actually be shown. The 7B had five correct examples and still wrote the wrong rule.",
+      "fix": "Planning: the two affected Rocksmith objectives now state the rule first (rocksmith 765). Engine: the roadmap objective gets the worker's whole 600-character bound, the planner's restatement is kept only when it fits whole, and the validator refuses a Level 1 objective longer than the builder is shown (orchestrator 695). The same change rejects a plan whose every example expects None, measured the same night on knowledge-engine-ai (copy_vendored_fixture).",
+      "verification": "Evidence state OBSERVED for the failure (engine request, draft result and handback read directly). The fixes are in review, not merged or deployed when this lesson was written. It is NOT shown that the 7B builds the slice correctly once it sees the rule.",
+      "regression_protection": "tests/test_iron_god_local_drafter.py (the real failed objective reaches the builder with its rule), tests/test_iron_god_validate_local_slice.py (length limit), tests/test_iron_god_task_decomposer.py (effect-only plan).",
+      "residual_risk": "Practice for slice authors: rule in the first sentence, background last; before committing a local slice, look at the text the builder will receive, not only at the validator result. Correct examples do not rescue a missing rule. A rule in words is necessary; whether it is sufficient for the 7B is unmeasured.",
+      "evidence_state": "VERIFIED"
     }
   ]
 }
