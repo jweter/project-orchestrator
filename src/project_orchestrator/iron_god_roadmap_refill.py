@@ -167,6 +167,59 @@ DEFAULT_FORBIDDEN = (".github/**", "private/**", ".env", "**/*.pem", "**/*.key")
 MAX_ITEMS_PER_SLICE = 4  # the original item plus three re-authorings; after that the owner decides
 
 
+FAILURE_EVIDENCE_CHARS = 240
+FAILURE_EVIDENCE_LINES = 3
+# an error NAMED WITH ITS MESSAGE ("TypeError: unhashable type"), not a bare name or a traceback source line
+_ERROR_LINE = re.compile(r"(?<![A-Za-z_])[A-Za-z_]*(?:Error|Exception): [^\n]{1,200}")
+
+
+def distill_failure(handback: dict[str, Any]) -> str:
+    """The distinct error lines of a failed build, bounded: what the next attempt must not repeat.
+
+    Measured 2026-11-13 (rocksmith section-agreement): four attempts failed, the last two on the same
+    ``TypeError: unhashable type: 'list'``, because a re-authored request carried only ``FAIL: SLICE_TESTS_FAILED``.
+    The engine already holds the evidence in its own handback; this reads it, deterministically, with no model.
+    """
+    parts = [str(handback.get("first_test_failure") or "")]
+    parts += [str(row.get("output_tail") or "") for row in handback.get("verification") or []
+              if isinstance(row, dict) and not row.get("ok")]
+    seen: list[str] = []
+    for match in _ERROR_LINE.finditer("\n".join(parts)):
+        line = " ".join(match.group(0).split())
+        stem = line.removesuffix("...")  # pytest shortens the same error in its summary line
+        if not any(known.startswith(stem) for known in seen):
+            seen.append(line)
+    return "; ".join(seen[:FAILURE_EVIDENCE_LINES])[:FAILURE_EVIDENCE_CHARS]
+
+
+def attach_failure_evidence(lane_root: Path, state: dict[str, Any], requests: list[dict[str, Any]]) -> None:
+    """Give every re-authored request the error its earlier attempts actually hit (their newest readable handback)."""
+    for request in requests:
+        for row in request.get("prior_failures") or []:
+            if not isinstance(row, dict) or row.get("evidence"):
+                continue
+            packets = state.get("items", {}).get(str(row.get("id")), {}).get("packets") or []
+            for packet in reversed([p for p in packets if isinstance(p, str)]):
+                try:
+                    handback = json.loads((Path(lane_root) / "handbacks" / f"{packet}.json").read_text(encoding="utf-8-sig"))
+                except (OSError, ValueError):
+                    continue
+                evidence = distill_failure(handback) if isinstance(handback, dict) else ""
+                if evidence:
+                    row["evidence"] = evidence
+                    break
+
+
+def failure_lessons(request: dict[str, Any]) -> list[str]:
+    """The distinct failure evidence a re-authored request carries, oldest first."""
+    lessons: list[str] = []
+    for row in request.get("prior_failures") or []:
+        text = str(row.get("evidence") or "") if isinstance(row, dict) else ""
+        if text and text not in lessons:
+            lessons.append(text)
+    return lessons
+
+
 def _slice_status(base_id: str, items: list[dict[str, Any]], state: dict[str, Any],
                   delivered: frozenset[str] = frozenset()) -> tuple[str, str]:
     """(NEW|PENDING|DONE|FAILED|EXHAUSTED, id), from the lane's own record and never from the graph.
@@ -776,6 +829,10 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
     report["local_requests"] = [request for request in derived["requests"] if request["route"]["builder"] == LOCAL]
     report["direction_required"], report["skipped"] = derived["direction_required"], derived["skipped"]
     report["requests"] = [request["id"] for request in derived["requests"]]
+    try:
+        attach_failure_evidence(lane_root, state, derived["requests"])
+    except Exception:  # evidence helps the next attempt; never a reason to stop planning
+        pass
     requests_dir = Path(lane_root) / REQUESTS
     requests_dir.mkdir(parents=True, exist_ok=True)
     for request in derived["requests"]:

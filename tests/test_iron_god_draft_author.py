@@ -75,3 +75,22 @@ def test_planning_roots_follow_globs_and_single_named_files() -> None:
     assert author.planning_roots(["backend/services/singing_project.py", "tests/backend/services/test_x.py"]) == [
         "backend/services/"]  # a single named file plans into its directory, not a bogus 'file.py/' root
     assert author.planning_roots(["tests/**"]) == [] and author.planning_roots(["top_level.py"]) == []
+
+
+def test_the_planner_is_told_what_went_wrong_and_the_rules_the_engine_learned() -> None:
+    """2026-11-13: a retry that only hears 'FAIL' repeats the failure (rocksmith section-agreement, four attempts)."""
+    text = author.guide_text({**REQUEST,
+                              "prior_failures": [{"id": "RM-x", "outcome": "FAIL: SLICE_TESTS_FAILED",
+                                                  "evidence": "TypeError: unhashable type: 'list'"},
+                                                 {"id": "RM-x-r1", "outcome": "FAIL: SLICE_TESTS_FAILED",
+                                                  "evidence": "TypeError: unhashable type: 'list'"}],
+                              "development_rules": [{"failure_class": "SLICE_TESTS_FAILED", "rule": "Re-check the requirement."}]})
+
+    assert "WHAT WENT WRONG" in text and text.count("- TypeError: unhashable type: 'list'") == 1  # each lesson once
+    assert "your 'note' must say how" in text
+    assert "learned from its own earlier failed attempts" in text and "- Re-check the requirement." in text
+
+
+def test_a_first_attempt_gets_no_failure_section() -> None:
+    text = author.guide_text(REQUEST)
+    assert "WHAT WENT WRONG" not in text and "learned from its own" not in text
