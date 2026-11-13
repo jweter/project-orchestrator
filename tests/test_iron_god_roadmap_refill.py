@@ -1207,3 +1207,52 @@ def test_the_refill_looks_past_a_head_of_line_request_that_is_already_pending_wi
 
     assert report["capable_requests"] == [] and [r["slice"] for r in report["local_requests"]] == ["small"]
     assert report["local_lookahead"] == [r["id"] for r in report["local_requests"]]
+
+
+# ---- a LOCAL-routed head the local lane cannot start must not switch the lookahead off ------------------------------------
+
+DIRECTED_TEST = "from pkg.core import one\n\n\ndef test_one_is_two():\n    assert one() == 2\n"
+
+
+def level_2_slice(slice_id: str, *, directed: bool) -> dict:
+    row = {"id": slice_id, "state": "PLANNED", "capability_level": 2, "objective": "Change one() so it returns two.",
+           "acceptance": ["one() returns 2"], "allowed_paths": ["pkg/**", "tests/**"], "forbidden_paths": ["pkg/secret/**"]}
+    if directed:
+        row["directed_edit"] = {"module_path": "pkg/core.py", "test_path": "tests/test_core_one.py",
+                                "test_source": DIRECTED_TEST, "targets": ["one"]}
+    return row
+
+
+def test_a_level_2_head_with_no_directed_edit_routes_local_but_cannot_start_and_does_not_block_the_lookahead(tmp_path: Path) -> None:
+    """Observed 2026-11-12 in knowledge-engine-ai: neither builder took the slice and the lookahead stayed off."""
+    report = lookahead_report(tmp_path, [capability("cap-l2", level_2_slice("l2", directed=False)),
+                                         capability("cap-small", small_slice())])
+
+    assert [r["slice"] for r in report["local_requests"]] == ["l2", "small"]  # the stuck head is still reported, never rewritten
+    assert report["local_lookahead"] == [r["id"] for r in report["local_requests"] if r["slice"] == "small"]
+
+
+def test_a_level_2_head_with_a_complete_directed_edit_is_local_work_and_no_lookahead_is_needed(tmp_path: Path) -> None:
+    report = lookahead_report(tmp_path, [capability("cap-l2", level_2_slice("l2", directed=True)),
+                                         capability("cap-small", small_slice())])
+
+    assert [r["slice"] for r in report["local_requests"]] == ["l2"] and report["local_lookahead"] == []
+
+
+def test_a_level_1_head_without_independent_examples_cannot_start_so_the_lookahead_runs(tmp_path: Path) -> None:
+    no_examples = {**small_slice("head"), "acceptance_examples": []}
+    report = lookahead_report(tmp_path, [capability("cap-head", no_examples), capability("cap-small", small_slice())])
+
+    assert [r["slice"] for r in report["local_requests"]] == ["head", "small"]  # the stuck head stays reported, untouched
+    assert report["local_lookahead"] == [r["id"] for r in report["local_requests"] if r["slice"] == "small"]
+
+
+def test_the_lookahead_only_keeps_requests_the_local_lane_can_actually_start(tmp_path: Path) -> None:
+    """A stuck Level 2 slice found by the search is not offered either, or the lane would be handed a second dead end."""
+    caps = [capability("cap-big", BIG), capability("cap-stuck", level_2_slice("stuck", directed=False)),
+            capability("cap-small", small_slice())]
+
+    report = lookahead_report(tmp_path, caps)
+
+    assert [r["slice"] for r in report["local_requests"]] == ["small"]  # the stuck Level 2 slice behind the head is not offered
+    assert len(report["local_lookahead"]) == 1

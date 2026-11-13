@@ -16,6 +16,9 @@ NOW = 2_000_000.0
 OLD = NOW - 3 * 3600
 
 
+EXAMPLES_OK = [{"call": "{fn}(1)", "expected": 1, "why": "identity on one"}, {"call": "{fn}(2)", "expected": 2, "why": "identity on two"}]
+
+
 def request(rid="RM-a", *, level=3, builder="CAPABLE", reason="LEVEL_BEYOND_PRODUCT_LANE", slice_="big-slice", **over):
     # A Python repository: these tests are about decomposition states. Everward's src/** is native C++ and is routed to
     # the C++ lane instead (test_a_native_slice_without_a_cpp_spec_names_the_gap_instead_of_looking_stuck).
@@ -89,7 +92,7 @@ def test_a_decomposed_slice_is_progressing_and_counts_its_children() -> None:
 
 
 def test_a_local_slice_that_spent_its_attempts_is_named() -> None:
-    local = request("RM-l", level=1, builder="LOCAL", reason="WITHIN_MEASURED_LOCAL_CAPABILITY")
+    local = request("RM-l", level=1, builder="LOCAL", reason="WITHIN_MEASURED_LOCAL_CAPABILITY", acceptance_examples=EXAMPLES_OK)
     assert run(local)["stage"] == "LOCAL_BUILD" and run(local)["blocker"] is None
     spent = run(local, context=ctx(backlog={"RM-l": {"attempts": 3, "outcome": "FAIL: preflight"}}))
     assert spent["blocker"]["code"] == "LOCAL_BUILD_EXHAUSTED"
@@ -320,3 +323,27 @@ def test_a_request_at_the_current_head_is_kept_even_if_the_last_pass_stopped_der
     _record_checked_head(tmp_path, "jweter/knowledge-engine-core", "head-new")
 
     assert [row["id"] for row in pt.scan(tmp_path, now=NOW)["slices"]] == ["RM-same-head"]
+
+
+def test_a_local_slice_the_local_builder_cannot_start_is_named_not_shown_as_progressing() -> None:
+    """Observed 2026-11-12: a Level 2 slice with no directed edit routed LOCAL, was never drafted, and read as PROGRESSING for hours."""
+    level_2 = request("RM-l2", level=2, builder="LOCAL", reason="WITHIN_MEASURED_LOCAL_CAPABILITY")
+    row = run(level_2)
+    assert row["blocker"]["code"] == "LOCAL_NEEDS_DRAFT" and row["status"] == "WAITING" and row["evidence"]["missing"] == "directed_edit"
+    level_1 = request("RM-l1", level=1, builder="LOCAL", reason="WITHIN_MEASURED_LOCAL_CAPABILITY",
+                      acceptance_examples=EXAMPLES_OK[:1])
+    row = run(level_1)
+    assert row["blocker"]["code"] == "LOCAL_NEEDS_DRAFT" and row["evidence"]["missing"] == "acceptance_examples"
+
+
+def test_a_local_slice_with_its_independent_examples_is_progressing() -> None:
+    row = run(request("RM-ok", level=1, builder="LOCAL", reason="WITHIN_MEASURED_LOCAL_CAPABILITY", acceptance_examples=EXAMPLES_OK))
+    assert row["status"] == "PROGRESSING" and row["blocker"] is None
+
+
+def test_an_admitted_local_slice_is_progressing_even_without_declared_examples() -> None:
+    """A draft written by a stronger agent was admitted: the lane builds it, so it is not waiting for a draft."""
+    local = request("RM-adm", level=2, builder="LOCAL", reason="WITHIN_MEASURED_LOCAL_CAPABILITY")
+    admitted = ctx(events={"RM-adm": [{"kind": "ADMITTED", "at": "2026-11-12T01:00:00Z"}]})
+    row = run(local, context=admitted)
+    assert row["status"] == "PROGRESSING" and row["blocker"] is None

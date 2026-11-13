@@ -352,8 +352,22 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
 LOCAL_LOOKAHEAD_CAPABILITIES = 4  # how many roadmap capabilities the local lane may look down past a slice it cannot build
 
 
+def can_start_locally(request: dict[str, Any]) -> bool:
+    """True when the request is routed LOCAL **and** the local drafter can actually take it.
+
+    Routing says which builder is allowed; it does not say the local lane can start. A Level 2 slice with no declared directed
+    edit, or a Level 1 slice with fewer than two independently authored examples, routes LOCAL yet is never drafted, and
+    because it routes LOCAL the capable builder never receives it (observed 2026-11-12: knowledge-engine-ai's contract-fixture
+    slice, declared Level 2 with no directed edit, sat "in progress" for hours with both builders idle).
+    """
+    from . import iron_god_local_drafter as local_drafter  # local import: the drafter builds on this module
+
+    return (request.get("route") or {}).get("builder") == LOCAL and local_drafter.eligible(request)
+
+
 def local_lookahead(repository: str, head: str, payload: dict[str, Any], source: str, *, items: list[dict[str, Any]],
                     state: dict[str, Any], route_request: Callable[[dict[str, Any]], dict[str, Any]], skip: set[str],
+                    can_take: Callable[[dict[str, Any]], bool] = lambda _request: True,
                     external_pending: frozenset[str] = frozenset(), external_done: frozenset[str] = frozenset()
                     ) -> list[dict[str, Any]]:
     """Slices further down the roadmap that the LOCAL builder may take while the head of the line waits for a stronger one.
@@ -383,7 +397,7 @@ def local_lookahead(repository: str, head: str, payload: dict[str, Any], source:
             break
         for request in fresh:
             skipped.add(str(request["capability"]))
-            if route_request(request).get("builder") == LOCAL:
+            if route_request(request).get("builder") == LOCAL and can_take(request):
                 found.append(request)
     return found
 
@@ -732,7 +746,7 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         route_request(request)
         report["routed"][request["route"]["builder"]].append(request["id"])
     report["local_lookahead"] = []
-    if payload is not None and not repo_problem and not any(r["route"]["builder"] == LOCAL for r in derived["requests"]):
+    if payload is not None and not repo_problem and not any(can_start_locally(r) for r in derived["requests"]):
         # The head of the line needs a stronger builder (above Level 2, or its budget is spent): the free local builder
         # would be offered nothing from this repository however many small slices sit behind it. Look past it.
         try:
@@ -740,6 +754,7 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
 
             extra = local_lookahead(
                 repository, head, payload, source, items=items, state=state, route_request=route_request,
+                can_take=can_start_locally,
                 skip={str(r["capability"]) for r in derived["requests"] if r.get("capability")}
                 | {str(row["capability"]) for row in derived["skipped"] if row.get("capability")},
                 external_pending=frozenset(capable_builder.open_request_ids(lane_root))
