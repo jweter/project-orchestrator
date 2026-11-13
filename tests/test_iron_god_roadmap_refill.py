@@ -1256,3 +1256,42 @@ def test_the_lookahead_only_keeps_requests_the_local_lane_can_actually_start(tmp
 
     assert [r["slice"] for r in report["local_requests"]] == ["small"]  # the stuck Level 2 slice behind the head is not offered
     assert len(report["local_lookahead"]) == 1
+
+
+# --- 2026-11-13: the engine reads its own failed build and tells the next attempt what went wrong ----------------------
+
+SECTION_FAILURE = (
+    "tests/test_section_agreement.py:13: in section_agreement\n    generated = set(generated_sections)\n"
+    "E   TypeError: unhashable type: 'list'\n"
+    "FAILED tests/test_section_agreement.py::test_section_agreement_example_5 - TypeError: unhashable type: 'list'\n"
+    "6 failed, 1 passed in 0.51s")
+
+
+def test_the_error_of_a_failed_build_is_distilled_from_the_engine_own_handback() -> None:
+    evidence = refill.distill_failure({"first_test_failure": SECTION_FAILURE,
+                                       "verification": [{"ok": False, "output_tail": "E   TypeError: unhashable type: 'list'"},
+                                                        {"ok": True, "output_tail": "ValueError: not a failure"}]})
+
+    assert evidence == "TypeError: unhashable type: 'list'"  # one distinct line, the passing check ignored
+    assert refill.distill_failure({"first_test_failure": "3 failed"}) == ""  # nothing invented when no error is named
+    many = "\n".join(f"E{i}Error: {'x' * 300}" for i in range(9))
+    assert len(refill.distill_failure({"first_test_failure": many})) <= refill.FAILURE_EVIDENCE_CHARS
+
+
+def test_a_re_authored_request_carries_what_its_earlier_attempts_hit(tmp_path: Path) -> None:
+    """The real case: four section-agreement attempts, and the retry was told only 'FAIL: SLICE_TESTS_FAILED'."""
+    (tmp_path / "handbacks").mkdir()
+    (tmp_path / "handbacks" / "P-2.json").write_text(json.dumps({"first_test_failure": SECTION_FAILURE}), encoding="utf-8")
+    (tmp_path / "handbacks" / "P-9.json").write_text("{not json", encoding="utf-8")
+    state = {"items": {"RM-a": {"packets": ["P-1", "P-2", "P-9"]}, "RM-b": {"packets": []}}}
+    requests = [{"id": "RM-a-r1", "prior_failures": [{"id": "RM-a", "outcome": "FAIL: SLICE_TESTS_FAILED", "attempts": 2},
+                                                      {"id": "RM-b", "outcome": "FAIL"}]},
+                {"id": "RM-new", "prior_failures": []}]
+
+    refill.attach_failure_evidence(tmp_path, state, requests)
+
+    first, second = requests[0]["prior_failures"]
+    assert first["evidence"] == "TypeError: unhashable type: 'list'"  # newest readable handback; the unreadable one skipped
+    assert "evidence" not in second  # no packet, no evidence: never guessed
+    assert refill.failure_lessons(requests[0]) == ["TypeError: unhashable type: 'list'"]
+    assert refill.failure_lessons(requests[1]) == []

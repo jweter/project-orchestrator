@@ -54,6 +54,15 @@ def guide_text(request: dict[str, Any]) -> str:
         lines += [f"- {e['call']} -> {json.dumps(e['expected'])}" for e in given]
     if request.get("prior_failures"):
         lines.append("Earlier attempts failed; plan differently: " + json.dumps(request["prior_failures"])[:600])
+        evidence = [str(row.get("evidence")) for row in request["prior_failures"] if isinstance(row, dict) and row.get("evidence")]
+        if evidence:
+            lines.append("WHAT WENT WRONG in those attempts (from their own test output). Your plan must avoid each, and your "
+                         "'note' must say how:")
+            lines += [f"- {text[:240]}" for text in dict.fromkeys(evidence)]
+    rules = [str(row.get("rule")) for row in request.get("development_rules") or [] if isinstance(row, dict) and row.get("rule")]
+    if rules:
+        lines.append("Planning rules this engine learned from its own earlier failed attempts:")
+        lines += [f"- {text[:300]}" for text in rules[:4]]
     if request.get("planner_feedback"):
         lines.append("Previous draft was rejected for: " + str(request["planner_feedback"])[:600])
     return "\n".join(lines)

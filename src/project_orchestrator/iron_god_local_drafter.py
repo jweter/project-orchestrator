@@ -53,6 +53,7 @@ MAX_INTERRUPTIONS = 20  # a bound, so a request that is always interrupted canno
 DRAFT_TIMEOUT_S = 30 * 60
 SUPPORTED_LEVEL = 1
 MIN_ROADMAP_EXAMPLES = 2
+AVOID_LESSONS = 2  # the newest distinct failures of this slice that the builder is shown
 BUILD_OBJECTIVE_CHARS = 600  # the worker re-validates a build objective at this length
 ROADMAP_GOAL_PREFIX = "Roadmap slice goal: "
 # The roadmap's objective is the authority, so it is given the room. Measured 2026-11-13: at 160 characters the rule of
@@ -308,6 +309,8 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
         "definition_of_done": "merged with green CI and the roadmap graph updated",
         "build": {"module_path": validated["module_path"], "function_name": name,
                   "signature": validated["signature"], "objective": objective, "examples": examples,
+                  # what this slice's earlier attempts actually hit; the worker shows it to the builder
+                  "avoid": refill.failure_lessons(request)[-AVOID_LESSONS:],  # oldest first, so the NEWEST are the tail
                   "note": ("the planner's own objective and examples contradicted the roadmap and were discarded; "
                            + str(validated.get("note", ""))).strip() if misread else validated.get("note", "")},
     }

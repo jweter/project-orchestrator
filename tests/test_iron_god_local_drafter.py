@@ -867,3 +867,27 @@ def test_the_roadmap_goal_wins_the_room_and_the_planner_restatement_is_kept_only
     assert len(crowded) == drafter.BUILD_OBJECTIVE_CHARS
     assert roomy == f"{own} {drafter.ROADMAP_GOAL_PREFIX}Return the newest entries."
     assert drafter.build_objective("", "Return x.") == f"{drafter.ROADMAP_GOAL_PREFIX}Return x."
+
+
+def test_the_build_spec_carries_the_slice_earlier_failures_for_the_builder(world: dict) -> None:
+    request = request_of(world, prior_failures=[
+        {"id": "RM-a", "outcome": "FAIL: SLICE_TESTS_FAILED", "evidence": "TypeError: unhashable type: 'list'"},
+        {"id": "RM-a-r1", "outcome": "FAIL: SLICE_TESTS_FAILED", "evidence": "TypeError: unhashable type: 'list'"},
+        {"id": "RM-a-r2", "outcome": "FAIL: SLICE_TESTS_FAILED"}])
+
+    draft = drafter.plan_to_draft(request, GOOD_PLAN, validated_good(world, request))
+
+    assert draft["build"]["avoid"] == ["TypeError: unhashable type: 'list'"]
+    assert drafter.plan_to_draft(request_of(world), GOOD_PLAN, validated_good(world, request_of(world)))["build"]["avoid"] == []
+
+
+def test_the_builder_is_shown_the_newest_failures_when_a_slice_has_failed_in_more_ways_than_fit(world: dict) -> None:
+    """Review (Codex P2, ChatGPT seq 350): on a third re-authoring the newest error must not be the one dropped."""
+    request = request_of(world, prior_failures=[
+        {"id": "RM-a", "outcome": "FAIL", "evidence": "TypeError: first"},
+        {"id": "RM-a-r1", "outcome": "FAIL", "evidence": "ValueError: second"},
+        {"id": "RM-a-r2", "outcome": "FAIL", "evidence": "KeyError: newest"}])
+
+    draft = drafter.plan_to_draft(request, GOOD_PLAN, validated_good(world, request))
+
+    assert draft["build"]["avoid"] == ["ValueError: second", "KeyError: newest"]

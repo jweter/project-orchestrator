@@ -540,6 +540,22 @@ def plan_for(env):
     return packet, Path(packet["worktree"])
 
 
+def test_the_builder_is_told_what_this_slice_earlier_attempts_hit(env):
+    """2026-11-13: the engine's own failure evidence reaches the builder; an oversized warning is dropped, not truncated."""
+    packet, worktree = plan_for(env)
+    lesson = "TypeError: unhashable type: 'list'"
+
+    warned = WORKER.validate_plan({**GOOD_PLAN, "avoid": [lesson, 7, ""]}, worktree, packet["base_sha"], packet)
+    plain = WORKER.validate_plan(dict(GOOD_PLAN), worktree, packet["base_sha"], packet)
+    crowded = WORKER.validate_plan({**GOOD_PLAN, "objective": "Add two to the value. " + "x" * 570, "avoid": ["E" * 240, "F" * 240]},
+                                   worktree, packet["base_sha"], packet)
+
+    assert f"Earlier attempts at this slice FAILED with: {lesson} Do not repeat that mistake." in warned["task"]
+    assert warned["avoid"] == [lesson] and lesson in WORKER.build_message(packet, warned)
+    assert "FAILED with" not in plain["task"] and plain["avoid"] == []
+    assert "FAILED with" not in crowded["task"] and len(crowded["task"]) <= WORKER.MAX_TEXT
+
+
 def test_build_prompt_is_the_lean_commissioning_prompt_naming_only_the_planned_module(env):
     packet, worktree = plan_for(env)
     plan = WORKER.validate_plan(dict(GOOD_PLAN), worktree, packet["base_sha"], packet)

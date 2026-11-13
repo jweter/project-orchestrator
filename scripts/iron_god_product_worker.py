@@ -274,12 +274,16 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
     criteria.append("the module imports only the Python standard library")
     task = (f"Create {module} defining exactly this function: {signature} -- {objective} "
             "Keep it a pure function with a docstring.")
+    avoid = [" ".join(str(text).split())[:240] for text in plan.get("avoid") or [] if isinstance(text, str) and text.strip()][:2]
+    if avoid:  # the engine's own evidence from this slice's earlier failed attempts; dropped rather than exceed the bound
+        warned = task + " Earlier attempts at this slice FAILED with: " + " | ".join(avoid) + " Do not repeat that mistake."
+        task = warned if len(warned) <= MAX_TEXT else task
     if any(len(text) > MAX_TEXT for text in [task, *criteria]):
         raise PlanRejected("PLAN_TEXT_UNBOUNDED")
     return {"function_name": name, "signature": signature, "objective": objective, "task": task,
             "module_path": module, "test_path": test,
             "import_path": import_path(module, worktree),
-            "examples": examples, "acceptance_criteria": criteria,
+            "examples": examples, "acceptance_criteria": criteria, "avoid": avoid,
             "note": " ".join(str(plan.get("note") or "").split())[:NOTE_CHARS]}
 
 
