@@ -142,3 +142,108 @@ def test_unreadable_untracked_file_keeps_the_worktree(tmp_path, monkeypatch):
     result = cleanup.remove_one(state, row)
     assert result["result"] == "KEPT_UNREADABLE_UNTRACKED_FILE"
     assert result["unreadable"] == ["locked.dat"] and worktree.exists()
+
+
+# ---- the engine cleans up after itself (owner, 2026-11-14) ---------------------------------------------------------------
+
+def test_auto_clean_removes_finished_turns_keeps_the_rest_and_waits_for_its_interval(tmp_path):
+    state, root, clone, base = lane(tmp_path)
+    failed = turn(state, root, clone, base, "P-FAILED", dirty=True)
+    active = turn(state, root, clone, base, "P-ACTIVE")
+    (root / "active.json").write_text(json.dumps({"packet_id": "P-ACTIVE"}), encoding="utf-8")
+    review = turn(state, root, clone, base, "P-CI", commit=True, publication="AWAITING_CI")
+
+    report = cleanup.auto_clean(state, now=1000.0)
+
+    assert report["removed"] == 1 and report["results"] == {"P-FAILED": "REMOVED"}
+    assert report["kept"] == {"P-ACTIVE": "ACTIVE", "P-CI": "PUBLICATION_OPEN"}
+    assert not failed.exists() and active.exists() and review.exists()
+    assert (root / "reports" / "worktree-archive" / "P-FAILED.json").is_file()   # evidence first, as with --apply
+
+    later = turn(state, root, clone, base, "P-LATER")
+    assert cleanup.auto_clean(state, now=1000.0 + cleanup.AUTO_INTERVAL_S - 1) is None and later.exists()
+    assert cleanup.auto_clean(state, now=1000.0 + cleanup.AUTO_INTERVAL_S)["removed"] == 1 and not later.exists()
+
+
+def test_auto_clean_is_bounded_per_run_and_finishes_on_later_runs(tmp_path):
+    state, root, clone, base = lane(tmp_path)
+    trees = [turn(state, root, clone, base, f"P-{n}") for n in range(3)]
+
+    first = cleanup.auto_clean(state, now=1.0, interval=0, limit=2)
+    assert first["removed"] == 2 and first["left_for_next_run"] == 1 and sum(t.exists() for t in trees) == 1
+    assert cleanup.auto_clean(state, now=2.0, interval=0, limit=2)["removed"] == 1 and not any(t.exists() for t in trees)
+
+
+def _capable(state, root, clone, base, ident, status, *, dirty=True, job=True):
+    worktree = clone.parent / "worktrees" / f"capable-{ident}"
+    branch = f"iron-god/capable/{ident}"
+    git(clone, "worktree", "add", "-q", "-b", branch, str(worktree), base)
+    if dirty:
+        (worktree / "half.py").write_text("unfinished = True\n", encoding="utf-8")
+    if job:
+        (root / "capable-engine-jobs").mkdir(exist_ok=True)
+        (root / "capable-engine-jobs" / f"{ident}.job.json").write_text(
+            json.dumps({"branch": branch, "base": base}), encoding="utf-8")
+    if status:
+        (root / "capable-dispatches").mkdir(exist_ok=True)
+        (root / "capable-dispatches" / f"{ident}.json").write_text(json.dumps({"status": status}), encoding="utf-8")
+    return worktree
+
+
+def test_a_capable_builds_leftover_worktree_is_removed_only_once_that_build_is_over(tmp_path):
+    """An owner takeover kills the in-engine runner before it can remove its own worktree."""
+    state, root, clone, base = lane(tmp_path)
+    running = _capable(state, root, clone, base, "aaa", "DISPATCHED")
+    interrupted = _capable(state, root, clone, base, "bbb", "INTERRUPTED")
+    failed = _capable(state, root, clone, base, "ccc", "FAIL", dirty=False)
+    no_row = _capable(state, root, clone, base, "ddd", None)
+    no_job = _capable(state, root, clone, base, "eee", "FAIL", job=False)
+
+    report = cleanup.auto_clean(state, now=1.0)
+
+    assert report["results"] == {"capable-bbb": "REMOVED", "capable-ccc": "REMOVED"}
+    assert report["kept"] == {"capable-aaa": "ACTIVE", "capable-ddd": "UNKNOWN", "capable-eee": "UNKNOWN"}
+    assert running.exists() and no_row.exists() and no_job.exists() and not interrupted.exists() and not failed.exists()
+    archived = json.loads((root / "reports" / "worktree-archive" / "capable-bbb.json").read_text(encoding="utf-8"))
+    assert archived["untracked"]["half.py"].strip() == "unfinished = True"   # the unfinished work is kept as evidence
+
+
+def test_a_worktree_that_cannot_be_removed_never_blocks_the_ones_behind_it(tmp_path, monkeypatch):
+    """Codex P2 on #703: the same unremovable worktrees at the front of the list would be retried forever."""
+    state, root, clone, base = lane(tmp_path)
+    big = [turn(state, root, clone, base, f"P-A{n}", dirty=True) for n in range(2)]      # sorted first, too large to archive
+    small = [turn(state, root, clone, base, f"P-B{n}") for n in range(3)]
+    monkeypatch.setattr(cleanup, "MAX_ARCHIVE_BYTES", 600)   # the dirty ones exceed it; the clean ones do not
+
+    first = cleanup.auto_clean(state, now=1.0, interval=0, limit=1)
+    assert first["not_removed"] == ["P-A0", "P-A1"] and first["removed"] == 0     # both attempts went to the stuck ones
+
+    second = cleanup.auto_clean(state, now=2.0, interval=0, limit=1)
+    assert second["results"] == {"P-B0": "REMOVED"} and second["not_removed"] == ["P-A0", "P-A1"]
+    for tick in (3.0, 4.0):
+        cleanup.auto_clean(state, now=tick, interval=0, limit=1)
+    assert not any(tree.exists() for tree in small) and all(tree.exists() for tree in big)
+
+    last = cleanup.auto_clean(state, now=5.0, interval=0, limit=1)                # nothing else is left: retried, still kept
+    assert set(last["results"].values()) == {"KEPT_EVIDENCE_TOO_LARGE_TO_ARCHIVE"} and last["left_for_next_run"] == 2
+
+
+def test_a_capable_worktree_is_kept_while_its_runner_exists_whatever_its_row_says(tmp_path, monkeypatch):
+    """Review of #703: the row is a record; a live or unknowable runner means the worktree may still be in use."""
+    from project_orchestrator import iron_god_capable_builder as capable
+
+    state, root, clone, base = lane(tmp_path)
+    tree = _capable(state, root, clone, base, "abc", "INTERRUPTED")
+    row_path = root / "capable-dispatches" / "abc.json"
+    row_path.write_text(json.dumps({"status": "INTERRUPTED", "dispatch_id": "abc", "pid": 777}), encoding="utf-8")
+
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: f"python {capable.RUNNER_SCRIPT} --job abc.job.json")
+    assert cleanup.auto_clean(state, now=1.0, interval=0)["kept"] == {"capable-abc": "ACTIVE"} and tree.exists()
+
+    def unanswerable(_pid):
+        raise OSError("process lookup failed")
+    monkeypatch.setattr(capable, "process_command_line", unanswerable)
+    assert cleanup.auto_clean(state, now=2.0, interval=0)["kept"] == {"capable-abc": "ACTIVE"} and tree.exists()
+
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: None)       # the runner is gone
+    assert cleanup.auto_clean(state, now=3.0, interval=0)["results"] == {"capable-abc": "REMOVED"} and not tree.exists()
