@@ -64,6 +64,12 @@ def _isolate_live_owner_state(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(iron_god_dev_mode, "system_closer", _forbidden_program_control)
     monkeypatch.setattr(iron_god_dev_mode, "launcher", _forbidden_program_control)
     monkeypatch.setattr(iron_god_dev_mode, "alive_pids", lambda pids: set())
+    # The in-engine capable builder uses the owner's Claude Code login and opens real pull requests. The shipped policy
+    # turns it on, and the lane tests run that policy (2026-11-14: one of them started a real runner process). No test
+    # sees the machine's Claude CLI and none can start the runner; a test of the stage passes its own fakes.
+    from project_orchestrator import iron_god_capable_builder, iron_god_product_lane
+    monkeypatch.setattr(iron_god_capable_builder, "cli_path", lambda: None)
+    monkeypatch.setattr(iron_god_product_lane, "spawn_capable_engine", _forbidden_program_control)
 
 
 def _forbidden_program_control(*_args, **_kwargs):

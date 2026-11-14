@@ -1135,7 +1135,11 @@ def advance_product_lane(
             approved = refill_from_roadmaps(
                 lane, repos, busy, approved, state, level, sync, owned_paths,
                 capable={"enabled": config.get("capable_builder") is True,
-                         "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT))},
+                         "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT)),
+                         # "engine": the builder runs as an engine stage on this machine (owner decision 2026-11-14)
+                         "transport": capable_builder.ENGINE_TRANSPORT
+                         if config.get("capable_builder_transport") == "engine" else capable_builder.ROUTINE_TRANSPORT,
+                         "model": config.get("capable_builder_model")},
                 record_progress=config.get("roadmap_progress", True) is True, release=(release_repo, release_sha),
                 draft_locally=config.get("local_draft_author", True) is True, lease_pool=pool)
         repo_blocked = set(busy)  # repository-level blockers only, before the memory-derived exclusions below
@@ -1233,7 +1237,8 @@ def repository_unsupported(clone: Path, head: str) -> str | None:
 
 
 def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any], capable: dict[str, Any],
-                            hold_for_local: bool = False, queue: list[dict[str, Any]] | None = None) -> None:
+                            hold_for_local: bool = False, queue: list[dict[str, Any]] | None = None,
+                            clone: Path | None = None) -> None:
     """Dispatch CAPABLE-routed requests within budget and record every outcome; failures never stop the rotation.
 
     With the local builder on, a slice that has not yet been tried locally waits for its local decomposition first.
@@ -1247,15 +1252,56 @@ def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any]
                                      {"reason": "the local builder tries to decompose this slice first"})
             continue
         if queue is not None:  # admitted for the whole pass by admit_capable_requests, not by visiting order
-            queue.append({"name": name, "request": request})
+            queue.append({"name": name, "request": request, "clone": clone})
             continue
-        _dispatch_capable(lane, name, request, capable)
+        _dispatch_capable(lane, name, request, capable, clone)
 
 
-def _dispatch_capable(lane: ProductLane, name: str, request: dict[str, Any], capable: dict[str, Any]) -> None:
+def spawn_capable_engine(release_repo: Path, release_sha: str, job_file: Path, log_path: Path) -> int:
+    """Launch the in-engine capable build like a product worker: release-bound, its own process."""
+    env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    with log_path.open("ab") as log:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_capable_engine_runner.py"), "--job",
+             str(job_file)], cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, creationflags=flags)
+    return process.pid
+
+
+def capable_engine_effects(lane: ProductLane, capable: dict[str, Any], clone: Path | None) -> dict[str, Any] | None:
+    """What the in-engine builder needs from the lane, or None when it cannot run here (no release, no clone)."""
+    release, lease_pool = capable.get("release"), capable.get("lease_pool")
+    if capable.get("transport") != capable_builder.ENGINE_TRANSPORT or release is None or clone is None:
+        return None
+    release_repo, release_sha = release
+
+    def reserve() -> str | None:
+        """The same runtime lease as a worker or a draft: one writer, and never beside the local model."""
+        if lane.active() is not None or roadmap_progress.verifying(lane.workspaces / "progress") \
+                or local_drafter.drafting_in_progress(lane.root):
+            return None
+        if lease_pool is None:
+            return "unleased"
+        try:
+            return lease_pool.acquire(WORKER_LEASE_RUNTIME, WORKER_LEASE_ID, owner_pid=os.getpid()).lease_id
+        except Exception:
+            return None
+
+    return {"clone": clone, "worktrees": lane.worktrees, "model": capable.get("model"), "reserve": reserve,
+            "release": (lambda lease_id: lease_pool.release(WORKER_LEASE_ID, lease_id)) if lease_pool is not None else None,
+            "spawn": lambda job_file: spawn_capable_engine(
+                release_repo, release_sha, job_file, lane.reports / f"capable-engine-{job_file.stem}.log")}
+
+
+def _dispatch_capable(lane: ProductLane, name: str, request: dict[str, Any], capable: dict[str, Any],
+                      clone: Path | None = None) -> None:
+    transport = capable.get("transport", capable_builder.ROUTINE_TRANSPORT)
     try:
         result = capable_builder.dispatch_request(request, lane_root=lane.root, enabled=capable["enabled"],
-                                                  daily_limit=capable["daily_limit"])
+                                                  daily_limit=capable["daily_limit"], transport=transport,
+                                                  engine=capable_engine_effects(lane, capable, clone))
     except Exception as exc:  # a routine API error is a recorded blocker, not a crash
         result = {"dispatched": False, "reason": f"CAPABLE_BUILDER_ERROR: {type(exc).__name__}"}
     kind = "CAPABLE_DISPATCHED" if result.get("dispatched") else "CAPABLE_NOT_DISPATCHED"
@@ -1273,13 +1319,14 @@ def admit_capable_requests(lane: ProductLane, queue: list[dict[str, Any]], capab
     rows = capable_builder._rows(capable_builder.dispatch_state(lane.root))
     if not capable["enabled"]:  # nothing is spent while disabled; each request still records its exact reason
         for item in capable_admission.sorted_candidates(queue, rows, now):
-            _dispatch_capable(lane, item["name"], item["request"], capable)
+            _dispatch_capable(lane, item["name"], item["request"], capable, item.get("clone"))
         return
     eligible = []
     for item in queue:  # a request the existing guards would refuse must not use up a pass slot (read-only check)
         try:
             guard = capable_builder.decide(item["request"], lane_root=lane.root, enabled=True,
-                                           daily_limit=capable["daily_limit"], now=now)
+                                           daily_limit=capable["daily_limit"], now=now,
+                                           transport=capable.get("transport", capable_builder.ROUTINE_TRANSPORT))
         except Exception:
             guard = {"dispatch": True, "reason": "WITHIN_BUDGET"}  # let the dispatch-time guard decide and record it
         if guard["dispatch"] or guard["reason"] == "DAILY_BUDGET_EXHAUSTED":
@@ -1294,7 +1341,7 @@ def admit_capable_requests(lane: ProductLane, queue: list[dict[str, Any]], capab
                                  {"reason": held["reason"], "remaining": verdict["remaining"],
                                   "pass_cap": verdict["pass_cap"], "next_slot_at": verdict["next_slot_at"]})
     for item in verdict["admit"]:
-        _dispatch_capable(lane, item["name"], item["request"], capable)
+        _dispatch_capable(lane, item["name"], item["request"], capable, item.get("clone"))
 
 
 def spawn_draft_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str, result: Path,
@@ -1532,7 +1579,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     exhausted backlog is refilled from it instead of idling. A failure here never stops the rotation.
     """
     approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
-    capable = capable or {"enabled": False, "daily_limit": capable_builder.DEFAULT_DAILY_LIMIT}
+    capable = {**(capable or {"enabled": False, "daily_limit": capable_builder.DEFAULT_DAILY_LIMIT}),
+               "release": release, "lease_pool": lease_pool}  # what an in-engine capable build is bound to
     for failure in roadmap_progress.harvest(lane.workspaces / "progress", release=runtime_lease(lease_pool)[1]
                                             if lease_pool is not None else None):
         # every turn, before any repository is synced: a finished or hung preflight must not hold the lease and the
@@ -1549,7 +1597,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             if lease_pool is not None else None))
     if capable["enabled"]:
         try:
-            capable_builder.reconcile(lane.root)
+            capable_builder.reconcile(lane.root, release=(
+                lambda lease_id: lease_pool.release(WORKER_LEASE_ID, lease_id)) if lease_pool is not None else None)
         except Exception as exc:  # observing GitHub is best-effort; the attempt cap still bounds retries
             working_memory.record(lane.state_root, "<portfolio>", "CAPABLE_RECONCILE_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
@@ -1571,7 +1620,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
         hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None,
-                                queue=capable_queue)
+                                queue=capable_queue, clone=clone)
         build_native_requests(lane, name, report, clone, head, release)
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
