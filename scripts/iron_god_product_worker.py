@@ -195,6 +195,50 @@ def declared_test(packet: dict[str, Any], module: str) -> str | None:
     return found[0] if len(found) == 1 else None
 
 
+# Generic types that take exactly this many type arguments. The local planner writes ``list[list[str, float]]`` for a
+# list of [name, number] pairs; the builder copies it as ``List[List[str, float]]`` and the module cannot even be imported
+# ("TypeError: Too many arguments for typing.List") - two full local builds of Rocksmith section-agreement-v2 ended that
+# way on 2026-11-14 before a third plan happened to write bare ``list``.
+_GENERIC_ARITY = {**dict.fromkeys(("list", "List", "set", "Set", "frozenset", "FrozenSet", "Sequence", "Iterable",
+                                   "Iterator", "Collection", "Optional", "type", "Type", "deque", "Deque"), 1),
+                  **dict.fromkeys(("dict", "Dict", "Mapping", "MutableMapping", "defaultdict", "DefaultDict"), 2)}
+
+
+class _RepairGenerics(ast.NodeTransformer):
+    """Replace a generic used with the wrong number of type arguments by its bare name (always valid, never narrower)."""
+
+    def __init__(self) -> None:
+        self.repaired: list[str] = []
+
+    def visit_Subscript(self, node: ast.Subscript) -> ast.AST:
+        self.generic_visit(node)
+        base = node.value.id if isinstance(node.value, ast.Name) else \
+            node.value.attr if isinstance(node.value, ast.Attribute) else None
+        given = len(node.slice.elts) if isinstance(node.slice, ast.Tuple) else 1
+        if base in _GENERIC_ARITY and given != _GENERIC_ARITY[base]:
+            self.repaired.append(ast.unparse(node))
+            return node.value
+        return node
+
+
+def repair_signature(signature: str) -> tuple[str, list[str]]:
+    """The signature with impossible generic annotations made valid, and what was changed (empty: returned untouched)."""
+    tree = ast.parse(signature.rstrip(":") + ": ...")
+    function = tree.body[0]
+    if not isinstance(function, ast.FunctionDef):
+        raise SyntaxError("not a def line")
+    fixer = _RepairGenerics()
+    for argument in [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs,
+                     function.args.vararg, function.args.kwarg]:
+        if argument is not None and argument.annotation is not None:
+            argument.annotation = fixer.visit(argument.annotation)
+    if function.returns is not None:
+        function.returns = fixer.visit(function.returns)
+    if not fixer.repaired:
+        return signature, []
+    return ast.unparse(function).splitlines()[0], fixer.repaired
+
+
 def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) -> dict[str, Any]:
     """Fail-closed checks before any code: one NEW module in an existing package, exact literal examples."""
     if not isinstance(plan, dict):
@@ -233,6 +277,7 @@ def validate_plan(plan: Any, worktree: Path, base: str, packet: dict[str, Any]) 
     if not signature.startswith(f"def {name}(") or len(signature) > 300:
         raise PlanRejected("PLAN_SIGNATURE_INVALID")
     try:
+        signature, _repaired = repair_signature(signature)
         declared = ast.parse(signature.rstrip(":") + ": ...").body[0].args
     except (SyntaxError, IndexError, AttributeError):
         raise PlanRejected("PLAN_SIGNATURE_INVALID") from None
