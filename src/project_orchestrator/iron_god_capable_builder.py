@@ -127,8 +127,9 @@ def local_slice_contract(graph_path: str) -> str:
         "acceptance_examples with at least three items {\"call\": \"{fn}(literal arguments)\", \"expected\": literal, "
         "\"why\": one sentence}, the expected values COMPUTED by running a reference implementation you then discard, covering "
         "the edges, never two answers for one call; no file, path, stream, clock, random or network input (pass the data "
-        "itself); allowed_paths = the package pattern and the tests pattern; forbidden_paths = every forbidden path of this "
-        "request; runner_requirements [\"code\", \"local\", \"offline\"]; depends_on to order slices that build on each other. "
+        "itself); allowed_paths = the package pattern and the tests pattern; forbidden_paths = the union of "
+        "the forbidden_paths of EVERY existing slice in the graph (the merger refuses a new slice that omits any, and "
+        "that refusal blocks this whole pull request); runner_requirements [\"code\", \"local\", \"offline\"]; depends_on to order slices that build on each other. "
         f"Append to {graph_path}; never edit or remove an existing slice.")
 
 

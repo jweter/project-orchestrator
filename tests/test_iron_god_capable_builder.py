@@ -377,6 +377,26 @@ def test_a_build_dispatch_asks_for_local_sized_follow_on_slices_with_the_measure
     assert prompt.index("Leave work for the free local builder") < prompt.index("Delivery: implement exactly this slice")
 
 
+def test_a_follow_on_written_as_instructed_passes_the_merger_and_one_with_only_the_requests_fences_does_not() -> None:
+    # Codex P2 on #698: the merger wants the graph-wide union of forbidden paths, not the dispatched slice's own
+    from project_orchestrator.iron_god_portfolio_merger import graph_change_problems
+
+    prompt = cb.render_prompt(request())
+    assert "the union of the forbidden_paths of EVERY existing slice in the graph" in prompt
+
+    def graph(*extra: dict) -> dict:
+        built = {"id": "built", "state": "PLANNED", "allowed_paths": ["backend/**"], "forbidden_paths": [".github/**"]}
+        other = {"id": "other", "state": "PLANNED", "allowed_paths": ["backend/**"], "forbidden_paths": ["private/**"]}
+        return {"capabilities": [{"id": "cap", "state": "PLANNED", "slices": [built, other, *extra]}]}
+
+    def follow_on(forbidden: list[str]) -> dict:
+        return {"id": "new-helper", "state": "PLANNED", "capability_level": 1, "allowed_paths": ["backend/**", "tests/**"],
+                "forbidden_paths": forbidden}
+
+    assert graph_change_problems(graph(), graph(follow_on([".github/**", "private/**"]))) == []
+    assert graph_change_problems(graph(), graph(follow_on([".github/**"]))) == ["NEW_SLICE_FORBIDDEN_NOT_INHERITED:cap/new-helper"]
+
+
 def test_the_follow_on_names_the_repositorys_declared_graph() -> None:
     prompt = cb.render_prompt(dict(request(), graph_path="docs/roadmap/graph.json"))
     assert "Append to docs/roadmap/graph.json" in prompt
