@@ -132,7 +132,9 @@ def _interrupted(row: dict[str, Any]) -> bool:
     return row.get("stage") == "INTERRUPTED" or INTERRUPTED_MARK in str(row.get("reason", ""))
 
 
-NAME_REFUSAL = re.compile(r"PLAN_ALREADY_ATTEMPTED: (\w+) was already tried")
+# The worker's whole refusal and nothing else: a reason that also carries another failure is a real failure.
+NAME_REFUSAL = re.compile(r"(?:PlanRejected: )?PLAN_ALREADY_ATTEMPTED: (\w+) was already tried in this repository; "
+                          r"choose a different function")
 
 
 def _refused_for_released_name(lane_root: Path, row: dict[str, Any]) -> bool:
@@ -143,11 +145,15 @@ def _refused_for_released_name(lane_root: Path, row: dict[str, Any]) -> bool:
     Judged from the job's OWN stored request and today's ledger; anything unreadable keeps the attempt spent. A refusal
     for a name that is still blocked stays spent, and the record itself is never rewritten.
     """
-    match = NAME_REFUSAL.search(str(row.get("reason", ""))) if row.get("stage") == "FAILED" else None
+    match = NAME_REFUSAL.fullmatch(str(row.get("reason", "")).strip()) if row.get("stage") == "FAILED" else None
     if match is None:
         return False
     try:
-        request = json.loads(Path(row["request_file"]).read_text(encoding="utf-8"))
+        # only the lane's own copy of that attempt's request is evidence; a record pointing anywhere else is not
+        request_file = Path(lane_root) / REQUEST_COPIES / f"{row['id']}.a{int(row['attempt'])}.json"
+        if Path(row["request_file"]).resolve() != request_file.resolve():
+            return False
+        request = json.loads(request_file.read_text(encoding="utf-8"))
         return isinstance(request, dict) and match.group(1) in _own_earlier_functions(lane_root, request)
     except (OSError, ValueError, KeyError, TypeError):
         return False

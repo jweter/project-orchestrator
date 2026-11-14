@@ -857,6 +857,36 @@ def test_a_refusal_for_a_name_that_is_still_blocked_stays_spent(world: dict, cap
     assert len(spawner.launched) == drafter.MAX_ATTEMPTS
 
 
+@pytest.mark.parametrize("reason", [
+    NAME_REFUSED.format("section_agreement") + "; SLICE_TESTS_FAILED: 2 failed",       # the refusal plus a real failure
+    "SLICE_TESTS_FAILED after " + NAME_REFUSED.format("section_agreement"),
+    "PlanRejected: PLAN_ALREADY_ATTEMPTED: section_agreement was already tried",       # not the worker's whole text
+])
+def test_a_reason_that_is_not_exactly_the_name_refusal_stays_spent(world: dict, reason: str) -> None:
+    """Review of #700: the name refusal must be the ONLY reason, or a real failure would be voided with it."""
+    request, spawner = request_of(world), Spawner()
+    for _ in range(drafter.MAX_ATTEMPTS):
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+        _finish_pending(world, reason)
+        drafter.harvest(world["lane"])
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+
+
+def test_a_record_pointing_at_a_request_outside_the_lane_stays_spent(world: dict, tmp_path: Path) -> None:
+    request, spawner = request_of(world), Spawner()
+    _refuse_twice(world, request, spawner, "section_agreement")
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+    for job in (Path(world["lane"]) / drafter.JOBS).glob("*.json"):
+        row = json.loads(job.read_text(encoding="utf-8"))
+        elsewhere = tmp_path / f"outside-{row['attempt']}.json"
+        elsewhere.write_bytes(Path(row["request_file"]).read_bytes())  # same content, wrong place
+        job.write_text(json.dumps({**row, "request_file": str(elsewhere)}), encoding="utf-8")
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+
+
 def test_a_name_refusal_whose_stored_request_is_unreadable_stays_spent(world: dict) -> None:
     request, spawner = request_of(world), Spawner()
     _refuse_twice(world, request, spawner, "section_agreement")
