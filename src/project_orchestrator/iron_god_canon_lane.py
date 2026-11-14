@@ -366,6 +366,9 @@ def advance_commissioning_lane(
             return _report(lane, {"status": "WORKER_STOPPED_AUTHORITY_REVOKED", "packet_id": active["packet_id"],
                                   "reasons": reasons, "worktree_preserved": active.get("worktree")})
         return _report(lane, {"status": "WAITING_FOR_OWNER_AUTHORITY", "reasons": reasons})
+    # This lane runs BEFORE the product lane in the same supervisor pass and can start a worker of its own, so it applies
+    # the temp root itself: an environment set after a worker has started never reaches that worker.
+    engine_temp.configure((policy.get("portfolio_rotation") or {}).get("engine_temp_root"))
     if active:
         record = ledger["packets"].get(active["packet_id"])
         if alive(active["worker"]):

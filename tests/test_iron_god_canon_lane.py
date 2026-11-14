@@ -234,6 +234,29 @@ def test_forbidden_path_change_is_refused_by_the_worker_and_blocked(engine):
     assert "CHANGES_OUTSIDE_ALLOWED_PATHS" in blocked["worker_summary"]
 
 
+def test_the_temp_root_is_applied_before_this_lane_can_start_a_worker_and_only_with_authority(engine, monkeypatch):
+    """Codex P2 on #706: this lane runs before the product lane and dispatches its own worker."""
+    from project_orchestrator import iron_god_canon_lane as canon_lane
+
+    events: list[str] = []
+    monkeypatch.setattr(canon_lane.engine_temp, "configure", lambda value: events.append(f"configure:{value}"))
+    policy = dict(POLICY, slices=[ACTIVE], portfolio_rotation={"engine_temp_root": "C:\\IronGod\\TestTemp"})
+    monkeypatch.setattr(canon_lane, "load_policy", lambda _repo: policy)
+
+    class Recording(Runner):
+        def spawn(self, *args, **kwargs):
+            events.append("spawn")
+            return super().spawn(*args, **kwargs)
+
+    runner = Recording({})
+    step(engine, runner)
+    assert runner.spawned == 1 and events[:2] == ["configure:C:\\IronGod\\TestTemp", "spawn"]
+
+    events.clear()
+    revoke_owner_authority(engine.state)
+    assert step(engine, Recording({}))["status"] != "DISPATCHED" and not any(e.startswith("configure") for e in events)
+
+
 def test_no_owner_authority_dispatches_nothing(engine):
     revoke_owner_authority(engine.state)
     runner = Runner({})
