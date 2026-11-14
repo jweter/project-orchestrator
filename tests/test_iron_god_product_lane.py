@@ -1846,6 +1846,46 @@ def test_capable_requests_are_logged_and_never_fire_unless_enabled_and_configure
     assert fired == [] and "CAPABLE_NOT_DISPATCHED" in json.dumps(wm.load(env.state))
 
 
+@pytest.mark.parametrize("transport", ["ROUTINE", "ENGINE"])
+def test_local_only_proving_mode_holds_capable_queue_without_cloud_dispatch(
+    env, monkeypatch, transport,
+):
+    from project_orchestrator import iron_god_capable_builder as cap
+    from project_orchestrator import iron_god_roadmap_refill as refill_mod
+
+    lane = pl.ProductLane(env.state)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Claude-capable builder must not start in local-only mode")
+
+    monkeypatch.setattr(cap, "dispatch_if_warranted", forbidden)
+    monkeypatch.setattr(cap.engine_builder, "start", forbidden)
+    monkeypatch.setattr(pl, "capable_engine_effects", forbidden)
+    monkeypatch.setenv(cap.ROUTINES[cap.ROUTINE][1], "configured-test-token")
+
+    queue = [
+        {"name": REPOS[0], "request": {
+            "id": "RM-local-only-1", "repository": REPOS[0],
+            "exact_head": "a" * 40, "allowed_paths": ["pkg/**"],
+            "route": {"builder": "CAPABLE", "reason": "NEEDS_STRONGER_BUILDER"},
+        }},
+        {"name": REPOS[1], "request": {
+            "id": "RM-local-only-2", "repository": REPOS[1],
+            "exact_head": "b" * 40, "allowed_paths": ["pkg/**"],
+            "route": {"builder": "CAPABLE", "reason": "NEEDS_STRONGER_BUILDER"},
+        }},
+    ]
+    pl.admit_capable_requests(lane, queue, {
+        "enabled": True, "daily_limit": 12, "transport": transport,
+        "local_only_proving_mode": True,
+    })
+    ledger = refill_mod.load_store(lane.root)["ledger"]
+    assert len(ledger) == 2
+    assert all(row["kind"] == "CAPABLE_NOT_DISPATCHED" for row in ledger)
+    assert all(row["detail"]["reason"] == "LOCAL_ONLY_PROVING_MODE" for row in ledger)
+    assert not cap.dispatch_state(lane.root).exists()  # no paid attempt, lease or dispatch record
+
+
 def test_a_routine_api_error_is_a_recorded_blocker_not_a_crash(env, monkeypatch):
     from project_orchestrator import iron_god_capable_builder as cap
     from project_orchestrator import iron_god_roadmap_refill as refill_mod

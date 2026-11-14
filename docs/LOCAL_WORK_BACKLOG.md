@@ -142,3 +142,20 @@ being a cloud routine the engine fires and waits on.
 - One writer: the runner holds the worker runtime lease, so no local build, draft or progress preflight runs beside it.
 - Owner takeover kills the runner; the record is kept as `INTERRUPTED`, counts toward the day's budget and spends no
   attempt.
+
+## Local-only proving mode (upgrade #710, opt-in after authorized release)
+
+The proposed `portfolio_rotation.local_only_proving_mode: true` setting forbids **both**
+capable-builder transports: the hosted routine and the in-engine Claude Code CLI stage. It
+wins even when `capable_builder: true` and credentials are available. CAPABLE work is logged
+as `CAPABLE_NOT_DISPATCHED / LOCAL_ONLY_PROVING_MODE`, without consuming its attempt
+budget; LOCAL-routed slices still follow the original local admission, memory, lease and
+verification gates. This is a test isolation control, **not** authorization to start a
+supervisor, resume a paused owner session, change pinned releases, bypass attempt caps,
+or disable required CI or native product acceptance.
+
+The default is `false` (absent setting preserves existing behavior). The new flag is
+**not enabled** in the shipped commissioning policy by this PR; activating it in a
+controlled release requires the usual owner approval. This guard covers capable-builder
+dispatches only: an end-to-end claim of zero paid tokens additionally requires confirming
+all other integration paths are offline and measuring the actual local Ollama canary.
