@@ -60,3 +60,18 @@ def test_the_lanes_memory_wait_with_the_shipped_policy_closes_nothing_in_a_test(
     product_lane._dev_mode_tick(Lane(), {"status": "WAITING_FOR_MEMORY", "work_waiting": True,
                                          "route": {"required_gib": 5.3, "available_gib": 3.0}})
     assert not (tmp_path / dev.STATE_NAME).exists()
+
+
+def test_no_test_can_reach_the_claude_login_or_start_the_in_engine_capable_runner(tmp_path) -> None:
+    """2026-11-14: with the shipped policy a lane test started a real runner process. It must fail loudly instead."""
+    import pytest
+
+    from project_orchestrator import iron_god_capable_builder as capable
+    from project_orchestrator import iron_god_product_lane as lane
+
+    assert capable.cli_path() is None
+    request = {"id": "RM-x", "repository": "jweter/x", "route": {"builder": "CAPABLE"}}
+    verdict = capable.decide(request, lane_root=tmp_path, enabled=True, transport=capable.ENGINE_TRANSPORT, environ={})
+    assert verdict["reason"] == "CAPABLE_BUILDER_UNCONFIGURED"
+    with pytest.raises(AssertionError, match="real program"):
+        lane.spawn_capable_engine(tmp_path, "0" * 40, tmp_path / "job.json", tmp_path / "log.txt")

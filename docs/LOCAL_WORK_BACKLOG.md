@@ -125,3 +125,20 @@ Local-sized slices are small pure helpers and small edits. They keep development
 builder for large slices, they have not been run end to end on the engine since the lookahead was written (evidence state
 CODE_MERGED once merged, never RELEASE_DEPLOYED until promoted), and the 7B still fails some of them. A failed local attempt is
 bounded by the existing attempt limits and returns the slice to the capable builder.
+
+## The capable builder is an engine stage (2026-11-14)
+
+Owner decision: the capable builder is built into the engine, using the Claude Code login on the laptop, instead of
+being a cloud routine the engine fires and waits on.
+
+- Policy: `capable_builder_transport: "engine"` in `engineering/iron-god-commissioning.json` (`"routine"` restores
+  the cloud routine). Budget (`capable_builder_daily_limit`) and the two-attempt cap are unchanged and shared.
+- Code: `iron_god_capable_engine.py` (rounds, scope check, harvest), `scripts/iron_god_capable_engine_runner.py`
+  (worktree, model call, preflight, pull request), wiring in `iron_god_capable_builder.py` and the product lane.
+- The model gets file tools only. It cannot run commands, git or anything on the network.
+- The engine verifies: changed paths against the slice's fences, then the repository's canonical preflight. A failure
+  goes back to the same model session, at most three rounds. Only a passing build is committed and opened as the
+  `Iron God [<request id>]` pull request, which then meets CI, review and the merger like any other.
+- One writer: the runner holds the worker runtime lease, so no local build, draft or progress preflight runs beside it.
+- Owner takeover kills the runner; the record is kept as `INTERRUPTED`, counts toward the day's budget and spends no
+  attempt.
