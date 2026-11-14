@@ -455,16 +455,59 @@ def session_activity_since(repository: str, since: float) -> bool | None:
     return False
 
 
-def _pid_alive(pid: int) -> bool:
-    from . import iron_god_dev_mode
-    return pid in iron_god_dev_mode.alive_pids([pid])
+RUNNER_SCRIPT = "iron_god_capable_engine_runner.py"
+
+
+def process_command_line(pid: int) -> str | None:
+    """The command line of a process on this machine, or None when no such process exists (tests replace this)."""
+    out = subprocess.run(["powershell.exe", "-NoProfile", "-Command",
+                          f"(Get-CimInstance Win32_Process -Filter 'ProcessId={int(pid)}').CommandLine"],
+                         capture_output=True, text=True, check=False, timeout=60)
+    if out.returncode != 0:
+        raise OSError(f"process lookup failed: exit {out.returncode}")
+    return out.stdout.strip() or None
+
+
+def kill_process_tree(pid: int) -> None:
+    """Stop one process and its descendants (tests replace this: none may stop a real process)."""
+    subprocess.run(["taskkill", "/PID", str(int(pid)), "/T", "/F"], capture_output=True, text=True, check=False, timeout=60)
+
+
+def runner_alive(row: dict[str, Any]) -> bool:
+    """Whether THIS dispatch's runner still exists. A reused process id belongs to something else: not our runner.
+
+    An unanswerable lookup counts as alive: silence is never proof that the single writer is gone.
+    """
+    pid = row.get("pid")
+    if not isinstance(pid, int):
+        return False
+    try:
+        line = process_command_line(pid)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return bool(line) and RUNNER_SCRIPT in line and str(row.get("dispatch_id")) in line
+
+
+def terminate_runner(row: dict[str, Any]) -> bool:
+    """Stop this dispatch's runner and everything under it; True only when it is confirmed gone.
+
+    Only a process identified as this runner (script and dispatch id in its command line) is ever killed.
+    """
+    if not runner_alive(row):
+        return True
+    try:
+        kill_process_tree(int(row["pid"]))
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return not runner_alive(row)
 
 
 def reconcile(lane_root: Path, *, now: float | None = None,
               lookup: Callable[[str, str], str | None] = find_pull_request,
               state_of: Callable[[str], str | None] = pull_request_state,
               activity: Callable[[str, float], bool | None] = session_activity_since,
-              alive: Callable[[int], bool] = _pid_alive,
+              alive: Callable[[dict[str, Any]], bool] | None = None,
+              terminate: Callable[[dict[str, Any]], bool] | None = None,
               release: Callable[[str], None] | None = None) -> list[dict[str, Any]]:
     """Fold observed outcomes into the existing measurement ledger; returns what changed.
 
@@ -475,7 +518,8 @@ def reconcile(lane_root: Path, *, now: float | None = None,
     state_dir = dispatch_state(lane_root)
     # in-engine builds first: their runner reports its own outcome, so nothing about them is inferred from silence
     changed = engine_builder.harvest(state_dir, _rows(state_dir), write=_write_row, ingest=ingest_session_result,
-                                     alive=alive, release=release, now=now)
+                                     alive=alive or runner_alive, terminate=terminate or terminate_runner,
+                                     release=release, now=now)
     for row in _rows(state_dir):
         if row.get("transport") == ENGINE_TRANSPORT and row.get("status") == "DISPATCHED":
             continue  # still building in the engine

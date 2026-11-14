@@ -11,9 +11,10 @@ title names the request). What changes is who does the work between dispatch and
 * the lane spawns one release-bound runner process, holding the worker runtime lease, so there is still a single writer;
 * the runner makes a worktree at the exact baseline and runs the Claude Code CLI headless with FILE TOOLS ONLY (no shell,
   no MCP servers, never ``bypassPermissions``): the model edits files and nothing else;
-* the ENGINE checks the changed paths against the slice's fences and runs the repository's canonical preflight - the same
-  verification every local slice gets - and feeds a failure back to the same session, at most ``MAX_ROUNDS`` rounds;
-* the ENGINE commits, pushes and opens the pull request. The model never touches git, GitHub or the network.
+* the ENGINE checks the changed paths against the slice's fences, COMMITS the candidate as one commit on the baseline and
+  runs the repository's canonical preflight at that exact head - the same verification every local slice gets - and
+  feeds a failure back to the same session, at most ``MAX_ROUNDS`` rounds;
+* the ENGINE pushes the verified head and opens the pull request. The model never touches git, GitHub or the network.
 
 An owner takeover kills the runner (it runs under execution authority) and spends no attempt, like every other stage.
 The logic here is deterministic and takes its effects as callables; ``scripts/iron_god_capable_engine_runner.py`` binds
@@ -33,7 +34,10 @@ TRANSPORT = "ENGINE"
 JOBS = "capable-engine-jobs"            # beside the dispatch ledger, never inside it: the ledger holds dispatch rows only
 MAX_ROUNDS = 3                          # one build and at most two repairs from the engine's own verification
 ROUND_TIMEOUT_S = 30 * 60
-JOB_TIMEOUT_S = 150 * 60                # the runner is failed after this even if its process still exists
+PREFLIGHT_TIMEOUT_S = 2 * 3600          # one canonical preflight, as for a product worker
+# Every round may spend a full model turn and a full preflight, plus environment preparation and the baseline comparison.
+# Past this the runner is overdue: it is stopped and CONFIRMED gone before its lease is given to anyone else.
+JOB_TIMEOUT_S = MAX_ROUNDS * (ROUND_TIMEOUT_S + PREFLIGHT_TIMEOUT_S) + 3600
 MAX_INTERRUPTIONS = 5                   # a bound, so a request that is always interrupted cannot loop forever
 INTERRUPTED = "INTERRUPTED"
 INTERRUPTED_MARK = "EXECUTION_AUTHORITY_REVOKED"
@@ -78,12 +82,16 @@ def repair_prompt(problems: list[str], failure: str) -> str:
 def run_rounds(request: dict[str, Any], prompt: str, graph_path: str, *,
                ask: Callable[[str, str | None], dict[str, Any]],
                changed_paths: Callable[[], list[str]],
+               commit: Callable[[], str],
                verify: Callable[[], dict[str, Any]],
                check: Callable[[], None]) -> dict[str, Any]:
     """Build, let the engine verify, repair from the engine's findings. Returns the verdict; delivery is the caller's.
 
-    ``ask(prompt, session)`` runs one model turn and returns its parsed JSON result. ``verify()`` is the repository's
-    canonical preflight ({"ok", "output_tail"}). ``check()`` raises when the owner has taken control.
+    ``ask(prompt, session)`` runs one model turn and returns its parsed JSON result. ``changed_paths()`` is everything
+    that differs from the baseline, committed or not. ``commit()`` makes the candidate ONE commit on the baseline and
+    returns its sha; ``verify()`` is the repository's canonical preflight at that exact head ({"ok", "output_tail"}) -
+    the preflight's baseline comparison needs a clean tree whose parent is the baseline, and the head that is verified
+    is the head that is delivered. ``check()`` raises when the owner has taken control.
     """
     session: str | None = None
     message, rounds = prompt, []
@@ -104,11 +112,12 @@ def run_rounds(request: dict[str, Any], prompt: str, graph_path: str, *,
         failure = ""
         if not problems:
             check()
+            record["head"] = commit()
             result = verify()
             record["preflight_ok"] = bool(result.get("ok"))
             if result.get("ok"):
                 rounds.append(record)
-                return {"ok": True, "rounds": rounds, "changed": changed, "session_id": session,
+                return {"ok": True, "rounds": rounds, "changed": changed, "session_id": session, "head": record["head"],
                         "preflight": {k: result.get(k) for k in ("command", "returncode", "baseline_match")}}
             failure = str(result.get("output_tail", ""))
         rounds.append(record)
@@ -144,12 +153,18 @@ def start(row: dict[str, Any], request: dict[str, Any], prompt: str, *, lane_roo
 
 
 def harvest(state_dir: Path, rows: list[dict[str, Any]], *, write: Callable[[Path, dict[str, Any]], None],
-            ingest: Callable[..., dict[str, Any]], alive: Callable[[int], bool],
+            ingest: Callable[..., dict[str, Any]], alive: Callable[[dict[str, Any]], bool],
+            terminate: Callable[[dict[str, Any]], bool],
             release: Callable[[str], None] | None = None, now: float | None = None) -> list[dict[str, Any]]:
     """Finish every in-engine job whose runner is done, dead or overdue; one row per thing that changed.
 
     A runner that the owner's takeover killed (its result says so, or it is gone without a result) is INTERRUPTED: the
     record is kept, it still counts toward the day's budget, and it spends no attempt.
+
+    Single writer: the lease is given back only once the runner is known to be gone. A finished result is written as
+    the runner's last act, but an OVERDUE runner is still working - it could go on testing, push and open a pull
+    request beside whoever took the lease next - so ``terminate(row)`` must stop its process tree and confirm it is
+    gone. Until it does, the row stays DISPATCHED, the lease stays held, and the next pass tries again.
     """
     now = time.time() if now is None else now
     changed = []
@@ -165,8 +180,11 @@ def harvest(state_dir: Path, rows: list[dict[str, Any]], *, write: Callable[[Pat
             except (OSError, ValueError):
                 outcome = {"ok": False, "reason": "ENGINE_BUILD_RESULT_UNREADABLE"}
         elif now - float(row.get("started_at", 0)) > JOB_TIMEOUT_S:
+            if not terminate(row):
+                changed.append({"dispatch_id": ident, "id": request_id, "outcome": "OVERDUE_RUNNER_NOT_STOPPED"})
+                continue  # still running: it keeps the lease, nothing else may start beside it
             outcome = {"ok": False, "reason": "ENGINE_BUILD_TIMED_OUT"}
-        elif not (isinstance(row.get("pid"), int) and alive(row["pid"])):
+        elif not alive(row):
             outcome = {"ok": False, "reason": f"{INTERRUPTED_MARK}: the runner ended without a result"}
         if outcome is None:
             continue

@@ -2,8 +2,9 @@
 
 Launched by the product lane like a product worker: its own process, bound to the release identity and to the owner's
 execution authority. It makes a worktree at the exact baseline, lets the Claude Code CLI edit files there (file tools
-only), verifies the change with the repository's canonical preflight, feeds a failure back, and - only when the preflight
-passes - commits, pushes and opens the pull request itself. It always writes a result file; the lane reads only that.
+only), commits the candidate as one commit on the baseline, verifies that exact head with the repository's canonical
+preflight, feeds a failure back, and - only when the preflight passes - pushes that same head and opens the pull request
+itself. It always writes a result file; the lane reads only that.
 """
 
 from __future__ import annotations
@@ -38,10 +39,11 @@ def _git(cwd: Path, *args: str, timeout: int = 300) -> subprocess.CompletedProce
     return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True, check=False, timeout=timeout)
 
 
-def changed_paths(worktree: Path) -> list[str]:
-    """Every path the builder touched, tracked or new, as repository-relative forward-slash paths."""
+def changed_paths(worktree: Path, base: str) -> list[str]:
+    """Every path that differs from the baseline - in the candidate commit or not yet committed - as forward-slash paths."""
+    committed = _git(worktree, "diff", "--name-only", "--no-renames", "-z", base, "HEAD").stdout
     out = _git(worktree, "status", "--porcelain", "--untracked-files=all", "-z").stdout
-    paths, entries, index = [], out.split("\0"), 0
+    paths, entries, index = [p.replace("\\", "/") for p in committed.split("\0") if p], out.split("\0"), 0
     while index < len(entries):
         entry = entries[index]
         index += 1
@@ -77,23 +79,45 @@ def pull_request_body(request: dict[str, Any], verdict: dict[str, Any]) -> str:
         f"- Rounds: {len(rounds)} (" + ", ".join(
             "scope" if r.get("scope_problems") else ("pass" if r.get("preflight_ok") else "preflight failed")
             for r in rounds) + ")",
-        f"- Canonical preflight at this head: passed"
+        f"- Canonical preflight at this exact head (`{verdict.get('head', '')}`): passed"
         + (" (matched the base commit: only failures already present at the base)"
            if (verdict.get("preflight") or {}).get("baseline_match") else ""),
         "- Changed paths: " + ", ".join(f"`{p}`" for p in verdict.get("changed", [])),
     ])
 
 
-def deliver(job: dict[str, Any], worktree: Path, verdict: dict[str, Any], check: Callable[[], None]) -> str:
-    request = job["request"]
-    title = f"Iron God [{request['id']}] {request.get('slice', 'roadmap slice')}"[:200]
-    check()
-    _git(worktree, "add", "-A", "--", *verdict["changed"])
+def title_of(request: dict[str, Any]) -> str:
+    return f"Iron God [{request['id']}] {request.get('slice', 'roadmap slice')}"[:200]
+
+
+def commit_candidate(worktree: Path, base: str, title: str) -> str:
+    """Make everything that differs from the baseline ONE commit on the baseline; return its sha.
+
+    One commit, so the preflight's baseline comparison (which reads ``HEAD^``) compares against the baseline in every
+    round, and a clean tree, which that comparison requires. The scope check has already passed on every changed path.
+    """
+    _git(worktree, "reset", "-q", "--soft", base)
+    _git(worktree, "add", "-A")
     commit = _git(worktree, *IDENTITY, "commit", "-q", "-m", title)
     if commit.returncode != 0:
         raise RuntimeError("COMMIT_FAILED: " + (commit.stderr or commit.stdout)[-300:])
+    return _git(worktree, "rev-parse", "HEAD").stdout.strip()
+
+
+def restore_head(worktree: Path) -> None:
+    """Put the tree back to exactly the committed candidate: whatever a test run left behind is never delivered."""
+    _git(worktree, "reset", "-q", "--hard", "HEAD")
+    _git(worktree, "clean", "-fdq")
+
+
+def deliver(job: dict[str, Any], worktree: Path, verdict: dict[str, Any], check: Callable[[], None]) -> str:
+    request = job["request"]
+    title = title_of(request)
+    head = _git(worktree, "rev-parse", "HEAD").stdout.strip()
+    if head != verdict.get("head") or _git(worktree, "status", "--porcelain").stdout.strip():
+        raise RuntimeError("DELIVERY_REFUSED: the tree is not exactly the head the preflight verified")
     check()
-    pushed = _git(worktree, "push", "origin", f"HEAD:refs/heads/{job['branch']}", timeout=1800)
+    pushed = _git(worktree, "push", "origin", f"{head}:refs/heads/{job['branch']}", timeout=1800)
     if pushed.returncode != 0:
         raise RuntimeError("PUSH_FAILED: " + pushed.stderr[-300:])
     made = subprocess.run(["gh", "pr", "create", "--repo", request["repository"], "--base", "main", "--head",
@@ -119,9 +143,16 @@ def build(job: dict[str, Any], *, check: Callable[[], None], preflight: Callable
                                None, engine.ROUND_TIMEOUT_S), check, interval=2.0)
             return parse_answer(done.stdout or "", done.stderr or "", done.returncode)
 
+        def verify() -> dict[str, Any]:
+            try:
+                return preflight(worktree)
+            finally:
+                restore_head(worktree)
+
         verdict = engine.run_rounds(
             request, job["prompt"], str(request.get("graph_path") or capable.GRAPH_PATH), ask=ask,
-            changed_paths=lambda: changed_paths(worktree), verify=lambda: preflight(worktree), check=check)
+            changed_paths=lambda: changed_paths(worktree, job["base"]),
+            commit=lambda: commit_candidate(worktree, job["base"], title_of(request)), verify=verify, check=check)
         if verdict["ok"]:
             verdict["pr_url"] = deliver(job, worktree, verdict, check)
         return verdict
@@ -154,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     spec.loader.exec_module(worker)
     try:
         result = build(job, check=check, executable=capable.cli_path(),
-                       preflight=lambda tree: worker.production_preflight(tree, check, int(job.get("preflight_timeout_s", 7200))))
+                       preflight=lambda tree: worker.production_preflight(tree, check, engine.PREFLIGHT_TIMEOUT_S))
     except Exception as exc:  # a revoked authority, a failed push, a crashed tool: all recorded, none a pass
         result = {"ok": False, "reason": f"{type(exc).__name__}: {str(exc)[:260]}"}
     atomic_json(Path(job["result"]), result)

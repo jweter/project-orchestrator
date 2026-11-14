@@ -32,7 +32,7 @@ class Lane:
     """The lane's effects, recorded: the spawned job files and the leases taken and given back."""
 
     def __init__(self, tmp_path: Path, *, busy: bool = False) -> None:
-        self.root, self.spawned, self.released, self.busy = tmp_path, [], [], busy
+        self.root, self.spawned, self.released, self.busy, self.terminated = tmp_path, [], [], busy, []
 
     def effects(self) -> dict:
         return {"clone": self.root / "clone", "worktrees": self.root / "worktrees", "model": None,
@@ -52,11 +52,15 @@ class Lane:
     def finish(self, row: dict, result: dict) -> None:
         Path(row["result"]).write_text(json.dumps(result), encoding="utf-8")
 
-    def reconcile(self, *, alive: bool = True, now: float | None = None) -> list[dict]:
+    def reconcile(self, *, alive: bool = True, now: float | None = None, stops: bool = True) -> list[dict]:
         def unused(*_a):
             raise AssertionError("an in-engine build is never inferred from GitHub or from silence")
+
+        def terminate(row: dict) -> bool:
+            self.terminated.append(row["dispatch_id"])
+            return stops
         return cb.reconcile(self.root, lookup=unused, state_of=lambda _url: None, activity=unused,
-                            alive=lambda _pid: alive, release=self.released.append, now=now)
+                            alive=lambda _row: alive, terminate=terminate, release=self.released.append, now=now)
 
 
 # ---- the model call: file tools only ------------------------------------------------------------------------------------
@@ -95,20 +99,26 @@ class Builder:
 
     def __init__(self, turns: list[list[str]], preflights: list[bool]) -> None:
         self.turns, self.preflights, self.asked, self.verified, self.changed = list(turns), list(preflights), [], 0, []
+        self.events: list[str] = []
 
     def ask(self, prompt: str, session: str | None) -> dict:
         self.asked.append((prompt, session))
         self.changed = self.turns.pop(0)
         return {"is_error": False, "session_id": "session-1", "result": "I could not tell which module was meant."}
 
+    def commit(self) -> str:
+        self.events.append("commit")
+        return f"head-{self.events.count('commit')}"
+
     def verify(self) -> dict:
+        self.events.append("verify")
         self.verified += 1
         ok = self.preflights.pop(0)
         return {"ok": ok, "output_tail": "" if ok else "FAILED tests/test_a.py::test_it - assert 1 == 2", "returncode": int(not ok)}
 
     def run(self, check=lambda: None) -> dict:
         return eng.run_rounds(request(), "BUILD", GRAPH, ask=self.ask, changed_paths=lambda: self.changed,
-                              verify=self.verify, check=check)
+                              commit=self.commit, verify=self.verify, check=check)
 
 
 def test_a_change_that_passes_the_engines_preflight_is_accepted_in_one_round() -> None:
@@ -122,6 +132,8 @@ def test_a_preflight_failure_goes_back_to_the_same_session_and_the_repair_is_ver
     builder = Builder([["backend/a.py"], ["backend/a.py", "tests/test_a.py"]], [False, True])
     verdict = builder.run()
     assert verdict["ok"] and [r["preflight_ok"] for r in verdict["rounds"]] == [False, True]
+    # Codex P1 on #702: every candidate is committed BEFORE it is verified, and the verified head is the delivered one
+    assert builder.events == ["commit", "verify", "commit", "verify"] and verdict["head"] == "head-2"
     repair, session = builder.asked[1]
     assert session == "session-1" and "assert 1 == 2" in repair          # the engine's own failure, to the same session
 
@@ -130,7 +142,7 @@ def test_out_of_scope_changes_are_never_verified_and_fail_the_build_if_they_pers
     builder = Builder([["docs/x.md"]] * eng.MAX_ROUNDS, [])
     verdict = builder.run()
     assert not verdict["ok"] and verdict["reason"].startswith("CHANGES_OUTSIDE_SCOPE: OUTSIDE_ALLOWED_PATHS: docs/x.md")
-    assert builder.verified == 0 and "OUTSIDE_ALLOWED_PATHS: docs/x.md" in builder.asked[1][0]
+    assert builder.verified == 0 and builder.events == [] and "OUTSIDE_ALLOWED_PATHS: docs/x.md" in builder.asked[1][0]
 
 
 def test_rounds_are_bounded_and_a_build_that_never_passes_fails() -> None:
@@ -147,7 +159,8 @@ def test_a_builder_that_changes_nothing_reports_its_blocker_instead_of_a_pass() 
 
 def test_a_failed_model_call_is_a_failure_not_a_pass() -> None:
     verdict = eng.run_rounds(request(), "BUILD", GRAPH, ask=lambda *_a: {"is_error": True, "result": "exit 1: not logged in"},
-                             changed_paths=lambda: ["backend/a.py"], verify=lambda: {"ok": True}, check=lambda: None)
+                             changed_paths=lambda: ["backend/a.py"], commit=lambda: "h", verify=lambda: {"ok": True},
+                             check=lambda: None)
     assert not verdict["ok"] and verdict["reason"].startswith("BUILDER_CALL_FAILED: exit 1: not logged in")
 
 
@@ -263,13 +276,62 @@ def test_interruptions_are_bounded(tmp_path: Path) -> None:
     assert "RM-demo-1" in cb.spent_request_ids(tmp_path)
 
 
-def test_a_running_build_is_left_alone_and_an_overdue_one_is_failed(tmp_path: Path) -> None:
+def test_a_running_build_is_left_alone_and_an_overdue_one_is_stopped_before_it_is_failed(tmp_path: Path) -> None:
     lane = Lane(tmp_path)
     lane.go()
-    assert lane.reconcile(alive=True) == [] and lane.rows()[0]["status"] == "DISPATCHED" and lane.released == []
+    assert lane.reconcile(alive=True) == [] and lane.rows()[0]["status"] == "DISPATCHED"
+    assert lane.released == [] and lane.terminated == []
     late = time.time() + eng.JOB_TIMEOUT_S + 60
     assert lane.reconcile(alive=True, now=late)[0]["reason"] == "ENGINE_BUILD_TIMED_OUT"
+    assert lane.terminated == [lane.rows()[0]["dispatch_id"]]
     assert lane.rows()[0]["status"] == "FAIL" and lane.released == ["lease-1"]
+
+
+def test_an_overdue_runner_that_cannot_be_stopped_keeps_its_lease_and_its_slot(tmp_path: Path) -> None:
+    """Codex P1 on #702: releasing the lease while the runner still works would put a second writer beside it."""
+    lane = Lane(tmp_path)
+    lane.go()
+    late = time.time() + eng.JOB_TIMEOUT_S + 60
+    (change,) = lane.reconcile(alive=True, now=late, stops=False)
+    assert change["outcome"] == "OVERDUE_RUNNER_NOT_STOPPED"
+    assert lane.rows()[0]["status"] == "DISPATCHED" and lane.released == []
+    assert lane.go(request("RM-demo-2"))["reason"] == "REPOSITORY_HAS_OPEN_DISPATCH"   # no replacement is admitted
+
+    lane.reconcile(alive=True, now=late + 60)                                          # the next pass stops it
+    assert lane.rows()[0]["status"] == "FAIL" and lane.released == ["lease-1"] and len(lane.terminated) == 2
+
+
+def test_the_overdue_bound_covers_every_round_the_runner_is_allowed(tmp_path: Path) -> None:
+    assert eng.JOB_TIMEOUT_S >= eng.MAX_ROUNDS * (eng.ROUND_TIMEOUT_S + eng.PREFLIGHT_TIMEOUT_S)
+    assert eng.JOB_TIMEOUT_S < cb.STALE_SECONDS   # the row is still "pending" for the refill while the runner may work
+
+
+def test_only_this_dispatchs_own_runner_counts_as_alive_or_is_ever_killed(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = {"dispatch_id": "abc123", "pid": 777}
+    killed: list[int] = []
+    lines = {777: f"python C:\\rel\\scripts\\{cb.RUNNER_SCRIPT} --job C:\\x\\abc123.job.json"}
+    monkeypatch.setattr(cb, "process_command_line", lambda pid: lines.get(pid))
+    monkeypatch.setattr(cb, "kill_process_tree", lambda pid: (killed.append(pid), lines.pop(pid, None)))
+
+    assert cb.runner_alive(row) and not cb.runner_alive({**row, "pid": None})
+    lines[888] = "chrome.exe --type=renderer"                       # the process id was reused by something else
+    assert not cb.runner_alive({**row, "pid": 888}) and cb.terminate_runner({**row, "pid": 888}) and killed == []
+    lines[999] = f"python {cb.RUNNER_SCRIPT} --job other-dispatch.job.json"   # another dispatch's runner
+    assert not cb.runner_alive({**row, "pid": 999}) and cb.terminate_runner({**row, "pid": 999}) and killed == []
+
+    assert cb.terminate_runner(row) and killed == [777]             # ours: stopped, and confirmed gone
+
+
+def test_a_runner_that_survives_the_kill_or_cannot_be_looked_up_is_not_reported_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = {"dispatch_id": "abc123", "pid": 777}
+    monkeypatch.setattr(cb, "process_command_line", lambda pid: f"python {cb.RUNNER_SCRIPT} --job abc123.job.json")
+    monkeypatch.setattr(cb, "kill_process_tree", lambda pid: None)   # the kill had no effect
+    assert cb.terminate_runner(row) is False
+
+    def unanswerable(_pid: int) -> str:
+        raise OSError("process lookup failed")
+    monkeypatch.setattr(cb, "process_command_line", unanswerable)
+    assert cb.runner_alive(row) is True                              # unknown is never "gone"
 
 
 # ---- the runner: real git, a scripted model -----------------------------------------------------------------------------
@@ -305,7 +367,14 @@ def test_changed_paths_sees_edits_new_files_and_both_sides_of_a_rename(clone: Pa
     (clone / "tests").mkdir()
     (clone / "tests" / "test_a.py").write_text("def test_a():\n    assert True\n", encoding="utf-8")
     _git(clone, "mv", "backend/old.py", "backend/new.py")
-    assert runner.changed_paths(clone) == ["backend/a.py", "backend/new.py", "backend/old.py", "tests/test_a.py"]
+    base = _git(clone, "rev-parse", "HEAD")
+    assert runner.changed_paths(clone, base) == ["backend/a.py", "backend/new.py", "backend/old.py", "tests/test_a.py"]
+
+    head = runner.commit_candidate(clone, base, "candidate")          # committed changes still count as changed
+    assert runner.changed_paths(clone, base) == ["backend/a.py", "backend/new.py", "backend/old.py", "tests/test_a.py"]
+    (clone / "backend" / "a.py").write_text("x = 3\n", encoding="utf-8")
+    again = runner.commit_candidate(clone, base, "candidate")         # a repair replaces the commit: still ONE on the base
+    assert again != head and _git(clone, "rev-parse", "HEAD^") == base and _git(clone, "status", "--porcelain") == ""
 
 
 def test_a_cli_answer_that_is_not_one_json_object_is_a_failed_call() -> None:
@@ -336,12 +405,20 @@ def test_the_runner_builds_in_a_worktree_at_the_baseline_and_delivers_only_after
 
     def preflight(tree: Path) -> dict:
         events.append("preflight")
-        assert (tree / "backend" / "a.py").read_text(encoding="utf-8") == "x = 2\n"
+        # Codex P1 on #702: the candidate is already ONE commit on the baseline and the tree is clean, which is what
+        # production_preflight's baseline comparison (HEAD^, clean tree) requires
+        assert _git(tree, "rev-parse", "HEAD^") == base and _git(tree, "status", "--porcelain") == ""
+        assert _git(tree, "show", "HEAD:backend/a.py") == "x = 2"
+        (tree / "leftover.txt").write_text("written by a test run", encoding="utf-8")
+        (tree / "backend" / "a.py").write_text("x = 99\n", encoding="utf-8")
         return {"ok": True, "command": "python engineering/preflight.py", "returncode": 0}
 
     def deliver(_job, tree, verdict, _check) -> str:
         events.append("deliver")
         assert verdict["changed"] == ["backend/a.py"] and tree == worktree
+        # what is delivered is exactly the verified head: nothing the test run left behind
+        assert verdict["head"] == _git(tree, "rev-parse", "HEAD") and _git(tree, "status", "--porcelain") == ""
+        assert (tree / "backend" / "a.py").read_text(encoding="utf-8") == "x = 2\n" and not (tree / "leftover.txt").exists()
         return "https://github.com/jweter/VoiceStudio/pull/9"
 
     monkeypatch.setattr(runner, "NativeWindowsRuntime", Runtime)
@@ -377,3 +454,16 @@ def test_the_runner_never_delivers_a_build_whose_preflight_failed(clone: Path, t
                            preflight=lambda _tree: {"ok": False, "output_tail": "1 failed"})
     assert not verdict["ok"] and verdict["reason"] == "PREFLIGHT_FAILED_AFTER_REPAIR_ROUNDS" and not worktree.exists()
     assert runner.build(job, check=lambda: None, preflight=never, executable=None)["reason"] == "CLAUDE_CLI_NOT_FOUND"
+
+
+def test_delivery_refuses_a_tree_that_is_not_the_verified_head(clone: Path) -> None:
+    runner = _runner()
+    base = _git(clone, "rev-parse", "HEAD")
+    (clone / "backend" / "a.py").write_text("x = 2\n", encoding="utf-8")
+    head = runner.commit_candidate(clone, base, "candidate")
+    job = {"request": request(), "branch": "iron-god/capable/z"}
+    with pytest.raises(RuntimeError, match="DELIVERY_REFUSED"):
+        runner.deliver(job, clone, {"head": "0" * 40, "changed": ["backend/a.py"]}, lambda: None)
+    (clone / "backend" / "a.py").write_text("x = 5\n", encoding="utf-8")   # edited after verification
+    with pytest.raises(RuntimeError, match="DELIVERY_REFUSED"):
+        runner.deliver(job, clone, {"head": head, "changed": ["backend/a.py"]}, lambda: None)
