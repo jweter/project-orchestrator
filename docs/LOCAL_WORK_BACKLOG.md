@@ -70,6 +70,21 @@ Rules, each one learned from a failure:
 Set `capability_level` to 2 and give a complete `directed_edit` (`module_path`, `test_path` for a **new** test file,
 `test_source`, `targets`). The test must fail at the base for the right reason, which you can prove by running it.
 
+## Where local slices come from (2026-11-13)
+
+Hand-authoring fed one repository out of seven, so the lane idled once the capable budget was spent. Two engine prompts now
+ask the stronger builder to write them, with the rules above carried in the prompt itself:
+
+- **Every capable build dispatch** (`iron_god_capable_builder.local_follow_on`) also appends up to three Level 1 slices to the
+  graph, in the same pull request, for pure logic the roadmap's next outcome needs. None is a valid answer; busywork is not.
+  It is skipped for planning tasks and for repositories with no Python package.
+- **Every planning dispatch** (`iron_god_roadmap_refill.planning_request`) must split the next work so pure logic sits in
+  Level 1 slices and wiring, I/O and user interface sit in Level 3+ slices that depend on them.
+
+No budget, gate or attempt cap changed. The merger already accepts purely additive graph edits and refuses anything else.
+Whether this works is measured, not assumed: local merges per capable dispatch, and the local per-slice pass rate against the
+baseline in `development-memory.sqlite3` (29 Oct to 13 Nov 2026: 7 of 71 attempts passed; 7 of 41 slices delivered).
+
 ## Check it before you commit it
 
 ```text
