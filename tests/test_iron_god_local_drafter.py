@@ -729,6 +729,67 @@ def test_a_first_request_keeps_every_attempted_function_blocked(world: dict) -> 
     assert sent["attempted_functions"] == ["newest_entries", "something_else"]
 
 
+def _store_item(world: dict, ident: str, capability: str, name: str, outcome: str | None, repository: str = REPO) -> None:
+    """One earlier lane item: what it built, which capability it addressed, and how it ended (None: still in flight)."""
+    row = {"id": ident, "repository": repository, "addresses": f"{capability}: some-slice", "build": {"function_name": name}}
+    refill._mutate(world["lane"], lambda store: store["items"].append(row))
+    if outcome is not None:
+        state = refill.backlog.load_state(world["lane"])
+        state.setdefault("items", {})[ident] = {"attempts": 2, "outcome": outcome}
+        refill.backlog.state_path(world["lane"]).write_text(json.dumps(state), encoding="utf-8")
+
+
+def _sent_names(world: dict, request: dict, names: list[str]) -> list[str]:
+    recorder = Spawner()
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=recorder, extra={"attempted_functions": names})
+    return json.loads(recorder.launched[0][0].read_text(encoding="utf-8"))["attempted_functions"]
+
+
+def test_a_replacement_slice_may_reuse_a_name_only_a_failed_slice_of_its_capability_tried(world: dict) -> None:
+    """Rocksmith section-agreement-v2 (2026-11-14): a new slice id has no prior_failures, so the natural name was refused."""
+    request = request_of(world)
+    assert not request.get("prior_failures")
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+    _store_item(world, "RM-old-r1", request["capability"], "section_agreement", "REVIEW_REQUIRED: CHANGES_OUTSIDE_PLAN")
+
+    assert _sent_names(world, request, ["section_agreement", "something_else"]) == ["something_else"]
+
+
+def test_a_merged_name_or_another_capabilitys_name_or_an_unfinished_items_name_stays_blocked(world: dict) -> None:
+    request = request_of(world)
+    capability = request["capability"]
+    _store_item(world, "RM-shipped", capability, "shipped_fn", "FAIL: SLICE_TESTS_FAILED")
+    _store_item(world, "RM-shipped-r1", "another-capability", "shipped_fn", "MERGED")  # the function exists in the repository
+    _store_item(world, "RM-elsewhere", "another-capability", "elsewhere_fn", "FAIL: SLICE_TESTS_FAILED")
+    _store_item(world, "RM-in-flight", capability, "in_flight_fn", None)
+    _store_item(world, "RM-other-repo", capability, "other_repo_fn", "FAIL: SLICE_TESTS_FAILED", repository="jweter/other")
+    names = ["elsewhere_fn", "in_flight_fn", "other_repo_fn", "shipped_fn"]
+
+    assert _sent_names(world, request, names) == names
+
+
+@pytest.mark.parametrize("other_capability, other_outcome", [
+    ("another-capability", "FAIL: SLICE_TESTS_FAILED"),  # another capability also failed with it
+    (None, None),                                          # an item of this capability is still building it
+    ("another-capability", "MERGED"),                    # it shipped elsewhere in the repository
+])
+def test_a_name_shared_with_any_use_that_is_not_abandoned_here_stays_blocked(world: dict, other_capability, other_outcome) -> None:
+    """Codex P2 on #699: one failed use in this capability must not release a name that something else also holds."""
+    request = request_of(world)
+    _store_item(world, "RM-failed-here", request["capability"], "same_fn", "FAIL: SLICE_TESTS_FAILED")
+    _store_item(world, "RM-other-use", other_capability or request["capability"], "same_fn", other_outcome)
+
+    assert _sent_names(world, request, ["same_fn"]) == ["same_fn"]
+
+
+def test_an_unreadable_outcome_ledger_releases_no_name(world: dict) -> None:
+    request = request_of(world)
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+    refill.backlog.state_path(world["lane"]).write_text("{not json", encoding="utf-8")
+
+    assert _sent_names(world, request, ["section_agreement"]) == ["section_agreement"]
+
+
 def _finish_pending(world: dict, reason: str) -> None:
     for job in (Path(world["lane"]) / drafter.JOBS).glob("*.json"):
         row = json.loads(job.read_text(encoding="utf-8"))

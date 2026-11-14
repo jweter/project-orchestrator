@@ -325,11 +325,48 @@ def _own_earlier_functions(lane_root: Path, request: dict[str, Any]) -> set[str]
     """
     failed = {str(row.get("id")) for row in request.get("prior_failures") or [] if isinstance(row, dict)}
     names: set[str] = set()
-    for item in refill.load_store(lane_root)["items"]:
+    items = refill.load_store(lane_root)["items"]
+    for item in items:
         build = item.get("build") if isinstance(item, dict) else None
         if str(item.get("id")) in failed and isinstance(build, dict) and build.get("function_name"):
             names.add(str(build["function_name"]))
-    return names
+    return names | _abandoned_capability_functions(lane_root, request, items)
+
+
+def _abandoned_capability_functions(lane_root: Path, request: dict[str, Any], items: list[dict[str, Any]]) -> set[str]:
+    """Names tried only by FAILED, never-merged items of this request's own capability.
+
+    A slice that spent every revision is replaced in the roadmap by a new slice with a new id, so it carries no
+    ``prior_failures`` and the natural name was refused (Rocksmith section-agreement-v2, 2026-11-14:
+    PLAN_ALREADY_ATTEMPTED: section_agreement, a five-minute draft spent on a name nothing ever shipped). The name ban
+    exists to stop the planner looping on its own ideas; a roadmap slice is defined by its examples, not its name.
+    Still blocked: a name any item of this repository MERGED (the function exists), and names from other capabilities.
+    An unreadable outcome ledger releases nothing.
+    """
+    capability, repository = str(request.get("capability") or ""), request.get("repository")
+    if not capability:
+        return set()
+    try:
+        outcomes = refill.backlog.load_state(lane_root).get("items") or {}
+    except ValueError:
+        return set()
+
+    def outcome(item: dict[str, Any]) -> str:
+        return str((outcomes.get(str(item.get("id"))) or {}).get("outcome") or "")
+
+    def abandoned_here(item: dict[str, Any]) -> bool:
+        # no recorded outcome means the item is still in flight; MERGED means the function exists
+        return (str(item.get("addresses") or "").split(":", 1)[0].strip() == capability
+                and outcome(item).startswith(refill.RE_AUTHORABLE))
+
+    uses: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        build = item.get("build")
+        if item.get("repository") == repository and isinstance(build, dict) and build.get("function_name"):
+            uses.setdefault(str(build["function_name"]), []).append(item)
+    # EVERY use of the name must be abandoned by this capability: one failed use here does not release a name that
+    # another capability, an unfinished item or a merged item also holds.
+    return {name for name, rows in uses.items() if all(abandoned_here(row) for row in rows)}
 
 
 def _rejection_feedback(lane_root: Path, ident: str) -> str:
