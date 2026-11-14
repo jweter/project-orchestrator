@@ -842,7 +842,7 @@ def local_work_waiting(lane_root: Path, requests: list[dict[str, Any]]) -> bool:
     for request in requests:
         if not drafter.eligible(request) or request["id"] in admitted:
             continue
-        spent = sum(1 for r in drafter._jobs(lane_root) if r.get("id") == request["id"] and not drafter._interrupted(r))
+        spent = drafter.spent_attempts(lane_root, [r for r in drafter._jobs(lane_root) if r.get("id") == request["id"]])
         if spent < (1 if request.get("capability_level") == drafter.DIRECTED_LEVEL else drafter.MAX_ATTEMPTS):
             return True
     return False
@@ -855,7 +855,7 @@ def drafting_exhausted(lane_root: Path, ident: str, *, directed: bool = False) -
     rows = [r for r in drafter._jobs(lane_root) if r.get("id") == ident]
     if any(r.get("stage") == "DRAFTING" for r in rows):
         return False
-    spent = sum(1 for r in rows if not drafter._interrupted(r))
+    spent = drafter.spent_attempts(lane_root, rows)
     limit = 1 if directed else drafter.MAX_ATTEMPTS
     return spent >= limit and drafter._draft_state(lane_root, ident) != "UNJUDGED"
 
