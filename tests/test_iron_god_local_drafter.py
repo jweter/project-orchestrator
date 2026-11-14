@@ -799,6 +799,104 @@ def _finish_pending(world: dict, reason: str) -> None:
             result.write_text(json.dumps({"ok": False, "reason": reason}), encoding="utf-8")
 
 
+NAME_REFUSED = ("PlanRejected: PLAN_ALREADY_ATTEMPTED: {} was already tried in this repository; "
+                "choose a different function")  # the worker's exact text, as recorded on 2026-11-14
+
+
+def _refuse_twice(world: dict, request: dict, spawner: Spawner, name: str) -> None:
+    for _ in range(drafter.MAX_ATTEMPTS):
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+        _finish_pending(world, NAME_REFUSED.format(name))
+        drafter.harvest(world["lane"])
+
+
+def test_a_draft_refused_only_for_a_since_released_name_does_not_spend_an_attempt(world: dict) -> None:
+    """Rocksmith section-agreement-v2 (2026-11-14): both attempts went to the name guard before the builder ever ran."""
+    from project_orchestrator import iron_god_task_decomposer as decomposer
+
+    request, spawner = request_of(world), Spawner()
+    _refuse_twice(world, request, spawner, "section_agreement")
+    jobs = Path(world["lane"]) / drafter.JOBS
+    before = {p.name: p.read_bytes() for p in jobs.glob("*.json")}
+    assert decomposer.drafting_exhausted(world["lane"], request["id"])  # nothing releases the name yet: both are spent
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+
+    assert not decomposer.drafting_exhausted(world["lane"], request["id"])
+    assert decomposer.local_work_waiting(world["lane"], [request])
+    (started,) = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+    assert started["status"] == "STARTED" and started["attempt"] == 2 and len(spawner.launched) == 3
+    assert {name: (jobs / name).read_bytes() for name in before} == before  # the spent records are never rewritten
+
+
+def test_the_released_name_gets_the_normal_two_attempts_and_no_more(world: dict) -> None:
+    request, spawner = request_of(world), Spawner()
+    _refuse_twice(world, request, spawner, "section_agreement")
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+    for _ in range(drafter.MAX_ATTEMPTS):
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+        _finish_pending(world, "PlanRejected: a real failure")
+        drafter.harvest(world["lane"])
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+    assert len(spawner.launched) == 2 * drafter.MAX_ATTEMPTS
+
+
+@pytest.mark.parametrize("capability, outcome", [
+    ("another-capability", "FAIL: SLICE_TESTS_FAILED"),  # the name belongs to another capability
+    (None, "MERGED"),                                      # the function exists
+    (None, None),                                          # an item is still building it
+])
+def test_a_refusal_for_a_name_that_is_still_blocked_stays_spent(world: dict, capability, outcome) -> None:
+    request, spawner = request_of(world), Spawner()
+    _refuse_twice(world, request, spawner, "held_fn")
+    _store_item(world, "RM-holder", capability or request["capability"], "held_fn", outcome)
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+    assert len(spawner.launched) == drafter.MAX_ATTEMPTS
+
+
+@pytest.mark.parametrize("reason", [
+    NAME_REFUSED.format("section_agreement") + "; SLICE_TESTS_FAILED: 2 failed",       # the refusal plus a real failure
+    "SLICE_TESTS_FAILED after " + NAME_REFUSED.format("section_agreement"),
+    "PlanRejected: PLAN_ALREADY_ATTEMPTED: section_agreement was already tried",       # not the worker's whole text
+])
+def test_a_reason_that_is_not_exactly_the_name_refusal_stays_spent(world: dict, reason: str) -> None:
+    """Review of #700: the name refusal must be the ONLY reason, or a real failure would be voided with it."""
+    request, spawner = request_of(world), Spawner()
+    for _ in range(drafter.MAX_ATTEMPTS):
+        drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner)
+        _finish_pending(world, reason)
+        drafter.harvest(world["lane"])
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+
+
+def test_a_record_pointing_at_a_request_outside_the_lane_stays_spent(world: dict, tmp_path: Path) -> None:
+    request, spawner = request_of(world), Spawner()
+    _refuse_twice(world, request, spawner, "section_agreement")
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+    for job in (Path(world["lane"]) / drafter.JOBS).glob("*.json"):
+        row = json.loads(job.read_text(encoding="utf-8"))
+        elsewhere = tmp_path / f"outside-{row['attempt']}.json"
+        elsewhere.write_bytes(Path(row["request_file"]).read_bytes())  # same content, wrong place
+        job.write_text(json.dumps({**row, "request_file": str(elsewhere)}), encoding="utf-8")
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+
+
+def test_a_name_refusal_whose_stored_request_is_unreadable_stays_spent(world: dict) -> None:
+    request, spawner = request_of(world), Spawner()
+    _refuse_twice(world, request, spawner, "section_agreement")
+    _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")
+    for copy in (Path(world["lane"]) / drafter.REQUEST_COPIES).glob("*.json"):
+        copy.write_text("{not json", encoding="utf-8")
+
+    assert drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=spawner) == []
+
+
 def test_an_owner_takeover_mid_draft_does_not_spend_an_attempt_and_keeps_its_record(world: dict) -> None:
     """Owner takeover is routine (2026-11-02: it consumed S2-r1's first of two attempts)."""
     request = request_of(world)

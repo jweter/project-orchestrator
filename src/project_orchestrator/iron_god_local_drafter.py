@@ -34,6 +34,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -73,6 +74,16 @@ class ContradictsRoadmap(ValueError):
     """The plan's own examples disagree with the roadmap's acceptance examples."""
 
 
+# "<ephemeral port>", "<ephemeral_port>", "<port>": a value the model did not know, written as a slot. Markup is not a
+# slot: an attribute, a slash or a matching closing tag ("<b>x</b>", "<br/>", '<a href="x">') never matches.
+_SLOT = re.compile(r"<([A-Za-z][A-Za-z0-9]*(?:[ _-][A-Za-z0-9]+)*)>")
+
+
+def _has_slot(text: str) -> bool:
+    # a name with a matching closing tag is markup whatever its spelling (<custom-element>, <record_id>)
+    return any(f"</{name}>" not in text for name in _SLOT.findall(text))
+
+
 def _unresolved_placeholder(value: Any) -> bool:
     """Conservatively identify literal placeholder values in a test oracle.
 
@@ -87,8 +98,10 @@ def _unresolved_placeholder(value: Any) -> bool:
             try:
                 return _unresolved_placeholder(json.loads(value))
             except (ValueError, TypeError):
-                return False
-        return False
+                return _has_slot(value)
+        # knowledge-engine-core 2026-11-14: four local builds failed on the self-authored exact output
+        # '{"status":"Server started on port <ephemeral port>"}', which no implementation can return
+        return _has_slot(value)
     if isinstance(value, dict):
         return any(_unresolved_placeholder(part) for part in value.values())
     if isinstance(value, (list, tuple)):
@@ -129,6 +142,38 @@ def _jobs(lane_root: Path) -> list[dict[str, Any]]:
 def _interrupted(row: dict[str, Any]) -> bool:
     """An owner takeover cut the draft short. Records written before INTERRUPTED existed say so in their reason."""
     return row.get("stage") == "INTERRUPTED" or INTERRUPTED_MARK in str(row.get("reason", ""))
+
+
+# The worker's whole refusal and nothing else: a reason that also carries another failure is a real failure.
+NAME_REFUSAL = re.compile(r"(?:PlanRejected: )?PLAN_ALREADY_ATTEMPTED: (\w+) was already tried in this repository; "
+                          r"choose a different function")
+
+
+def _refused_for_released_name(lane_root: Path, row: dict[str, Any]) -> bool:
+    """The draft was refused ONLY by the name guard, for a name the guard no longer holds against this request.
+
+    Rocksmith section-agreement-v2 (2026-11-14) spent both attempts on PLAN_ALREADY_ATTEMPTED: section_agreement before
+    the builder ever ran: that measured the guard, not the local model, so like an owner takeover it spends no attempt.
+    Judged from the job's OWN stored request and today's ledger; anything unreadable keeps the attempt spent. A refusal
+    for a name that is still blocked stays spent, and the record itself is never rewritten.
+    """
+    match = NAME_REFUSAL.fullmatch(str(row.get("reason", "")).strip()) if row.get("stage") == "FAILED" else None
+    if match is None:
+        return False
+    try:
+        # only the lane's own copy of that attempt's request is evidence; a record pointing anywhere else is not
+        request_file = Path(lane_root) / REQUEST_COPIES / f"{row['id']}.a{int(row['attempt'])}.json"
+        if Path(row["request_file"]).resolve() != request_file.resolve():
+            return False
+        request = json.loads(request_file.read_text(encoding="utf-8"))
+        return isinstance(request, dict) and match.group(1) in _own_earlier_functions(lane_root, request)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def spent_attempts(lane_root: Path, rows: list[dict[str, Any]]) -> int:
+    """Draft jobs that count against MAX_ATTEMPTS: not an owner takeover, not a refusal for a since-released name."""
+    return sum(1 for row in rows if not _interrupted(row) and not _refused_for_released_name(lane_root, row))
 
 
 def _job_path(lane_root: Path, ident: str, attempt: int) -> Path:
@@ -504,8 +549,8 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
             continue  # a valid draft is already admitted for this request: a second model run only burns RAM and time
         rows = [row for row in _jobs(lane_root) if row["id"] == request["id"]]
         attempt = len(rows)  # the next free record number: interrupted attempts keep their files
-        spent = sum(1 for row in rows if not _interrupted(row))
-        if attempt - spent >= MAX_INTERRUPTIONS:
+        spent = spent_attempts(lane_root, rows)
+        if attempt - spent >= MAX_INTERRUPTIONS:  # also bounds attempts voided by a released name
             continue
         if spent >= (1 if request.get("capability_level") == DIRECTED_LEVEL else MAX_ATTEMPTS):
             # a directed draft is assembled mechanically: running it again would only repeat the verdict
