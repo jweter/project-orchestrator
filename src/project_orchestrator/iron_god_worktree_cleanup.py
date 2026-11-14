@@ -19,6 +19,13 @@ Dry run by default; ``--apply`` requires the owner to hold control so no turn
 can start meanwhile.
 
     python -m project_orchestrator.iron_god_worktree_cleanup [--apply]
+
+The engine also cleans up after itself (owner, 2026-11-14: "cleanup after yourself and the engine should do the same";
+C: had reached 35.03 GiB, the allocation gate's limit, because this tool only ran when someone ran it by hand).
+``auto_clean`` applies the same rules from inside the product lane, which calls it only while no turn is active - the
+lane is the one thing that starts turns, so none can start meanwhile - at most every ``AUTO_INTERVAL_S`` and at most
+``AUTO_MAX_REMOVALS`` worktrees per run. It also takes the worktree an in-engine capable build left behind once that
+build is no longer running (an owner takeover kills the runner before it can remove its own).
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +45,12 @@ from .state_io import atomic_json
 KEEP_PUBLICATION_STATES = {"PUBLISH_PENDING", "AWAITING_CI", "AWAITING_OWNER_REVIEW", "REPAIR_PENDING",
                            "REPAIRING"}
 MAX_ARCHIVE_BYTES = 2_000_000
-REMOVABLE = {"FAILED_NO_COMMITS", "UNCOMMITTED_CHANGES", "UNPUBLISHED_COMMITS", "MERGED", "PUBLICATION_BLOCKED"}
+REMOVABLE = {"FAILED_NO_COMMITS", "UNCOMMITTED_CHANGES", "UNPUBLISHED_COMMITS", "MERGED", "PUBLICATION_BLOCKED",
+             "CAPABLE_BUILD_FINISHED"}
+AUTO_INTERVAL_S = 30 * 60
+AUTO_MAX_REMOVALS = 10       # a knowledge-engine-core checkout is ~600 MB: bound the time one lane pass can spend
+AUTO_STAMP = "worktree-cleanup-auto.json"
+CAPABLE_PREFIX = "capable-"  # iron_god_capable_engine: <worktrees>/capable-<dispatch id>
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -55,6 +68,8 @@ def _json(path: Path, default: Any) -> Any:
 def classify(lane_root: Path, worktree: Path) -> dict[str, Any]:
     """What a worktree holds, from the lane's own records and git; never guesses."""
     pid = worktree.name
+    if pid.startswith(CAPABLE_PREFIX):
+        return _classify_capable(lane_root, worktree)
     packet = _json(lane_root / "packets" / f"{pid}.json", {})
     handback = _json(lane_root / "handbacks" / f"{pid}.json", {})
     publication = _json(lane_root / "publications.json", {"items": {}}).get("items", {}).get(pid, {})
@@ -88,6 +103,32 @@ def classify(lane_root: Path, worktree: Path) -> dict[str, Any]:
     else:
         kind = "UNKNOWN"
     row["class"] = kind
+    return row
+
+
+def _classify_capable(lane_root: Path, worktree: Path) -> dict[str, Any]:
+    """The worktree of an in-engine capable build, from that build's own job file and dispatch row.
+
+    Kept while the dispatch is still DISPATCHED (its runner may be working) or when either record is unreadable.
+    """
+    ident = worktree.name[len(CAPABLE_PREFIX):]
+    job = _json(lane_root / "capable-engine-jobs" / f"{ident}.job.json", {})
+    dispatch = _json(lane_root / "capable-dispatches" / f"{ident}.json", {})
+    row: dict[str, Any] = {"packet_id": worktree.name, "path": str(worktree), "branch": job.get("branch"),
+                           "base_sha": job.get("base"), "publication": dispatch.get("status")}
+    head = _git(worktree, "rev-parse", "HEAD")
+    row["head_sha"] = head.stdout.strip() if head.returncode == 0 else None
+    status = _git(worktree, "status", "--porcelain")
+    row["dirty"] = bool(status.stdout.strip()) if status.returncode == 0 else None
+    ahead = _git(worktree, "rev-list", "--count", f"{job.get('base')}..HEAD") if job.get("base") else None
+    row["commits_ahead"] = int(ahead.stdout.strip()) if ahead is not None and ahead.returncode == 0 else None
+    if not job or not dispatch.get("status") or row["head_sha"] is None or row["dirty"] is None \
+            or row["commits_ahead"] is None:
+        row["class"] = "UNKNOWN"
+    elif dispatch["status"] == "DISPATCHED":
+        row["class"] = "ACTIVE"
+    else:
+        row["class"] = "CAPABLE_BUILD_FINISHED"
     return row
 
 
@@ -153,6 +194,30 @@ def remove_one(state_root: Path, row: dict[str, Any]) -> dict[str, Any]:
         if still != row["head_sha"]:
             return {**row, "result": "REMOVED_BUT_BRANCH_CHANGED", "archive": str(archive)}
     return {**row, "result": "REMOVED", "archive": str(archive), "archive_sha256": digest}
+
+
+def auto_clean(state_root: Path, *, now: float | None = None, interval: float = AUTO_INTERVAL_S,
+               limit: int = AUTO_MAX_REMOVALS) -> dict[str, Any] | None:
+    """The engine's own cleanup: the same rules as ``--apply``, a bounded number of worktrees, at most every ``interval``.
+
+    The CALLER guarantees no turn can start meanwhile (the product lane calls this only while it has no active turn).
+    Returns None when it is not due, else what it did; the report is also the stamp for the next run.
+    """
+    now = time.time() if now is None else now
+    stamp = Path(state_root) / "iron-god-products" / "reports" / AUTO_STAMP
+    last = _json(stamp, {}).get("ran_at")
+    if isinstance(last, (int, float)) and 0 <= now - last < interval:  # never run, or an unreadable stamp: it is due
+        return None
+    rows = plan(state_root)
+    eligible = [row for row in rows if row["class"] in REMOVABLE]
+    results = [remove_one(state_root, row) for row in eligible[:limit]]
+    report = {"ran_at": now, "worktrees": len(rows), "eligible": len(eligible),
+              "removed": sum(1 for r in results if r["result"] == "REMOVED"),
+              "left_for_next_run": max(0, len(eligible) - limit),
+              "results": {r["packet_id"]: r["result"] for r in results},
+              "kept": {r["packet_id"]: r["class"] for r in rows if r["class"] not in REMOVABLE}}
+    atomic_json(stamp, report)
+    return report
 
 
 def _size_mb(path: Path) -> float:

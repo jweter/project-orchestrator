@@ -59,6 +59,7 @@ from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_roadmap_refill as roadmap_refill
 from . import iron_god_working_memory as working_memory
+from . import iron_god_worktree_cleanup as worktree_cleanup
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .iron_god_calibration import capability_gate, load_profile, load_profiles, remove_tree
 from .iron_god_local_model import available_gib, default_ollama_model, recent_pressure
@@ -1257,6 +1258,25 @@ def hand_to_capable_builder(lane: ProductLane, name: str, report: dict[str, Any]
         _dispatch_capable(lane, name, request, capable, clone)
 
 
+def clean_finished_worktrees(lane: ProductLane) -> None:
+    """The engine cleans up after itself: finished turn worktrees are archived and removed while no turn is active.
+
+    Only the lane starts turns and it is here, so none can start meanwhile. Best effort: a failure is recorded and the
+    rotation continues; the allocation gate still protects the disk.
+    """
+    if lane.active() is not None:
+        return
+    try:
+        report = worktree_cleanup.auto_clean(lane.state_root)
+    except Exception as exc:
+        working_memory.record(lane.state_root, "<portfolio>", "WORKTREE_CLEANUP_FAILED", outcome="SKIPPED",
+                              blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
+        return
+    if report and (report["removed"] or report["left_for_next_run"]):
+        roadmap_refill.log_event(lane.root, "WORKTREES_CLEANED", "<portfolio>", "", {
+            key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
+
+
 def spawn_capable_engine(release_repo: Path, release_sha: str, job_file: Path, log_path: Path) -> int:
     """Launch the in-engine capable build like a product worker: release-bound, its own process."""
     env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
@@ -1581,6 +1601,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     approved = [*static, *roadmap_refill.admitted_items(lane.root, static)]
     capable = {**(capable or {"enabled": False, "daily_limit": capable_builder.DEFAULT_DAILY_LIMIT}),
                "release": release, "lease_pool": lease_pool}  # what an in-engine capable build is bound to
+    clean_finished_worktrees(lane)
     for failure in roadmap_progress.harvest(lane.workspaces / "progress", release=runtime_lease(lease_pool)[1]
                                             if lease_pool is not None else None):
         # every turn, before any repository is synced: a finished or hung preflight must not hold the lease and the
