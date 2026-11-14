@@ -1165,6 +1165,29 @@ def test_model_authored_nested_placeholder_oracle_is_rejected_before_child_admis
     assert clean == [] and accepted is not None
 
 
+@pytest.mark.parametrize("expected", [
+    '{"status":"Server started on port <ephemeral port>"}',  # the recorded oracle (attempts 1-3)
+    '{"status":"Server started on port <ephemeral_port>"}',  # the recorded oracle (attempt 4)
+    "Server started on port <port>",
+    ["ok", "<request-id>"],
+])
+def test_a_model_authored_oracle_with_an_embedded_slot_is_rejected(expected) -> None:
+    """knowledge-engine-core 2026-11-14: four local builds were spent on an output no implementation can return."""
+    plan = mutated(lambda p: p["subtasks"][0]["acceptance_examples"][0].update(expected=expected))
+    built, problems = check(plan)
+    assert built is None
+    assert any("t1: SELF_AUTHORED_ACCEPTANCE_PLACEHOLDER" in problem for problem in problems)
+
+
+@pytest.mark.parametrize("expected", [
+    "<b>bold</b>", '<a href="x">link</a>', "<br/>", "a < b and c > d", "List[int] -> <class 'int'>", "<p>one</p><p>two</p>",
+])
+def test_markup_and_comparisons_in_an_oracle_are_not_slots(expected) -> None:
+    plan = mutated(lambda p: p["subtasks"][0]["acceptance_examples"][0].update(expected=expected))
+    accepted, problems = check(plan)
+    assert accepted is not None and problems == []
+
+
 def test_decomposition_with_literal_ellipsis_punctuation_is_not_rejected_as_placeholder() -> None:
     plan = mutated(lambda p: p["subtasks"][0]["acceptance_examples"][0].update(
         expected="First... then done"
