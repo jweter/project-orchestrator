@@ -14,6 +14,7 @@ if SRC_ROOT in sys.path:
 sys.path.insert(0, SRC_ROOT)
 
 import project_orchestrator  # noqa: E402
+from project_orchestrator import iron_god_dev_mode  # noqa: E402
 
 
 def _package_root() -> Path:
@@ -55,3 +56,15 @@ def _isolate_live_owner_state(tmp_path_factory, monkeypatch):
     # a token sets its own fake one.
     for name in [key for key in os.environ if key.startswith(ROUTINE_TOKEN_PREFIX)]:
         monkeypatch.delenv(name)
+    # Dev Mode closes and relaunches the owner's real programs. A lane test that reaches a memory wait with the shipped
+    # policy ran the real thing (measured 2026-11-13: a release preflight closed the owner's Chrome four times, plus
+    # ChatGPT, Edge and OneDrive, while they were using the laptop). No test sees the machine's processes, and no test
+    # can close or launch one; a test that exercises Dev Mode passes its own fakes.
+    monkeypatch.setattr(iron_god_dev_mode, "snapshot_processes", lambda: [])
+    monkeypatch.setattr(iron_god_dev_mode, "system_closer", _forbidden_program_control)
+    monkeypatch.setattr(iron_god_dev_mode, "launcher", _forbidden_program_control)
+    monkeypatch.setattr(iron_god_dev_mode, "alive_pids", lambda pids: set())
+
+
+def _forbidden_program_control(*_args, **_kwargs):
+    raise AssertionError("a test tried to close or launch a real program on this machine")
