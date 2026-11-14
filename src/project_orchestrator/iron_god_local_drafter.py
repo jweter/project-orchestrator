@@ -74,6 +74,16 @@ class ContradictsRoadmap(ValueError):
     """The plan's own examples disagree with the roadmap's acceptance examples."""
 
 
+# "<ephemeral port>", "<ephemeral_port>", "<port>": a value the model did not know, written as a slot. Markup is not a
+# slot: an attribute, a slash or a matching closing tag ("<b>x</b>", "<br/>", '<a href="x">') never matches.
+_SLOT = re.compile(r"<([A-Za-z][A-Za-z0-9]*(?:[ _-][A-Za-z0-9]+)*)>")
+
+
+def _has_slot(text: str) -> bool:
+    # a name with a matching closing tag is markup whatever its spelling (<custom-element>, <record_id>)
+    return any(f"</{name}>" not in text for name in _SLOT.findall(text))
+
+
 def _unresolved_placeholder(value: Any) -> bool:
     """Conservatively identify literal placeholder values in a test oracle.
 
@@ -88,8 +98,10 @@ def _unresolved_placeholder(value: Any) -> bool:
             try:
                 return _unresolved_placeholder(json.loads(value))
             except (ValueError, TypeError):
-                return False
-        return False
+                return _has_slot(value)
+        # knowledge-engine-core 2026-11-14: four local builds failed on the self-authored exact output
+        # '{"status":"Server started on port <ephemeral port>"}', which no implementation can return
+        return _has_slot(value)
     if isinstance(value, dict):
         return any(_unresolved_placeholder(part) for part in value.values())
     if isinstance(value, (list, tuple)):
