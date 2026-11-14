@@ -6,6 +6,9 @@ The owner's security software writes into every directory used as a temp root (m
 there whenever a Python process starts) and can only be told to ignore a folder, not a pattern. With
 ``portfolio_rotation.engine_temp_root`` set, every one of those directories lives under that single folder instead, so
 one exclusion covers all of them. Unset, nothing changes.
+
+Scope (issue #675): disposable test scratch only. An excluded folder is not scanned, so nothing downloaded or
+executed from outside belongs in it; worktrees, clones, environments and the engine itself are never placed here.
 """
 
 from __future__ import annotations

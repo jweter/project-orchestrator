@@ -50,10 +50,11 @@ def test_unsetting_the_policy_clears_a_root_set_earlier(temp, tmp_path: Path) ->
     assert temp.configure(None) is None and temp.temp_dir(Path("C:/w/P.tmp")) == Path("C:/w/P.tmp")
 
 
-def test_the_shipped_policy_names_one_engine_temp_folder() -> None:
+def test_the_shipped_policy_names_the_owners_excluded_test_folder() -> None:
     policy = json.loads((Path(__file__).resolve().parents[1] / "engineering" / "iron-god-commissioning.json")
                         .read_text(encoding="utf-8"))
-    assert policy["portfolio_rotation"]["engine_temp_root"] == "%LOCALAPPDATA%\\ExponentialEngine\\temp"
+    # the folder the owner created and excluded in Norton 360 (issue #675, 2026-11-14)
+    assert policy["portfolio_rotation"]["engine_temp_root"] == "C:\\IronGod\\TestTemp"
 
 
 def test_no_other_test_can_point_temp_directories_at_the_live_engine_folder(monkeypatch) -> None:
