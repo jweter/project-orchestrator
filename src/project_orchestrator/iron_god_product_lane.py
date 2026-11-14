@@ -209,6 +209,23 @@ def _report(lane: ProductLane, payload: dict[str, Any]) -> dict[str, Any]:
 _CARRY_STATUSES = frozenset({"DISPATCHED", "ACCEPTED_LOCAL", "WAITING_FOR_MEMORY"})
 
 
+def local_model_work_in_progress(lane: ProductLane) -> bool:
+    """A local draft, a local decomposition, a progress preflight or an in-engine capable build is running right now.
+
+    None of them is a product turn, so the pass that started them still ends IDLE. To Dev Mode that looked like "nothing
+    to build": on 2026-11-14 it restored the owner's programs at 16:08Z while the draft started at 16:03Z was still
+    running, the 7B was cancelled for memory at 16:13Z, and the 30-minute cooldown then kept Dev Mode from coming back.
+    """
+    try:
+        if local_drafter.drafting_in_progress(lane.root) or task_decomposer.planning_in_progress(lane.root) \
+                or roadmap_progress.verifying(lane.workspaces / "progress"):
+            return True
+        return any(row.get("transport") == capable_builder.ENGINE_TRANSPORT and row.get("status") == "DISPATCHED"
+                   for row in capable_builder._rows(capable_builder.dispatch_state(lane.root)))
+    except Exception:  # noqa: BLE001 - unknown is not idle: keep the memory the work may be using
+        return True
+
+
 def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any], final: bool = False) -> None:
     """Owner's standing rule (2026-11-08): if development stalls on memory, enter Dev Mode and carry on.
 
@@ -232,7 +249,8 @@ def _dev_mode_tick(lane: ProductLane, payload: dict[str, Any], final: bool = Fal
                 waiting, route = True, carried
         out = dev_mode.engine_step(
             lane.state_root, cfg, waiting_for_memory=waiting,
-            idle=status.startswith("IDLE") and not waiting, required_gib=route.get("required_gib"), free_gib=route.get("available_gib"))
+            idle=status.startswith("IDLE") and not waiting and not local_model_work_in_progress(lane),
+            required_gib=route.get("required_gib"), free_gib=route.get("available_gib"))
         if out and out.get("action") in {"ENTER", "RESTORED", "RESTORE_PENDING", "NO_HELP", "LIMIT", "COOLDOWN"}:
             execution_status.note(execution_status.execution_dir(lane.root), "devmode", **out)
             roadmap_refill.log_event(lane.root, "DEV_MODE_" + str(out["action"]), "portfolio", "dev-mode", out)
