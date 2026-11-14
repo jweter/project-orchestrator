@@ -370,6 +370,64 @@ def test_two_failed_attempts_block_the_slice_with_the_exact_reason_and_it_stays_
     )  # never retried
 
 
+def test_second_local_attempt_receives_failed_plan_evidence_without_changing_parent(
+    tmp_path: Path, clone: Path
+) -> None:
+    lane, base = tmp_path / "lane", head_of(clone)
+    failure = "PLAN_REJECTED: t1: module already exists at exact head"
+    first = Spawner({"ok": False, "reason": failure})
+    td.advance(lane, [PARENT], clone, base, spawn=first)
+    assert td.harvest(lane)[0]["status"] == "FAILED"
+
+    copies = []
+
+    def spy(request_file: Path, _clone: Path, _base: str, _out: Path) -> int:
+        copies.append(json.loads(request_file.read_text(encoding="utf-8")))
+        return 4242
+
+    result = td.advance(lane, [PARENT], clone, base, spawn=spy)
+    assert result[0]["status"] == "STARTED" and result[0]["attempt"] == 1
+    assert copies[0]["decomposition_retry_feedback"] == failure
+    retry_prompt = td.outline_prompt(copies[0], "existing Python modules: pkg/core.py")
+    assert "PRIOR LOCAL FAILURE EVIDENCE" in retry_prompt
+    assert "module already exists" in retry_prompt
+    assert "meaningfully different decomposition" in retry_prompt
+    assert "decomposition_retry_feedback" not in PARENT
+    assert "PRIOR LOCAL FAILURE EVIDENCE" not in td.outline_prompt(PARENT, "")
+
+
+def test_owner_takeover_is_not_presented_as_a_local_planning_failure(
+    tmp_path: Path, clone: Path
+) -> None:
+    lane, base = tmp_path / "lane", head_of(clone)
+    td.advance(lane, [PARENT], clone, base, spawn=Spawner({
+        "ok": False, "reason": "RuntimeError: EXECUTION_AUTHORITY_REVOKED"
+    }))
+    assert td.harvest(lane)[0]["status"] == "INTERRUPTED"
+    copies = []
+
+    def spy(request_file: Path, _clone: Path, _base: str, _out: Path) -> int:
+        copies.append(json.loads(request_file.read_text(encoding="utf-8")))
+        return 4242
+
+    td.advance(lane, [PARENT], clone, base, spawn=spy)
+    assert len(copies) == 1 and "decomposition_retry_feedback" not in copies[0]
+
+
+def test_failure_feedback_is_bounded_distinct_and_omits_interruptions() -> None:
+    rows = [
+        {"stage": "FAILED", "reason": "TypeError: " + "x" * 500},
+        {"stage": "INTERRUPTED", "reason": "EXECUTION_AUTHORITY_REVOKED"},
+        {"stage": "FAILED", "reason": "PLAN_REJECTED: bad path"},
+        {"stage": "FAILED", "reason": "PLAN_REJECTED: bad path"},
+    ]
+    feedback = td.prior_decomposition_feedback(rows)
+    assert feedback.count("PLAN_REJECTED: bad path") == 1
+    assert "TypeError" in feedback
+    assert "EXECUTION_AUTHORITY_REVOKED" not in feedback
+    assert len(feedback) <= 482
+
+
 def test_an_owner_takeover_never_spends_an_attempt_and_one_job_runs_at_a_time(
     tmp_path: Path, clone: Path
 ) -> None:

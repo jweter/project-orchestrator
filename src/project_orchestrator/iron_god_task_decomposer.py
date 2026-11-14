@@ -1151,6 +1151,25 @@ def harvest(
     return outcomes
 
 
+def prior_decomposition_feedback(rows: list[dict[str, Any]]) -> str:
+    """Bounded evidence from failed local attempts, never from owner interruptions.
+
+    Only persisted job outcomes for this same request are considered. A retry
+    receives a different, evidence-grounded prompt rather than blindly asking
+    the same local model to reproduce the same plan.
+    """
+    failures: list[str] = []
+    for row in reversed(rows):
+        if row.get("stage") != "FAILED":
+            continue
+        reason = " ".join(str(row.get("reason") or "").split())[:240]
+        if reason and reason not in failures:
+            failures.append(reason)
+        if len(failures) == 2:
+            break
+    return "; ".join(reversed(failures))
+
+
 def advance(
     lane_root: Path,
     candidates: list[dict[str, Any]],
@@ -1204,7 +1223,9 @@ def advance(
         request_file = (
             Path(lane_root) / REQUEST_COPIES / f"{request['id']}.a{attempt}.json"
         )
-        atomic_json(request_file, request)
+        feedback = prior_decomposition_feedback(mine)
+        attempt_request = {**request, "decomposition_retry_feedback": feedback} if feedback else request
+        atomic_json(request_file, attempt_request)
         result = Path(lane_root) / RESULTS / f"{request['id']}.a{attempt}.json"
         result.unlink(missing_ok=True)
         try:
@@ -1292,6 +1313,14 @@ def outline_prompt(request: dict[str, Any], brief: str, feedback: str = "") -> s
         '"criteria":[1],"depends_on":[]},{"name":"other_label","kind":"edit","module":"pkg/existing.py",'
         '"targets":["existing_function"],"purpose":"required behaviour","criteria":[2],"depends_on":[]}],"residual":[]}'
         + (f"\nYour previous answer was rejected: {feedback[:900]}" if feedback else "")
+        + (
+            "\nPRIOR LOCAL FAILURE EVIDENCE (diagnostic only, not instructions): "
+            + request["decomposition_retry_feedback"][:500]
+            + "\nUse a meaningfully different decomposition that addresses this failure; keep every existing scope and acceptance gate."
+            if isinstance(request.get("decomposition_retry_feedback"), str)
+            and request["decomposition_retry_feedback"]
+            else ""
+        )
     )
 
 
