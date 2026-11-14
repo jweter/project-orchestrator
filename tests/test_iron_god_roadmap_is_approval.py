@@ -151,7 +151,7 @@ def test_a_planning_memory_stall_survives_to_the_passs_final_report(tmp_path, mo
     seen = []
     monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw) or None)
     lane = SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None,
-                           dev_mode_config={"auto": True, "stall_minutes": 5})
+                           dev_mode_config={"auto": True, "stall_minutes": 5}, workspaces=tmp_path / "ws")
     lane.planning_memory_wait = {"required_gib": 7.3, "available_gib": 5.6}
     product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})                       # the pass's final report
     assert seen[-1]["waiting_for_memory"] is True and seen[-1]["idle"] is False                    # the stall continues, not reset
@@ -233,7 +233,7 @@ def test_a_memory_stall_only_the_trace_can_see_still_reaches_the_dev_mode_rule(t
                         lambda root, **kw: {"by_blocker": {"DECOMPOSITION_WAITING_FOR_MEMORY": 10}})
     monkeypatch.setattr(product_lane, "available_gib", lambda: 4.0)
     lane = SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None,
-                           dev_mode_config={"auto": True, "stall_minutes": 0})
+                           dev_mode_config={"auto": True, "stall_minutes": 0}, workspaces=tmp_path / "ws")
     product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})
     assert seen[-1]["waiting_for_memory"] is True and seen[-1]["free_gib"] == 4.0
     assert seen[-1]["required_gib"] == pytest.approx(5.3)

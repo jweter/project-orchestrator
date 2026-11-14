@@ -356,7 +356,8 @@ def test_the_shipped_policy_records_the_owners_standing_rule_with_its_date_and_l
 
 def lane_for(tmp_path):
     from types import SimpleNamespace
-    return SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None)
+    return SimpleNamespace(state_root=tmp_path / "flow", root=tmp_path / "flow" / "iron-god-products", active=lambda: None,
+                           workspaces=tmp_path / "canon-workspaces" / "products")
 
 
 def test_the_lane_feeds_the_rule_only_when_approved_work_is_actually_waiting_on_memory(tmp_path, monkeypatch) -> None:
@@ -376,6 +377,47 @@ def test_the_lane_feeds_the_rule_only_when_approved_work_is_actually_waiting_on_
     seen.clear()
     product_lane._report(lane, {"status": "WAITING_FOR_MEMORY", "work_waiting": True})
     assert seen == []
+
+
+def test_an_idle_pass_is_not_idle_to_dev_mode_while_local_model_work_is_running(tmp_path, monkeypatch) -> None:
+    """2026-11-14: Dev Mode restored the owner's programs at 16:08Z under a draft started at 16:03Z; the 7B was then
+    cancelled for memory at 16:13Z and the cooldown kept Dev Mode out. A draft is not a turn, so its pass ends IDLE."""
+    import json
+    import time
+
+    from project_orchestrator import iron_god_capable_builder as capable
+    from project_orchestrator import iron_god_local_drafter as drafter
+    from project_orchestrator import iron_god_product_lane as product_lane
+
+    seen = []
+    monkeypatch.setattr(product_lane.dev_mode, "engine_step", lambda root, cfg, **kw: seen.append(kw["idle"]) or None)
+    lane = lane_for(tmp_path)
+    lane.dev_mode_config = ON
+
+    def idle_now() -> bool:
+        seen.clear()
+        product_lane._report(lane, {"status": "IDLE_NO_APPROVED_BACKLOG_ITEM"})
+        return seen[0]
+
+    assert idle_now() is True                                                    # nothing is running: really idle
+
+    job = lane.root / drafter.JOBS / "RM-x.a0.json"
+    job.parent.mkdir(parents=True)
+    job.write_text(json.dumps({"id": "RM-x", "attempt": 0, "stage": "DRAFTING", "started_at": time.time()}), encoding="utf-8")
+    assert idle_now() is False                                                   # a local draft holds the model
+    job.write_text(json.dumps({"id": "RM-x", "attempt": 0, "stage": "DONE", "started_at": time.time()}), encoding="utf-8")
+    assert idle_now() is True
+
+    rows = capable.dispatch_state(lane.root)
+    rows.mkdir(parents=True)
+    (rows / "d1.json").write_text(json.dumps({"dispatch_id": "d1", "transport": "ENGINE", "status": "DISPATCHED"}), encoding="utf-8")
+    assert idle_now() is False                                                   # an in-engine capable build is running
+    (rows / "d1.json").write_text(json.dumps({"dispatch_id": "d1", "transport": "ENGINE", "status": "PASS"}), encoding="utf-8")
+    (rows / "d2.json").write_text(json.dumps({"dispatch_id": "d2", "status": "DISPATCHED"}), encoding="utf-8")  # cloud routine
+    assert idle_now() is True                                                    # a cloud build uses no local memory
+
+    monkeypatch.setattr(product_lane.local_drafter, "drafting_in_progress", lambda root: 1 / 0)
+    assert idle_now() is False                                                   # unknown is never idle
 
 
 def test_a_failing_rule_can_never_break_the_lane(tmp_path, monkeypatch) -> None:
