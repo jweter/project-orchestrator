@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import iron_god_owner_control as owner_controller
+from . import iron_god_temp as engine_temp
 from .canon_worker_memory import prepare_worker_memory_handoff, render_worker_memory_handoff
 from .iron_god_calibration import capability_gate, load_profile, remove_tree
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -270,7 +271,8 @@ def independent_verification(lane: Lane, packet: dict[str, Any], spec: dict[str,
     try:
         missing = [a for a in plan["expected_artifacts"] if not (verify_dir / a).is_file()]
         add("expected_artifacts_present", not missing, ", ".join(missing))
-        temp = verify_dir.parent / f"{packet['packet_id']}.tmp"  # pytest's shared temp link can be access-denied
+        # pytest's shared temp link can be access-denied, so each run gets its own
+        temp = engine_temp.temp_dir(verify_dir.parent / f"{packet['packet_id']}.tmp")
         temp.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "PYTHONPATH": str(verify_dir / "src"), "TEMP": str(temp), "TMP": str(temp)}
         commands = list(plan["verification_commands"])
@@ -292,7 +294,7 @@ def independent_verification(lane: Lane, packet: dict[str, Any], spec: dict[str,
     finally:
         _git(lane.dev_repo, "worktree", "remove", "--force", str(verify_dir))
         shutil.rmtree(verify_dir, ignore_errors=True)
-        remove_tree(verify_dir.parent / f"{packet['packet_id']}.tmp")
+        remove_tree(engine_temp.temp_dir(verify_dir.parent / f"{packet['packet_id']}.tmp"))
     return all(c["ok"] for c in checks), checks
 
 

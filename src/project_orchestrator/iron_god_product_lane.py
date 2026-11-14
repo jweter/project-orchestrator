@@ -58,6 +58,7 @@ from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_roadmap_refill as roadmap_refill
+from . import iron_god_temp as engine_temp
 from . import iron_god_working_memory as working_memory
 from . import iron_god_worktree_cleanup as worktree_cleanup
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -1039,6 +1040,7 @@ def advance_product_lane(
     # The owner's standing Dev Mode rule exists only on an AUTHORIZED pass. It is attached after the authority check on purpose:
     # both denied-authority exits above report without it, so nothing can close the owner's programs while they hold control.
     lane.dev_mode_config = config.get("dev_mode")
+    engine_temp.configure(config.get("engine_temp_root"))  # inherited by every worker, draft and preflight it starts
     merge = "review" if config.get("merge") == "review" else "auto"
     published = advance_publications(lane, release_repo, github=github or GitHub(release_repo), memory_root=memory_root,
                                      merge=merge)
