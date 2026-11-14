@@ -212,8 +212,12 @@ def test_a_worktree_that_cannot_be_removed_never_blocks_the_ones_behind_it(tmp_p
     """Codex P2 on #703: the same unremovable worktrees at the front of the list would be retried forever."""
     state, root, clone, base = lane(tmp_path)
     big = [turn(state, root, clone, base, f"P-A{n}", dirty=True) for n in range(2)]      # sorted first, too large to archive
+    for tree in big:
+        (tree / "huge.txt").write_text("x" * 200_000, encoding="utf-8")
     small = [turn(state, root, clone, base, f"P-B{n}") for n in range(3)]
-    monkeypatch.setattr(cleanup, "MAX_ARCHIVE_BYTES", 600)   # the dirty ones exceed it; the clean ones do not
+    # Far above a clean worktree's evidence (a few hundred bytes plus its paths, which are long under the release
+    # preflight's temp root: a 600-byte cap failed there on 2026-11-14) and far below the 200 kB file.
+    monkeypatch.setattr(cleanup, "MAX_ARCHIVE_BYTES", 50_000)
 
     first = cleanup.auto_clean(state, now=1.0, interval=0, limit=1)
     assert first["not_removed"] == ["P-A0", "P-A1"] and first["removed"] == 0     # both attempts went to the stuck ones
