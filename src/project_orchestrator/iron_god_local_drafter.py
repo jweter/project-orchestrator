@@ -80,8 +80,8 @@ _SLOT = re.compile(r"<([A-Za-z][A-Za-z0-9]*(?:[ _-][A-Za-z0-9]+)*)>")
 
 
 def _has_slot(text: str) -> bool:
-    return any(" " in name or "_" in name or "-" in name or f"</{name}>" not in text
-               for name in _SLOT.findall(text))
+    # a name with a matching closing tag is markup whatever its spelling (<custom-element>, <record_id>)
+    return any(f"</{name}>" not in text for name in _SLOT.findall(text))
 
 
 def _unresolved_placeholder(value: Any) -> bool:

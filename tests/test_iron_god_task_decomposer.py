@@ -1181,6 +1181,7 @@ def test_a_model_authored_oracle_with_an_embedded_slot_is_rejected(expected) -> 
 
 @pytest.mark.parametrize("expected", [
     "<b>bold</b>", '<a href="x">link</a>', "<br/>", "a < b and c > d", "List[int] -> <class 'int'>", "<p>one</p><p>two</p>",
+    "<custom-element>ready</custom-element>", "<record_id>42</record_id>",  # Codex P2 on #701: closed tags of any spelling
 ])
 def test_markup_and_comparisons_in_an_oracle_are_not_slots(expected) -> None:
     plan = mutated(lambda p: p["subtasks"][0]["acceptance_examples"][0].update(expected=expected))
