@@ -768,6 +768,20 @@ def test_a_merged_name_or_another_capabilitys_name_or_an_unfinished_items_name_s
     assert _sent_names(world, request, names) == names
 
 
+@pytest.mark.parametrize("other_capability, other_outcome", [
+    ("another-capability", "FAIL: SLICE_TESTS_FAILED"),  # another capability also failed with it
+    (None, None),                                          # an item of this capability is still building it
+    ("another-capability", "MERGED"),                    # it shipped elsewhere in the repository
+])
+def test_a_name_shared_with_any_use_that_is_not_abandoned_here_stays_blocked(world: dict, other_capability, other_outcome) -> None:
+    """Codex P2 on #699: one failed use in this capability must not release a name that something else also holds."""
+    request = request_of(world)
+    _store_item(world, "RM-failed-here", request["capability"], "same_fn", "FAIL: SLICE_TESTS_FAILED")
+    _store_item(world, "RM-other-use", other_capability or request["capability"], "same_fn", other_outcome)
+
+    assert _sent_names(world, request, ["same_fn"]) == ["same_fn"]
+
+
 def test_an_unreadable_outcome_ledger_releases_no_name(world: dict) -> None:
     request = request_of(world)
     _store_item(world, "RM-old", request["capability"], "section_agreement", "FAIL: SLICE_TESTS_FAILED")

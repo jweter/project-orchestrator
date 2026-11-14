@@ -354,15 +354,19 @@ def _abandoned_capability_functions(lane_root: Path, request: dict[str, Any], it
     def outcome(item: dict[str, Any]) -> str:
         return str((outcomes.get(str(item.get("id"))) or {}).get("outcome") or "")
 
-    built = [(item, str(item["build"]["function_name"])) for item in items
-             if item.get("repository") == repository and isinstance(item.get("build"), dict)
-             and item["build"].get("function_name")]
-    shipped = {name for item, name in built if outcome(item) == "MERGED"}
-    # an item with no recorded outcome is still in flight: its name is not released
-    abandoned = {name for item, name in built
-                 if str(item.get("addresses") or "").split(":", 1)[0].strip() == capability
-                 and outcome(item).startswith(refill.RE_AUTHORABLE)}
-    return abandoned - shipped
+    def abandoned_here(item: dict[str, Any]) -> bool:
+        # no recorded outcome means the item is still in flight; MERGED means the function exists
+        return (str(item.get("addresses") or "").split(":", 1)[0].strip() == capability
+                and outcome(item).startswith(refill.RE_AUTHORABLE))
+
+    uses: dict[str, list[dict[str, Any]]] = {}
+    for item in items:
+        build = item.get("build")
+        if item.get("repository") == repository and isinstance(build, dict) and build.get("function_name"):
+            uses.setdefault(str(build["function_name"]), []).append(item)
+    # EVERY use of the name must be abandoned by this capability: one failed use here does not release a name that
+    # another capability, an unfinished item or a merged item also holds.
+    return {name for name, rows in uses.items() if all(abandoned_here(row) for row in rows)}
 
 
 def _rejection_feedback(lane_root: Path, ident: str) -> str:
