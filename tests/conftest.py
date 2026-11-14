@@ -69,6 +69,11 @@ def _isolate_live_owner_state(tmp_path_factory, monkeypatch):
     # sees the machine's Claude CLI and none can start the runner; a test of the stage passes its own fakes.
     from project_orchestrator import iron_god_capable_builder, iron_god_product_lane
     monkeypatch.setattr(iron_god_capable_builder, "cli_path", lambda: None)
+    # The shipped policy names the engine's real temp folder under %LOCALAPPDATA%. Lane tests run that policy, so without
+    # this a test would point every later temp directory in the test process at the live engine's folder.
+    from project_orchestrator import iron_god_temp
+    monkeypatch.delenv(iron_god_temp.ENV, raising=False)
+    monkeypatch.setattr(iron_god_temp, "configure", lambda value: None)
     monkeypatch.setattr(iron_god_capable_builder, "process_command_line", lambda pid: None)
     monkeypatch.setattr(iron_god_capable_builder, "kill_process_tree", _forbidden_program_control)
     monkeypatch.setattr(iron_god_product_lane, "spawn_capable_engine", _forbidden_program_control)

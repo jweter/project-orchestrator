@@ -104,7 +104,8 @@ def main_environment(worker, clone: Path, check) -> dict[str, Any]:
 
 
 def run_tests(environment: dict[str, Any], worktree: Path, tests: list[str]) -> dict[str, Any]:
-    temp = worktree.parent / f"{worktree.name}.l2.tmp"
+    from project_orchestrator.iron_god_temp import temp_dir
+    temp = temp_dir(worktree.parent / f"{worktree.name}.l2.tmp")
     from scripts.iron_god_canon_worker import private_temp_env
 
     env = private_temp_env({**os.environ, **environment["overrides"], "PYTHONDONTWRITEBYTECODE": "1",

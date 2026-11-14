@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import iron_god_owner_control as owner_controller
+from . import iron_god_temp as engine_temp
 from .canon_worker_memory import prepare_worker_memory_handoff, render_worker_memory_handoff
 from .iron_god_calibration import capability_gate, load_profile, remove_tree
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -270,7 +271,8 @@ def independent_verification(lane: Lane, packet: dict[str, Any], spec: dict[str,
     try:
         missing = [a for a in plan["expected_artifacts"] if not (verify_dir / a).is_file()]
         add("expected_artifacts_present", not missing, ", ".join(missing))
-        temp = verify_dir.parent / f"{packet['packet_id']}.tmp"  # pytest's shared temp link can be access-denied
+        # pytest's shared temp link can be access-denied, so each run gets its own
+        temp = engine_temp.temp_dir(verify_dir.parent / f"{packet['packet_id']}.tmp")
         temp.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "PYTHONPATH": str(verify_dir / "src"), "TEMP": str(temp), "TMP": str(temp)}
         commands = list(plan["verification_commands"])
@@ -292,7 +294,7 @@ def independent_verification(lane: Lane, packet: dict[str, Any], spec: dict[str,
     finally:
         _git(lane.dev_repo, "worktree", "remove", "--force", str(verify_dir))
         shutil.rmtree(verify_dir, ignore_errors=True)
-        remove_tree(verify_dir.parent / f"{packet['packet_id']}.tmp")
+        remove_tree(engine_temp.temp_dir(verify_dir.parent / f"{packet['packet_id']}.tmp"))
     return all(c["ok"] for c in checks), checks
 
 
@@ -364,6 +366,9 @@ def advance_commissioning_lane(
             return _report(lane, {"status": "WORKER_STOPPED_AUTHORITY_REVOKED", "packet_id": active["packet_id"],
                                   "reasons": reasons, "worktree_preserved": active.get("worktree")})
         return _report(lane, {"status": "WAITING_FOR_OWNER_AUTHORITY", "reasons": reasons})
+    # This lane runs BEFORE the product lane in the same supervisor pass and can start a worker of its own, so it applies
+    # the temp root itself: an environment set after a worker has started never reaches that worker.
+    engine_temp.configure((policy.get("portfolio_rotation") or {}).get("engine_temp_root"))
     if active:
         record = ledger["packets"].get(active["packet_id"])
         if alive(active["worker"]):

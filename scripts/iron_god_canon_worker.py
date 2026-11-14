@@ -105,7 +105,8 @@ def worker_message(packet: dict[str, Any]) -> str:
 
 def run_verification(worktree: Path, commands: list[str], *, timeout: int = 900) -> list[dict[str, Any]]:
     results = []
-    temp = worktree.parent / f"{worktree.name}.tmp"
+    from project_orchestrator.iron_god_temp import temp_dir
+    temp = temp_dir(worktree.parent / f"{worktree.name}.tmp")
     env = private_temp_env({**os.environ, "PYTHONPATH": str(worktree / "src")}, temp)
     try:
         return _run_commands(worktree, commands, env, timeout, results)

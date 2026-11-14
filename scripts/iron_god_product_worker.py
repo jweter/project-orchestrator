@@ -45,6 +45,7 @@ from project_orchestrator.execution_runtime import NativeWindowsRuntime, Runtime
 from project_orchestrator.iron_god_calibration import remove_tree  # noqa: E402
 from project_orchestrator import iron_god_execution_status as execution_status  # noqa: E402
 from project_orchestrator.iron_god_local_model import default_ollama_model  # noqa: E402
+from project_orchestrator.iron_god_temp import temp_dir  # noqa: E402
 from scripts.iron_god_canon_worker import (  # noqa: E402
     _git,
     _now,
@@ -446,7 +447,7 @@ def quick_test(worktree: Path, test: str, timeout: int = 300) -> dict[str, Any]:
     """Fail fast: the slice's own tests (seconds) before the repository's full preflight (minutes)."""
     import subprocess
 
-    temp = worktree.parent / f"{worktree.name}.quick.tmp"
+    temp = temp_dir(worktree.parent / f"{worktree.name}.quick.tmp")
     env = private_temp_env({**os.environ, "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)]),
                             "PYTHONDONTWRITEBYTECODE": "1"}, temp)  # leave nothing behind in the worktree
     try:
@@ -580,7 +581,7 @@ def type_check(worktree: Path, files: list[str], check: Callable[[], None]) -> d
         return None
     environment = repository_environment(worktree, check)
     release_builder_model()  # mypy needs about 1.3 GB beside the 5 GB model
-    temp = worktree.parent / f"{worktree.name}.mypy.tmp"
+    temp = temp_dir(worktree.parent / f"{worktree.name}.mypy.tmp")
     env = {**os.environ, **environment["overrides"], "MYPY_CACHE_DIR": str(temp),
            "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)])}
     try:
@@ -872,7 +873,7 @@ def repository_environment(worktree: Path, check: Callable[[], None]) -> dict[st
 
 
 def production_preflight(worktree: Path, check: Callable[[], None], timeout: int) -> dict[str, Any]:
-    temp = worktree.parent / f"{worktree.name}.tmp"
+    temp = temp_dir(worktree.parent / f"{worktree.name}.tmp")
     try:
         environment = repository_environment(worktree, check)
     except RuntimeError as exc:
@@ -1308,7 +1309,7 @@ def production_generate(prompt: str, num_predict: int, check: Callable[[], None]
 def repository_test(worktree: Path, test: str, check: Callable[[], None], timeout: int = 600) -> dict[str, Any]:
     """The slice's tests in the repository's own installed environment (an existing module has real imports)."""
     environment = repository_environment(worktree, check)
-    temp = worktree.parent / f"{worktree.name}.quick.tmp"
+    temp = temp_dir(worktree.parent / f"{worktree.name}.quick.tmp")
     env = private_temp_env({**os.environ, **environment["overrides"], "PYTHONDONTWRITEBYTECODE": "1",
                             "PYTHONPATH": os.pathsep.join([str(worktree / "src"), str(worktree)])}, temp)
     try:
