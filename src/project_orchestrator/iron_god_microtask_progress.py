@@ -55,9 +55,14 @@ def _current_subtasks(
     rows = []
     for sub in plan["subtasks"]:
         base = f"{plan['parent_id']}-{sub['key']}"
-        status, attempt_id = refill._slice_status(base, items, state)
+        status, candidate_id = refill._slice_status(base, items, state)
+        # FAILED returns the *future* revision id (e.g. -r1), which has no
+        # outcome yet. Preserve the last existing revision as the observed
+        # attempt and report the candidate separately for recovery diagnostics.
+        revisions = refill.revisions(base, items) if status == "FAILED" else []
+        attempt_id = str(revisions[-1]["id"]) if revisions else candidate_id
         if status in {"NEW", "FAILED"} and decomposer.drafting_exhausted(
-            lane_root, attempt_id, directed=sub.get("kind") == "edit"
+            lane_root, candidate_id, directed=sub.get("kind") == "edit"
         ):
             status = "EXHAUSTED"
         attempt = outcomes.get(attempt_id) if isinstance(outcomes, dict) else None
@@ -87,6 +92,7 @@ def _current_subtasks(
                 "key": sub["key"],
                 "depends_on": list(sub.get("depends_on") or []),
                 "attempt_id": attempt_id,
+                "next_attempt_id": candidate_id if candidate_id != attempt_id else None,
                 "status": status,
                 "outcome": outcome[:120] or None,
                 "attempts": attempt.get("attempts")

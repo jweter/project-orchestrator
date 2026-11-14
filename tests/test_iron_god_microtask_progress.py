@@ -79,6 +79,49 @@ def test_merged_child_is_durable_and_replay_is_idempotent(tmp_path: Path) -> Non
     assert later["receipts"] == snapshot["receipts"]
 
 
+def test_failed_child_preserves_real_attempt_evidence_not_the_uncreated_retry(
+    tmp_path: Path,
+) -> None:
+    active = plan(tmp_path, second=False)
+    t1 = PARENT + "-t1"
+    items = [item(t1)]
+    state = {
+        "items": {
+            t1: {
+                "outcome": "FAIL: SLICE_TESTS_FAILED",
+                "attempts": 3,
+                "packet_id": "PRODUCT-123",
+            }
+        }
+    }
+    progress.record_checkpoints(tmp_path, REPO, "b" * 40, items, state)
+    path = progress.checkpoint_path(tmp_path, active)
+    first = json.loads(path.read_text(encoding="utf-8"))["subtasks"][0]
+    assert first["status"] == "FAILED"
+    assert first["attempt_id"] == t1
+    assert first["next_attempt_id"] == t1 + "-r1"
+    assert first["outcome"] == "FAIL: SLICE_TESTS_FAILED"
+    assert first["attempts"] == 3
+    assert first["packet_ids"] == ["PRODUCT-123"]
+    assert first["receipt"] == "NO_VERIFIED_COMPLETION_RECEIPT"
+
+    # The next revision is now real and failed too: the observed ID follows
+    # the last existing attempt, not the *next* still-undefined revision.
+    r1 = t1 + "-r1"
+    items.append(item(r1))
+    state["items"][r1] = {
+        "outcome": "FAIL: SLICE_TESTS_FAILED",
+        "attempts": 3,
+        "packet_id": "PRODUCT-456",
+    }
+    progress.record_checkpoints(tmp_path, REPO, "b" * 40, items, state)
+    second = json.loads(path.read_text(encoding="utf-8"))["subtasks"][0]
+    assert second["status"] == "EXHAUSTED"  # the canonical lineage cap, never bypassed
+    assert second["attempt_id"] == r1
+    assert second["next_attempt_id"] is None
+    assert second["packet_ids"] == ["PRODUCT-456"]
+
+
 def test_local_acceptance_is_not_merged_or_product_accepted(tmp_path: Path) -> None:
     active = plan(tmp_path, second=False)
     t1 = PARENT + "-t1"
