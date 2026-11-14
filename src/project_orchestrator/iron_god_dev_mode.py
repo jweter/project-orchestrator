@@ -190,13 +190,17 @@ def alive_pids(pids: list[int]) -> set[int]:
     return {int(x) for x in out.split() if x.strip().isdigit()}
 
 
-def enter(groups: list[Group], state_path: Path, *, confirmed: bool, closer: Callable[..., bool] = system_closer,
-          alive: Callable[[list[int]], set[int]] = alive_pids, free_gib: Callable[[], float] | None = None,
+def enter(groups: list[Group], state_path: Path, *, confirmed: bool, closer: Callable[..., bool] | None = None,
+          alive: Callable[[list[int]], set[int]] | None = None, free_gib: Callable[[], float] | None = None,
           sleep: Callable[[float], None] = time.sleep, grace: float = GRACE_SECONDS, entered_by: str = "owner",
           reason: str = "") -> dict[str, Any]:
     """Close the planned groups politely, record what was closed, and report what is still running and why."""
     if not confirmed:
         raise PermissionError("Dev Mode closes programs: pass confirmed=True (the CLI needs --yes).")
+    # Resolved at call time, never bound as a default: the test suite replaces system_closer so that no test can close
+    # a real program (measured 2026-11-13: a release preflight closed the owner's Chrome four times).
+    closer = closer or system_closer
+    alive = alive or alive_pids
     if state_path.is_file() and json.loads(state_path.read_text(encoding="utf-8")).get("active"):
         raise RuntimeError("Dev Mode is already active; run restore first.")
     before = free_gib() if free_gib else None
@@ -242,10 +246,11 @@ def launcher(path: str, args: list[str]) -> bool:
 
 
 def restore(state_path: Path, *, running: Callable[[], set[str]] | None = None,
-            start: Callable[[str, list[str]], bool] = launcher, config: dict[str, list[str]] | None = None) -> dict[str, Any]:
+            start: Callable[[str, list[str]], bool] | None = None, config: dict[str, list[str]] | None = None) -> dict[str, Any]:
     """Relaunch what Dev Mode closed (main program only, browsers with their own session restore). Safe to run twice."""
     if not state_path.is_file():
         return {"restored": [], "skipped": [], "note": "Dev Mode is not active"}
+    start = start or launcher                                         # call-time lookup, for the same reason as enter()
     state = json.loads(state_path.read_text(encoding="utf-8"))
     if not state.get("active"):
         return {"restored": [], "skipped": [], "note": "Dev Mode is not active"}
