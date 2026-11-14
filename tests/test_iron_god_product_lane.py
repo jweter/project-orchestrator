@@ -609,6 +609,36 @@ def test_unusable_plans_are_rejected_before_any_code(env, change, reason):
     assert result["worker_status"] == "FAIL" and reason in result["worker_summary"]
 
 
+@pytest.mark.parametrize(("written", "valid", "repaired"), [
+    # the recorded Rocksmith section-agreement-v2 signature (2026-11-14): two builds failed at import on it
+    ("def f(reference_sections: list[list[str, float]], tolerance: float) -> float:",
+     "def f(reference_sections: list[list], tolerance: float) -> float:", ["list[str, float]"]),
+    ("def f(a: List[int, str]) -> Dict[str]:", "def f(a: List) -> Dict:", ["List[int, str]", "Dict[str]"]),
+    ("def f(a: typing.Optional[int, str], *rest: set[int, int], **named: dict[str, int, int]) -> None:",
+     "def f(a: typing.Optional, *rest: set, **named: dict) -> None:",
+     ["typing.Optional[int, str]", "set[int, int]", "dict[str, int, int]"]),
+])
+def test_a_generic_with_the_wrong_number_of_type_arguments_is_made_valid_before_the_build(written, valid, repaired):
+    assert WORKER.repair_signature(written) == (valid, repaired)
+    exec(valid + " ...", {"List": list, "Dict": dict, "typing": __import__("typing")})  # it really can be defined
+
+
+@pytest.mark.parametrize("signature", [
+    "def clamp(value: int, low: int, high: int) -> int:",
+    "def f(a: list[int], b: dict[str, list[float]], c: tuple[str, float], d: 'list[int, int]' = None) -> list[tuple[str, float]]:",
+    "def f(a: Callable[[int, str], bool], b: Union[int, str, None], c: Literal['a', 'b']) -> tuple[int, ...]:",
+])
+def test_a_valid_signature_is_returned_exactly_as_written(signature):
+    assert WORKER.repair_signature(signature) == (signature, [])
+
+
+def test_the_validated_plan_carries_the_repaired_signature_to_the_builder(env):
+    packet, worktree = plan_for(env)
+    plan = WORKER.validate_plan({**GOOD_PLAN, "signature": "def add_two(value: list[int, int]) -> int:"},
+                                worktree, packet["base_sha"], packet)
+    assert plan["signature"] == "def add_two(value: list) -> int:" and "value: list)" in plan["task"]
+
+
 def test_a_malformed_model_reply_is_a_failed_plan_not_a_crash(env):
     def broken(*_a):
         raise ValueError("Expecting value: line 1")
