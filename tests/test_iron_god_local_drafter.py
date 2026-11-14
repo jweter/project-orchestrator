@@ -222,6 +222,54 @@ def test_a_rejected_plan_is_a_recorded_failure_and_writes_no_draft(world: dict) 
     assert not (world["lane"] / refill.DRAFTS).exists()
 
 
+def test_failed_local_draft_guides_its_next_attempt_from_persisted_evidence(world: dict) -> None:
+    request = request_of(world)
+    bad = {**GOOD_PLAN, "module_path": "other/outside.py"}
+    first = Spawner(plan=bad, finish=True)
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=first)
+    harvested = drafter.advance(world["lane"], [request], world["clone"], world["head"],
+                                spawn=first, may_start=False)
+    assert harvested[0]["status"] == "FAILED"
+    assert "PLAN_PATH_OUTSIDE_ENVELOPE" in harvested[0]["reason"]
+
+    second = Spawner()
+    started = drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=second)
+    assert started[0]["attempt"] == 1
+    copy = json.loads(second.launched[0][0].read_text(encoding="utf-8"))
+    assert "PLAN_PATH_OUTSIDE_ENVELOPE" in copy["draft_retry_feedback"]
+    guide = author.guide_text(copy)
+    assert "PRIOR LOCAL DRAFT FAILURE" in guide
+    assert "Choose a different plan" in guide
+    assert "owner-approved scope" in guide
+    assert "draft_retry_feedback" not in request  # do not mutate the approved request
+
+
+def test_takeover_is_not_a_planning_failure_when_the_drafter_resumes(world: dict) -> None:
+    request = request_of(world)
+    first = Spawner()
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=first)
+    _finish_pending(world, "RuntimeError: EXECUTION_AUTHORITY_REVOKED")
+    assert drafter.harvest(world["lane"])[0]["status"] == "INTERRUPTED"
+    second = Spawner()
+    drafter.advance(world["lane"], [request], world["clone"], world["head"], spawn=second)
+    copy = json.loads(second.launched[0][0].read_text(encoding="utf-8"))
+    assert "draft_retry_feedback" not in copy
+
+
+def test_local_draft_retry_feedback_is_bounded_distinct_and_excludes_legacy_takeovers() -> None:
+    rows = [
+        {"stage": "FAILED", "reason": "TypeError: " + "a" * 800},
+        {"stage": "FAILED", "reason": "EXECUTION_AUTHORITY_REVOKED"},
+        {"stage": "FAILED", "reason": "PLAN_REJECTED: bad path"},
+        {"stage": "FAILED", "reason": "PLAN_REJECTED: bad path"},
+    ]
+    result = drafter.prior_draft_failure_feedback(rows)
+    assert "TypeError" in result
+    assert result.count("PLAN_REJECTED: bad path") == 1
+    assert "EXECUTION_AUTHORITY_REVOKED" not in result
+    assert len(result) <= 482
+
+
 def test_two_failed_attempts_end_local_drafting_for_that_request(world: dict) -> None:
     request = request_of(world)
     spawner = Spawner(plan={"function_name": "x"}, finish=True)
