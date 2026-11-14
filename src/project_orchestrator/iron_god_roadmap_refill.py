@@ -56,7 +56,11 @@ STORE = "roadmap-refill.json"
 REQUESTS = "roadmap-requests"
 DRAFTS = "roadmap-drafts"
 LEDGER_LIMIT = 500
-CHECK_INTERVAL_SECONDS = 20 * 60  # authority is re-read at most this often per repository
+# Authority is re-read at most this often per repository. It is also how long a repository can sit with nothing in
+# flight before the engine looks for its next slice: measured 2026-11-14, a slice whose draft was cancelled for memory
+# was only retried at 15:39, 16:03, 16:24 and 16:48Z. Halved from 20 minutes with the owner's request to raise the
+# engine's throughput (2026-11-14); a pass only reads the clone and GitHub, and starts nothing while something is running.
+CHECK_INTERVAL_SECONDS = 10 * 60
 BASE_RE = re.compile(r"[0-9a-f]{40}")
 LOCAL, CAPABLE, NONE = "LOCAL", "CAPABLE", "NONE"  # who may build a request: the local 7B, a stronger builder, nobody yet
 
