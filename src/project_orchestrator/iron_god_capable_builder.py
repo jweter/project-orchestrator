@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import time
 import urllib.request
@@ -29,7 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .claude_dispatch import ROUTINES, dispatch_if_warranted, ingest_session_result, specialist_scorecard
+from . import iron_god_capable_engine as engine_builder
+from .claude_dispatch import ROUTINES, _dispatch_id, dispatch_if_warranted, ingest_session_result, specialist_scorecard
 
 DISPATCH_DIR = "capable-dispatches"
 DEFAULT_DAILY_LIMIT = 2
@@ -44,6 +46,14 @@ SUSPECTED_STALE = "SUSPECTED_STALE"
 CONFIRMED_FAILED = "CONFIRMED_FAILED"
 LATE_DELIVERY_WINDOW = 48 * 3600  # a failed no-PR dispatch is re-checked for a late pull request this long
 ROUTINE = "portfolio_builder"
+ROUTINE_TRANSPORT = "ROUTINE"            # the cloud routine: fire a prompt, wait for a pull request
+ENGINE_TRANSPORT = engine_builder.TRANSPORT  # the builder as an engine stage (owner decision 2026-11-14)
+CLAUDE_CLI = "claude"
+
+
+def cli_path() -> str | None:
+    """Where the Claude Code CLI is on this machine, looked up at call time (tests replace this: none see the real one)."""
+    return shutil.which(CLAUDE_CLI)
 
 
 def dispatch_state(lane_root: Path) -> Path:
@@ -147,8 +157,11 @@ def local_follow_on(request: dict[str, Any], graph_path: str) -> str | None:
         "yourself and do not weaken this slice to create them. " + local_slice_contract(graph_path))
 
 
-def render_prompt(request: dict[str, Any], *, prior_no_pr: int = 0) -> str:
-    """The self-contained task for the routine: the roadmap slice, its fences and how to deliver it.
+def render_prompt(request: dict[str, Any], *, prior_no_pr: int = 0, in_engine: bool = False) -> str:
+    """The self-contained task for the builder: the roadmap slice, its fences and how to deliver it.
+
+    ``in_engine`` is the builder running as an engine stage: it only edits files in the worktree it is started in, and
+    the engine verifies, commits and opens the pull request, so every instruction about pull requests is replaced.
 
     ``prior_no_pr`` is how many earlier attempts at this very request ended with no pull request. Such an outcome used to
     look like a plain failure and the retry repeated the identical prompt (Knowledge Engine core/web/ai, 2026-11-03: all
@@ -168,6 +181,25 @@ def render_prompt(request: dict[str, Any], *, prior_no_pr: int = 0) -> str:
     if request.get("development_rules"):
         lines.append("Verified development rules: " + json.dumps(request["development_rules"])[:1500])
     graph_path = str(request.get("graph_path") or GRAPH_PATH)  # the repository's declared graph, carried by the refill
+    if in_engine:
+        lines.append(
+            "Before building, check whether this slice is ALREADY delivered at the baseline: read the files the objective "
+            "names and the tests that satisfy each acceptance criterion. Other agents merge work into these repositories and "
+            f"the graph can lag behind. If it is delivered, do not rebuild it: change only {graph_path} (permitted for this "
+            "purpose even where it is outside the allowed paths), setting this slice's state to VERIFIED_COMPLETE and adding a "
+            "verification list that cites the files and tests that satisfy each acceptance criterion.")
+        follow_on = local_follow_on(request, graph_path)
+        if follow_on:
+            lines.append(follow_on)
+        lines.append(
+            "Delivery: you are running inside the Iron God engine, in a worktree of the repository at the baseline. Implement "
+            "exactly this slice, with repository-native tests, by EDITING FILES in this directory. You have file tools only: "
+            "you cannot run commands, tests, git or anything on the network, and you must not try. When you stop, the engine "
+            "checks your changed paths against the fences above, runs the repository's canonical preflight, and comes back to "
+            "you with the failure if there is one; then the engine commits and opens the pull request. Do not change "
+            "workflows, owner controls or secrets, and do not widen scope. If the slice is materially ambiguous or cannot be "
+            "done within the allowed paths, change NO files and reply with the exact question or blocker instead.")
+        return "\n".join(lines)
     lines.append(
         "Before building, check whether this slice is ALREADY delivered at the baseline: read the merged history, the files the "
         "objective names, and the tests that satisfy each acceptance criterion. Other agents merge work into these repositories "
@@ -196,21 +228,34 @@ def no_pr_attempts(state_dir: Path, request_id: str) -> int:
     return sum(1 for row in _rows(state_dir) if request_of(row) == request_id and row.get("notes") == NO_PR_NOTE)
 
 
+def _records_for(state_dir: Path, request_id: str) -> list[dict[str, Any]]:
+    return [row for row in _rows(state_dir) if str(row.get("task_key", "")).split("#a")[0] == request_id]
+
+
 def attempts_for(state_dir: Path, request_id: str) -> int:
-    return sum(1 for row in _rows(state_dir) if str(row.get("task_key", "")).split("#a")[0] == request_id)
+    """Attempts spent on this request. An in-engine build the owner's takeover cut short is recorded, not spent."""
+    return sum(1 for row in _records_for(state_dir, request_id) if row.get("status") != engine_builder.INTERRUPTED)
+
+
+def interruptions_for(state_dir: Path, request_id: str) -> int:
+    return sum(1 for row in _records_for(state_dir, request_id) if row.get("status") == engine_builder.INTERRUPTED)
 
 
 def spent_request_ids(lane_root: Path) -> set[str]:
     """Request ids whose capable attempts are used up: they need a human decision, not another try."""
     counts: dict[str, int] = {}
+    interrupted: dict[str, int] = {}
     for row in _rows(dispatch_state(lane_root)):
         key = str(row.get("task_key", "")).split("#a")[0]
-        counts[key] = counts.get(key, 0) + 1
-    return {key for key, count in counts.items() if count >= MAX_ATTEMPTS}
+        tally = interrupted if row.get("status") == engine_builder.INTERRUPTED else counts
+        tally[key] = tally.get(key, 0) + 1
+    return ({key for key, count in counts.items() if count >= MAX_ATTEMPTS}
+            | {key for key, count in interrupted.items() if count >= engine_builder.MAX_INTERRUPTIONS})
 
 
 def decide(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_limit: int = DEFAULT_DAILY_LIMIT,
-           now: float | None = None, environ: dict[str, str] | None = None) -> dict[str, Any]:
+           now: float | None = None, environ: dict[str, str] | None = None,
+           transport: str = ROUTINE_TRANSPORT, which: Callable[[str], str | None] | None = None) -> dict[str, Any]:
     """Whether this request may be dispatched right now, and if not exactly why (no side effects)."""
     now = time.time() if now is None else now
     environ = os.environ if environ is None else environ
@@ -223,12 +268,17 @@ def decide(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_lim
     if not enabled:
         return {"dispatch": False, "reason": "CAPABLE_BUILDER_DISABLED"}
     token_env = ROUTINES[ROUTINE][1]
-    if not environ.get(token_env):
+    if transport == ENGINE_TRANSPORT:
+        if not (which(CLAUDE_CLI) if which is not None else cli_path()):  # the in-engine builder uses the Claude Code login on this machine, not a routine token
+            return {"dispatch": False, "reason": "CAPABLE_BUILDER_UNCONFIGURED", "needs": "the Claude Code CLI on PATH"}
+    elif not environ.get(token_env):
         return {"dispatch": False, "reason": "CAPABLE_BUILDER_UNCONFIGURED", "needs": token_env}
     state_dir = dispatch_state(lane_root)
     rows = _rows(state_dir)
     if attempts_for(state_dir, request["id"]) >= MAX_ATTEMPTS:
         return {"dispatch": False, "reason": "ATTEMPTS_EXHAUSTED"}
+    if interruptions_for(state_dir, request["id"]) >= engine_builder.MAX_INTERRUPTIONS:
+        return {"dispatch": False, "reason": "INTERRUPTIONS_EXHAUSTED"}
     if request["id"] in open_request_ids(lane_root, now=now) or request["id"] in merged_request_ids(lane_root):
         return {"dispatch": False, "reason": "REQUEST_ALREADY_DELIVERED_OR_PENDING"}
     holders = [r for r in rows if r.get("repository") == request["repository"] and r.get("status") == "DISPATCHED"]
@@ -241,12 +291,54 @@ def decide(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_lim
     return {"dispatch": True, "reason": "WITHIN_BUDGET"}
 
 
+def dispatch_in_engine(request: dict[str, Any], *, lane_root: Path, engine: dict[str, Any],
+                       now: float | None = None) -> dict[str, Any]:
+    """Start the builder as an engine stage. ``engine`` carries the lane's effects: clone, worktree, spawn, reserve,
+    release and (optionally) model. The row is written before the runner starts, exactly like a routine's lease."""
+    state_dir = dispatch_state(lane_root)
+    state_dir.mkdir(parents=True, exist_ok=True)
+    records = _records_for(state_dir, request["id"])
+    task_key = f"{request['id']}#a{len(records)}"  # numbered over every record, so an interrupted one keeps its file
+    ident = _dispatch_id(ROUTINE, request["repository"], task_key)
+    if (state_dir / f"{ident}.json").exists():
+        return {"dispatched": False, "reason": "DUPLICATE_DISPATCH_BLOCKED"}
+    reserve, release = engine.get("reserve"), engine.get("release")
+    lease = reserve() if reserve is not None else None
+    if reserve is not None and lease is None:
+        return {"dispatched": False, "reason": "LOCAL_RUNTIME_BUSY"}  # the single writer is busy: wait, nothing is spent
+    row = {"dispatch_id": ident, "routine": ROUTINE, "repository": request["repository"], "task_key": task_key,
+           "session_id": f"engine-{ident}", "started_at": time.time() if now is None else now, "status": "DISPATCHED",
+           "allowed_paths": effective_scope(request) if request.get("allowed_paths") else []}
+    try:
+        prompt = render_prompt({**request, "prior_failures": [*(request.get("prior_failures") or []), *[
+            {"attempt": r.get("task_key"), "outcome": str(r.get("notes", ""))[:300]}
+            for r in records if r.get("status") == "FAIL" and r.get("notes")]]}, in_engine=True)
+        row = engine_builder.start(row, request, prompt, lane_root=lane_root, clone=Path(engine["clone"]),
+                                   worktree=Path(engine["worktrees"]) / f"capable-{ident}", spawn=engine["spawn"],
+                                   lease_id=lease, model=engine.get("model"))
+    except Exception:
+        if release is not None and lease:
+            release(lease)
+        raise
+    _write_row(state_dir, row)
+    return {"dispatched": True, "reason": "DISPATCHED", "dispatch_id": ident, "session_id": row["session_id"],
+            "task_key": task_key, "transport": ENGINE_TRANSPORT}
+
+
 def dispatch_request(request: dict[str, Any], *, lane_root: Path, enabled: bool, daily_limit: int = DEFAULT_DAILY_LIMIT,
                      now: float | None = None, environ: dict[str, str] | None = None,
-                     opener: Callable = urllib.request.urlopen) -> dict[str, Any]:
-    decision = decide(request, lane_root=lane_root, enabled=enabled, daily_limit=daily_limit, now=now, environ=environ)
+                     opener: Callable = urllib.request.urlopen, transport: str = ROUTINE_TRANSPORT,
+                     engine: dict[str, Any] | None = None,
+                     which: Callable[[str], str | None] | None = None) -> dict[str, Any]:
+    if transport == ENGINE_TRANSPORT and engine is None:
+        # no release-bound runner or no clone for this request: say so, never fall back to the cloud routine silently
+        return {"dispatched": False, "dispatch": False, "reason": "ENGINE_BUILDER_UNAVAILABLE"}
+    decision = decide(request, lane_root=lane_root, enabled=enabled, daily_limit=daily_limit, now=now, environ=environ,
+                      transport=transport, which=which)
     if not decision["dispatch"]:
         return {"dispatched": False, **decision}
+    if transport == ENGINE_TRANSPORT:
+        return dispatch_in_engine(request, lane_root=lane_root, engine=engine or {}, now=now)
     state_dir = dispatch_state(lane_root)
     task = {"kind": "PRODUCT_SLICE", "repository": request["repository"],
             "task_key": f"{request['id']}#a{attempts_for(state_dir, request['id'])}",
@@ -363,10 +455,17 @@ def session_activity_since(repository: str, since: float) -> bool | None:
     return False
 
 
+def _pid_alive(pid: int) -> bool:
+    from . import iron_god_dev_mode
+    return pid in iron_god_dev_mode.alive_pids([pid])
+
+
 def reconcile(lane_root: Path, *, now: float | None = None,
               lookup: Callable[[str, str], str | None] = find_pull_request,
               state_of: Callable[[str], str | None] = pull_request_state,
-              activity: Callable[[str, float], bool | None] = session_activity_since) -> list[dict[str, Any]]:
+              activity: Callable[[str, float], bool | None] = session_activity_since,
+              alive: Callable[[int], bool] = _pid_alive,
+              release: Callable[[str], None] | None = None) -> list[dict[str, Any]]:
     """Fold observed outcomes into the existing measurement ledger; returns what changed.
 
     Also follows each observed pull request to its end (OPEN -> MERGED or CLOSED) so delivery stays pending while it
@@ -374,8 +473,12 @@ def reconcile(lane_root: Path, *, now: float | None = None,
     """
     now = time.time() if now is None else now
     state_dir = dispatch_state(lane_root)
-    changed = []
+    # in-engine builds first: their runner reports its own outcome, so nothing about them is inferred from silence
+    changed = engine_builder.harvest(state_dir, _rows(state_dir), write=_write_row, ingest=ingest_session_result,
+                                     alive=alive, release=release, now=now)
     for row in _rows(state_dir):
+        if row.get("transport") == ENGINE_TRANSPORT and row.get("status") == "DISPATCHED":
+            continue  # still building in the engine
         if row.get("outcome_kind") == "PRODUCT_PR" and row.get("pr_state") not in ("MERGED", "CLOSED") and row.get("pr_url"):
             observed = state_of(str(row["pr_url"]))
             if observed and observed != row.get("pr_state"):
