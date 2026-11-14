@@ -918,6 +918,60 @@ def test_a_reauthored_subtask_with_spent_drafting_also_releases_the_parent(tmp_p
     assert change["status"] == "BLOCKED"
 
 
+def test_an_exhausted_local_child_does_not_discard_an_independent_sibling(
+    tmp_path: Path,
+) -> None:
+    lane = tmp_path / "lane"
+    independent = mutated(lambda p: p["subtasks"][1].update(depends_on=[]))
+    normalized, problems = td.validate_plan(independent, PARENT, exists=lambda _p: False)
+    assert normalized is not None and problems == []
+    td.write_plan(lane, PARENT, normalized, planner="qwen2.5-coder:7b")
+    t1, t2 = PARENT["id"] + "-t1", PARENT["id"] + "-t2"
+    _draft_job(lane, t1, 0, "FAILED", "contradictory oracle")
+    _draft_job(lane, t1, 1, "FAILED", "contradictory oracle")
+
+    assert td.settle(lane, [], {}) == []
+    assert td.active_parent_ids(lane) == {PARENT["id"]}
+    (ready,) = td.child_requests(lane, REPO, "b" * 40, [], {})
+    assert ready["id"] == t2  # the free local builder can still do this work
+
+    items = [{"id": t2, "repository": REPO, "status": "approved"}]
+    state = {"items": {t2: {"outcome": "MERGED"}}}
+    (change,) = td.settle(lane, items, state)
+    assert change["status"] == "BLOCKED"
+    stored = json.loads(td.plan_path(lane, PARENT["id"]).read_text(encoding="utf-8"))
+    assert stored["subtasks"][1]["key"] == "t2"  # verified sibling retained, not deleted
+    assert td.active_parent_ids(lane) == frozenset()
+
+
+def test_a_pending_local_child_keeps_the_parent_reserved_after_sibling_exhaustion(
+    tmp_path: Path,
+) -> None:
+    lane = tmp_path / "lane"
+    independent = mutated(lambda p: p["subtasks"][1].update(depends_on=[]))
+    normalized, problems = td.validate_plan(independent, PARENT, exists=lambda _p: False)
+    assert normalized is not None and problems == []
+    td.write_plan(lane, PARENT, normalized, planner="qwen2.5-coder:7b")
+    t1, t2 = PARENT["id"] + "-t1", PARENT["id"] + "-t2"
+    _draft_job(lane, t1, 0, "FAILED")
+    _draft_job(lane, t1, 1, "FAILED")
+    items = [{"id": t2, "repository": REPO, "status": "approved"}]
+    state = {"items": {t2: {"outcome": "DISPATCHED", "attempts": 1}}}
+    assert td.settle(lane, items, state) == []
+    assert td.active_parent_ids(lane) == {PARENT["id"]}
+    assert td.child_requests(lane, REPO, "b" * 40, items, state) == []
+
+
+def test_only_unblocked_dependent_paths_are_available_to_continue() -> None:
+    assert not td.remaining_independent_work(
+        {"subtasks": GOOD["subtasks"]}, {"t1": "EXHAUSTED", "t2": "NEW"}
+    )
+    independent = mutated(lambda p: p["subtasks"][1].update(depends_on=[]))
+    assert td.remaining_independent_work(
+        {"subtasks": independent["subtasks"]}, {"t1": "EXHAUSTED", "t2": "NEW"}
+    )
+
+
 # ---- Level 2 edit subtasks ------------------------------------------------------------------------------------------------
 
 CORE = "def one():\n    return 1\n\n\ndef clean(text):\n    return text.strip()\n"
