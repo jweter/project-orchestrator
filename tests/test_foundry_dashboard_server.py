@@ -60,6 +60,37 @@ def test_control_endpoint_requires_token_and_rejects_unallowlisted_action(tmp_pa
     finally: httpd.shutdown()
 
 
+def test_a_rejected_control_request_is_answered_only_after_its_body_was_read(tmp_path):
+    """Release preflight 588a4e8e, 2026-11-14: the 401 raced a connection reset (WinError 10054) because the handler
+    replied with the request body still unread. Deterministic check: the reply must come after the read."""
+    import io as _io
+
+    order=[]
+
+    class Body(_io.BytesIO):
+        def read(self,*a):
+            order.append("read"); return super().read(*a)
+
+    class Out(_io.BytesIO):
+        def write(self,data):
+            order.append("write"); return super().write(data)
+
+    handler_class=server.handler_for(tmp_path,ROOT/"dashboard",None,"secret")
+    for path,auth,expected in (("/api/control","",b"401"),("/api/other","Bearer secret",b"404"),
+                               ("/api/control","Bearer secret",b"400")):
+        order.clear()
+        handler=handler_class.__new__(handler_class)
+        payload=b'{"action":"ARBITRARY_SHELL"}'
+        handler.path=path; handler.rfile=Body(payload); handler.wfile=Out()
+        handler.headers={"Content-Length":str(len(payload)),"Authorization":auth}
+        handler.request_version="HTTP/1.1"; handler.requestline="POST "+path+" HTTP/1.1"; handler.command="POST"
+        handler.client_address=("127.0.0.1",0); handler.close_connection=True
+        handler.log_message=lambda *a,**k: None
+        handler.do_POST(); handler.flush_headers() if getattr(handler,"_headers_buffer",None) else None
+        assert order and order[0]=="read" and "write" in order, (path,order)
+        assert expected in handler.wfile.getvalue().split(b"\r\n",1)[0], (path,handler.wfile.getvalue()[:60])
+
+
 def test_dashboard_exposes_only_bounded_control_actions():
     js=(ROOT/"dashboard"/"app.js").read_text(encoding="utf-8")
     html=(ROOT/"dashboard"/"index.html").read_text(encoding="utf-8")

@@ -327,14 +327,22 @@ def handler_for(state_root:Path,assets:Path,control_repo:Path|None=None,control_
             self.send_response(status); self.send_header("Content-Type","application/json; charset=utf-8")
             self.send_header("Cache-Control","no-store"); self.end_headers(); self.wfile.write(data)
         def do_POST(self):
+            # Read the (bounded) body BEFORE any reply. Answering and closing with the body still unread makes Windows
+            # reset the connection, so the client sees WinError 10054 instead of the 401/404 it was sent - a race that
+            # failed the release preflight on 2026-11-14. The body is only read here; nothing in it is acted on until
+            # the token below has been checked.
+            try:
+                raw=self.rfile.read(min(max(int(self.headers.get("Content-Length","0")),0),4096))
+            except ValueError:
+                raw=None
             if self.path.split("?",1)[0]!="/api/control":
                 self.send_response(404); self.end_headers(); return
             supplied=self.headers.get("Authorization","").removeprefix("Bearer ").strip()
             if not control_token or not supplied or not secrets.compare_digest(supplied,control_token):
                 self._json(401,{"status":"UNAUTHORIZED"}); return
             try:
-                length=int(self.headers.get("Content-Length","0"))
-                body=json.loads(self.rfile.read(min(length,4096)) or b"{}")
+                if raw is None: raise ValueError("Content-Length")
+                body=json.loads(raw or b"{}")
             except (ValueError,json.JSONDecodeError):
                 self._json(400,{"status":"INVALID_JSON"}); return
             allowed={"STATUS_SNAPSHOT","RESTART_REMOTE_CONTROL","RECOVER_CONTROL_PLANE","REBOOT_WINDOWS","HUMAN_MODE","FULL_POWER"}
