@@ -761,6 +761,14 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         from . import iron_god_task_decomposer as decomposer  # local import: the decomposer builds on this module
 
         decomposer.settle(lane_root, items, state)
+        try:
+            from . import iron_god_microtask_progress as microtask_progress
+
+            report["microtask_checkpoints"] = microtask_progress.record_checkpoints(
+                lane_root, repository, head, items, state
+            )
+        except Exception as exc:  # observational checkpoint failure must not starve authorized builder work
+            report["microtask_checkpoint_error"] = f"{type(exc).__name__}: {str(exc)[:180]}"
         control_plane = json.loads(show(repository, head, "engineering/control-plane.json"))
         compiled = compile_capability_authority(state_root, repository, head, control_plane, read_authoritative_file=show)
         source = compiled["graph"]["authority"]["source"]
