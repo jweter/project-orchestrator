@@ -109,8 +109,11 @@ def classify(lane_root: Path, worktree: Path) -> dict[str, Any]:
 def _classify_capable(lane_root: Path, worktree: Path) -> dict[str, Any]:
     """The worktree of an in-engine capable build, from that build's own job file and dispatch row.
 
-    Kept while the dispatch is still DISPATCHED (its runner may be working) or when either record is unreadable.
+    Kept while the dispatch is still DISPATCHED (its runner may be working), when either record is unreadable, and -
+    whatever the row says - while that dispatch's runner process still exists or cannot be looked up: the row is a
+    record, the process is the fact, and an unknown is never "gone".
     """
+    from . import iron_god_capable_builder as capable_builder
     ident = worktree.name[len(CAPABLE_PREFIX):]
     job = _json(lane_root / "capable-engine-jobs" / f"{ident}.job.json", {})
     dispatch = _json(lane_root / "capable-dispatches" / f"{ident}.json", {})
@@ -125,7 +128,7 @@ def _classify_capable(lane_root: Path, worktree: Path) -> dict[str, Any]:
     if not job or not dispatch.get("status") or row["head_sha"] is None or row["dirty"] is None \
             or row["commits_ahead"] is None:
         row["class"] = "UNKNOWN"
-    elif dispatch["status"] == "DISPATCHED":
+    elif dispatch["status"] == "DISPATCHED" or capable_builder.runner_alive(dispatch):
         row["class"] = "ACTIVE"
     else:
         row["class"] = "CAPABLE_BUILD_FINISHED"
@@ -210,10 +213,21 @@ def auto_clean(state_root: Path, *, now: float | None = None, interval: float = 
         return None
     rows = plan(state_root)
     eligible = [row for row in rows if row["class"] in REMOVABLE]
-    results = [remove_one(state_root, row) for row in eligible[:limit]]
-    report = {"ran_at": now, "worktrees": len(rows), "eligible": len(eligible),
-              "removed": sum(1 for r in results if r["result"] == "REMOVED"),
-              "left_for_next_run": max(0, len(eligible) - limit),
+    # Worktrees the last run could not remove (evidence too large, a locked file) go to the back of the queue, so they
+    # can never keep the ones behind them from being tried; they are still retried once everything else is done.
+    stuck = set(_json(stamp, {}).get("not_removed") or [])
+    queue = sorted(eligible, key=lambda row: row["packet_id"] in stuck)
+    results: list[dict[str, Any]] = []
+    for row in queue[:2 * limit]:  # attempts are bounded too: a failed attempt still costs an archive
+        if sum(1 for r in results if r["result"] == "REMOVED") >= limit:
+            break
+        results.append(remove_one(state_root, row))
+    removed = sum(1 for r in results if r["result"] == "REMOVED")
+    report = {"ran_at": now, "worktrees": len(rows), "eligible": len(eligible), "removed": removed,
+              "left_for_next_run": len(eligible) - removed,
+              "not_removed": sorted((stuck & {row["packet_id"] for row in eligible}
+                                     - {r["packet_id"] for r in results})
+                                    | {r["packet_id"] for r in results if r["result"] != "REMOVED"}),
               "results": {r["packet_id"]: r["result"] for r in results},
               "kept": {r["packet_id"]: r["class"] for r in rows if r["class"] not in REMOVABLE}}
     atomic_json(stamp, report)

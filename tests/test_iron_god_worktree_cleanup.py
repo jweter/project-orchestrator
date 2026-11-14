@@ -206,3 +206,44 @@ def test_a_capable_builds_leftover_worktree_is_removed_only_once_that_build_is_o
     assert running.exists() and no_row.exists() and no_job.exists() and not interrupted.exists() and not failed.exists()
     archived = json.loads((root / "reports" / "worktree-archive" / "capable-bbb.json").read_text(encoding="utf-8"))
     assert archived["untracked"]["half.py"].strip() == "unfinished = True"   # the unfinished work is kept as evidence
+
+
+def test_a_worktree_that_cannot_be_removed_never_blocks_the_ones_behind_it(tmp_path, monkeypatch):
+    """Codex P2 on #703: the same unremovable worktrees at the front of the list would be retried forever."""
+    state, root, clone, base = lane(tmp_path)
+    big = [turn(state, root, clone, base, f"P-A{n}", dirty=True) for n in range(2)]      # sorted first, too large to archive
+    small = [turn(state, root, clone, base, f"P-B{n}") for n in range(3)]
+    monkeypatch.setattr(cleanup, "MAX_ARCHIVE_BYTES", 600)   # the dirty ones exceed it; the clean ones do not
+
+    first = cleanup.auto_clean(state, now=1.0, interval=0, limit=1)
+    assert first["not_removed"] == ["P-A0", "P-A1"] and first["removed"] == 0     # both attempts went to the stuck ones
+
+    second = cleanup.auto_clean(state, now=2.0, interval=0, limit=1)
+    assert second["results"] == {"P-B0": "REMOVED"} and second["not_removed"] == ["P-A0", "P-A1"]
+    for tick in (3.0, 4.0):
+        cleanup.auto_clean(state, now=tick, interval=0, limit=1)
+    assert not any(tree.exists() for tree in small) and all(tree.exists() for tree in big)
+
+    last = cleanup.auto_clean(state, now=5.0, interval=0, limit=1)                # nothing else is left: retried, still kept
+    assert set(last["results"].values()) == {"KEPT_EVIDENCE_TOO_LARGE_TO_ARCHIVE"} and last["left_for_next_run"] == 2
+
+
+def test_a_capable_worktree_is_kept_while_its_runner_exists_whatever_its_row_says(tmp_path, monkeypatch):
+    """Review of #703: the row is a record; a live or unknowable runner means the worktree may still be in use."""
+    from project_orchestrator import iron_god_capable_builder as capable
+
+    state, root, clone, base = lane(tmp_path)
+    tree = _capable(state, root, clone, base, "abc", "INTERRUPTED")
+    row_path = root / "capable-dispatches" / "abc.json"
+    row_path.write_text(json.dumps({"status": "INTERRUPTED", "dispatch_id": "abc", "pid": 777}), encoding="utf-8")
+
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: f"python {capable.RUNNER_SCRIPT} --job abc.job.json")
+    assert cleanup.auto_clean(state, now=1.0, interval=0)["kept"] == {"capable-abc": "ACTIVE"} and tree.exists()
+
+    def unanswerable(_pid):
+        raise OSError("process lookup failed")
+    monkeypatch.setattr(capable, "process_command_line", unanswerable)
+    assert cleanup.auto_clean(state, now=2.0, interval=0)["kept"] == {"capable-abc": "ACTIVE"} and tree.exists()
+
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: None)       # the runner is gone
+    assert cleanup.auto_clean(state, now=3.0, interval=0)["results"] == {"capable-abc": "REMOVED"} and not tree.exists()
