@@ -271,3 +271,15 @@ def test_an_open_pull_request_that_owns_the_graph_blocks_every_request_because_a
     assert request["graph_path"] == SOURCE
     unowned = run_refill(tmp_path, repository, clone, head, reserved=set())["requests"][0]
     assert json.loads((tmp_path / "lane" / refill.REQUESTS / f"{unowned}.json").read_text("utf-8"))["reserved_conflicts"] == []
+
+
+def test_the_planning_instruction_splits_pure_logic_into_slices_the_local_builder_can_take() -> None:
+    request = refill.planning_request(PORTFOLIO[4], "a" * 40, SOURCE, complete_graph(PORTFOLIO[4], planned_capability=True), ROADMAP, GRANT)
+    objective = request["objective"]
+    assert "put every piece of pure logic in its own Level 1 slice" in objective
+    assert "keep wiring, I/O and user interface in Level 3+ slices that depend on them" in objective
+    for clause in ("at most 580 characters", "opens with the exact rule", "acceptance_examples, at least three items",
+                   '{"call": "{fn}(literal arguments)"', "COMPUTED by running a reference implementation",
+                   "A repository with no Python package gets no Level 1 slices", f"Slices go in {SOURCE}"):
+        assert clause in objective, clause
+    assert "never understate to reach a cheaper builder" in objective  # the honesty rule is still there

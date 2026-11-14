@@ -107,6 +107,44 @@ def _rows(state_dir: Path) -> list[dict[str, Any]]:
 
 NO_PR_NOTE = "STALE_NO_PULL_REQUEST_OBSERVED"
 GRAPH_PATH = "engineering/capability-graph.json"
+LOCAL_FOLLOW_ON_LIMIT = 3
+NO_LOCAL_BUILDER_PREFIX = "NO_PYTHON_PACKAGE"  # the refill's reason for a repository the local builder cannot build
+PLANNING_SLICE = "extend-capability-graph"     # the refill's planning task: it writes slices already, by its own rules
+
+
+def local_slice_contract(graph_path: str) -> str:
+    """What makes a graph slice buildable by the free local model, as one paragraph a capable session can follow.
+
+    The capable builder has a small daily budget and the local 7B is idle whenever no slice is small enough for it
+    (measured 2026-11-13: one of seven repositories had any). The 7B builds; it does not plan. So the stronger session
+    states the rule and computes the examples, and the 7B writes only the code that satisfies them. Every clause is a
+    measured failure from docs/LOCAL_WORK_BACKLOG.md.
+    """
+    return (
+        "A local slice is ONE new pure function in a NEW module of an existing Python package. Required fields: state PLANNED; "
+        "capability_level 1; an objective of at most 580 characters whose FIRST sentence is the exact rule ('Return ...') and "
+        "which states every edge rule (empty input, case, rounding, boundaries, duplicates), background last; acceptance; "
+        "acceptance_examples with at least three items {\"call\": \"{fn}(literal arguments)\", \"expected\": literal, "
+        "\"why\": one sentence}, the expected values COMPUTED by running a reference implementation you then discard, covering "
+        "the edges, never two answers for one call; no file, path, stream, clock, random or network input (pass the data "
+        "itself); allowed_paths = the package pattern and the tests pattern; forbidden_paths = the union of "
+        "the forbidden_paths of EVERY existing slice in the graph (the merger refuses a new slice that omits any, and "
+        "that refusal blocks this whole pull request); runner_requirements [\"code\", \"local\", \"offline\"]; depends_on to order slices that build on each other. "
+        f"Append to {graph_path}; never edit or remove an existing slice.")
+
+
+def local_follow_on(request: dict[str, Any], graph_path: str) -> str | None:
+    """The instruction that turns one capable dispatch into work the local builder can do afterwards (None: not applicable)."""
+    reason = str((request.get("route") or {}).get("reason") or "")
+    if request.get("slice") == PLANNING_SLICE or reason.startswith(NO_LOCAL_BUILDER_PREFIX):
+        return None
+    return (
+        "Leave work for the free local builder (it develops between your dispatches and is idle without slices of its size). "
+        f"In this same pull request, also append up to {LOCAL_FOLLOW_ON_LIMIT} local slices to the capability this slice "
+        "belongs to, placed after it, for pure logic that the roadmap's NEXT outcome needs and that you did not build here. "
+        "Small pieces of a bigger feature count; work that serves no stated roadmap outcome does not, and adding none is the "
+        "correct result when no such logic exists (say so in the pull request description). Do not build these slices "
+        "yourself and do not weaken this slice to create them. " + local_slice_contract(graph_path))
 
 
 def render_prompt(request: dict[str, Any], *, prior_no_pr: int = 0) -> str:
@@ -142,6 +180,9 @@ def render_prompt(request: dict[str, Any], *, prior_no_pr: int = 0) -> str:
         lines.append(
             f"Earlier attempt(s) at this request ({prior_no_pr}) ended with no pull request. Unless there is a genuine blocker, "
             "that usually means the slice was already delivered: verify that first and record it with the evidence pull request above.")
+    follow_on = local_follow_on(request, graph_path)
+    if follow_on:
+        lines.append(follow_on)
     lines += [
         "Delivery: implement exactly this slice, with repository-native tests, and open ONE pull request whose title "
         f"starts with 'Iron God [{request['id']}]'. Run the repository's canonical preflight before opening it. "

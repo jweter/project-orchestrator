@@ -165,6 +165,15 @@ EXHAUSTED_GRAPH = frozenset({"PRODUCT_COMPLETION_EVIDENCE_REQUIRED", "NO_EXECUTA
 OWNER_ROADMAP = re.compile(r"^docs/OWNER_APPROVED_ROADMAP_[A-Za-z0-9._-]+\.md$")
 DEFAULT_FORBIDDEN = (".github/**", "private/**", ".env", "**/*.pem", "**/*.key")
 MAX_ITEMS_PER_SLICE = 4  # the original item plus three re-authorings; after that the owner decides
+# The same contract the capable builder's own prompt carries (iron_god_capable_builder.local_slice_contract); kept as text
+# here because that module imports nothing from this one and the planning objective is built here.
+LOCAL_SLICE_CONTRACT = (
+    "A Level 1 slice is ONE new pure function in a NEW module of an existing Python package: its objective is at most 580 "
+    "characters, opens with the exact rule ('Return ...') and states every edge rule; it carries acceptance_examples, at "
+    "least three items {{\"call\": \"{{fn}}(literal arguments)\", \"expected\": literal, \"why\": one sentence}} whose "
+    "expected values you COMPUTED by running a reference implementation you then discard; it takes no file, path, stream, "
+    "clock, random or network input; allowed_paths are the package pattern and the tests pattern; runner_requirements are "
+    "[\"code\", \"local\", \"offline\"]. A repository with no Python package gets no Level 1 slices. Slices go in {source}.")
 
 
 FAILURE_EVIDENCE_CHARS = 240
@@ -653,7 +662,10 @@ def planning_request(repository: str, head: str, source: str, payload: dict[str,
         "capability complete without evidence, and never edit or remove an existing slice or its evidence. Each new slice has "
         "objective, acceptance, allowed_paths, forbidden_paths, runner_requirements, depends_on where ordered, and a truthful "
         "capability_level (1 = one function with examples, 2 = directed edit with failing approved tests, 3+ = anything larger; "
-        "never understate to reach a cheaper builder). Choose free, local libraries already used by the repository. Change only "
+        "never understate to reach a cheaper builder). The free local builder is idle unless the graph holds slices of its "
+        "size, so split the work: put every piece of pure logic in its own Level 1 slice and keep wiring, I/O and user "
+        "interface in Level 3+ slices that depend on them. " + LOCAL_SLICE_CONTRACT.format(source=source) + " "
+        "Choose free, local libraries already used by the repository. Change only "
         f"{source}. If the roadmap cannot be decomposed without a decision with significant consequences, open no "
         "pull request and report one focused question.")
     return {"schema_version": 1, "id": ident, "repository": repository, "exact_head": head,

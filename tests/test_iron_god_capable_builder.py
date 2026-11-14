@@ -361,6 +361,69 @@ def test_the_evidence_pull_request_targets_the_repositorys_declared_graph_path()
     assert "changes only engineering/capability-graph.json" in cb.render_prompt(request())  # the conventional default
 
 
+# --- one capable dispatch leaves work the free local builder can do (owner, 2026-11-13: "build that") ----------------------
+
+def test_a_build_dispatch_asks_for_local_sized_follow_on_slices_with_the_measured_contract() -> None:
+    prompt = cb.render_prompt(request())
+    assert "Leave work for the free local builder" in prompt
+    assert f"up to {cb.LOCAL_FOLLOW_ON_LIMIT} local slices" in prompt and "engineering/capability-graph.json" in prompt
+    # the clauses the local lane's validator and the measured failures require
+    for clause in ("ONE new pure function in a NEW module", "capability_level 1", "at most 580 characters",
+                   "FIRST sentence is the exact rule", "at least three items", "COMPUTED by running a reference implementation",
+                   "no file, path, stream, clock, random or network input", "never edit or remove an existing slice"):
+        assert clause in prompt, clause
+    # never busywork, and never at the expense of the slice it was dispatched for
+    assert "adding none is the correct result" in prompt and "do not weaken this slice" in prompt
+    assert prompt.index("Leave work for the free local builder") < prompt.index("Delivery: implement exactly this slice")
+
+
+def test_a_follow_on_written_as_instructed_passes_the_merger_and_one_with_only_the_requests_fences_does_not() -> None:
+    # Codex P2 on #698: the merger wants the graph-wide union of forbidden paths, not the dispatched slice's own
+    from project_orchestrator.iron_god_portfolio_merger import graph_change_problems
+
+    prompt = cb.render_prompt(request())
+    assert "the union of the forbidden_paths of EVERY existing slice in the graph" in prompt
+
+    def graph(*extra: dict) -> dict:
+        built = {"id": "built", "state": "PLANNED", "allowed_paths": ["backend/**"], "forbidden_paths": [".github/**"]}
+        other = {"id": "other", "state": "PLANNED", "allowed_paths": ["backend/**"], "forbidden_paths": ["private/**"]}
+        return {"capabilities": [{"id": "cap", "state": "PLANNED", "slices": [built, other, *extra]}]}
+
+    def follow_on(forbidden: list[str]) -> dict:
+        return {"id": "new-helper", "state": "PLANNED", "capability_level": 1, "allowed_paths": ["backend/**", "tests/**"],
+                "forbidden_paths": forbidden}
+
+    assert graph_change_problems(graph(), graph(follow_on([".github/**", "private/**"]))) == []
+    assert graph_change_problems(graph(), graph(follow_on([".github/**"]))) == ["NEW_SLICE_FORBIDDEN_NOT_INHERITED:cap/new-helper"]
+
+
+def test_the_follow_on_names_the_repositorys_declared_graph() -> None:
+    prompt = cb.render_prompt(dict(request(), graph_path="docs/roadmap/graph.json"))
+    assert "Append to docs/roadmap/graph.json" in prompt
+
+
+def test_a_repository_the_local_builder_cannot_build_is_not_asked_for_local_slices() -> None:
+    unbuildable = dict(request(), route={"builder": "CAPABLE", "reason": "NO_PYTHON_PACKAGE_FOR_LOCAL_BUILDER"})
+    assert "Leave work for the free local builder" not in cb.render_prompt(unbuildable)
+
+
+def test_a_planning_task_carries_its_own_rules_and_gets_no_second_instruction() -> None:
+    planning = dict(request(), slice=cb.PLANNING_SLICE, route={"builder": "CAPABLE", "reason": "ROADMAP_PLANNING_TASK"})
+    assert "Leave work for the free local builder" not in cb.render_prompt(planning)
+
+
+def test_the_builder_and_the_refill_agree_on_the_names_they_share() -> None:
+    from project_orchestrator import iron_god_roadmap_refill as refill
+
+    assert cb.PLANNING_SLICE == refill.PLANNING_SLICE
+    assert cb.NO_LOCAL_BUILDER_PREFIX == refill.NO_LOCAL_BUILDER_PREFIX
+    # the length both prompts quote is the one the local drafter really cuts at
+    from project_orchestrator.iron_god_local_drafter import ROADMAP_OBJECTIVE_CHARS
+
+    limit = f"at most {ROADMAP_OBJECTIVE_CHARS} characters"
+    assert limit in cb.local_slice_contract("g.json") and limit in refill.LOCAL_SLICE_CONTRACT
+
+
 # --- a session that went quiet releases the repository early, without weakening the attempt cap ----------------------
 
 
