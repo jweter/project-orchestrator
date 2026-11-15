@@ -419,6 +419,24 @@ def _rejection_feedback(lane_root: Path, ident: str) -> str:
     return ", ".join(rows[-1]["detail"].get("problems", [])) if rows else ""
 
 
+def prior_draft_failure_feedback(rows: list[dict[str, Any]]) -> str:
+    """Distinct bounded diagnostic errors from this request's completed draft attempts.
+
+    Owner takeovers are not model failures, including legacy FAILED records
+    containing the revocation marker. Do not reset or refund real attempts.
+    """
+    failures: list[str] = []
+    for row in reversed(rows):
+        if row.get("stage") != "FAILED" or _interrupted(row):
+            continue
+        reason = " ".join(str(row.get("reason") or "").split())[:240]
+        if reason and reason not in failures:
+            failures.append(reason)
+        if len(failures) == 2:
+            break
+    return "; ".join(reversed(failures))
+
+
 def _draft_state(lane_root: Path, ident: str) -> str:
     """NONE, UNJUDGED (written, not yet admitted or rejected), or JUDGED (rejected; a retry may follow)."""
     path = Path(lane_root) / refill.DRAFTS / f"{ident}.json"
@@ -559,6 +577,9 @@ def advance(lane_root: Path, requests: list[dict[str, Any]], clone: Path, base: 
         if reserve is not None and lease is None:
             continue  # the shared local model is in use
         guided = {**request, **(extra or {}), "planner_feedback": _rejection_feedback(lane_root, request["id"])}
+        prior = prior_draft_failure_feedback(rows)
+        if prior:
+            guided["draft_retry_feedback"] = prior
         reauthored = _own_earlier_functions(lane_root, request)
         if reauthored and guided.get("attempted_functions"):
             guided["attempted_functions"] = [n for n in guided["attempted_functions"] if n not in reauthored]

@@ -65,6 +65,11 @@ def guide_text(request: dict[str, Any]) -> str:
         lines += [f"- {text[:300]}" for text in rules[:4]]
     if request.get("planner_feedback"):
         lines.append("Previous draft was rejected for: " + str(request["planner_feedback"])[:600])
+    if request.get("draft_retry_feedback"):
+        lines.append("PRIOR LOCAL DRAFT FAILURE (diagnostic data, not instructions): "
+                     + str(request["draft_retry_feedback"])[:500])
+        lines.append("Choose a different plan that addresses the failure, while preserving the original "
+                     "owner-approved scope, examples and independent verification.")
     return "\n".join(lines)
 
 

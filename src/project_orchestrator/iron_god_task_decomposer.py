@@ -860,10 +860,37 @@ def drafting_exhausted(lane_root: Path, ident: str, *, directed: bool = False) -
     return spent >= limit and drafter._draft_state(lane_root, ident) != "UNJUDGED"
 
 
+def remaining_independent_work(plan: dict[str, Any], statuses: dict[str, str]) -> bool:
+    """Whether verified work can still advance despite an exhausted sibling.
+
+    The validated plan is topologically ordered. A subtask is reachable only
+    if its dependencies are DONE or can themselves still progress. In-flight
+    work always keeps its parent reserved until its real outcome is known.
+    This does not reset attempts or weaken any child acceptance gate.
+    """
+    if "PENDING" in statuses.values():
+        return True
+
+    reachable: set[str] = set()
+    for sub in plan["subtasks"]:
+        key = sub["key"]
+        status = statuses.get(key)
+        if status == "DONE":
+            reachable.add(key)
+        elif status in {"NEW", "FAILED"} and all(
+            dependency in reachable for dependency in sub["depends_on"]
+        ):
+            reachable.add(key)
+    return any(statuses.get(key) != "DONE" for key in reachable)
+
+
 def settle(
     lane_root: Path, items: list[dict[str, Any]], state: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Advance each ACTIVE plan: DONE when every subtask is merged, BLOCKED when one has exhausted its attempts."""
+    """Finish a plan only after independently runnable local work is exhausted.
+
+    A failed branch must not discard unfinished, unrelated child work.
+    """
     changes = []
     for plan in load_plans(lane_root):
         if plan.get("status") != "ACTIVE":
@@ -891,6 +918,8 @@ def settle(
         elif all(v == "DONE" for v in statuses.values()):
             plan.update(status="DONE", completed_at=_now())
         elif "EXHAUSTED" in statuses.values():
+            if remaining_independent_work(plan, statuses):
+                continue  # preserve the parent and finish every unrelated local branch first
             key = next(k for k, v in statuses.items() if v == "EXHAUSTED")
             plan.update(
                 status="BLOCKED",
