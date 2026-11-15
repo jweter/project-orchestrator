@@ -2690,3 +2690,50 @@ def test_a_failed_git_pin_reinstall_reports_it_and_leaves_the_environment_marker
     result = WORKER.production_preflight(worktree, lambda: None, 60)
     assert result["ok"] is False and "ENVIRONMENT_GIT_PIN_INSTALL_FAILED" in result["output_tail"]
     assert result["environment"] == "FAILED"
+
+
+def test_approved_directed_worker_makes_one_evidence_driven_local_repair(env):
+    """The next local model turn gets an actual failed assertion, not a blind retry."""
+    directed_env(env, [direct_item("RS-REPAIR", REPOS[1], evidence_retry=True)])
+    prompts = []
+    replies = iter([
+        "```python\ndef one():\n    return 3\n```",
+        "```python\ndef one():\n    return 2\n```",
+    ])
+
+    def model(prompt, _num_predict, check):
+        check()
+        prompts.append(prompt)
+        return {"text": next(replies), "prompt_tokens": 9, "output_tokens": 5, "model_used": "qwen2.5-coder:7b"}
+
+    runner = Runner(plan=never_plans, agent=None, generate=model)
+    assert step(env, runner)["backlog_item"] == "RS-REPAIR"
+    accepted = step(env, runner)
+    assert accepted["status"] == "ACCEPTED_LOCAL", accepted
+    assert len(prompts) == 2
+    assert "Your previous answer did not pass" in prompts[1]
+    assert "return 3" in prompts[1] and "return 2" not in prompts[1].split("Your previous answer")[1]
+    report = next(pl.ProductLane(env.state).reports.glob("*-handback-diagnostics.json"))
+    diagnostics = json.loads(report.read_text(encoding="utf-8"))
+    retry = diagnostics["directed"]["evidence_retry"]
+    assert "return 2" in retry["reply"]
+    assert "FAILED" in retry["previous_test_failure"] or "assert" in retry["previous_test_failure"]
+    assert diagnostics["directed"]["test_failure"] == retry["previous_test_failure"]
+
+
+def test_evidence_retry_rejects_identical_attempt_and_never_loops(env):
+    directed_env(env, [direct_item("RS-REPEAT", REPOS[1], evidence_retry=True)])
+    prompts = []
+
+    def model(prompt, _num_predict, check):
+        check()
+        prompts.append(prompt)
+        return {"text": "```python\ndef one():\n    return 3\n```"}
+
+    runner = Runner(plan=never_plans, agent=None, generate=model)
+    step(env, runner)
+    harvested = step(env, runner)
+    assert harvested["worker_status"] == "FAIL"
+    assert "LOCAL_REPAIR_REPEATED_IDENTICAL_REPLY" in harvested["worker_summary"]
+    assert len(prompts) == 2
+    assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"
