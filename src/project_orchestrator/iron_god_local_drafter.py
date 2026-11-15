@@ -190,7 +190,7 @@ def drafting_in_progress(lane_root: Path, *, now: float | None = None) -> bool:
 def _parsed_roadmap_examples(request: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None]:
     """Normalize literal owner examples without losing their function identity.
 
-    A graph can explicitly name its function instead of spelling \`\`{fn}(...)\`\`.
+    A graph can explicitly name its function instead of spelling ``{fn}(...)``.
     When it does, ALL examples must consistently name that one public
     function, be independently checkable literals, and include at least
     three distinct calls. A mixed or partially malformed named contract is
@@ -242,13 +242,14 @@ def _parsed_roadmap_examples(request: dict[str, Any]) -> tuple[list[dict[str, An
 
 
 def roadmap_examples(request: dict[str, Any]) -> list[dict[str, Any]]:
-    """Literal owner acceptance examples, expressed as \`\`{fn}(...)\`\` templates."""
+    """Literal owner acceptance examples, expressed as ``{fn}(...)`` templates."""
     return _parsed_roadmap_examples(request)[0]
 
 
 def owner_function_name(request: dict[str, Any]) -> str | None:
     """A single independently declared concrete API name, or no such name."""
     return _parsed_roadmap_examples(request)[1]
+
 
 DIRECTED_LEVEL = 2
 DIRECTED_UNITS = 3  # the worker bounds a directed edit at a few units; more is a decomposition problem
