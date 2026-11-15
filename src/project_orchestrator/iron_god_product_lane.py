@@ -1695,7 +1695,12 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
-        if capable["enabled"]:
+        if capable["enabled"] and draft_locally:
+            # Only the autonomous local-draft pipeline may escalate work
+            # that it cannot verify. With local_draft_author disabled an
+            # approved external planner may submit a LOCAL draft on the next
+            # pass; rerouting on this first pass would create spurious
+            # CAPABLE_NOT_DISPATCHED events even when that draft merges.
             # A previously accepted local task may be revisited on later
             # passes without producing a new "admitted" event. Never
             # re-route such a task to the cloud-capable builder.
