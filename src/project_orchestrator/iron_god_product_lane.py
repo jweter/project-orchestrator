@@ -47,6 +47,7 @@ from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_capable_admission as capable_admission
 from . import iron_god_cpp_lane as cpp_lane
+from . import iron_god_gdscript_lane as gdscript_lane
 from . import iron_god_dev_mode as dev_mode
 from . import iron_god_execution_status as execution_status
 from . import iron_god_model_routing as model_routing
@@ -221,7 +222,8 @@ def local_model_work_in_progress(lane: ProductLane) -> bool:
     """
     try:
         if local_drafter.drafting_in_progress(lane.root) or task_decomposer.planning_in_progress(lane.root) \
-                or roadmap_progress.verifying(lane.workspaces / "progress"):
+                or roadmap_progress.verifying(lane.workspaces / "progress") \
+                or gdscript_lane.in_progress(lane.root):
             return True
         return any(row.get("transport") == capable_builder.ENGINE_TRANSPORT and row.get("status") == "DISPATCHED"
                    for row in capable_builder._rows(capable_builder.dispatch_state(lane.root)))
@@ -1510,7 +1512,12 @@ def spawn_cpp_author(release_repo: Path, release_sha: str, request_file: Path, c
 def build_native_requests(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
                           release: tuple[Path, str] | None) -> None:
     """Advance the local C++ lane for this repository's native requests; outcomes are logged, never fatal."""
-    native = [r for r in report.get("capable_requests", []) if cpp_lane.classify(r) is not None]
+    # Everward's active owner-directed development stack is Godot/GDScript.
+    # Legacy C++ request records remain inspectable, but may not authorize
+    # new C++ development without a separately approved change in direction.
+    native = [r for r in report.get("capable_requests", [])
+              if r.get("repository") != "jweter/Project-Everward"
+              and cpp_lane.classify(r) is not None]
     if not native or release is None:
         return
     release_repo, release_sha = release
