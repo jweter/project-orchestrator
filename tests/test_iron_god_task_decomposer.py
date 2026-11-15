@@ -1327,6 +1327,21 @@ def test_a_native_cpp_slice_is_never_decomposed_into_python_steps() -> None:
     assert not td.native_scope(PARENT) and td.decomposable(PARENT)                         # a Python repository is unchanged
 
 
+def test_an_unreal_source_slice_is_native_and_is_never_decomposed_into_python_steps() -> None:
+    """Project-Everward first-loop-progression-reward-unreal-wiring, 2026-11-15: its paths are unreal/Source/** (only
+    src/simulation/ was registered as native), so the 7B planned Python children that could not live there and six local
+    drafts failed PLAN_PACKAGE_MISSING: unreal/Source - about 40 minutes of the laptop's one model slot."""
+    everward = {"repository": "jweter/Project-Everward", "capability_level": 3, "route": {"builder": "CAPABLE"},
+                "slice_acceptance": ["x"], "slice": "wiring", "id": "RM-x"}
+    unreal = {**everward, "allowed_paths": ["unreal/Source/**", "tools/**", "docs/**", "engineering/**"]}
+    assert td.native_scope(unreal) and not td.decomposable(unreal)
+    assert td.native_scope({**unreal, "repository": "jweter/some-other-game"})        # by path, not by registration
+    assert td.native_scope({**everward, "allowed_paths": ["Plugins/Foo/Private/Foo.cpp"]})
+    assert td.native_scope({**everward, "allowed_paths": ["unreal/source/Everward/Everward.Build.cs"]})
+    assert td.decomposable({**PARENT, "allowed_paths": ["knowledge_engine/**", "tests/**"]})   # Python is unchanged
+    assert not td.native_scope({**PARENT, "allowed_paths": ["tools/**", "docs/**"]})
+
+
 def test_model_authored_nested_placeholder_oracle_is_rejected_before_child_admission() -> None:
     plan = mutated(lambda p: p["subtasks"][0]["acceptance_examples"][0].update(
         expected=json.dumps({"sections": [{"title": "Results", "content": "..."}]})
