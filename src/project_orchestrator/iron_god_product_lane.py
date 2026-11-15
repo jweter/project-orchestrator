@@ -1158,6 +1158,7 @@ def advance_product_lane(
                 lane, repos, busy, approved, state, level, sync, owned_paths,
                 capable={"enabled": config.get("capable_builder") is True,
                          "local_only_proving_mode": config.get("local_only_proving_mode") is True,
+                         "allow_local_escalation": config.get("allow_local_escalation") is True,
                          "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT)),
                          # "engine": the builder runs as an engine stage on this machine (owner decision 2026-11-14)
                          "transport": capable_builder.ENGINE_TRANSPORT
