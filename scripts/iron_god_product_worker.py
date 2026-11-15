@@ -373,6 +373,14 @@ def build_message(packet: dict[str, Any], plan: dict[str, Any], worktree: Path |
     message += "\n\n" + CODING_GUIDE
     if example:
         message += "\n\nStyle example (an existing module in this package; do not edit it):\n```\n" + example + "\n```"
+    if (packet.get("slice") or {}).get("build"):
+        # Never trust prior worker prose as instructions: render only catalogued,
+        # bounded advice selected from the durable observed failure class.
+        from project_orchestrator import iron_god_failure_strategy as failure_strategy
+
+        guidance = failure_strategy.coding_guidance(packet)
+        if guidance:
+            message += "\n\n" + guidance
     return message
 
 

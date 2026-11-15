@@ -53,9 +53,11 @@ from . import iron_god_model_routing as model_routing
 from . import iron_god_pipeline_trace as pipeline_trace
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
+from . import iron_god_stall_recovery as stall_recovery
 from . import iron_god_strategic_upgrades as strategic_upgrades
 from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
+from . import iron_god_failure_strategy as failure_strategy
 from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_roadmap_refill as roadmap_refill
@@ -1195,17 +1197,52 @@ def advance_product_lane(
         idle = "IDLE_NO_APPROVED_BACKLOG_ITEM" if config.get("planning") == "backlog" and not items else (
             "IDLE_ALL_REPOSITORIES_AWAITING_CI")
         return _report(lane, {"status": idle, "publications": published, **idle_diagnostics(lane, explained, rejected)})
+    recovery_context = None
+    if config.get("planning") == "backlog" and repo in items:
+        previous = items[repo]
+        alternative = choose_failed_worker_alternative(
+            repo, repos, busy, items, approved, state, max_level=select_level,
+            routable=(lambda task: model_routing.route(
+                task["level"], measured or {}, (free_gib or available_gib)(),
+                after_pressure=bool(pressure)).model is not None)
+            if use_routing else None,
+        )
+        if alternative is not None:
+            target_repo, target_item, failed_packet = alternative
+            recovery_context = (repo, previous["id"], failed_packet, target_item["id"])
+            repo = target_repo
+            items[repo] = target_item
     decision = None
     if use_routing:
         chosen_item = items.get(repo)
         task_level = chosen_item.get("level") if chosen_item is not None else int(config.get("capability_level", 3))
         decision = model_routing.route(task_level, measured or {}, (free_gib or available_gib)(),
                                        after_pressure=bool(pressure))
-        if decision.model is None:  # wait, never downgrade; no attempt is spent
-            why_waiting = decision.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
-            return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",
-                                  "reason": decision.reason, "repository": repo, "route": decision.as_dict(),
-                                  "work_waiting": bool(why_waiting)})
+        if decision.model is None:  # no downgrade: try another already approved repository first
+            alternative = next_routable_local_repository(
+                repos, busy, items, measured or {}, (free_gib or available_gib)(),
+                after_pressure=bool(pressure), exclude=repo,
+            )
+            if alternative is not None:
+                recovery = stall_recovery.recovery_decision(
+                    {"id": str(chosen_item.get("id")) if chosen_item else repo,
+                     "route": {"builder": "LOCAL"}, "capability_level": task_level},
+                    reason=decision.reason, attempts=0,
+                    eligible_alternatives=[{"id": alternative, "eligible": True, "owner_approved": True}],
+                    owner_authorized=True, memory_available=True,
+                )
+                if recovery["action"] == "CONTINUE_OTHER_LOCAL":
+                    repo = alternative
+                    chosen_item = items[repo]
+                    decision = model_routing.route(
+                        chosen_item.get("level"), measured or {}, (free_gib or available_gib)(),
+                        after_pressure=bool(pressure),
+                    )
+            if decision.model is None:
+                why_waiting = decision.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+                return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",
+                                      "reason": decision.reason, "repository": repo, "route": decision.as_dict(),
+                                      "work_waiting": bool(why_waiting)})
     if decision is not None and decision.model is not None and decision.required_gib and decision.available_gib is not None             and decision.available_gib < decision.required_gib:
         # Below the comfortable level the model still runs (owner decision 2026-11-08); the standing rule is told so it can
         # free memory while the run proceeds. Sustained real pressure still cancels the run.
@@ -1232,6 +1269,17 @@ def advance_product_lane(
         raise
     if result["status"] not in {"DISPATCHED", "WORKER_LAUNCH_UNCONFIRMED"}:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
+    if recovery_context is not None and result["status"] == "DISPATCHED" and result.get("packet_id"):
+        origin_repo, failed_id, failed_packet, alternative_id = recovery_context
+        if backlog.record_recovery_diversion(
+            lane.root, failed_id, failed_packet_id=failed_packet,
+            alternative_packet_id=result["packet_id"], alternative_item_id=alternative_id,
+        ):
+            working_memory.record(
+                lane.state_root, origin_repo, "LOCAL_FAILURE_ALTERNATIVE_DISPATCHED",
+                packet_id=result["packet_id"],
+                detail=f"{failed_id} failed in {failed_packet}; continued {alternative_id} in {repo}",
+            )
     return result
 
 
@@ -1298,6 +1346,74 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
     if report and (report["removed"] or report["left_for_next_run"]):
         roadmap_refill.log_event(lane.root, "WORKTREES_CLEANED", "<portfolio>", "", {
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
+
+
+def choose_failed_worker_alternative(
+    selected_repo: str, repos: list[str], busy: set[str],
+    chosen: dict[str, dict[str, Any]], approved: list[dict[str, Any]],
+    state: dict[str, Any], *, max_level: int,
+    routable: Callable[[dict[str, Any]], bool] | None = None,
+) -> tuple[str, dict[str, Any], str] | None:
+    """Use existing failure evidence to prefer one *different* eligible task.
+
+    This is a single-cycle preference, not a second queue. A successful
+    alternative launch is recorded against the exact failed packet in the
+    existing backlog ledger, so restarting the supervisor cannot repeatedly
+    postpone the same failed task. Other repos are tried before other tasks
+    in the same repo; no new roadmap authority or test oracle is invented.
+    """
+    first = chosen.get(selected_repo)
+    if first is None:
+        return None
+    row = state.get("items", {}).get(first["id"], {})
+    failed_packet = backlog.failed_worker_evidence(row)
+    if failed_packet is None:
+        return None
+    done = {item["id"] for item in approved if backlog.is_done(item, state)}
+    start = repos.index(selected_repo) if selected_repo in repos else 0
+    rotated = [*repos[start + 1:], *repos[:start]]
+    candidates = [
+        (repo, chosen[repo])
+        for repo in rotated
+        if repo != selected_repo and repo not in busy and repo in chosen
+    ]
+    # Stay productive even when no other repository has an eligible slice.
+    candidates.extend(
+        (selected_repo, item) for item in approved
+        if item["repository"] == selected_repo and item["id"] != first["id"]
+        and backlog.exclusion(item, state, items=approved, done=done, max_level=max_level) is None
+    )
+    for repository, alternative in candidates:
+        if routable is not None and not routable(alternative):
+            continue
+        action = stall_recovery.recovery_decision(
+            {"id": first["id"], "route": {"builder": "LOCAL"},
+             "capability_level": first["level"]},
+            reason=str(row.get("outcome") or "FAILED_IMPLEMENTATION"),
+            attempts=int(row.get("attempts", 0)), owner_authorized=True,
+            memory_available=True,
+            eligible_alternatives=[{
+                "id": alternative["id"], "eligible": True, "owner_approved": True,
+            }],
+        )
+        if action["action"] == "CONTINUE_OTHER_LOCAL":
+            return repository, alternative, failed_packet
+    return None
+
+
+def next_routable_local_repository(
+    repos: list[str], busy: set[str], items: dict[str, dict[str, Any]],
+    profiles: dict[str, Any], free_gib: float, *, after_pressure: bool, exclude: str,
+) -> str | None:
+    """Find already approved, measured-routable work without inventing authority."""
+    for candidate in repos:
+        if candidate == exclude or candidate in busy or candidate not in items:
+            continue
+        route = model_routing.route(items[candidate].get("level"), profiles, free_gib,
+                                    after_pressure=after_pressure)
+        if route.model is not None:
+            return candidate
+    return None
 
 
 def local_escalation_authorized(capable: dict[str, Any], *, draft_locally: bool) -> bool:
@@ -1805,6 +1921,16 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
                                   roots=roots, avoid=avoid, memory_text=working_memory.excerpt(lane.state_root, repo),
                                   attempted=working_memory.attempted_functions(lane.state_root, repo),
                                   project=memory_project(release_repo, repo), item=item)
+    if item is not None:
+        try:
+            prior = backlog.load_state(lane.root).get("items", {}).get(item["id"], {})
+            revision = failure_strategy.recovery_strategy(lane.root, item, prior)
+            if revision is not None:
+                # Advisory only. The worker's approved spec and test oracle are
+                # unchanged; the code prompt gets only pre-reviewed guidance.
+                packet["recovery_strategy"] = revision
+        except (OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+            pass  # absent evidence must never block an otherwise permitted turn
     updated = dispatch_canonical_slice(ledger, packet, transport="local_idle_worker")
     lane.save(updated, ledger)
     packet_path = lane.packets / f"{packet_id}.json"
