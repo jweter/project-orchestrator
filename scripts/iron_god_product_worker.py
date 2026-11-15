@@ -1275,7 +1275,10 @@ def validate_direct(spec: Any, worktree: Path, base: str, packet: dict[str, Any]
     return {"mode": "directed", "module_path": module, "test_path": test, "targets": targets, "add": add,
             "direction": direction, "test_source": source, "objective": direction,
             "approved_base": approved_base, "test_on_main": on_main.returncode == 0,
-            "note": " ".join(str(spec.get("note") or "").split())[:NOTE_CHARS]}
+            "note": " ".join(str(spec.get("note") or "").split())[:NOTE_CHARS],
+            # Explicit opt-in in the owner-approved directed specification;
+            # default remains one generation. Never changes a failed lineage.
+            "evidence_retry": spec.get("evidence_retry") is True}
 
 
 def external_completion(worktree: Path, base: str, plan: dict[str, Any]) -> dict[str, Any] | None:
@@ -1393,8 +1396,61 @@ def execute_directed_slice(packet: dict[str, Any], plan: dict[str, Any], worktre
     quick = tests(worktree, module, test, check)
     handback["verification"] = [quick]
     if not quick["ok"]:
-        handback["directed"]["test_failure"] = failing_assertions(quick["output_tail"])[:3000]
-        return finish("FAIL", "SLICE_TESTS_FAILED")
+        failure = failing_assertions(quick["output_tail"])[:3000]
+        handback["directed"]["test_failure"] = failure
+        # In a single already-authorized turn, the owner may explicitly allow
+        # ONE different attempt using the actual targeted pytest failure.
+        # Never retry lint, environment, preflight or model/syntax failures.
+        tail = str(quick.get("output_tail") or "")
+        is_test_assertion = (
+            str(quick.get("command") or "").startswith("python -m pytest")
+            and "FAILED" in tail
+            and (re.search(r"(?m)^E\s+assert\b", tail) is not None or "AssertionError" in tail)
+        )
+        if not (plan.get("evidence_retry") is True and is_test_assertion):
+            return finish("FAIL", "SLICE_TESTS_FAILED")
+        if not authority():
+            return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_BEFORE_LOCAL_REPAIR")
+        check()
+        revised_prompt = de.build_prompt(
+            original, module, plan["direction"], plan["targets"],
+            add=plan["add"], failure=failure, previous=text[:6000],
+            rules=quality_rules(worktree),
+        )
+        revised_reply = generate(
+            revised_prompt, min(4096, max(600, 30 * (lines + 25 * len(plan["add"])))), check,
+        )
+        revised_text = str(revised_reply.get("text") or "")
+        handback["directed"]["evidence_retry"] = {
+            "prompt": revised_prompt[:16000], "reply": revised_text[:8000],
+            "model": revised_reply.get("model_used") or default_ollama_model(),
+            "previous_test_failure": failure,
+            "prompt_tokens": revised_reply.get("prompt_tokens"),
+            "output_tokens": revised_reply.get("output_tokens"),
+        }
+        if not authority():
+            return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_LOCAL_REPAIR")
+        if revised_text.strip() == text.strip():
+            return finish("FAIL", "LOCAL_REPAIR_REPEATED_IDENTICAL_REPLY")
+        try:
+            repaired = de.apply_reply(original, revised_text, plan["targets"], add=plan["add"])
+        except de.DirectedEditError as exc:
+            handback["directed"]["evidence_retry"]["apply_error"] = str(exc)[:300]
+            return finish("FAIL", f"LOCAL_REPAIR_REPLY_REJECTED: {str(exc)[:300]}")
+        if repaired == edited:
+            return finish("FAIL", "LOCAL_REPAIR_REPEATED_IDENTICAL_CHANGE")
+        (worktree / module).write_text(repaired, encoding="utf-8")
+        changed = changed_paths(worktree)
+        handback["changed_paths"] = changed
+        if set(changed) != {module, test} or (worktree / test).read_bytes() != spec_bytes:
+            return finish("REVIEW_REQUIRED", "LOCAL_REPAIR_CHANGED_OUTSIDE_PLAN: " + ", ".join(sorted(changed)))
+        quick = tests(worktree, module, test, check)
+        handback["verification"].append(quick)
+        if not quick["ok"]:
+            handback["directed"]["evidence_retry"]["test_failure"] = failing_assertions(
+                str(quick.get("output_tail") or "")
+            )[:3000]
+            return finish("FAIL", "SLICE_TESTS_FAILED")
     # (the repository's formatter may reflow the approved tests during the lint check; the model never writes files)
     return commit_and_verify(packet, worktree, base, changed, [module, test],
                              f"iron-god: change {', '.join(plan['targets'])} in {module} ({packet['packet_id']})",
