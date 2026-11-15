@@ -41,17 +41,10 @@ def available_gib() -> float:
     """Physical memory available to a new process (free plus reclaimable cache), in GiB."""
 
     class Status(ctypes.Structure):
-        _fields_ = [
-            ("dwLength", ctypes.c_ulong),
-            ("dwMemoryLoad", ctypes.c_ulong),
-            ("ullTotalPhys", ctypes.c_ulonglong),
-            ("ullAvailPhys", ctypes.c_ulonglong),
-            ("ullTotalPageFile", ctypes.c_ulonglong),
-            ("ullAvailPageFile", ctypes.c_ulonglong),
-            ("ullTotalVirtual", ctypes.c_ulonglong),
-            ("ullAvailVirtual", ctypes.c_ulonglong),
-            ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
-        ]
+        _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong), ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong), ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong), ("sullAvailExtendedVirtual", ctypes.c_ulonglong)]
 
     status = Status()
     status.dwLength = ctypes.sizeof(Status)
@@ -75,9 +68,7 @@ class Gate:
     # Owner decision 2026-11-08: the primary builder is never refused for want of comfortable memory. ``required_gib`` is the
     # comfortable level (what Dev Mode works toward); ``start_gib`` is the least that lets the model load at all.
     start_gib: float | None = None
-    pressure_file: Path | None = (
-        None  # set by the door: where a memory-pressure cancel is stamped
-    )
+    pressure_file: Path | None = None  # set by the door: where a memory-pressure cancel is stamped
 
     def __post_init__(self) -> None:
         self._low = 0
@@ -108,18 +99,14 @@ class Gate:
 
 def configured_endpoint() -> tuple[str, int]:
     """The Ollama server every other component uses: ``OLLAMA_API_BASE`` (default 127.0.0.1:11434)."""
-    parsed = urllib.parse.urlparse(
-        os.environ.get("OLLAMA_API_BASE") or "http://127.0.0.1:11434"
-    )
+    parsed = urllib.parse.urlparse(os.environ.get("OLLAMA_API_BASE") or "http://127.0.0.1:11434")
     return parsed.hostname or "127.0.0.1", parsed.port or 11434
 
 
 THREAD_ENV = "IRON_GOD_OLLAMA_NUM_THREAD"
 
 
-def inference_threads(
-    cores: int | None = None, env: dict[str, str] | None = None
-) -> int:
+def inference_threads(cores: int | None = None, env: dict[str, str] | None = None) -> int:
     """CPU threads one generation may use: half the logical cores unless ``IRON_GOD_OLLAMA_NUM_THREAD`` says otherwise.
 
     Owner 2026-11-10: the laptop froze three times in a day while a 7B ran on every core. A free-running llama-server
@@ -137,67 +124,32 @@ class OllamaClient:
         default_host, default_port = configured_endpoint()
         self.host, self.port = host or default_host, port or default_port
 
-    def _request(
-        self,
-        method: str,
-        path: str,
-        body: dict[str, Any] | None = None,
-        timeout: float = 30.0,
-    ) -> dict[str, Any]:
+    def _request(self, method: str, path: str, body: dict[str, Any] | None = None, timeout: float = 30.0) -> dict[str, Any]:
         conn = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
         try:
-            conn.request(
-                method,
-                path,
-                json.dumps(body) if body is not None else None,
-                {"Content-Type": "application/json"},
-            )
+            conn.request(method, path, json.dumps(body) if body is not None else None, {"Content-Type": "application/json"})
             return dict(json.loads(conn.getresponse().read().decode("utf-8") or "{}"))
         finally:
             conn.close()
 
-    def generate(
-        self,
-        model: str,
-        prompt: str,
-        *,
-        num_ctx: int,
-        num_predict: int,
-        keep_alive: str | int,
-        timeout: float,
-        should_abort: Callable[[], str | None] | None = None,
-        poll_s: float = 1.0,
-        temperature: float = 0.0,
-        json_mode: bool = False,
-    ) -> dict[str, Any]:
+    def generate(self, model: str, prompt: str, *, num_ctx: int, num_predict: int, keep_alive: str | int, timeout: float,
+                 should_abort: Callable[[], str | None] | None = None, poll_s: float = 1.0,
+                 temperature: float = 0.0, json_mode: bool = False) -> dict[str, Any]:
         """One non-streaming generation that a guard can cancel: the connection is shut down, the server cancels."""
-        payload: dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-            "keep_alive": keep_alive,
-            "options": {
-                "temperature": temperature,
-                "num_ctx": num_ctx,
-                "num_predict": num_predict,
-                "num_thread": inference_threads(),
-            },
-        }
+        payload: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False, "keep_alive": keep_alive,
+                                   "options": {"temperature": temperature, "num_ctx": num_ctx, "num_predict": num_predict,
+                                               "num_thread": inference_threads()}}
         if json_mode:
             payload["format"] = "json"
         if model.lower().startswith("qwen3"):
-            payload["think"] = (
-                False  # a thinking model otherwise spends the CPU budget on hidden reasoning tokens
-            )
+            payload["think"] = False  # a thinking model otherwise spends the CPU budget on hidden reasoning tokens
         body = json.dumps(payload)
         conn = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
         outcome: dict[str, Any] = {}
 
         def call() -> None:
             try:
-                conn.request(
-                    "POST", "/api/generate", body, {"Content-Type": "application/json"}
-                )
+                conn.request("POST", "/api/generate", body, {"Content-Type": "application/json"})
                 outcome["reply"] = json.loads(conn.getresponse().read().decode("utf-8"))
             except Exception as exc:  # noqa: BLE001 - handed back to the caller as a model failure
                 outcome["error"] = exc
@@ -214,9 +166,7 @@ class OllamaClient:
         if "error" in outcome:
             raise outcome["error"]
         reply = dict(outcome["reply"])
-        if reply.get(
-            "error"
-        ):  # the server answered with an error body (e.g. runtime missing): never mistake it for an empty reply
+        if reply.get("error"):  # the server answered with an error body (e.g. runtime missing): never mistake it for an empty reply
             raise OSError("OLLAMA_ERROR: " + str(reply["error"])[:300])
         return reply
 
@@ -231,17 +181,12 @@ class OllamaClient:
         conn.close()
 
     def loaded(self) -> list[str]:
-        return [
-            str(m.get("name"))
-            for m in self._request("GET", "/api/ps").get("models") or []
-        ]
+        return [str(m.get("name")) for m in self._request("GET", "/api/ps").get("models") or []]
 
     def unload(self, model: str, *, wait_s: float = 30.0, poll_s: float = 0.5) -> bool:
         """Ask the server to drop the model and confirm it is gone; True once it no longer appears as loaded."""
         try:
-            self._request(
-                "POST", "/api/generate", {"model": model, "keep_alive": 0}, timeout=30.0
-            )
+            self._request("POST", "/api/generate", {"model": model, "keep_alive": 0}, timeout=30.0)
         except OSError:
             pass
         deadline = time.monotonic() + wait_s
@@ -266,13 +211,7 @@ def inference_cpu_seconds() -> float:
     """
     names = ",".join(f"'{name}'" for name in INFERENCE_PROCESSES)
     script = f"(Get-Process -Name {names} -ErrorAction SilentlyContinue | Measure-Object -Property CPU -Sum).Sum"
-    done = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", script],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=30,
-    )
+    done = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, check=False, timeout=30)
     try:
         return float(done.stdout.strip() or 0.0)
     except ValueError:
@@ -282,13 +221,7 @@ def inference_cpu_seconds() -> float:
 # --- the one shared door every local author goes through -----------------------------------------------------------------
 # A run that never got memory, or was cancelled because memory ran out, is a WAIT, never a failed attempt (owner
 # 2026-11-08: the laptop's memory is not the slice's or the model's fault). Every author and the backlog use this test.
-MEMORY_WAIT_MARKERS = (
-    "ModelNotAdmitted",
-    "MEMORY_PRESSURE",
-    "WAITING_FOR_MEMORY",
-    "MODEL_SLOT_BUSY",
-    "MEMORY: ",
-)
+MEMORY_WAIT_MARKERS = ("ModelNotAdmitted", "MEMORY_PRESSURE", "WAITING_FOR_MEMORY", "MODEL_SLOT_BUSY", "MEMORY: ")
 # After a real memory-pressure cancel the 7B is started only at its comfortable level for this long, so a busy laptop
 # never sees a load-cancel-load loop; meanwhile the lane reports a memory wait and the standing Dev Mode rule frees memory.
 PRESSURE_COOLDOWN_S = 30 * 60
@@ -309,9 +242,7 @@ def note_pressure(reason: str, path: Path | None) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps({"at": time.time(), "reason": reason[:300]}), encoding="utf-8"
-        )
+        tmp.write_text(json.dumps({"at": time.time(), "reason": reason[:300]}), encoding="utf-8")
         os.replace(tmp, path)
     except OSError:
         pass
@@ -320,9 +251,7 @@ def note_pressure(reason: str, path: Path | None) -> None:
 def recent_pressure(directory: Path | None = None, *, now: float | None = None) -> bool:
     """True within PRESSURE_COOLDOWN_S of the last memory-pressure cancel."""
     try:
-        at = float(
-            json.loads(pressure_file(directory).read_text(encoding="utf-8"))["at"]
-        )
+        at = float(json.loads(pressure_file(directory).read_text(encoding="utf-8"))["at"])
     except (OSError, ValueError, KeyError, TypeError):
         return False
     return 0 <= (time.time() if now is None else now) - at < PRESSURE_COOLDOWN_S
@@ -337,13 +266,8 @@ BUILDER_MODEL = "qwen2.5-coder:7b"  # Iron God's primary builder (owner decision
 # (scripts: ctx_probe 2026-11-08, 4.7 GiB drop in available memory at a 6144 context; 3.9 at 2048) plus only the 0.6 GiB
 # cancel floor: owner decision 2026-11-08 to remove the padded 7.3 GiB threshold. Sustained pressure still cancels the run.
 PROFILES: dict[str, tuple[float, float]] = {
-    "0.8b": (1.3, 1.0),
-    "1.5b": (1.4, 1.0),
-    "2b": (3.3, 1.2),
-    "3b": (2.4, 1.5),
-    "4b": (4.6, 1.5),
-    "7b": (4.7, 0.6),
-    "9b": (7.8, 2.0),
+    "0.8b": (1.3, 1.0), "1.5b": (1.4, 1.0), "2b": (3.3, 1.2), "3b": (2.4, 1.5),
+    "4b": (4.6, 1.5), "7b": (4.7, 0.6), "9b": (7.8, 2.0),
 }
 
 
@@ -352,21 +276,13 @@ def default_ollama_model() -> str:
     return os.environ.get("EXPONENTIAL_BUILDER_MODEL") or f"ollama/{BUILDER_MODEL}"
 
 
-def _record(
-    kind: str, model: str, admitted: bool, why: str, gate: "Gate | None"
-) -> None:
+def _record(kind: str, model: str, admitted: bool, why: str, gate: "Gate | None") -> None:
     """Report an admission decision to the dashboard's execution view; never allowed to affect the decision itself."""
     try:
         from . import iron_god_execution_status as status
 
-        status.record_decision(
-            kind,
-            model,
-            admitted,
-            why,
-            available_gib=None if gate is None else gate.last_free,
-            required_gib=None if gate is None else gate.required_gib,
-        )
+        status.record_decision(kind, model, admitted, why, available_gib=None if gate is None else gate.last_free,
+                               required_gib=None if gate is None else gate.required_gib)
     except Exception:  # noqa: BLE001 - reporting is best effort
         pass
 
@@ -388,9 +304,7 @@ def gate_for(model: str, **probes: Any) -> Gate:
     key = f"{float(match.group(1)):g}b" if match else ""
     gib, reserve = PROFILES.get(key, PROFILES["7b"])
     if key == "7b":
-        probes.setdefault(
-            "start_gib", PRIMARY_START_GIB
-        )  # an UNPARSED name keeps the strict comfortable requirement
+        probes.setdefault("start_gib", PRIMARY_START_GIB)  # an UNPARSED name keeps the strict comfortable requirement
     return Gate(model_gib=gib, reserve_gib=reserve, **probes)
 
 
@@ -409,14 +323,8 @@ def slot_dir() -> Path:
 
 
 @contextlib.contextmanager
-def model_slot(
-    wait_s: float,
-    *,
-    directory: Path | None = None,
-    alive: Callable[[int], bool] | None = None,
-    poll_s: float = 2.0,
-    should_abort: Callable[[], str | None] | None = None,
-) -> Iterator[Path]:
+def model_slot(wait_s: float, *, directory: Path | None = None, alive: Callable[[int], bool] | None = None,
+               poll_s: float = 2.0, should_abort: Callable[[], str | None] | None = None) -> Iterator[Path]:
     """Exclusive ownership of the single model slot (mkdir lock with dead-owner recovery); ModelNotAdmitted on timeout."""
     from .iron_god_owner_control import process_start_fingerprint
 
@@ -429,28 +337,20 @@ def model_slot(
             raise ModelCancelled(reason)
         try:
             lock.mkdir()
-            (lock / "owner").write_text(
-                f"{os.getpid()}\n{time.time()}\n", encoding="utf-8"
-            )
+            (lock / "owner").write_text(f"{os.getpid()}\n{time.time()}\n", encoding="utf-8")
             break
         except FileExistsError:
             try:
-                if not is_alive(
-                    int((lock / "owner").read_text(encoding="utf-8").splitlines()[0])
-                ):
+                if not is_alive(int((lock / "owner").read_text(encoding="utf-8").splitlines()[0])):
                     shutil.rmtree(lock, ignore_errors=True)
                     continue
             except (OSError, ValueError, IndexError):
                 with contextlib.suppress(OSError):
-                    if (
-                        time.time() - lock.stat().st_mtime > 5
-                    ):  # unreadable owner record past the publication grace
+                    if time.time() - lock.stat().st_mtime > 5:  # unreadable owner record past the publication grace
                         shutil.rmtree(lock, ignore_errors=True)
                         continue
             if time.monotonic() >= deadline:
-                raise ModelNotAdmitted(
-                    "MODEL_SLOT_BUSY: another local model run holds the single slot"
-                ) from None
+                raise ModelNotAdmitted("MODEL_SLOT_BUSY: another local model run holds the single slot") from None
             time.sleep(poll_s)
     try:
         if should_abort and (reason := should_abort()):
@@ -461,18 +361,11 @@ def model_slot(
 
 
 @contextlib.contextmanager
-def _slot_reported(
-    wait_s: float,
-    directory: Path | None,
-    poll_s: float,
-    model: str | None,
-    should_abort: Callable[[], str | None] | None = None,
-) -> Iterator[Path]:
+def _slot_reported(wait_s: float, directory: Path | None, poll_s: float, model: str | None,
+                   should_abort: Callable[[], str | None] | None = None) -> Iterator[Path]:
     """``model_slot`` that reports a busy slot to the execution view before raising."""
     try:
-        with model_slot(
-            wait_s, directory=directory, poll_s=poll_s, should_abort=should_abort
-        ) as slot:
+        with model_slot(wait_s, directory=directory, poll_s=poll_s, should_abort=should_abort) as slot:
             yield slot
     except ModelNotAdmitted as exc:
         if "SLOT_BUSY" in str(exc):
@@ -480,29 +373,17 @@ def _slot_reported(
         raise
 
 
-def guarded_generate(
-    prompt: str,
-    *,
-    requested: str | None = None,
-    num_ctx: int,
-    num_predict: int,
-    json_mode: bool = False,
-    timeout: float = 1800.0,
-    wait_s: float = 900.0,
-    temperature: float = 0.2,
-    client: OllamaClient | None = None,
-    probes: dict[str, Any] | None = None,
-    directory: Path | None = None,
-    poll_s: float = 2.0,
-    should_abort: Callable[[], str | None] | None = None,
-) -> dict[str, Any]:
+def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int, num_predict: int, json_mode: bool = False,
+                     timeout: float = 1800.0, wait_s: float = 900.0, temperature: float = 0.2,
+                     client: OllamaClient | None = None, probes: dict[str, Any] | None = None,
+                     directory: Path | None = None, poll_s: float = 2.0,
+                     should_abort: Callable[[], str | None] | None = None) -> dict[str, Any]:
     """Every local author's generation: single slot, 3B by default, admitted by memory, cancelled on pressure, then unloaded.
 
     Raises ``ModelNotAdmitted`` (never loads anything) when the slot or memory is not available within ``wait_s``, and
     ``ModelCancelled`` when sustained memory pressure or a returning user stops an in-flight run. The reply carries the
     model actually used and the lowest available memory seen.
     """
-
     def ensure_authority() -> None:
         if should_abort and (reason := should_abort()):
             raise ModelCancelled(reason)
@@ -515,39 +396,21 @@ def guarded_generate(
             ensure_authority()
             name, gate = choose_model(requested, **(probes or {}))
             gate.pressure_file = pressure_file(directory)
-            if recent_pressure(
-                directory
-            ):  # memory ran out recently: wait for the comfortable level
+            if recent_pressure(directory):  # memory ran out recently: wait for the comfortable level
                 gate.start_gib = None
             admitted, why = gate.admit()
             ensure_authority()
-            _record(
-                "ADMITTED"
-                if admitted
-                else "MEMORY"
-                if why.startswith("MEMORY")
-                else "REFUSED",
-                name,
-                admitted,
-                why,
-                gate,
-            )
+            _record("ADMITTED" if admitted else "MEMORY" if why.startswith("MEMORY") else "REFUSED", name, admitted, why, gate)
             if admitted:
                 break
             if time.monotonic() >= deadline:
                 raise ModelNotAdmitted(why)
             time.sleep(poll_s)
         ensure_authority()
-        for other in [
-            m for m in ollama.loaded() if m != name
-        ]:  # one resident model: evict strays before loading
+        for other in [m for m in ollama.loaded() if m != name]:  # one resident model: evict strays before loading
             ensure_authority()
-            if not ollama.unload(
-                other
-            ):  # an unconfirmed eviction would leave two models resident
-                raise ModelNotAdmitted(
-                    f"STRAY_MODEL_RESIDENT: {other} could not be unloaded"
-                )
+            if not ollama.unload(other):  # an unconfirmed eviction would leave two models resident
+                raise ModelNotAdmitted(f"STRAY_MODEL_RESIDENT: {other} could not be unloaded")
 
         def combined_abort() -> str | None:
             owner_reason = should_abort() if should_abort else None
@@ -556,17 +419,8 @@ def guarded_generate(
         try:
             try:
                 ensure_authority()
-                reply = ollama.generate(
-                    name,
-                    prompt,
-                    num_ctx=num_ctx,
-                    num_predict=num_predict,
-                    keep_alive=0,
-                    timeout=timeout,
-                    should_abort=combined_abort,
-                    temperature=temperature,
-                    json_mode=json_mode,
-                )
+                reply = ollama.generate(name, prompt, num_ctx=num_ctx, num_predict=num_predict, keep_alive=0, timeout=timeout,
+                                        should_abort=combined_abort, temperature=temperature, json_mode=json_mode)
             except ModelCancelled as exc:
                 _record("CANCELLED", name, False, str(exc), gate)
                 raise
@@ -578,15 +432,8 @@ def guarded_generate(
 
 
 @contextlib.contextmanager
-def guarded_session(
-    model: str | None = None,
-    *,
-    wait_s: float = 900.0,
-    client: OllamaClient | None = None,
-    probes: dict[str, Any] | None = None,
-    directory: Path | None = None,
-    poll_s: float = 2.0,
-) -> Iterator[Gate]:
+def guarded_session(model: str | None = None, *, wait_s: float = 900.0, client: OllamaClient | None = None,
+                    probes: dict[str, Any] | None = None, directory: Path | None = None, poll_s: float = 2.0) -> Iterator[Gate]:
     """The same protections as ``guarded_generate`` for an external process (Aider) that talks to Ollama itself.
 
     Holds the single model slot, waits for memory admission (``ModelNotAdmitted`` and nothing loaded when it never comes),
@@ -598,23 +445,11 @@ def guarded_session(
     with _slot_reported(wait_s, directory, poll_s, model):
         name, gate = choose_model(model, **(probes or {}))
         gate.pressure_file = pressure_file(directory)
-        if recent_pressure(
-            directory
-        ):  # memory ran out recently: wait for the comfortable level, Dev Mode helps
+        if recent_pressure(directory):  # memory ran out recently: wait for the comfortable level, Dev Mode helps
             gate.start_gib = None
         while True:
             admitted, why = gate.admit()
-            _record(
-                "ADMITTED"
-                if admitted
-                else "MEMORY"
-                if why.startswith("MEMORY")
-                else "REFUSED",
-                name,
-                admitted,
-                why,
-                gate,
-            )
+            _record("ADMITTED" if admitted else "MEMORY" if why.startswith("MEMORY") else "REFUSED", name, admitted, why, gate)
             if admitted:
                 break
             if time.monotonic() >= deadline:
@@ -622,9 +457,7 @@ def guarded_session(
             time.sleep(poll_s)
         for other in [m for m in ollama.loaded() if m != name]:
             if not ollama.unload(other):
-                raise ModelNotAdmitted(
-                    f"STRAY_MODEL_RESIDENT: {other} could not be unloaded"
-                )
+                raise ModelNotAdmitted(f"STRAY_MODEL_RESIDENT: {other} could not be unloaded")
         try:
             yield gate
         finally:
