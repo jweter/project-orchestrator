@@ -14,10 +14,11 @@ PLAN = {
     "forbidden_paths": ["pkg/secret/**"],
     "slice_acceptance": [
         "normalize the title using the documented rules",
-        "preserve punctuation as described in the original specification",
+        "preserve the original case handling for blank titles",
+        "preserve punctuation as described in the downstream module",
         "canonical preflight, required CI, review",
     ],
-    "coverage": {"1": ["t1"], "2": ["t2"]},
+    "coverage": {"1": ["t1"], "2": ["t1"], "3": ["t2"]},
     "subtasks": [
         {
             "key": "t1",
@@ -38,6 +39,7 @@ CANDIDATE = {
     "affected_owner_criteria": [
         {"index": 1, "text": PLAN["slice_acceptance"][0]},
         {"index": 2, "text": PLAN["slice_acceptance"][1]},
+        {"index": 3, "text": PLAN["slice_acceptance"][2]},
     ],
     "narrow_existing_paths": ["pkg/one.py", "tests/test_one.py"],
     "outcome": "FAIL: SLICE_TESTS_FAILED",
@@ -81,6 +83,11 @@ def test_valid_outline_preserves_original_scope_but_never_grants_an_attempt() ->
     assert accepted["failed_key"] == "t1"
     assert accepted["steps"][0]["target"] == "pkg/one.py"
     assert accepted["steps"][1]["depends_on"] == ["s1"]
+    assert "DOWNSTREAM BLOCKED CRITERIA" in repair.outline_prompt(PLAN, CANDIDATE)
+    assert (
+        "3. preserve punctuation as described in the downstream module"
+        in repair.outline_prompt(PLAN, CANDIDATE)
+    )
     assert accepted["advisory_only"] and accepted["requires_new_authorization"]
     assert not accepted["dispatchable"] and not accepted["attempt_budget_reset"]
     assert (PLAN, CANDIDATE, GOOD) == before
@@ -136,6 +143,12 @@ def test_incomplete_coverage_or_test_only_busywork_is_not_a_repair() -> None:
     for step in test_only["steps"]:
         step["action"] = "test"
     accepted, reasons = repair.validate_outline(PLAN, CANDIDATE, test_only)
+    assert accepted is None and reasons == ["NO_IMPLEMENTATION_PROGRESS"]
+
+    test_file_only = deepcopy(GOOD)
+    for step in test_file_only["steps"]:
+        step["target"] = "tests/test_one.py"
+    accepted, reasons = repair.validate_outline(PLAN, CANDIDATE, test_file_only)
     assert accepted is None and reasons == ["NO_IMPLEMENTATION_PROGRESS"]
 
 
