@@ -269,6 +269,11 @@ def main(argv: list[str] | None = None) -> int:
             temperature=0.0,
             timeout=240,
             wait_s=45,
+            # Revocation must cancel slot/memory waits and in-flight HTTP,
+            # not just discard the model's eventual response.
+            should_abort=lambda: (
+                "OWNER_AUTHORITY_REVOKED_DURING_OLLAMA" if not authorized() else None
+            ),
         )
         seen_models.append(str(reply.get("model_used") or "UNVERIFIED"))
         raw_telemetry.append(
