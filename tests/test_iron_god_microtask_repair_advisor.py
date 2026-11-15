@@ -337,3 +337,22 @@ def test_actual_checkpoint_generator_feeds_owner_gated_advisor(lane: Path) -> No
     assert result["record"]["outcome"]["proposal"]["dispatchable"] is False
     assert result["record"]["observed_attempt_id"] == r1
     assert result["record"]["checkpoint_sha256"]
+
+
+def test_truncated_model_json_is_bounded_and_not_replayed_forever(lane: Path) -> None:
+    calls: list[str] = []
+
+    def malformed(prompt: str):
+        calls.append(prompt)
+        raise json.JSONDecodeError("truncated", '{"steps": [', 11)
+
+    first = do(lane, ask_local=malformed)
+    assert first["status"] == "ADVISORY_RECORDED"
+    assert first["record"]["outcome"]["reason"] == "REPAIR_PROPOSAL_REJECTED"
+    assert len(calls) == 2
+    assert (
+        do(lane, ask_local=lambda _: pytest.fail("repeat parsed invalid JSON"))[
+            "status"
+        ]
+        == "ALREADY_RECORDED"
+    )

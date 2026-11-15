@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 
 import pytest
@@ -233,3 +234,36 @@ def test_model_unavailable_and_nonexecutable_residual_are_safe() -> None:
     assert accepted is None and reasons == [
         "CANDIDATE_NOT_AN_UNPRIVILEGED_EXHAUSTED_CHILD"
     ]
+
+
+def test_malformed_ollama_json_counts_as_a_real_bounded_proposal_attempt() -> None:
+    calls: list[str] = []
+
+    def malformed(prompt: str):
+        calls.append(prompt)
+        raise json.JSONDecodeError("truncated model output", '{"steps":[', 10)
+
+    result = repair.propose(PLAN, CANDIDATE, malformed)
+    assert result["ok"] is False
+    assert result["reason"] == "REPAIR_PROPOSAL_REJECTED"
+    assert len(calls) == repair.MAX_PROPOSAL_TRIES == 2
+    assert "REPAIR_STEPS_MUST_BE_1_TO_3" in calls[1]
+    assert len(result["validation_failures"]) == 2
+
+
+def test_second_local_proposal_may_repair_truncated_json() -> None:
+    answers = iter([json.JSONDecodeError("truncated", "{", 1), deepcopy(GOOD)])
+    calls = []
+
+    def local(prompt: str):
+        calls.append(prompt)
+        result = next(answers)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    result = repair.propose(PLAN, CANDIDATE, local)
+    assert result["ok"] is True
+    assert len(calls) == 2
+    assert "REPAIR_STEPS_MUST_BE_1_TO_3" in calls[1]
+    assert result["proposal"]["dispatchable"] is False

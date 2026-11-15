@@ -7,6 +7,7 @@ worker, CI and release gates remain authoritative.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable
 
 from . import iron_god_roadmap_refill as refill
@@ -249,6 +250,11 @@ def propose(
     for _ in range(MAX_PROPOSAL_TRIES):
         try:
             raw = ask_local(outline_prompt(plan, candidate, feedback))
+        except json.JSONDecodeError:
+            # A malformed/truncated Ollama reply is a *planning rejection*, not
+            # a memory or service outage. It consumes this bounded proposal
+            # attempt and supplies feedback to the remaining local attempt.
+            raw = {"invalid_model_response": "MALFORMED_JSON"}
         except (OSError, TimeoutError, RuntimeError, ValueError) as exc:
             return {
                 "ok": False,
