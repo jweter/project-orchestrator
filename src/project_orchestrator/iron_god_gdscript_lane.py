@@ -30,7 +30,7 @@ def eligible(request: dict[str, Any], *, repository: str, base: str) -> bool:
             and bool(HEX.fullmatch(base))
             and request.get("owner_approved") is True
             and isinstance(request.get("gdscript"), dict)
-            and request.get("capability_level") == 1
+            and type(request.get("capability_level")) is int and request["capability_level"] == 1
             and isinstance(request.get("route"), dict)
             and request["route"].get("builder") == "LOCAL"
             and not request.get("reserved_conflicts")
@@ -48,6 +48,22 @@ def read_job(root: Path, request: dict[str, Any]) -> dict[str, Any]:
     except (OSError, ValueError):
         return {"id": request["id"], "repository": request["repository"], "state": "NEW", "attempts": 0}
     return item if isinstance(item, dict) else {"state": "NEEDS_RECONCILIATION"}
+
+
+def pending_jobs(root: Path) -> list[dict[str, Any]]:
+    """Previously accepted jobs are always harvested, even between 10-min refills."""
+    folder = Path(root) / JOB_DIR
+    jobs: list[dict[str, Any]] = []
+    for path in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        if path.name.endswith(".request.json") or path.name.endswith(".result.json"):
+            continue
+        try:
+            row = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue  # in_progress() separately refuses ambiguous state
+        if isinstance(row, dict) and row.get("state") in {"RUNNING", "BUILT"}:
+            jobs.append(row)
+    return jobs
 
 
 def in_progress(root: Path) -> bool:
@@ -125,7 +141,7 @@ def advance(
     # State is durable *before* Popen. A crash here requires owner-safe
     # reconciliation instead of creating a second potentially live worker.
     job.update(state="STARTING", base=base, lease_id=lease_id,
-               result_path=str(result_file))
+               request=request, result_path=str(result_file))
     atomic_json(path, job)
     atomic_json(request_file, request)
     result_file.unlink(missing_ok=True)
@@ -159,6 +175,8 @@ def independent_verification(request: dict[str, Any], result: dict[str, Any], *,
     if code != 0 or code2 != 0 or current.strip() != head or diff.splitlines() != [wanted]:
         report["reason"] = "EXACT_HEAD_OR_SCOPE_MISMATCH"
         return report
+    # Never trust the author's status alone: unchanged acceptance source is
+    # proven by the exact-base diff, with the test outside mutable scope.
     if builder.validate(request, workspace):
         report["reason"] = "GDSCRIPT_AUTHORITY_OR_TEST_CHANGED"
         return report
