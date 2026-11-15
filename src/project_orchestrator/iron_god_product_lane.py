@@ -1695,7 +1695,9 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
-        if capable["enabled"] and draft_locally:
+        if capable["enabled"] and draft_locally and capable.get("allow_local_escalation") is True and not capable.get("local_only_proving_mode"):
+            # Local-first policy: an unavailable optional capable builder must never drain LOCAL work.
+            # Escalation requires an explicit per-run authorization; a time window alone is not one.
             # Only the autonomous local-draft pipeline may escalate work
             # that it cannot verify. With local_draft_author disabled an
             # approved external planner may submit a LOCAL draft on the next
