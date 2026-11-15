@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -133,3 +135,28 @@ def test_revocation_after_model_causes_no_success_claim() -> None:
     assert record["verified_edits"] == 0
     assert record["local_model_requests"] == 1
     assert not live._safe_receipt(record, actual_local_model=True)["live_ollama_proven"]
+
+
+def test_optimized_interpreter_cannot_claim_live_verified_edits() -> None:
+    """Regression for Codex P2: -O strips legacy fixture assert gates."""
+    command = [
+        sys.executable,
+        "-O",
+        str(live.ROOT / "scripts" / "iron_god_live_ollama_canary.py"),
+        "--run-disposable-live",
+    ]
+    proc = subprocess.run(
+        command,
+        cwd=live.ROOT,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert proc.returncode == 2
+    receipt = json.loads(proc.stdout)
+    assert receipt["status"] == "OPTIMIZED_PYTHON_UNSAFE_FOR_CANARY"
+    assert receipt["verified_edits"] == 0
+    assert receipt["live_ollama_proven"] is False
+    assert receipt["local_ollama_requested"] is False
+    assert receipt["engine_started"] is False

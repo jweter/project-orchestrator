@@ -33,6 +33,8 @@ def run_disposable(
     ask_local: Callable[[str], Any],
 ) -> dict[str, Any]:
     """Injectable adapter: in actual CLI, ask_local is guarded Ollama only."""
+    if not __debug__:
+        return {"status": "OPTIMIZED_PYTHON_UNSAFE_FOR_CANARY", "verified_edits": 0}
     for field in (expected_release_sha, actual_release_sha):
         if not isinstance(field, str) or not _SHA.fullmatch(field):
             return {"status": "RELEASE_IDENTITY_UNVERIFIED", "verified_edits": 0}
@@ -137,6 +139,23 @@ def main(argv: list[str] | None = None) -> int:
         help="Explicit manual invocation; requires accepted release and supervisor-acknowledged owner grant.",
     )
     args = parser.parse_args(argv)
+    # This command reuses the disposable Git/native-test fixture, whose
+    # historical assertions are disabled by -O/PYTHONOPTIMIZE. Refuse *before*
+    # model admission, even when a caller explicitly requests a live trial.
+    if sys.flags.optimize != 0:
+        print(
+            json.dumps(
+                _safe_receipt(
+                    {
+                        "status": "OPTIMIZED_PYTHON_UNSAFE_FOR_CANARY",
+                        "verified_edits": 0,
+                    },
+                    actual_local_model=False,
+                ),
+                sort_keys=True,
+            )
+        )
+        return 2
     if not args.run_disposable_live:
         print(
             json.dumps(
