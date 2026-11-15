@@ -38,6 +38,10 @@ def validate(request: dict[str, Any], workspace: Path) -> list[str]:
     if not isinstance(request, dict):
         return ["REQUEST_NOT_OBJECT"]
     problems: list[str] = []
+    if not isinstance(request.get("id"), str) or not request["id"].strip():
+        problems.append("TASK_ID_REQUIRED")
+    if not isinstance(request.get("objective"), str) or not request["objective"].strip():
+        problems.append("OBJECTIVE_REQUIRED")
     if request.get("owner_approved") is not True:
         problems.append("OWNER_APPROVAL_REQUIRED")
     route = request.get("route")
@@ -56,6 +60,13 @@ def validate(request: dict[str, Any], workspace: Path) -> list[str]:
     prefix = project.rstrip("/") + "/"
     if not module.startswith(prefix) or not test.startswith(prefix):
         problems.append("PATH_OUTSIDE_GODOT_PROJECT")
+    # Canonical lexical paths are not sufficient when checkout subdirectories
+    # are symlinks. Refuse targets that resolve outside the isolated workspace.
+    root = workspace.resolve()
+    for target in (workspace / project, (workspace / module).parent, workspace / test):
+        if not target.resolve().is_relative_to(root):
+            problems.append("PATH_ESCAPES_WORKSPACE")
+            break
     # A generated module can be changed. The approved independent test cannot.
     if request.get("allowed_paths") != [module]:
         problems.append("ONLY_DECLARED_GDSCRIPT_MODULE_EDITABLE")
