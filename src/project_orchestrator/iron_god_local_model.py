@@ -324,7 +324,7 @@ def slot_dir() -> Path:
 
 @contextlib.contextmanager
 def model_slot(wait_s: float, *, directory: Path | None = None, alive: Callable[[int], bool] | None = None,
-               poll_s: float = 2.0) -> Iterator[Path]:
+               poll_s: float = 2.0, should_abort: Callable[[], str | None] | None = None) -> Iterator[Path]:
     """Exclusive ownership of the single model slot (mkdir lock with dead-owner recovery); ModelNotAdmitted on timeout."""
     from .iron_god_owner_control import process_start_fingerprint
 
@@ -333,6 +333,8 @@ def model_slot(wait_s: float, *, directory: Path | None = None, alive: Callable[
     lock.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + wait_s
     while True:
+        if should_abort and (reason := should_abort()):
+            raise ModelCancelled(reason)
         try:
             lock.mkdir()
             (lock / "owner").write_text(f"{os.getpid()}\n{time.time()}\n", encoding="utf-8")
@@ -351,16 +353,19 @@ def model_slot(wait_s: float, *, directory: Path | None = None, alive: Callable[
                 raise ModelNotAdmitted("MODEL_SLOT_BUSY: another local model run holds the single slot") from None
             time.sleep(poll_s)
     try:
+        if should_abort and (reason := should_abort()):
+            raise ModelCancelled(reason)
         yield lock
     finally:
         shutil.rmtree(lock, ignore_errors=True)
 
 
 @contextlib.contextmanager
-def _slot_reported(wait_s: float, directory: Path | None, poll_s: float, model: str | None) -> Iterator[Path]:
+def _slot_reported(wait_s: float, directory: Path | None, poll_s: float, model: str | None,
+                   should_abort: Callable[[], str | None] | None = None) -> Iterator[Path]:
     """``model_slot`` that reports a busy slot to the execution view before raising."""
     try:
-        with model_slot(wait_s, directory=directory, poll_s=poll_s) as slot:
+        with model_slot(wait_s, directory=directory, poll_s=poll_s, should_abort=should_abort) as slot:
             yield slot
     except ModelNotAdmitted as exc:
         if "SLOT_BUSY" in str(exc):
@@ -371,35 +376,51 @@ def _slot_reported(wait_s: float, directory: Path | None, poll_s: float, model: 
 def guarded_generate(prompt: str, *, requested: str | None = None, num_ctx: int, num_predict: int, json_mode: bool = False,
                      timeout: float = 1800.0, wait_s: float = 900.0, temperature: float = 0.2,
                      client: OllamaClient | None = None, probes: dict[str, Any] | None = None,
-                     directory: Path | None = None, poll_s: float = 2.0) -> dict[str, Any]:
+                     directory: Path | None = None, poll_s: float = 2.0,
+                     should_abort: Callable[[], str | None] | None = None) -> dict[str, Any]:
     """Every local author's generation: single slot, 3B by default, admitted by memory, cancelled on pressure, then unloaded.
 
     Raises ``ModelNotAdmitted`` (never loads anything) when the slot or memory is not available within ``wait_s``, and
     ``ModelCancelled`` when sustained memory pressure or a returning user stops an in-flight run. The reply carries the
     model actually used and the lowest available memory seen.
     """
+    def ensure_authority() -> None:
+        if should_abort and (reason := should_abort()):
+            raise ModelCancelled(reason)
+
+    ensure_authority()
     ollama = client or OllamaClient()
     deadline = time.monotonic() + wait_s
-    with _slot_reported(wait_s, directory, poll_s, requested):
+    with _slot_reported(wait_s, directory, poll_s, requested, should_abort):
         while True:
+            ensure_authority()
             name, gate = choose_model(requested, **(probes or {}))
             gate.pressure_file = pressure_file(directory)
             if recent_pressure(directory):  # memory ran out recently: wait for the comfortable level
                 gate.start_gib = None
             admitted, why = gate.admit()
+            ensure_authority()
             _record("ADMITTED" if admitted else "MEMORY" if why.startswith("MEMORY") else "REFUSED", name, admitted, why, gate)
             if admitted:
                 break
             if time.monotonic() >= deadline:
                 raise ModelNotAdmitted(why)
             time.sleep(poll_s)
+        ensure_authority()
         for other in [m for m in ollama.loaded() if m != name]:  # one resident model: evict strays before loading
+            ensure_authority()
             if not ollama.unload(other):  # an unconfirmed eviction would leave two models resident
                 raise ModelNotAdmitted(f"STRAY_MODEL_RESIDENT: {other} could not be unloaded")
+
+        def combined_abort() -> str | None:
+            owner_reason = should_abort() if should_abort else None
+            return owner_reason or gate.abort_reason()
+
         try:
             try:
+                ensure_authority()
                 reply = ollama.generate(name, prompt, num_ctx=num_ctx, num_predict=num_predict, keep_alive=0, timeout=timeout,
-                                        should_abort=gate.abort_reason, temperature=temperature, json_mode=json_mode)
+                                        should_abort=combined_abort, temperature=temperature, json_mode=json_mode)
             except ModelCancelled as exc:
                 _record("CANCELLED", name, False, str(exc), gate)
                 raise
@@ -460,4 +481,3 @@ class MemoryChecked:
             self.reason = reason
             _record("CANCELLED", "", False, reason, self.gate)
             raise ModelCancelled(reason)
-

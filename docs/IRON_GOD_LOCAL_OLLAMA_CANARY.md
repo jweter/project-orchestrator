@@ -62,3 +62,23 @@ canary restart** is independently safe, and later when #710 is
 fully release-qualified. This is not permission to auto-start a paused
 engine. Do not tell the owner that a code-review PR merge or this test's
 existence alone means the engine is ready. The user remains in control.
+
+
+## Measured local-model receipt (Issue #710)
+
+A successful owner-authorized CLI invocation now requires trustworthy
+`guarded_generate` provenance for **every** actual Ollama model request
+before it reports `live_ollama_proven=true`. It records per-response model
+identity, generated/prompt token counts, lowest available memory measured by
+the existing gate, and aggregate run elapsed time. Three fully verified edits
+produce a computed throughput in edits/hour. Missing statistics, boolean
+token fields, negative values, foreign model identity or zero responses
+invalidate the proof rather than silently reporting zero cost.
+
+`ollama_telemetry.cloud_token_calls_observed=0` means only that this
+canary's guarded generation callback made no cloud calls. The CLI still
+reports `zero_cloud_token_use_proven=false` and
+`cloud_token_use_outside_this_process=UNVERIFIED`. Full deployment
+requires an independently verified offline/egress-disabled engine session
+and cloud-account usage checks. Do not treat an isolated local-model
+receipt as system-wide zero-cloud verification.
