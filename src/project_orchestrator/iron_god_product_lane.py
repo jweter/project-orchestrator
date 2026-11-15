@@ -1298,7 +1298,9 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
 
 
-def reroute_slices_the_local_lane_cannot_verify(report: dict[str, Any]) -> list[dict[str, Any]]:
+def reroute_slices_the_local_lane_cannot_verify(
+    report: dict[str, Any], *, already_local: frozenset[str] = frozenset()
+) -> list[dict[str, Any]]:
     """Move LOCAL Level 1 slices that declare too few acceptance examples to the capable builder; returns what moved.
 
     The local lane builds only against the roadmap's own independent examples (a self-authored oracle is refused), so a
@@ -1313,7 +1315,7 @@ def reroute_slices_the_local_lane_cannot_verify(report: dict[str, Any]) -> list[
     # drafts during refill_repository(). A missing roadmap example is NOT
     # authority to re-route a successfully admitted draft to cloud-capable
     # execution. Preserve the original LOCAL ledger and worker lifecycle.
-    admitted = set(report.get("admitted") or [])
+    admitted = set(report.get("admitted") or []) | set(already_local)
     for request in report.get("local_requests", []):
         if request.get("id") not in admitted and local_drafter.missing_examples(request):
             moved.append({**request, "route": {**request["route"], "builder": roadmap_refill.CAPABLE,
@@ -1694,7 +1696,15 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
         if capable["enabled"]:
-            for moved in reroute_slices_the_local_lane_cannot_verify(report):
+            # A previously accepted local task may be revisited on later
+            # passes without producing a new "admitted" event. Never
+            # re-route such a task to the cloud-capable builder.
+            known_local = frozenset(
+                str(item["id"]) for item in roadmap_refill.admitted_items(lane.root, static)
+            )
+            for moved in reroute_slices_the_local_lane_cannot_verify(
+                report, already_local=known_local
+            ):
                 roadmap_refill.log_event(lane.root, "LOCAL_REROUTED_TO_CAPABLE", name, moved["id"],
                                          {"reason": moved["route"]["reason"], "slice": moved.get("slice")})
         hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None,
