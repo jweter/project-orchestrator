@@ -68,6 +68,7 @@ class Task:
     prelude: list[list[str]] = field(default_factory=list)    # commands run once first
     configure: list[list[str]] = field(default_factory=list)  # run after every write, before the build (e.g. cmake configure)
     rules: list[str] = field(default_factory=list)
+    language: str = "C++"                         # default preserves existing native builder behavior
 
 
 Ask = Callable[[str], str]
@@ -145,7 +146,7 @@ def initial_prompt(task: Task, limits: Limits) -> str:
             break
     rules = "\n".join(f"- {rule}" for rule in task.rules)
     return (
-        "You are a C++ engineer. Implement the change below exactly as specified. Output ONLY complete files in this "
+        f"You are a {task.language} engineer. Implement the change below exactly as specified. Output ONLY complete files in this "
         "format, with no other text:\n=== FILE: relative/path ===\n<entire file contents>\n=== FILE: next/path ===\n...\n"
         "=== END ===\n\n"
         f"TASK: {task.objective}\n\nFILES YOU MUST WRITE (complete contents, each exactly once): {', '.join(task.files)}\n"
