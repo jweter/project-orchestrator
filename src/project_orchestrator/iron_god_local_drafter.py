@@ -187,27 +187,68 @@ def drafting_in_progress(lane_root: Path, *, now: float | None = None) -> bool:
                for row in _jobs(lane_root))
 
 
-def roadmap_examples(request: dict[str, Any]) -> list[dict[str, Any]]:
-    """The slice's independent acceptance examples that are well formed: a ``{fn}(...)`` call with literal arguments."""
-    usable = []
-    for example in request.get("acceptance_examples") or []:
+def _parsed_roadmap_examples(request: dict[str, Any]) -> tuple[list[dict[str, Any]], str | None]:
+    """Normalize literal owner examples without losing their function identity.
+
+    A graph can explicitly name its function instead of spelling \`\`{fn}(...)\`\`.
+    When it does, ALL examples must consistently name that one public
+    function, be independently checkable literals, and include at least
+    three distinct calls. A mixed or partially malformed named contract is
+    rejected, not silently weakened to a subset or a model-authored oracle.
+    """
+    examples = request.get("acceptance_examples") or []
+    if not isinstance(examples, list):
+        return [], None
+    usable: list[dict[str, Any]] = []
+    actual_names: set[str] = set()
+    has_template = False
+    for example in examples:
         if not isinstance(example, dict) or "expected" not in example or not str(example.get("why", "")).strip():
             continue
         call = " ".join(str(example.get("call", "")).split())
-        if not call.startswith("{fn}("):
-            continue
+        templated = call.startswith("{fn}(")
+        expression = "planned_function" + call[4:] if templated else call
         try:
-            tree = ast.parse(call.replace("{fn}", "fn", 1), mode="eval").body
+            tree = ast.parse(expression, mode="eval").body
             if not (isinstance(tree, ast.Call) and isinstance(tree.func, ast.Name)):
+                continue
+            name = tree.func.id
+            if not templated and name.startswith("_"):
+                continue  # the worker rejects private function names
+            if any(k.arg is None for k in tree.keywords):
                 continue
             for arg in [*tree.args, *(k.value for k in tree.keywords)]:
                 ast.literal_eval(arg)
             ast.literal_eval(repr(example["expected"]))
         except (SyntaxError, ValueError):
             continue
-        usable.append({"call": call, "expected": example["expected"], "why": " ".join(str(example["why"]).split())})
-    return usable
+        has_template |= templated
+        if not templated:
+            actual_names.add(name)
+        normalized = call if templated else "{fn}" + call[len(name):]
+        usable.append({
+            "call": normalized, "expected": example["expected"],
+            "why": " ".join(str(example["why"]).split()),
+        })
+    if actual_names:
+        decomposition = request.get("decomposition") or {}
+        self_authored = isinstance(decomposition, dict) and decomposition.get("oracle") == "SELF_AUTHORED"
+        if (len(actual_names) != 1 or has_template or len(usable) != len(examples)
+                or len(usable) < 3 or len({row["call"] for row in usable}) != len(usable)
+                or self_authored):
+            return [], None
+        return usable, next(iter(actual_names))
+    return usable, None
 
+
+def roadmap_examples(request: dict[str, Any]) -> list[dict[str, Any]]:
+    """Literal owner acceptance examples, expressed as \`\`{fn}(...)\`\` templates."""
+    return _parsed_roadmap_examples(request)[0]
+
+
+def owner_function_name(request: dict[str, Any]) -> str | None:
+    """A single independently declared concrete API name, or no such name."""
+    return _parsed_roadmap_examples(request)[1]
 
 DIRECTED_LEVEL = 2
 DIRECTED_UNITS = 3  # the worker bounds a directed edit at a few units; more is a decomposition problem
@@ -305,8 +346,11 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
     if problems:
         raise ContradictsRoadmap("; ".join(problems))
     name = validated["function_name"]
+    pinned_name = owner_function_name(request)
+    if pinned_name is not None and name != pinned_name:
+        raise ContradictsRoadmap(f"OWNER_FUNCTION_NAME_MISMATCH: expected {pinned_name}, got {name}")
     given = {" ".join(call.split()): example for example in roadmap_examples(request)
-             for call in [example["call"].replace("{fn}", name)]}
+             for call in [example["call"].replace("{fn}", name, 1)]}
     usable = {" ".join(str(e["call"]).split()) for e in validated["examples"]}
     own = []
     misread = False
