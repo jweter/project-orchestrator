@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -106,6 +107,46 @@ def run_disposable(
         "native_test_verified": True,
         "owner_pause_after_second": True,
         "durable_restart_resume": True,
+    }
+
+
+def summarize_ollama_telemetry(
+    replies: list[dict[str, Any]],
+    *,
+    expected_model: str,
+    elapsed_s: float,
+    verified_edits: int,
+) -> dict[str, Any]:
+    """Reject missing/foreign Ollama provenance; never infer global cloud isolation."""
+    verified = bool(replies) and all(
+        isinstance(row, dict)
+        and row.get("model_used") == expected_model
+        and type(row.get("prompt_eval_count")) is int
+        and row["prompt_eval_count"] >= 0
+        and type(row.get("eval_count")) is int
+        and row["eval_count"] >= 0
+        and type(row.get("lowest_available_gib")) in (int, float)
+        and row["lowest_available_gib"] >= 0
+        for row in replies
+    )
+    return {
+        "provenance_verified": verified,
+        "local_model_requests": len(replies),
+        "local_prompt_tokens": sum(row["prompt_eval_count"] for row in replies)
+        if verified
+        else None,
+        "local_output_tokens": sum(row["eval_count"] for row in replies)
+        if verified
+        else None,
+        "lowest_available_gib": min(row["lowest_available_gib"] for row in replies)
+        if verified
+        else None,
+        "elapsed_seconds": round(max(0.0, elapsed_s), 3),
+        "verified_edits_per_hour": round(verified_edits * 3600 / elapsed_s, 2)
+        if verified and verified_edits == 3 and elapsed_s > 0
+        else None,
+        "cloud_token_calls_observed": 0 if verified else None,
+        "cloud_token_use_outside_this_process": "UNVERIFIED",
     }
 
 
@@ -215,6 +256,8 @@ def main(argv: list[str] | None = None) -> int:
         current_head = ""
 
     seen_models: list[str] = []
+    raw_telemetry: list[dict[str, Any]] = []
+    started_s = time.monotonic()
 
     def call_local(prompt: str) -> Any:
         reply = guarded_generate(
@@ -226,8 +269,21 @@ def main(argv: list[str] | None = None) -> int:
             temperature=0.0,
             timeout=240,
             wait_s=45,
+            # Revocation must cancel slot/memory waits and in-flight HTTP,
+            # not just discard the model's eventual response.
+            should_abort=lambda: (
+                "OWNER_AUTHORITY_REVOKED_DURING_OLLAMA" if not authorized() else None
+            ),
         )
         seen_models.append(str(reply.get("model_used") or "UNVERIFIED"))
+        raw_telemetry.append(
+            {
+                "model_used": reply.get("model_used"),
+                "prompt_eval_count": reply.get("prompt_eval_count"),
+                "eval_count": reply.get("eval_count"),
+                "lowest_available_gib": reply.get("lowest_available_gib"),
+            }
+        )
         return json.loads(reply.get("response") or "{}")
 
     result = run_disposable(
@@ -236,13 +292,18 @@ def main(argv: list[str] | None = None) -> int:
         authorized=authorized,
         ask_local=call_local,
     )
+    telemetry = summarize_ollama_telemetry(
+        raw_telemetry,
+        expected_model=BUILDER_MODEL,
+        elapsed_s=time.monotonic() - started_s,
+        verified_edits=result.get("verified_edits", 0),
+    )
     receipt = _safe_receipt(
         result,
-        actual_local_model=bool(
-            seen_models and all(model == BUILDER_MODEL for model in seen_models)
-        ),
+        actual_local_model=telemetry["provenance_verified"],
     )
     receipt["observed_models"] = seen_models
+    receipt["ollama_telemetry"] = telemetry
     print(json.dumps(receipt, sort_keys=True))
     return 0 if receipt["live_ollama_proven"] else 2
 
