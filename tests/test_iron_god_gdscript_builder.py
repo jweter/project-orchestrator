@@ -135,3 +135,28 @@ def test_local_loop_rejects_attempted_test_modification(tmp_path):
     assert outcome["status"] == "ITERATIONS_EXHAUSTED"
     assert not (tmp_path / "game/src/movement.gd").exists()
     assert (tmp_path / "game/tests/test_movement.gd").read_bytes() == fixed_test
+
+
+def test_absolute_or_symlinked_paths_cannot_escape_workspace(tmp_path):
+    request = fixture(tmp_path)
+    spec = request["gdscript"]
+    assert "NONCANONICAL_GODOT_PATH" in godot.validate(
+        {**request, "gdscript": {**spec, "module": "/tmp/elsewhere.gd"}}, tmp_path
+    )
+    # On Windows, symlink creation may require elevated permissions; skip only
+    # this filesystem-specific edge rather than weakening production checking.
+    outside = tmp_path.parent / (tmp_path.name + "-outside")
+    outside.mkdir(exist_ok=True)
+    source = tmp_path / "game" / "src"
+    source.rmdir()
+    try:
+        source.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation is not permitted on this test runner")
+    assert "PATH_ESCAPES_WORKSPACE" in godot.validate(request, tmp_path)
+
+
+def test_task_requires_explicit_identity_and_objective(tmp_path):
+    request = fixture(tmp_path)
+    assert "TASK_ID_REQUIRED" in godot.validate({**request, "id": ""}, tmp_path)
+    assert "OBJECTIVE_REQUIRED" in godot.validate({**request, "objective": ""}, tmp_path)
