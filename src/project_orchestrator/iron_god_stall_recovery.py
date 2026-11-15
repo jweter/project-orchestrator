@@ -37,7 +37,7 @@ def recovery_decision(
         return {"action": "RETRY_LOCAL", "request_id": ident, "reason": reason}
     # Only existing capability-level 3+ requests can enter the existing
     # decomposition lane; its validator still enforces full acceptance coverage.
-    if (request.get("route", {}).get("builder") == "CAPABLE"
+    if (isinstance(request.get("route"), dict) and request["route"].get("builder") == "CAPABLE"
             and type(request.get("capability_level")) is int
             and request["capability_level"] >= 3
             and attempts < MAX_RETRIES
