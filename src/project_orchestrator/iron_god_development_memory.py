@@ -108,7 +108,24 @@ def record_attempt(lane_root: Path, packet: dict[str, Any], handback: dict[str, 
     item = packet.get("slice") or (packet.get("repair") or {}).get("slice") or {}
     plan = handback.get("plan") or {}
     directed = handback.get("directed") or {}
-    failure_class = classify(str(handback.get("status", "")), str(handback.get("summary", "")), directed)
+    # Level-1 workers report their final targeted pytest/mypy/ruff output in
+    # verification[].output_tail, not directed.test_failure (Level 2 only).
+    # Prefer the *final failing* check over first_test_failure: the first check
+    # may have been repaired, and must not overwrite the actual last result.
+    # This is classification of observed diagnostics, never an acceptance oracle.
+    diagnostics = directed.get("test_failure")
+    if not diagnostics and (packet.get("slice") or {}).get("build"):
+        checks = handback.get("verification") or []
+        if isinstance(checks, list):
+            failed = [row.get("output_tail") for row in checks
+                      if isinstance(row, dict) and row.get("ok") is False
+                      and isinstance(row.get("output_tail"), str)]
+            if failed:
+                diagnostics = "\\n".join(failed)[-3000:]
+        if not diagnostics and not checks and isinstance(handback.get("first_test_failure"), str):
+            diagnostics = handback["first_test_failure"][-3000:]
+    evidence = {**directed, "test_failure": diagnostics} if diagnostics else directed
+    failure_class = classify(str(handback.get("status", "")), str(handback.get("summary", "")), evidence)
     instructions = {"direction": plan.get("direction"), "objective": plan.get("objective"),
                     "add": plan.get("add"), "test_path": plan.get("test_path")}
     with closing(_connect(lane_root)) as connection, connection:
@@ -117,7 +134,7 @@ def record_attempt(lane_root: Path, packet: dict[str, Any], handback: dict[str, 
             (packet["packet_id"], item.get("id"), packet["repository"], packet["base_sha"], plan.get("module_path"),
              json.dumps(plan.get("targets") or []), plan.get("mode") or ("build" if plan else "none"),
              directed.get("model"), json.dumps(instructions), directed.get("prompt"), directed.get("reply"),
-             json.dumps(handback.get("verification") or []), directed.get("test_failure"), failure_class,
+             json.dumps(handback.get("verification") or []), diagnostics, failure_class,
              outcome[:300], _now()))
     return failure_class
 
