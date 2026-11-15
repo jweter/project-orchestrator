@@ -53,6 +53,7 @@ from . import iron_god_model_routing as model_routing
 from . import iron_god_pipeline_trace as pipeline_trace
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
+from . import iron_god_strategic_upgrades as strategic_upgrades
 from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
@@ -1157,6 +1158,7 @@ def advance_product_lane(
                 lane, repos, busy, approved, state, level, sync, owned_paths,
                 capable={"enabled": config.get("capable_builder") is True,
                          "local_only_proving_mode": config.get("local_only_proving_mode") is True,
+                         "allow_local_escalation": config.get("allow_local_escalation") is True,
                          "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT)),
                          # "engine": the builder runs as an engine stage on this machine (owner decision 2026-11-14)
                          "transport": capable_builder.ENGINE_TRANSPORT
@@ -1298,6 +1300,17 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
 
 
+def local_escalation_authorized(capable: dict[str, Any], *, draft_locally: bool) -> bool:
+    """Optional escalation cannot consume LOCAL work without explicit authorization.
+
+    A Claude window or an enabled capable builder is not permission to route
+    ordinary local tasks away from Ollama. Local-only proving mode always wins.
+    """
+    return (draft_locally and capable.get("enabled") is True
+            and capable.get("allow_local_escalation") is True
+            and capable.get("local_only_proving_mode") is not True)
+
+
 def reroute_slices_the_local_lane_cannot_verify(
     report: dict[str, Any], *, already_local: frozenset[str] = frozenset()
 ) -> list[dict[str, Any]]:
@@ -1388,6 +1401,20 @@ def admit_capable_requests(lane: ProductLane, queue: list[dict[str, Any]], capab
     """Admit this pass's capable candidates together: fair, deterministic, and never the whole budget in one burst."""
     if not queue:
         return
+    if capable.get("strategic_upgrades_only") is True:
+        # A scheduled Claude window is a bonus for owner-approved systemic
+        # upgrades, not a reason to consume tokens on ordinary product slices.
+        chosen = strategic_upgrades.strategic_upgrade_candidates(
+            [item["request"] for item in queue],
+            cloud_authorized=capable.get("cloud_authorized") is True,
+            remaining_tokens=capable.get("remaining_tokens", 0),
+            window_open=capable.get("window_open") is True,
+        )
+        permitted = {request["id"] for request in chosen}
+        queue = [item for item in queue if item["request"]["id"] in permitted]
+        queue.sort(key=lambda item: next(i for i, req in enumerate(chosen) if req["id"] == item["request"]["id"]))
+        if not queue:
+            return
     now = time.time()
     rows = capable_builder._rows(capable_builder.dispatch_state(lane.root))
     if not capable["enabled"] or capable.get("local_only_proving_mode"):
@@ -1695,7 +1722,9 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
-        if capable["enabled"] and draft_locally:
+        if local_escalation_authorized(capable, draft_locally=draft_locally):
+            # Local-first policy: an unavailable optional capable builder must never drain LOCAL work.
+            # Escalation requires an explicit per-run authorization; a time window alone is not one.
             # Only the autonomous local-draft pipeline may escalate work
             # that it cannot verify. With local_draft_author disabled an
             # approved external planner may submit a LOCAL draft on the next
