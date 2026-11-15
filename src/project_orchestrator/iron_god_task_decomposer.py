@@ -95,6 +95,16 @@ def decomposable(request: dict[str, Any]) -> bool:
     )
 
 
+NATIVE_PATH_PREFIXES = ("unreal/source",)          # an Unreal module tree: C++ and Build.cs, never a Python package
+NATIVE_SUFFIXES = (".cpp", ".cc", ".h", ".hpp", ".cs")
+
+
+def _native_path(base: str) -> bool:
+    """A path (the literal part of an allowed-path pattern) that is native source, not Python."""
+    lowered = base.lower()
+    return lowered.startswith(NATIVE_PATH_PREFIXES) or lowered.endswith(NATIVE_SUFFIXES)
+
+
 def native_scope(request: dict[str, Any]) -> bool:
     """True when the slice reaches a registered native (C++) source root, e.g. Everward's ``src/simulation/``.
 
@@ -103,11 +113,13 @@ def native_scope(request: dict[str, Any]) -> bool:
     Python functions, and the module placer would have put ``.py`` files under the C++ ``src/simulation/`` tree. Native
     slices are built by the local C++ lane (which needs a ``cpp`` section in the slice's graph), never decomposed here.
     """
+    bases = [str(pattern).replace("\\", "/").split("*", 1)[0] for pattern in request.get("allowed_paths") or []]
+    if any(_native_path(base) for base in bases):  # whatever the repository: no Python package lives there
+        return True
     profile = cpp_lane.profile_for(request.get("repository"))
     if profile is None:
         return False
-    for pattern in request.get("allowed_paths") or []:
-        base = str(pattern).replace("\\", "/").split("*", 1)[0]
+    for base in bases:
         if any(base.startswith(root) or root.startswith(base) for root in profile.source_roots):
             return True
     return False
