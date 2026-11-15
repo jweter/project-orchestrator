@@ -63,10 +63,17 @@ def validate(request: dict[str, Any], workspace: Path) -> list[str]:
     # Canonical lexical paths are not sufficient when checkout subdirectories
     # are symlinks. Refuse targets that resolve outside the isolated workspace.
     root = workspace.resolve()
-    for target in (workspace / project, (workspace / module).parent, workspace / test):
+    for target in (workspace / project, workspace / module, workspace / test):
         if not target.resolve().is_relative_to(root):
             problems.append("PATH_ESCAPES_WORKSPACE")
             break
+    # Existing module symlinks can alias the independent test even when the
+    # lexical paths differ (and can point to other writable in-tree files).
+    # Reject the alias before the generic builder writes anything.
+    if (workspace / module).is_symlink():
+        problems.append("MODULE_SYMLINK_FORBIDDEN")
+    if (workspace / module).resolve() == (workspace / test).resolve():
+        problems.append("TEST_MUST_BE_INDEPENDENT")
     # A generated module can be changed. The approved independent test cannot.
     if request.get("allowed_paths") != [module]:
         problems.append("ONLY_DECLARED_GDSCRIPT_MODULE_EDITABLE")
