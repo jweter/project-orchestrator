@@ -83,6 +83,18 @@ def test_dispatch_is_off_by_default_and_fires_nothing(tmp_path: Path, configured
     assert result["reason"] == "CAPABLE_BUILDER_DISABLED" and opener.fired == []
 
 
+@pytest.mark.parametrize("transport", [cb.ROUTINE_TRANSPORT, cb.ENGINE_TRANSPORT])
+def test_local_only_proving_mode_never_spends_claude_tokens_even_when_enabled(
+    tmp_path: Path, configured: None, transport: str,
+) -> None:
+    opener = Opener()
+    result = go(tmp_path, opener, transport=transport, local_only=True, daily_limit=12)
+
+    assert result == {"dispatched": False, "dispatch": False, "reason": "LOCAL_ONLY_PROVING_MODE"}
+    assert opener.fired == [] and not cb.dispatch_state(tmp_path).exists()
+    # ENGINE transport is explicitly denied BEFORE attempting to locate/spawn a Claude CLI runner.
+
+
 def test_a_missing_token_records_a_blocker_reason_and_fires_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(TOKEN, raising=False)
     opener = Opener()

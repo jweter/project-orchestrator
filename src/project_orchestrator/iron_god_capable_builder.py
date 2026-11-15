@@ -329,7 +329,13 @@ def dispatch_request(request: dict[str, Any], *, lane_root: Path, enabled: bool,
                      now: float | None = None, environ: dict[str, str] | None = None,
                      opener: Callable = urllib.request.urlopen, transport: str = ROUTINE_TRANSPORT,
                      engine: dict[str, Any] | None = None,
-                     which: Callable[[str], str | None] | None = None) -> dict[str, Any]:
+                     which: Callable[[str], str | None] | None = None,
+                     local_only: bool = False) -> dict[str, Any]:
+    # A measured zero-cloud development trial must not call Claude regardless
+    # of the normal capable-builder setting, tokens, or transport. This is a
+    # dispatch prohibition, not a new execution grant or an attempt refund.
+    if local_only:
+        return {"dispatched": False, "dispatch": False, "reason": "LOCAL_ONLY_PROVING_MODE"}
     if transport == ENGINE_TRANSPORT and engine is None:
         # no release-bound runner or no clone for this request: say so, never fall back to the cloud routine silently
         return {"dispatched": False, "dispatch": False, "reason": "ENGINE_BUILDER_UNAVAILABLE"}
