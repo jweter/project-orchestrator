@@ -56,6 +56,7 @@ from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_stall_recovery as stall_recovery
 from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
+from . import iron_god_failure_strategy as failure_strategy
 from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_roadmap_refill as roadmap_refill
@@ -1891,6 +1892,16 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
                                   roots=roots, avoid=avoid, memory_text=working_memory.excerpt(lane.state_root, repo),
                                   attempted=working_memory.attempted_functions(lane.state_root, repo),
                                   project=memory_project(release_repo, repo), item=item)
+    if item is not None:
+        try:
+            prior = backlog.load_state(lane.root).get("items", {}).get(item["id"], {})
+            revision = failure_strategy.recovery_strategy(lane.root, item, prior)
+            if revision is not None:
+                # Advisory only. The worker's approved spec and test oracle are
+                # unchanged; the code prompt gets only pre-reviewed guidance.
+                packet["recovery_strategy"] = revision
+        except (OSError, ValueError, KeyError, TypeError, sqlite3.Error):
+            pass  # absent evidence must never block an otherwise permitted turn
     updated = dispatch_canonical_slice(ledger, packet, transport="local_idle_worker")
     lane.save(updated, ledger)
     packet_path = lane.packets / f"{packet_id}.json"
