@@ -43,6 +43,8 @@ def test_unapproved_alternatives_are_not_dispatched():
 def test_invalid_request_and_attempts_fail_closed():
     assert check({"route": {}}, attempts=0)["action"] == "BLOCK"
     assert check(attempts=-1)["reason"] == "INVALID_ATTEMPT_COUNT"
+    assert check({**LARGE, "route": "CAPABLE"}, attempts=0)["action"] == "CONTINUE_OTHER_LOCAL"
+    assert check({**LARGE, "route": ["CAPABLE"]}, attempts=0, alternatives=[])["action"] == "BLOCK"
 
 
 def test_decomposition_must_match_executors_actual_eligibility():
