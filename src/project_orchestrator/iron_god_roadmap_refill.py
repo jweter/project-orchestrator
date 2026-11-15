@@ -409,6 +409,9 @@ def derive(repository: str, head: str, payload: dict[str, Any], source: str, *, 
             "acceptance_examples": declared.get((capability_id, chosen["slice_id"]), {}).get("acceptance_examples", []),
             "directed_edit": declared.get((capability_id, chosen["slice_id"]), {}).get("directed_edit"),
             "cpp": declared.get((capability_id, chosen["slice_id"]), {}).get("cpp"),
+            "gdscript": declared.get((capability_id, chosen["slice_id"]), {}).get("gdscript"),
+            # Exact-head compiled owner graph is standing authorization, never AI prose.
+            "owner_approved": isinstance(declared.get((capability_id, chosen["slice_id"]), {}).get("gdscript"), dict),
             "max_builder_level": max(backlog.BUILDABLE_LEVELS),
             "needs": "a backlog item (level 1 build spec, or level 2 directed edit with approved tests that fail at "
                      "exact_head) whose id and roadmap_ref equal this request's, written to the drafts directory"})
@@ -815,8 +818,22 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
     def route_request(request: dict[str, Any]) -> dict[str, Any]:
         request["development_rules"] = rules
         request["graph_path"] = source  # the declared graph: the one file any capable session may also edit to record delivery
-        request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem,
-                                 expected_model=expected_model)
+        if request.get("gdscript") is not None:
+            # A Godot project need not be a Python package; normal measured
+            # Level-1 local admission applies, without rerouting to Claude.
+            if (request.get("owner_approved") is not True
+                    or not isinstance(request.get("gdscript"), dict)
+                    or type(request.get("capability_level")) is not int
+                    or request["capability_level"] != 1):
+                request["route"] = {"builder": NONE, "reason": "GDSCRIPT_DECLARATION_NOT_EXECUTABLE"}
+            else:
+                request["route"] = route(request, profile=profile, max_level=max_level, unsupported=None,
+                                         expected_model=expected_model)
+                if request["route"]["builder"] == LOCAL:
+                    request["route"]["reason"] = "OWNER_APPROVED_GDSCRIPT_LOCAL_LEVEL_ONE"
+        else:
+            request["route"] = route(request, profile=profile, max_level=max_level, unsupported=repo_problem,
+                                     expected_model=expected_model)
         return request["route"]
 
     for request in derived["requests"]:
