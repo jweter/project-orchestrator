@@ -42,6 +42,7 @@ def recovery_decision(
     # acceptance/scope, planning tasks and unsupported native sources must not
     # get a recovery decision the executor can never carry out.
     if (attempts < MAX_RETRIES and reason not in MISSING_ORACLE
+            and isinstance(request.get("route"), dict)
             and task_decomposer.decomposable(request)):
         return {"action": "DECOMPOSE_LOCAL", "request_id": ident, "reason": reason}
     for candidate in eligible_alternatives:
