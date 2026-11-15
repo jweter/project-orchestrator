@@ -1298,6 +1298,29 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
 
 
+def reroute_slices_the_local_lane_cannot_verify(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """Move LOCAL Level 1 slices that declare too few acceptance examples to the capable builder; returns what moved.
+
+    The local lane builds only against the roadmap's own independent examples (a self-authored oracle is refused), so a
+    slice without them was reported NEEDS_ACCEPTANCE_EXAMPLES on every pass and nothing ever built it: measured on the live
+    engine, 2026-11-15 (knowledge-engine-core core-online-evidence-failure-classification, VoiceStudio
+    s5-full-render-codec-args). The capable builder needs no examples: it works from the slice's objective and acceptance
+    criteria, and the engine verifies its change with the repository's own preflight before any pull request exists.
+    """
+    kept: list[dict[str, Any]] = []
+    moved: list[dict[str, Any]] = []
+    for request in report.get("local_requests", []):
+        if local_drafter.missing_examples(request):
+            moved.append({**request, "route": {**request["route"], "builder": roadmap_refill.CAPABLE,
+                                               "reason": "LOCAL_SLICE_WITHOUT_ACCEPTANCE_EXAMPLES", "was": "LOCAL"}})
+        else:
+            kept.append(request)
+    if moved:
+        report["local_requests"] = kept
+        report["capable_requests"] = [*report.get("capable_requests", []), *moved]
+    return moved
+
+
 def spawn_capable_engine(release_repo: Path, release_sha: str, job_file: Path, log_path: Path) -> int:
     """Launch the in-engine capable build like a product worker: release-bound, its own process."""
     env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"), "IRON_GOD_ACCEPTED_SHA": release_sha}
@@ -1665,6 +1688,10 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
+        if capable["enabled"]:
+            for moved in reroute_slices_the_local_lane_cannot_verify(report):
+                roadmap_refill.log_event(lane.root, "LOCAL_REROUTED_TO_CAPABLE", name, moved["id"],
+                                         {"reason": moved["route"]["reason"], "slice": moved.get("slice")})
         hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None,
                                 queue=capable_queue, clone=clone)
         build_native_requests(lane, name, report, clone, head, release)
