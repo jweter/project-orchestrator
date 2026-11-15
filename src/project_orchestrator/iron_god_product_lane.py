@@ -1309,8 +1309,13 @@ def reroute_slices_the_local_lane_cannot_verify(report: dict[str, Any]) -> list[
     """
     kept: list[dict[str, Any]] = []
     moved: list[dict[str, Any]] = []
+    # process_drafts() has already admitted matching owner-approved local
+    # drafts during refill_repository(). A missing roadmap example is NOT
+    # authority to re-route a successfully admitted draft to cloud-capable
+    # execution. Preserve the original LOCAL ledger and worker lifecycle.
+    admitted = set(report.get("admitted") or [])
     for request in report.get("local_requests", []):
-        if local_drafter.missing_examples(request):
+        if request.get("id") not in admitted and local_drafter.missing_examples(request):
             moved.append({**request, "route": {**request["route"], "builder": roadmap_refill.CAPABLE,
                                                "reason": "LOCAL_SLICE_WITHOUT_ACCEPTANCE_EXAMPLES", "was": "LOCAL"}})
         else:
