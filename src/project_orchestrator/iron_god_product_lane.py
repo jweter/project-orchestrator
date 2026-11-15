@@ -1156,6 +1156,7 @@ def advance_product_lane(
             approved = refill_from_roadmaps(
                 lane, repos, busy, approved, state, level, sync, owned_paths,
                 capable={"enabled": config.get("capable_builder") is True,
+                         "local_only_proving_mode": config.get("local_only_proving_mode") is True,
                          "daily_limit": int(config.get("capable_builder_daily_limit", capable_builder.DEFAULT_DAILY_LIMIT)),
                          # "engine": the builder runs as an engine stage on this machine (owner decision 2026-11-14)
                          "transport": capable_builder.ENGINE_TRANSPORT
@@ -1341,7 +1342,9 @@ def _dispatch_capable(lane: ProductLane, name: str, request: dict[str, Any], cap
     try:
         result = capable_builder.dispatch_request(request, lane_root=lane.root, enabled=capable["enabled"],
                                                   daily_limit=capable["daily_limit"], transport=transport,
-                                                  engine=capable_engine_effects(lane, capable, clone))
+                                                  engine=None if capable.get("local_only_proving_mode") else
+                                                  capable_engine_effects(lane, capable, clone),
+                                                  local_only=capable.get("local_only_proving_mode") is True)
     except Exception as exc:  # a routine API error is a recorded blocker, not a crash
         result = {"dispatched": False, "reason": f"CAPABLE_BUILDER_ERROR: {type(exc).__name__}"}
     kind = "CAPABLE_DISPATCHED" if result.get("dispatched") else "CAPABLE_NOT_DISPATCHED"
@@ -1357,7 +1360,9 @@ def admit_capable_requests(lane: ProductLane, queue: list[dict[str, Any]], capab
         return
     now = time.time()
     rows = capable_builder._rows(capable_builder.dispatch_state(lane.root))
-    if not capable["enabled"]:  # nothing is spent while disabled; each request still records its exact reason
+    if not capable["enabled"] or capable.get("local_only_proving_mode"):
+        # Explicit local-only proving mode overrides even an enabled/token-configured capable builder.
+        # All CAPABLE requests remain visible blockers; none may consume Claude tokens.
         for item in capable_admission.sorted_candidates(queue, rows, now):
             _dispatch_capable(lane, item["name"], item["request"], capable, item.get("clone"))
         return
