@@ -833,6 +833,16 @@ def child_requests(
                 else []
             )
             out.append(_child_request(plan, sub, head, ident, failures))
+    # Roadmap-derived retries already receive their real handback test errors.
+    # Decomposed child retries must get the same evidence before the local
+    # drafter runs; otherwise a reauthored microtask repeats an opaque FAIL.
+    # This only annotates copies of existing authorized requests. No attempt
+    # is reset and neither the parent plan nor admission state changes.
+    if out:
+        try:
+            refill.attach_failure_evidence(lane_root, state, out)
+        except (OSError, ValueError, TypeError, KeyError):
+            pass  # optional diagnostics must never prevent the authorized local retry
     return out
 
 
