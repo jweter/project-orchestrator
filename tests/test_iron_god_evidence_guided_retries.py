@@ -17,7 +17,10 @@ ITEM = {
 def write_failure(root, packet_id="PACKET-1", *, summary="SLICE_TESTS_FAILED", test_failure="AssertionError",
                   item_id=ITEM["id"], repository=REPO, status="FAIL"):
     packet = {"packet_id": packet_id, "repository": repository,
-              "base_sha": "a" * 40, "slice": {"id": item_id}}
+              "base_sha": "a" * 40,
+              # Match real approved Level-1 packets. The production memory
+              # classifier reads final verification output only for build specs.
+              "slice": {"id": item_id, "build": ITEM["build"]}}
     # Real Level-1 worker handbacks have no "directed" field: they emit
     # the final failing quick check in verification[].output_tail.
     handback = {"status": status, "summary": summary,
