@@ -1298,6 +1298,17 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
 
 
+def local_escalation_authorized(capable: dict[str, Any], *, draft_locally: bool) -> bool:
+    """Optional escalation cannot consume LOCAL work without explicit authorization.
+
+    A Claude window or an enabled capable builder is not permission to route
+    ordinary local tasks away from Ollama. Local-only proving mode always wins.
+    """
+    return (draft_locally and capable.get("enabled") is True
+            and capable.get("allow_local_escalation") is True
+            and capable.get("local_only_proving_mode") is not True)
+
+
 def reroute_slices_the_local_lane_cannot_verify(
     report: dict[str, Any], *, already_local: frozenset[str] = frozenset()
 ) -> list[dict[str, Any]]:
@@ -1695,7 +1706,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
             working_memory.record(lane.state_root, name, "ROADMAP_REFILL_FAILED", outcome="SKIPPED",
                                   blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
             continue
-        if capable["enabled"] and draft_locally and capable.get("allow_local_escalation") is True and not capable.get("local_only_proving_mode"):
+        if local_escalation_authorized(capable, draft_locally=draft_locally):
             # Local-first policy: an unavailable optional capable builder must never drain LOCAL work.
             # Escalation requires an explicit per-run authorization; a time window alone is not one.
             # Only the autonomous local-draft pipeline may escalate work
