@@ -373,3 +373,61 @@ def test_both_workers_wrap_the_aider_run_in_the_memory_session_and_report_waits_
         monkeypatch.setattr(lm, "guarded_session", never_admitted)
         with pytest.raises(RuntimeError, match="WAITING_FOR_MEMORY"):
             worker.production_agent(tmp_path, "message", ["a.py"], lambda: None)
+
+def test_optional_owner_guard_refuses_before_waiting_for_model_slot(tmp_path):
+    fake = FakeDoor()
+    with pytest.raises(lm.ModelCancelled, match="OWNER_CONTROL_REVOKED"):
+        lm.guarded_generate(
+            "p",
+            num_ctx=1,
+            num_predict=1,
+            client=fake,
+            probes=door_probes(9.0),
+            directory=tmp_path / "slot",
+            should_abort=lambda: "OWNER_CONTROL_REVOKED",
+        )
+    assert fake.calls == [] and fake.unloaded == []
+    assert not (tmp_path / "slot").exists()
+
+
+def test_optional_owner_guard_cancels_wait_for_busy_model_slot(tmp_path):
+    fake = FakeDoor()
+    slot = tmp_path / "slot"
+    checked = [0]
+
+    def revoke() -> str | None:
+        checked[0] += 1
+        return "OWNER_CONTROL_REVOKED" if checked[0] >= 4 else None
+
+    with lm.model_slot(1, directory=slot):
+        with pytest.raises(lm.ModelCancelled, match="OWNER_CONTROL_REVOKED"):
+            lm.guarded_generate(
+                "p",
+                num_ctx=1,
+                num_predict=1,
+                client=fake,
+                probes=door_probes(9.0),
+                directory=slot,
+                wait_s=5,
+                poll_s=0.01,
+                should_abort=revoke,
+            )
+    assert checked[0] >= 4
+    assert fake.calls == []
+
+
+def test_optional_owner_guard_cancels_inflight_generation_and_unloads_model(tmp_path):
+    fake = FakeDoor(abort_after_poll=True)
+    with pytest.raises(lm.ModelCancelled, match="OWNER_CONTROL_REVOKED"):
+        lm.guarded_generate(
+            "p",
+            num_ctx=1,
+            num_predict=1,
+            client=fake,
+            probes=door_probes(9.0),
+            directory=tmp_path / "slot",
+            should_abort=lambda: "OWNER_CONTROL_REVOKED" if fake.calls else None,
+        )
+    assert len(fake.calls) == 1
+    assert fake.unloaded == ["qwen2.5-coder:7b"]
+    assert not (tmp_path / "slot").exists()

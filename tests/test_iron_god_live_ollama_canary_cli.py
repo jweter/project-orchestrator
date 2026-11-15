@@ -160,3 +160,81 @@ def test_optimized_interpreter_cannot_claim_live_verified_edits() -> None:
     assert receipt["live_ollama_proven"] is False
     assert receipt["local_ollama_requested"] is False
     assert receipt["engine_started"] is False
+
+
+def test_ollama_telemetry_counts_only_proven_local_model_tokens() -> None:
+    replies = [
+        {
+            "model_used": "qwen2.5-coder:7b",
+            "prompt_eval_count": 55,
+            "eval_count": 21,
+            "lowest_available_gib": 4.2,
+        },
+        {
+            "model_used": "qwen2.5-coder:7b",
+            "prompt_eval_count": 62,
+            "eval_count": 19,
+            "lowest_available_gib": 3.9,
+        },
+        {
+            "model_used": "qwen2.5-coder:7b",
+            "prompt_eval_count": 69,
+            "eval_count": 27,
+            "lowest_available_gib": 4.4,
+        },
+    ]
+    totals = live.summarize_ollama_telemetry(
+        replies,
+        expected_model="qwen2.5-coder:7b",
+        elapsed_s=60,
+        verified_edits=3,
+    )
+    assert totals["provenance_verified"] is True
+    assert totals["local_prompt_tokens"] == 186
+    assert totals["local_output_tokens"] == 67
+    assert totals["lowest_available_gib"] == 3.9
+    assert totals["verified_edits_per_hour"] == 180
+    assert totals["cloud_token_calls_observed"] == 0
+    assert totals["cloud_token_use_outside_this_process"] == "UNVERIFIED"
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        {"model_used": "claude-code"},
+        {"prompt_eval_count": None},
+        {"eval_count": -1},
+        {"lowest_available_gib": -0.1},
+        {"prompt_eval_count": True},
+    ],
+)
+def test_unverified_local_model_telemetry_does_not_claim_proof(tamper) -> None:
+    value = {
+        "model_used": "qwen2.5-coder:7b",
+        "prompt_eval_count": 15,
+        "eval_count": 6,
+        "lowest_available_gib": 3.5,
+    }
+    value.update(tamper)
+    totals = live.summarize_ollama_telemetry(
+        [value],
+        expected_model="qwen2.5-coder:7b",
+        elapsed_s=30,
+        verified_edits=3,
+    )
+    assert totals["provenance_verified"] is False
+    assert totals["local_output_tokens"] is None
+    assert totals["cloud_token_calls_observed"] is None
+    assert totals["verified_edits_per_hour"] is None
+
+
+def test_empty_telemetry_is_not_zero_cloud_proof() -> None:
+    totals = live.summarize_ollama_telemetry(
+        [],
+        expected_model="qwen2.5-coder:7b",
+        elapsed_s=0,
+        verified_edits=0,
+    )
+    assert totals["provenance_verified"] is False
+    assert totals["cloud_token_calls_observed"] is None
+    assert totals["verified_edits_per_hour"] is None
