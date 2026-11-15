@@ -18,10 +18,14 @@ def write_failure(root, packet_id="PACKET-1", *, summary="SLICE_TESTS_FAILED", t
                   item_id=ITEM["id"], repository=REPO, status="FAIL"):
     packet = {"packet_id": packet_id, "repository": repository,
               "base_sha": "a" * 40, "slice": {"id": item_id}}
+    # Real Level-1 worker handbacks have no "directed" field: they emit
+    # the final failing quick check in verification[].output_tail.
     handback = {"status": status, "summary": summary,
                 "plan": {"mode": "build", "module_path": "knowledge_engine/example.py"},
-                "directed": {"test_failure": test_failure}}
-    memory.record_attempt(root, packet, handback, f"{status}: {summary}")
+                "first_test_failure": "initial pytest failure (may have been repaired)",
+                "verification": [{"ok": False, "command": "pytest + mypy + ruff",
+                                  "output_tail": test_failure}]}
+    return memory.record_attempt(root, packet, handback, f"{status}: {summary}")
 
 
 def row(packets=None, *, attempts=1, outcome="FAIL: SLICE_TESTS_FAILED"):
@@ -110,3 +114,42 @@ def test_worker_build_message_consumes_only_catalogue_not_worker_prose(tmp_path)
         {"slice": {"direct": {"module_path": "knowledge_engine/example.py"}},
          "recovery_strategy": hint}, plan
     )
+
+
+def test_real_level1_final_static_diagnostics_override_stale_first_test(tmp_path):
+    classified = write_failure(
+        tmp_path, summary="SLICE_TESTS_FAILED",
+        test_failure="knowledge_engine/example.py:8: error: missing a return type annotation"
+    )
+    assert classified == "STATIC_MYPY_UNTYPED"
+    assert strategy.recovery_strategy(tmp_path, ITEM, row())["strategy"] == "STATIC_MYPY_UNTYPED"
+
+
+def test_real_level1_line_length_diagnostic_is_reachable(tmp_path):
+    classified = write_failure(
+        tmp_path, test_failure="knowledge_engine/example.py:37:101: E501 line too long"
+    )
+    assert classified == "STATIC_LINE_LENGTH"
+    assert strategy.recovery_strategy(tmp_path, ITEM, row())["strategy"] == "STATIC_LINE_LENGTH"
+
+
+def test_final_pytest_failure_not_reclassified_from_initial_mypy_error(tmp_path):
+    packet = {"packet_id": "PACKET-1", "repository": REPO,
+              "base_sha": "a" * 40, "slice": {"id": ITEM["id"], "build": ITEM["build"]}}
+    handback = {
+        "status": "FAIL", "summary": "SLICE_TESTS_FAILED",
+        "plan": {"mode": "build", "module_path": "knowledge_engine/example.py"},
+        "first_test_failure": "example.py:3: error: missing a return type annotation",
+        "verification": [{"ok": False, "command": "pytest", "output_tail": "assert 2 == 3"}],
+    }
+    assert memory.record_attempt(tmp_path, packet, handback, "FAIL: SLICE_TESTS_FAILED") == "SLICE_TESTS_FAILED"
+    assert strategy.recovery_strategy(tmp_path, ITEM, row())["strategy"] == "SLICE_TESTS_FAILED"
+
+
+def test_both_level2_and_level1_failure_classification_remain_supported(tmp_path):
+    packet = {"packet_id": "PACKET-2", "repository": REPO, "base_sha": "a" * 40,
+              "slice": {"id": ITEM["id"], "direct": {"targets": ["sample"]}}}
+    handback = {"status": "FAIL", "summary": "SLICE_TESTS_FAILED",
+                "plan": {"mode": "directed"},
+                "directed": {"test_failure": "example.py:10: E501 line too long"}}
+    assert memory.record_attempt(tmp_path, packet, handback, "FAIL: SLICE_TESTS_FAILED") == "STATIC_LINE_LENGTH"
