@@ -53,6 +53,7 @@ from . import iron_god_model_routing as model_routing
 from . import iron_god_pipeline_trace as pipeline_trace
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
+from . import iron_god_strategic_upgrades as strategic_upgrades
 from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
@@ -1399,6 +1400,20 @@ def admit_capable_requests(lane: ProductLane, queue: list[dict[str, Any]], capab
     """Admit this pass's capable candidates together: fair, deterministic, and never the whole budget in one burst."""
     if not queue:
         return
+    if capable.get("strategic_upgrades_only") is True:
+        # A scheduled Claude window is a bonus for owner-approved systemic
+        # upgrades, not a reason to consume tokens on ordinary product slices.
+        chosen = strategic_upgrades.strategic_upgrade_candidates(
+            [item["request"] for item in queue],
+            cloud_authorized=capable.get("cloud_authorized") is True,
+            remaining_tokens=capable.get("remaining_tokens", 0),
+            window_open=capable.get("window_open") is True,
+        )
+        permitted = {request["id"] for request in chosen}
+        queue = [item for item in queue if item["request"]["id"] in permitted]
+        queue.sort(key=lambda item: next(i for i, req in enumerate(chosen) if req["id"] == item["request"]["id"]))
+        if not queue:
+            return
     now = time.time()
     rows = capable_builder._rows(capable_builder.dispatch_state(lane.root))
     if not capable["enabled"] or capable.get("local_only_proving_mode"):
