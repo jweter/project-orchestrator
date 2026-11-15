@@ -46,3 +46,36 @@ def test_the_capable_builder_accepts_the_rerouted_request_and_nothing_changes_wh
     assert lane.reroute_slices_the_local_lane_cannot_verify(untouched) == []
     assert [r["id"] for r in untouched["local_requests"]] == ["RM-ready"] and untouched["capable_requests"] == []
     assert lane.reroute_slices_the_local_lane_cannot_verify({}) == []
+
+
+
+def test_previously_admitted_local_draft_must_never_be_rerouted() -> None:
+    """The actual full-lane regression: process_drafts accepted the owner draft."""
+    report = {
+        "local_requests": [
+            request("RM-approved-local"),
+            request("RM-truly-unverifiable"),
+        ],
+        "admitted": ["RM-approved-local"],
+        "capable_requests": [],
+    }
+
+    moved = lane.reroute_slices_the_local_lane_cannot_verify(report)
+
+    assert [row["id"] for row in moved] == ["RM-truly-unverifiable"]
+    assert [row["id"] for row in report["local_requests"]] == ["RM-approved-local"]
+    assert [row["id"] for row in report["capable_requests"]] == [
+        "RM-truly-unverifiable"
+    ]
+    assert not any(row["id"] == "RM-approved-local" for row in moved)
+
+
+def test_only_admitted_local_request_keeps_existing_ledger_sequence() -> None:
+    report = {
+        "local_requests": [request("RM-approved-local")],
+        "admitted": ["RM-approved-local"],
+        "capable_requests": [],
+    }
+    assert lane.reroute_slices_the_local_lane_cannot_verify(report) == []
+    assert [row["id"] for row in report["local_requests"]] == ["RM-approved-local"]
+    assert report["capable_requests"] == []
