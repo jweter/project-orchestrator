@@ -39,6 +39,17 @@ def guide_text(request: dict[str, Any]) -> str:
         "acceptance criterion, including invalid inputs (return the documented empty/neutral value, never raise "
         "unless the criteria say so).",
     ]
+    # A concrete owner-declared API name is a non-negotiable part of the
+    # oracle, not a free-form naming suggestion for a weak local planner.
+    from project_orchestrator.iron_god_local_drafter import owner_function_name
+
+    fixed_name = owner_function_name(request)
+    if fixed_name is not None:
+        lines.append(
+            f"MANDATORY FUNCTION NAME: {fixed_name}. Use exactly this name "
+            "in function_name, signature and EVERY planned call. "
+            "Do not rename the owner-approved API."
+        )
     given = [e for e in request.get("acceptance_examples", []) if isinstance(e, dict) and "call" in e and "expected" in e]
     if given:
         decomposition = request.get("decomposition") or {}
