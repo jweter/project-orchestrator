@@ -79,3 +79,27 @@ def test_only_admitted_local_request_keeps_existing_ledger_sequence() -> None:
     assert lane.reroute_slices_the_local_lane_cannot_verify(report) == []
     assert [row["id"] for row in report["local_requests"]] == ["RM-approved-local"]
     assert report["capable_requests"] == []
+
+
+
+def test_accepted_local_work_remains_local_across_subsequent_refill_passes() -> None:
+    """A previously accepted draft is not admitted again, but stays protected."""
+    previous_accepted = frozenset({"RM-approved-from-previous-pass"})
+    report = {
+        "local_requests": [
+            request("RM-approved-from-previous-pass"),
+            request("RM-unverifiable"),
+        ],
+        "admitted": [],
+        "capable_requests": [],
+    }
+    moved = lane.reroute_slices_the_local_lane_cannot_verify(
+        report, already_local=previous_accepted
+    )
+    assert [row["id"] for row in moved] == ["RM-unverifiable"]
+    assert [row["id"] for row in report["local_requests"]] == [
+        "RM-approved-from-previous-pass"
+    ]
+    assert [row["id"] for row in report["capable_requests"]] == [
+        "RM-unverifiable"
+    ]
