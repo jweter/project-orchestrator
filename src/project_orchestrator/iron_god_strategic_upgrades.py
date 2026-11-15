@@ -41,7 +41,7 @@ def strategic_upgrade_candidates(
         seen.add(ident)
         if request.get("work_class") != "ENGINE_UPGRADE" or request.get("owner_approved") is not True:
             continue
-        if request.get("route", {}).get("builder") != "CAPABLE":
+        if not isinstance(request.get("route"), dict) or request["route"].get("builder") != "CAPABLE":
             continue
         impact = _bounded(request.get("impact"))
         confidence = _bounded(request.get("confidence"))
