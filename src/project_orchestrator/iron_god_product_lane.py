@@ -53,6 +53,7 @@ from . import iron_god_model_routing as model_routing
 from . import iron_god_pipeline_trace as pipeline_trace
 from . import iron_god_local_drafter as local_drafter
 from . import iron_god_task_decomposer as task_decomposer
+from . import iron_god_stall_recovery as stall_recovery
 from . import iron_god_roadmap_progress as roadmap_progress
 from . import iron_god_development_memory as development_memory
 from . import iron_god_merge_readiness as readiness
@@ -1199,11 +1200,31 @@ def advance_product_lane(
         task_level = chosen_item.get("level") if chosen_item is not None else int(config.get("capability_level", 3))
         decision = model_routing.route(task_level, measured or {}, (free_gib or available_gib)(),
                                        after_pressure=bool(pressure))
-        if decision.model is None:  # wait, never downgrade; no attempt is spent
-            why_waiting = decision.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
-            return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",
-                                  "reason": decision.reason, "repository": repo, "route": decision.as_dict(),
-                                  "work_waiting": bool(why_waiting)})
+        if decision.model is None:  # no downgrade: try another already approved repository first
+            alternative = next_routable_local_repository(
+                repos, busy, items, measured or {}, (free_gib or available_gib)(),
+                after_pressure=bool(pressure), exclude=repo,
+            )
+            if alternative is not None:
+                recovery = stall_recovery.recovery_decision(
+                    {"id": str(chosen_item.get("id")) if chosen_item else repo,
+                     "route": {"builder": "LOCAL"}, "capability_level": task_level},
+                    reason=decision.reason, attempts=0,
+                    eligible_alternatives=[{"id": alternative, "eligible": True, "owner_approved": True}],
+                    owner_authorized=True, memory_available=True,
+                )
+                if recovery["action"] == "CONTINUE_OTHER_LOCAL":
+                    repo = alternative
+                    chosen_item = items[repo]
+                    decision = model_routing.route(
+                        chosen_item.get("level"), measured or {}, (free_gib or available_gib)(),
+                        after_pressure=bool(pressure),
+                    )
+            if decision.model is None:
+                why_waiting = decision.reason.startswith(("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+                return _report(lane, {"status": "WAITING_FOR_MEMORY" if why_waiting else "WAITING_FOR_CALIBRATION",
+                                      "reason": decision.reason, "repository": repo, "route": decision.as_dict(),
+                                      "work_waiting": bool(why_waiting)})
     if decision is not None and decision.model is not None and decision.required_gib and decision.available_gib is not None             and decision.available_gib < decision.required_gib:
         # Below the comfortable level the model still runs (owner decision 2026-11-08); the standing rule is told so it can
         # free memory while the run proceeds. Sustained real pressure still cancels the run.
@@ -1296,6 +1317,21 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
     if report and (report["removed"] or report["left_for_next_run"]):
         roadmap_refill.log_event(lane.root, "WORKTREES_CLEANED", "<portfolio>", "", {
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
+
+
+def next_routable_local_repository(
+    repos: list[str], busy: set[str], items: dict[str, dict[str, Any]],
+    profiles: dict[str, Any], free_gib: float, *, after_pressure: bool, exclude: str,
+) -> str | None:
+    """Find already approved, measured-routable work without inventing authority."""
+    for candidate in repos:
+        if candidate == exclude or candidate in busy or candidate not in items:
+            continue
+        route = model_routing.route(items[candidate].get("level"), profiles, free_gib,
+                                    after_pressure=after_pressure)
+        if route.model is not None:
+            return candidate
+    return None
 
 
 def reroute_slices_the_local_lane_cannot_verify(
