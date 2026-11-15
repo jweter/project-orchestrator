@@ -9,6 +9,7 @@ it is neither a new planner nor permission to spend cloud tokens.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +68,7 @@ def recovery_strategy(lane_root: Path, item: dict[str, Any], row: dict[str, Any]
     try:
         # Existing database is read-only: consultation must not create memory
         # or mutate an existing record to make a retry look better.
-        with sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True) as connection:
+        with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
             fact = connection.execute(
                 "SELECT item_id, repository, failure_class, outcome FROM attempts WHERE packet_id = ?",
                 (packet_ids[-1],),
@@ -91,7 +92,7 @@ def coding_guidance(packet: dict[str, Any]) -> str:
     if not isinstance(hint, dict) or hint.get("schema_version") != 1:
         return ""
     name, attempt = hint.get("strategy"), hint.get("revision")
-    if name not in STRATEGIES or type(attempt) is not int or attempt not in (1, 2):
+    if not isinstance(name, str) or name not in STRATEGIES or type(attempt) is not int or attempt not in (1, 2):
         return ""
     return (
         "RECOVERY STRATEGY (advisory, from a verified previous failure): "
