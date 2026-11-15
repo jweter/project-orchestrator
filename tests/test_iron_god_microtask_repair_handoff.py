@@ -322,3 +322,23 @@ def test_untrusted_malformed_specs_and_unavailable_reviewers_fail_closed() -> No
         )["status"]
         == "SEPARATE_OWNER_GRAPH_REVIEW_REQUIRED"
     )
+
+
+@pytest.mark.parametrize(
+    "substitution",
+    [
+        ["Weaker criterion unrelated to original title normalization"],
+        [],
+        ["Preserve title normalization semantics", "also modify another module"],
+        ["Something unrelated", "Preserve title normalization semantics"],
+    ],
+)
+def test_repair_draft_cannot_weaken_or_extend_original_acceptance(
+    substitution: list[str],
+) -> None:
+    draft = copy.deepcopy(DRAFT)
+    draft["acceptance_criteria"] = substitution
+    result = check(draft=draft)
+    assert result["status"] == "REPAIR_BROADENS_OR_DOWNGRADES_ORIGINAL_SCOPE"
+    assert result["ready_for_admission"] is False
+    assert DRAFT["acceptance_criteria"] == REQUEST["slice_acceptance"]

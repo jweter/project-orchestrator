@@ -130,6 +130,9 @@ def qualification(
         or not isinstance(criteria, list)
         or not criteria
         or owner_request.get("slice_acceptance") != criteria
+        # The existing draft admission validator does not compare acceptance
+        # lists. Preserve the frozen child-owned contract explicitly here.
+        or authored_draft.get("acceptance_criteria") != criteria
         or type(owner_request.get("capability_level")) is not int
         or owner_request["capability_level"] < original.get("level", 99)
         or not isinstance(owner_request.get("route"), dict)
