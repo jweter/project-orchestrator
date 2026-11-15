@@ -299,6 +299,60 @@ def record_block(lane_root: Path, item_id: str, *, outcome: str) -> dict[str, An
         release_lifecycle_lock(lock)
 
 
+
+def failed_worker_evidence(row: dict[str, Any]) -> str | None:
+    """Last failed worker packet not yet followed by an alternative dispatch.
+
+    The existing backlog ledger is authoritative: no new queue or counter is
+    invented. The same failure packet may trigger at most one diversion, and
+    accepted/merged or environmental outcomes never count as code failures.
+    """
+    if not isinstance(row, dict):
+        return None
+    outcome = str(row.get("outcome") or "")
+    if not (outcome.startswith("FAIL") or outcome == "SUPERVISOR_RECHECK_FAILED"):
+        return None
+    packets = row.get("packets")
+    if not isinstance(packets, list) or not packets or not isinstance(packets[-1], str):
+        return None
+    last = packets[-1]
+    if not last or row.get("recovery_diverted_for_packet") == last:
+        return None
+    return last
+
+
+def record_recovery_diversion(
+    lane_root: Path, item_id: str, *, failed_packet_id: str,
+    alternative_packet_id: str, alternative_item_id: str,
+) -> bool:
+    """Mark a *launched* alternative once for the exact failed packet.
+
+    Serialized with worker outcomes using the existing backlog-state lock.
+    A stale decision, replay or unfinished launch cannot reset attempt budgets
+    or modify an already completed item. The caller must verify a DISPATCHED
+    worker before invoking this.
+    """
+    if not all(isinstance(value, str) and value for value in
+               (item_id, failed_packet_id, alternative_packet_id, alternative_item_id)):
+        return False
+    if alternative_item_id == item_id:
+        return False
+    lock = acquire_lifecycle_lock(state_path(lane_root))
+    try:
+        state = load_state(lane_root)
+        row = state.get("items", {}).get(item_id)
+        if failed_worker_evidence(row) != failed_packet_id:
+            return False
+        row["recovery_diverted_for_packet"] = failed_packet_id
+        row["recovery_alternative_packet"] = alternative_packet_id
+        row["recovery_alternative_item"] = alternative_item_id
+        row["recovery_at_utc"] = _now()
+        atomic_json(state_path(lane_root), state)
+        return True
+    finally:
+        release_lifecycle_lock(lock)
+
+
 def is_done(item: dict[str, Any], state: dict[str, Any]) -> bool:
     outcome = str(state.get("items", {}).get(item["id"], {}).get("outcome", ""))
     return item.get("status") == "done" or outcome == "MERGED" or outcome.startswith(EXTERNAL)
