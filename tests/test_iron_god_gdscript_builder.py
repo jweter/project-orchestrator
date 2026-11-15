@@ -160,3 +160,33 @@ def test_task_requires_explicit_identity_and_objective(tmp_path):
     request = fixture(tmp_path)
     assert "TASK_ID_REQUIRED" in godot.validate({**request, "id": ""}, tmp_path)
     assert "OBJECTIVE_REQUIRED" in godot.validate({**request, "objective": ""}, tmp_path)
+
+
+def test_existing_module_symlink_cannot_alias_immutable_acceptance_test(tmp_path):
+    request = fixture(tmp_path)
+    module = tmp_path / "game/src/movement.gd"
+    test_file = tmp_path / "game/tests/test_movement.gd"
+    try:
+        module.symlink_to(test_file)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation unavailable on this runner")
+    problems = godot.validate(request, tmp_path)
+    assert "MODULE_SYMLINK_FORBIDDEN" in problems
+    assert "TEST_MUST_BE_INDEPENDENT" in problems
+    with pytest.raises(ValueError, match="MODULE_SYMLINK_FORBIDDEN"):
+        godot.make_task(request, tmp_path, which=lambda _: "godot")
+
+
+def test_existing_module_symlink_cannot_write_outside_workspace(tmp_path):
+    request = fixture(tmp_path)
+    module = tmp_path / "game/src/movement.gd"
+    external = tmp_path.parent / (tmp_path.name + "-secret.gd")
+    external.write_text("immutable evidence\\n", encoding="utf-8")
+    try:
+        module.symlink_to(external)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation unavailable on this runner")
+    assert "PATH_ESCAPES_WORKSPACE" in godot.validate(request, tmp_path)
+    with pytest.raises(ValueError, match="PATH_ESCAPES_WORKSPACE"):
+        godot.make_task(request, tmp_path, which=lambda _: "godot")
+    assert external.read_text(encoding="utf-8") == "immutable evidence\\n"
