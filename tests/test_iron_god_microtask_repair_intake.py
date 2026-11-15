@@ -214,13 +214,16 @@ def test_local_advice_tampering_or_failed_outline_is_rejected(ready) -> None:
     assert stage(ready)["status"] == "REPAIR_OUTLINE_NOT_CANONICAL"
 
 
-def test_conflicting_live_approved_work_and_duplicate_id_block_staging(ready) -> None:
+@pytest.mark.parametrize("reserved_path", ["pkg/one.py", "tests/test_one.py"])
+def test_conflicting_live_approved_work_and_duplicate_id_block_staging(
+    ready, reserved_path: str
+) -> None:
     lane, digest, items, state = ready
     blocking = {
         "id": "OTHER-FEATURE",
         "status": "approved",
         "repository": REPO,
-        "interfaces": ["pkg/one.py"],
+        "interfaces": [reserved_path],
     }
     assert (
         stage(ready, items=[*items, blocking])["status"]
@@ -342,4 +345,107 @@ def test_intake_cli_refuses_unverified_backlog_before_writing(
     # must NOT be mistaken for empty (hence conflict-free) state.
     assert cli.main(args) == 2
     assert json.loads(capsys.readouterr().out)["status"] == "BACKLOG_INVALID"
+    assert not (lane / intake.INBOX_DIR).exists()
+
+
+def test_cli_sees_runtime_admitted_file_reservations(
+    ready,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from scripts import iron_god_repair_intake as cli
+    from project_orchestrator import execution_authority as execution
+    from project_orchestrator import iron_god_roadmap_refill as refill
+
+    lane, digest, _items, state = ready
+    (lane / "engineering" / "state").mkdir(parents=True)
+    atomic_json(lane / backlog.BACKLOG_PATH, {"items": []})
+    atomic_json(backlog.state_path(lane), state)
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", "a" * 40)
+    monkeypatch.setattr(
+        execution,
+        "evaluate_execution_authority",
+        lambda **_kw: SimpleNamespace(permitted=True),
+    )
+    monkeypatch.setattr(
+        cli.subprocess, "run", lambda *_a, **_kw: SimpleNamespace(stdout=HEAD)
+    )
+    seen: list[int] = []
+
+    def actual_runtime_inventory(_lane, static):
+        seen.append(len(static))
+        return [
+            {
+                "id": "RUNTIME-EXISTING",
+                "status": "approved",
+                "repository": REPO,
+                "interfaces": ["tests/test_one.py"],
+            }
+        ]
+
+    monkeypatch.setattr(refill, "admitted_items", actual_runtime_inventory)
+    args = [
+        "--lane",
+        str(lane),
+        "--release-repo",
+        str(lane),
+        "--clone",
+        str(lane),
+        "--advice-sha",
+        digest,
+        "--repository",
+        REPO,
+        "--head",
+        HEAD,
+    ]
+    assert cli.main(args) == 2
+    assert (
+        json.loads(capsys.readouterr().out)["status"]
+        == "EXISTING_APPROVED_WORK_OWNS_TARGET"
+    )
+    assert seen == [0]
+    assert not (lane / intake.INBOX_DIR).exists()
+
+
+def test_cli_rejects_corrupted_runtime_inventory_even_if_static_backlog_valid(
+    ready,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from scripts import iron_god_repair_intake as cli
+    from project_orchestrator import execution_authority as execution
+    from project_orchestrator import iron_god_roadmap_refill as refill
+
+    lane, digest, _items, state = ready
+    (lane / "engineering" / "state").mkdir(parents=True)
+    atomic_json(lane / backlog.BACKLOG_PATH, {"items": []})
+    atomic_json(backlog.state_path(lane), state)
+    refill.store_path(lane).write_text("{corrupt-json", encoding="utf-8")
+    monkeypatch.setenv("IRON_GOD_ACCEPTED_SHA", "a" * 40)
+    monkeypatch.setattr(
+        execution,
+        "evaluate_execution_authority",
+        lambda **_kw: SimpleNamespace(permitted=True),
+    )
+    monkeypatch.setattr(
+        cli.subprocess, "run", lambda *_a, **_kw: SimpleNamespace(stdout=HEAD)
+    )
+    args = [
+        "--lane",
+        str(lane),
+        "--release-repo",
+        str(lane),
+        "--clone",
+        str(lane),
+        "--advice-sha",
+        digest,
+        "--repository",
+        REPO,
+        "--head",
+        HEAD,
+    ]
+    assert cli.main(args) == 2
+    assert (
+        json.loads(capsys.readouterr().out)["status"] == "RUNTIME_ADMISSIONS_UNVERIFIED"
+    )
     assert not (lane / intake.INBOX_DIR).exists()

@@ -30,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
 
     sys.path.insert(0, str(ROOT / "src"))
     from project_orchestrator import iron_god_backlog as backlog
+    from project_orchestrator import iron_god_roadmap_refill as refill
     from project_orchestrator.execution_authority import evaluate_execution_authority
     from project_orchestrator.iron_god_microtask_repair_intake import stage_for_review
 
@@ -57,20 +58,39 @@ def main(argv: list[str] | None = None) -> int:
         if rejected:
             result = {"status": "BACKLOG_INVALID", "rejected_ids": sorted(rejected)}
         else:
+            # The product lane reserves files across BOTH the installed
+            # backlog and its separate runtime-admitted roadmap inventory.
+            # Fail closed if the second store exists but cannot be trusted.
+            runtime_path = refill.store_path(args.lane)
             try:
-                state = backlog.load_state(args.lane)
-            except ValueError:
-                result = {"status": "BACKLOG_LEDGER_UNVERIFIED"}
+                raw_runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                raw_runtime = {"items": []}
+            except (OSError, ValueError):
+                raw_runtime = None
+            if (
+                not isinstance(raw_runtime, dict)
+                or not isinstance(raw_runtime.get("items"), list)
+                or any(not isinstance(row, dict) for row in raw_runtime["items"])
+            ):
+                result = {"status": "RUNTIME_ADMISSIONS_UNVERIFIED"}
             else:
-                result = stage_for_review(
-                    args.lane,
-                    args.advice_sha,
-                    args.repository,
-                    args.head,
-                    items=items,
-                    state=state,
-                    authority=authorized,
-                )
+                runtime = refill.admitted_items(args.lane, items)
+                inventory = [*items, *runtime]
+                try:
+                    state = backlog.load_state(args.lane)
+                except ValueError:
+                    result = {"status": "BACKLOG_LEDGER_UNVERIFIED"}
+                else:
+                    result = stage_for_review(
+                        args.lane,
+                        args.advice_sha,
+                        args.repository,
+                        args.head,
+                        items=inventory,
+                        state=state,
+                        authority=authorized,
+                    )
     print(
         json.dumps(
             {

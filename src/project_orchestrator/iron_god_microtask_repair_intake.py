@@ -128,6 +128,9 @@ def _prepare(
     ):
         return None, "BACKLOG_ID_COLLISION_OR_MALFORMED_ITEM"
     reserved = []
+    repair_files = {code_path}
+    if isinstance(test_path, str) and test_path:
+        repair_files.add(test_path)
     for item in items:
         if item.get("repository") != repository or item.get("status") != "approved":
             continue
@@ -145,7 +148,7 @@ def _prepare(
             row.get("outcome") == "MERGED"
             or str(row.get("outcome") or "").startswith(backlog.EXTERNAL)
         )
-        if code_path in backlog.edit_files(item) and not finished:
+        if repair_files & backlog.edit_files(item) and not finished:
             reserved.append(str(item["id"]))
     if reserved:
         return None, "EXISTING_APPROVED_WORK_OWNS_TARGET"
