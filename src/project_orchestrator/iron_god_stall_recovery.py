@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import iron_god_task_decomposer as task_decomposer
+
 TRANSIENT = frozenset({"WORKER_INTERRUPTED", "LEASE_EXPIRED", "TRANSIENT_IO", "MODEL_TIMEOUT"})
 MISSING_ORACLE = frozenset({"NEEDS_ACCEPTANCE_EXAMPLES", "NEEDS_INDEPENDENT_ACCEPTANCE_EVIDENCE"})
 MAX_RETRIES = 2
@@ -35,13 +37,12 @@ def recovery_decision(
         return {"action": "BLOCK", "reason": "INVALID_ATTEMPT_COUNT"}
     if reason in TRANSIENT and attempts < MAX_RETRIES:
         return {"action": "RETRY_LOCAL", "request_id": ident, "reason": reason}
-    # Only existing capability-level 3+ requests can enter the existing
-    # decomposition lane; its validator still enforces full acceptance coverage.
-    if (isinstance(request.get("route"), dict) and request["route"].get("builder") == "CAPABLE"
-            and type(request.get("capability_level")) is int
-            and request["capability_level"] >= 3
-            and attempts < MAX_RETRIES
-            and reason not in MISSING_ORACLE):
+    # Reuse the *same* eligibility predicate as the actual local decomposition
+    # pipeline. A numerical level alone is not enough: forced builders, missing
+    # acceptance/scope, planning tasks and unsupported native sources must not
+    # get a recovery decision the executor can never carry out.
+    if (attempts < MAX_RETRIES and reason not in MISSING_ORACLE
+            and task_decomposer.decomposable(request)):
         return {"action": "DECOMPOSE_LOCAL", "request_id": ident, "reason": reason}
     for candidate in eligible_alternatives:
         if (isinstance(candidate, dict) and isinstance(candidate.get("id"), str)
