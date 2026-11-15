@@ -431,6 +431,10 @@ def can_start_locally(request: dict[str, Any]) -> bool:
     """
     from . import iron_god_local_drafter as local_drafter  # local import: the drafter builds on this module
 
+    if isinstance(request.get("gdscript"), dict):
+        return (request.get("owner_approved") is True
+                and (request.get("route") or {}).get("builder") == LOCAL
+                and request.get("capability_level") == 1)
     return (request.get("route") or {}).get("builder") == LOCAL and local_drafter.eligible(request)
 
 
