@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 from project_orchestrator.local_acceptance import (
     commit_or_recover_prepared_acceptance,
@@ -94,19 +95,29 @@ def accept(
     *,
     index: int,
     base: str,
+    source_builder: Callable[[int], str] | None = None,
+    external_authorized: Callable[[], bool] | None = None,
 ) -> str:
     key, expected = MILESTONES[index], VALUES[index]
+    ensure_owner = external_authorized or (lambda: True)
+    assert ensure_owner(), "EXTERNAL_OWNER_AUTHORITY_DENIED"
     # Fail the actual targeted test before editing, not just a mocked oracle.
     native_test(repo, (key.removeprefix("micro-"),), must_pass=False)
+    if source_builder is None:
+        source = f"def {key.removeprefix('micro-')}() -> int:\n    return {expected}\n"
+    else:
+        source = source_builder(
+            index
+        )  # syntactically/AST validated by injected local model adapter
+    assert ensure_owner(), "EXTERNAL_OWNER_AUTHORITY_REVOKED_DURING_MODEL"
     with (repo / "helpers.py").open("a", encoding="utf-8") as stream:
-        stream.write(
-            f"\ndef {key.removeprefix('micro-')}() -> int:\n    return {expected}\n"
-        )
+        stream.write("\n" + source)
     git(repo, "add", "helpers.py")
     git(repo, "commit", "-qm", key)
     sha = git(repo, "rev-parse", "HEAD")
     test_keys = tuple(s.removeprefix("micro-") for s in MILESTONES[: index + 1])
     receipt = evidence(repo, sha, test_keys, folder)
+    assert ensure_owner(), "EXTERNAL_OWNER_AUTHORITY_REVOKED_AFTER_TEST"
     prepare_verified_acceptance(
         repo=repo,
         state=state,
@@ -162,9 +173,13 @@ def next_ready(
     )
 
 
-def test_three_actual_commits_and_native_tests_survive_restart_after_second(
+def run_disposable_three_edits(
     tmp_path: Path,
-) -> None:
+    *,
+    source_builder: Callable[[int], str] | None = None,
+    external_authorized: Callable[[], bool] | None = None,
+) -> dict[str, object]:
+    """Shared real Git+SQLite canary, deterministic or injected local model."""
     repo, owner = tmp_path / "repo", tmp_path / "owner"
     repo.mkdir()
     owner.mkdir()
@@ -200,11 +215,31 @@ def test_three_actual_commits_and_native_tests_survive_restart_after_second(
         required_checks=("tests",),
         product_reality_required=False,  # Disposable fixture only, not a product release.
     )
-    sha_a = accept(repo, state, refs, policy, tmp_path, index=0, base=first_base)
+    sha_a = accept(
+        repo,
+        state,
+        refs,
+        policy,
+        tmp_path,
+        index=0,
+        base=first_base,
+        source_builder=source_builder,
+        external_authorized=external_authorized,
+    )
     next_b = next_ready(state, refs, owner, prior_index=0, sha=sha_a)
     assert next_b.status == "READY_FOR_LEASED_DISPATCH"
     assert next_b.next_slice_id == "IG-beta"
-    sha_b = accept(repo, state, refs, policy, tmp_path, index=1, base=sha_a)
+    sha_b = accept(
+        repo,
+        state,
+        refs,
+        policy,
+        tmp_path,
+        index=1,
+        base=sha_a,
+        source_builder=source_builder,
+        external_authorized=external_authorized,
+    )
     next_c = next_ready(state, refs, owner, prior_index=1, sha=sha_b)
     assert next_c.status == "READY_FOR_LEASED_DISPATCH"
     assert next_c.next_slice_id == "IG-gamma"
@@ -228,7 +263,17 @@ def test_three_actual_commits_and_native_tests_survive_restart_after_second(
     assert resumed == next_c
     assert resumed.accepted_sha == sha_b
 
-    sha_c = accept(repo, state, refs, policy, tmp_path, index=2, base=sha_b)
+    sha_c = accept(
+        repo,
+        state,
+        refs,
+        policy,
+        tmp_path,
+        index=2,
+        base=sha_b,
+        source_builder=source_builder,
+        external_authorized=external_authorized,
+    )
     assert refs.accepted() == sha_c
     assert int(git(repo, "rev-list", "--count", f"{first_base}..{sha_c}")) == 3
     assert len({sha_a, sha_b, sha_c}) == 3
@@ -252,3 +297,17 @@ def test_three_actual_commits_and_native_tests_survive_restart_after_second(
     assert len({e["milestone_id"] for e in accepted_events}) == 3
     assert refs.accepted() == sha_c
     native_test(repo, ("alpha", "beta", "gamma"), must_pass=True)
+    return {
+        "verified_commits": [sha_a, sha_b, sha_c],
+        "native_tests_green_after_each": True,
+        "pause_after_second": True,
+        "resumed_without_duplicate": True,
+        "last_accepted_head": sha_c,
+        "disposable_only": True,
+    }
+
+
+def test_three_actual_commits_and_native_tests_survive_restart_after_second(
+    tmp_path: Path,
+) -> None:
+    run_disposable_three_edits(tmp_path)
