@@ -1194,6 +1194,21 @@ def advance_product_lane(
         idle = "IDLE_NO_APPROVED_BACKLOG_ITEM" if config.get("planning") == "backlog" and not items else (
             "IDLE_ALL_REPOSITORIES_AWAITING_CI")
         return _report(lane, {"status": idle, "publications": published, **idle_diagnostics(lane, explained, rejected)})
+    recovery_context = None
+    if config.get("planning") == "backlog" and repo in items:
+        previous = items[repo]
+        alternative = choose_failed_worker_alternative(
+            repo, repos, busy, items, approved, state, max_level=select_level,
+            routable=(lambda task: model_routing.route(
+                task["level"], measured or {}, (free_gib or available_gib)(),
+                after_pressure=bool(pressure)).model is not None)
+            if use_routing else None,
+        )
+        if alternative is not None:
+            target_repo, target_item, failed_packet = alternative
+            recovery_context = (repo, previous["id"], failed_packet, target_item["id"])
+            repo = target_repo
+            items[repo] = target_item
     decision = None
     if use_routing:
         chosen_item = items.get(repo)
@@ -1251,6 +1266,17 @@ def advance_product_lane(
         raise
     if result["status"] not in {"DISPATCHED", "WORKER_LAUNCH_UNCONFIRMED"}:
         pool.release(WORKER_LEASE_ID, lease.lease_id)
+    if recovery_context is not None and result["status"] == "DISPATCHED" and result.get("packet_id"):
+        origin_repo, failed_id, failed_packet, alternative_id = recovery_context
+        if backlog.record_recovery_diversion(
+            lane.root, failed_id, failed_packet_id=failed_packet,
+            alternative_packet_id=result["packet_id"], alternative_item_id=alternative_id,
+        ):
+            working_memory.record(
+                lane.state_root, origin_repo, "LOCAL_FAILURE_ALTERNATIVE_DISPATCHED",
+                packet_id=result["packet_id"],
+                detail=f"{failed_id} failed in {failed_packet}; continued {alternative_id} in {repo}",
+            )
     return result
 
 
@@ -1317,6 +1343,59 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
     if report and (report["removed"] or report["left_for_next_run"]):
         roadmap_refill.log_event(lane.root, "WORKTREES_CLEANED", "<portfolio>", "", {
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
+
+
+def choose_failed_worker_alternative(
+    selected_repo: str, repos: list[str], busy: set[str],
+    chosen: dict[str, dict[str, Any]], approved: list[dict[str, Any]],
+    state: dict[str, Any], *, max_level: int,
+    routable: Callable[[dict[str, Any]], bool] | None = None,
+) -> tuple[str, dict[str, Any], str] | None:
+    """Use existing failure evidence to prefer one *different* eligible task.
+
+    This is a single-cycle preference, not a second queue. A successful
+    alternative launch is recorded against the exact failed packet in the
+    existing backlog ledger, so restarting the supervisor cannot repeatedly
+    postpone the same failed task. Other repos are tried before other tasks
+    in the same repo; no new roadmap authority or test oracle is invented.
+    """
+    first = chosen.get(selected_repo)
+    if first is None:
+        return None
+    row = state.get("items", {}).get(first["id"], {})
+    failed_packet = backlog.failed_worker_evidence(row)
+    if failed_packet is None:
+        return None
+    done = {item["id"] for item in approved if backlog.is_done(item, state)}
+    start = repos.index(selected_repo) if selected_repo in repos else 0
+    rotated = [*repos[start + 1:], *repos[:start]]
+    candidates = [
+        (repo, chosen[repo])
+        for repo in rotated
+        if repo != selected_repo and repo not in busy and repo in chosen
+    ]
+    # Stay productive even when no other repository has an eligible slice.
+    candidates.extend(
+        (selected_repo, item) for item in approved
+        if item["repository"] == selected_repo and item["id"] != first["id"]
+        and backlog.exclusion(item, state, items=approved, done=done, max_level=max_level) is None
+    )
+    for repository, alternative in candidates:
+        if routable is not None and not routable(alternative):
+            continue
+        action = stall_recovery.recovery_decision(
+            {"id": first["id"], "route": {"builder": "LOCAL"},
+             "capability_level": first["level"]},
+            reason=str(row.get("outcome") or "FAILED_IMPLEMENTATION"),
+            attempts=int(row.get("attempts", 0)), owner_authorized=True,
+            memory_available=True,
+            eligible_alternatives=[{
+                "id": alternative["id"], "eligible": True, "owner_approved": True,
+            }],
+        )
+        if action["action"] == "CONTINUE_OTHER_LOCAL":
+            return repository, alternative, failed_packet
+    return None
 
 
 def next_routable_local_repository(
