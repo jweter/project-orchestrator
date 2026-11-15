@@ -122,6 +122,98 @@ def test_failed_child_preserves_real_attempt_evidence_not_the_uncreated_retry(
     assert second["packet_ids"] == ["PRODUCT-456"]
 
 
+def test_exhausted_child_generates_a_bounded_unprivileged_repair_brief(
+    tmp_path: Path,
+) -> None:
+    active = plan(tmp_path)
+    active["subtasks"].append(
+        {
+            "key": "t3",
+            "depends_on": [],
+            "module_path": "pkg/three.py",
+        }
+    )
+    active["slice_acceptance"] = ["first behavior", "second behavior", "third behavior"]
+    active["coverage"] = {"1": ["t1"], "2": ["t2"], "3": ["t3"]}
+    atomic_json(tmp_path / "decompositions" / f"{PARENT}.json", active)
+
+    t1, r1, t3 = PARENT + "-t1", PARENT + "-t1-r1", PARENT + "-t3"
+    items = [item(t1), item(r1), item(t3)]
+    state = {
+        "items": {
+            t1: {"outcome": "FAIL: SLICE_TESTS_FAILED", "attempts": 3},
+            r1: {
+                "outcome": "FAIL: SLICE_TESTS_FAILED",
+                "attempts": 3,
+                "packet_id": "PRODUCT-LAST",
+            },
+            t3: {"outcome": "MERGED", "packets": ["PRODUCT-VERIFIED"]},
+        }
+    }
+    original = json.loads(json.dumps(state))
+    assert progress.record_checkpoints(tmp_path, REPO, "c" * 40, items, state) == [
+        PARENT
+    ]
+    path = progress.checkpoint_path(tmp_path, active)
+    checkpoint = json.loads(path.read_text(encoding="utf-8"))
+    (brief,) = checkpoint["repair_candidates"]
+    assert brief["kind"] == "EXHAUSTED_LOCAL_MICROTASK"
+    assert brief["failed_key"] == "t1"
+    assert brief["observed_attempt_id"] == r1
+    assert brief["blocked_keys"] == ["t1", "t2"]
+    assert brief["already_completed_keys"] == ["t3"]
+    assert [c["text"] for c in brief["affected_owner_criteria"]] == [
+        "first behavior",
+        "second behavior",
+    ]
+    assert brief["narrow_existing_paths"] == ["pkg/one.py"]
+    assert brief["packet_ids"] == ["PRODUCT-LAST"]
+    assert brief["requires_new_authorization"] is True
+    assert brief["dispatchable"] is False
+    assert brief["attempt_budget_reset"] is False
+    assert checkpoint["subtasks"][2]["receipt"] == "GITHUB_MERGED_IN_LANE_LEDGER"
+    assert state == original  # no attempt/owner-control or backlog mutation
+    saved = path.read_bytes()
+    assert progress.record_checkpoints(tmp_path, REPO, "c" * 40, items, state) == []
+    assert path.read_bytes() == saved
+
+
+def test_partial_plan_retains_residual_without_claiming_product_completion(
+    tmp_path: Path,
+) -> None:
+    active = plan(tmp_path, second=False)
+    active["status"] = "PARTIAL"
+    active["residual"] = ["connect helper to the existing handler"]
+    atomic_json(tmp_path / "decompositions" / f"{PARENT}.json", active)
+    t1 = PARENT + "-t1"
+    progress.record_checkpoints(
+        tmp_path,
+        REPO,
+        "b" * 40,
+        [item(t1)],
+        {"items": {t1: {"outcome": "MERGED"}}},
+    )
+    data = json.loads(
+        progress.checkpoint_path(tmp_path, active).read_text(encoding="utf-8")
+    )
+    (brief,) = data["repair_candidates"]
+    assert brief["kind"] == "UNDELIVERED_RESIDUAL"
+    assert brief["remaining_requirements"] == ["connect helper to the existing handler"]
+    assert brief["already_completed_keys"] == ["t1"]
+    assert brief["requires_new_authorization"] is True
+    assert brief["dispatchable"] is False
+    assert data["product_acceptance"] == "UNVERIFIED_BY_THIS_CHECKPOINT"
+
+
+def test_healthy_plan_generates_no_repair_proposals(tmp_path: Path) -> None:
+    active = plan(tmp_path)
+    progress.record_checkpoints(tmp_path, REPO, "b" * 40, [], {})
+    data = json.loads(
+        progress.checkpoint_path(tmp_path, active).read_text(encoding="utf-8")
+    )
+    assert data["repair_candidates"] == []
+
+
 def test_local_acceptance_is_not_merged_or_product_accepted(tmp_path: Path) -> None:
     active = plan(tmp_path, second=False)
     t1 = PARENT + "-t1"

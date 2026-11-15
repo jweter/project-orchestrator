@@ -105,6 +105,78 @@ def _current_subtasks(
     return rows
 
 
+def repair_candidates(
+    plan: dict[str, Any], rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Locate the smallest unfinished local branches without issuing new attempts.
+
+    These are *diagnostic* manifests, never admission or continuation grants.
+    The existing lineage cap remains authoritative even if the failed work
+    could be split into a smaller, newly approved roadmap slice later.
+    """
+    by_key = {row["key"]: row for row in rows}
+    completed = [row["key"] for row in rows if row["status"] == "DONE"]
+    coverage = plan.get("coverage") or {}
+    original = plan.get("slice_acceptance") or []
+    candidates: list[dict[str, Any]] = []
+    for sub in plan["subtasks"]:
+        key = sub["key"]
+        row = by_key.get(key, {})
+        if row.get("status") != "EXHAUSTED":
+            continue
+
+        impacted = {key}
+        for descendant in plan["subtasks"]:
+            descendant_key = descendant["key"]
+            if by_key.get(descendant_key, {}).get("status") == "DONE":
+                continue
+            if any(dep in impacted for dep in descendant.get("depends_on") or []):
+                impacted.add(descendant_key)
+        criteria = []
+        for number, owners in coverage.items():
+            if not isinstance(owners, list) or not any(k in impacted for k in owners):
+                continue
+            if not str(number).isdigit() or not 1 <= int(number) <= len(original):
+                continue
+            criteria.append(
+                {"index": int(number), "text": str(original[int(number) - 1])[:300]}
+            )
+        scope = [sub.get("module_path"), sub.get("test_path")]
+        candidates.append(
+            {
+                "kind": "EXHAUSTED_LOCAL_MICROTASK",
+                "failed_key": key,
+                "observed_attempt_id": row.get("attempt_id"),
+                "blocked_keys": [
+                    s["key"] for s in plan["subtasks"] if s["key"] in impacted
+                ],
+                "already_completed_keys": completed,
+                "affected_owner_criteria": sorted(criteria, key=lambda c: c["index"]),
+                "narrow_existing_paths": [p for p in scope if isinstance(p, str) and p],
+                "outcome": row.get("outcome"),
+                "attempts": row.get("attempts"),
+                "packet_ids": list(row.get("packet_ids") or []),
+                "proposed_action": "PROPOSE_SMALLER_ROADMAP_REPAIR_FOR_OWNER_APPROVAL",
+                "requires_new_authorization": True,
+                "dispatchable": False,
+                "attempt_budget_reset": False,
+            }
+        )
+    if plan.get("status") == "PARTIAL" and plan.get("residual"):
+        candidates.append(
+            {
+                "kind": "UNDELIVERED_RESIDUAL",
+                "remaining_requirements": [str(r)[:300] for r in plan["residual"][:5]],
+                "already_completed_keys": completed,
+                "proposed_action": "PROPOSE_RESIDUAL_ROADMAP_SLICE_FOR_OWNER_APPROVAL",
+                "requires_new_authorization": True,
+                "dispatchable": False,
+                "attempt_budget_reset": False,
+            }
+        )
+    return candidates
+
+
 def record_checkpoints(
     lane_root: Path,
     repository: str,
@@ -170,6 +242,7 @@ def record_checkpoints(
             "observed_repository_head": head,
             "plan_status": plan["status"],
             "subtasks": rows,
+            "repair_candidates": repair_candidates(plan, rows),
             "receipts": receipts,
         }
         if (
