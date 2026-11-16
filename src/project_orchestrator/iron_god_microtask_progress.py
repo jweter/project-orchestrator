@@ -42,6 +42,123 @@ def checkpoint_path(lane_root: Path, plan: dict[str, Any]) -> Path:
     return Path(lane_root) / PROGRESS_DIR / f"{safe}-{parent_hash}-{revision}.json"
 
 
+def checkpoint_replay_conflicts(
+    lane_root: Path,
+    plan: dict[str, Any],
+    items: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> list[str]:
+    """Fail closed when restart state contradicts an already-observed child receipt.
+
+    The canonical backlog/ledger alone decides what is DONE and what may be
+    dispatched. Historical checkpoint receipts are never used to *grant*
+    completion or a new worker. They can, however, veto replay when a
+    checkpoint says a child was merged or accepted locally but the canonical
+    state/approved item needed to reconcile it has vanished.
+
+    Caller must leave the plan ACTIVE for reconciliation: do not reset lineage
+    budgets, create a new queue or infer a live owner/lease from this history.
+    """
+    path = checkpoint_path(lane_root, plan)
+    # A dangling symlink is not "no checkpoint": never overwrite its unknown
+    # historical target with a fresh empty snapshot during a refill pass.
+    if path.is_symlink():
+        return ["CHECKPOINT_INVALID_FILE"]
+    if not path.exists():
+        return []
+    try:
+        if not path.is_file() or path.stat().st_size > 60_000:
+            return ["CHECKPOINT_INVALID_FILE"]
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return ["CHECKPOINT_UNREADABLE"]
+    if (
+        not isinstance(saved, dict)
+        or saved.get("schema_version") != SCHEMA_VERSION
+        or saved.get("parent_id") != plan.get("parent_id")
+        or saved.get("repository") != plan.get("repository")
+        or saved.get("planned_at_head") != plan.get("planned_at_head")
+        or saved.get("product_acceptance") != "UNVERIFIED_BY_THIS_CHECKPOINT"
+        or not isinstance(saved.get("receipts"), list)
+    ):
+        return ["CHECKPOINT_IDENTITY_UNVERIFIED"]
+    known = {
+        item["id"] for item in items
+        if (isinstance(item, dict) and isinstance(item.get("id"), str)
+            and item.get("repository") == plan.get("repository"))
+    }
+    rows = state.get("items") if isinstance(state, dict) else None
+    rows = rows if isinstance(rows, dict) else {}
+    keys = {
+        sub.get("key") for sub in plan.get("subtasks", [])
+        if isinstance(sub, dict) and isinstance(sub.get("key"), str)
+    }
+    conflicts: list[str] = []
+    if len(saved["receipts"]) > 1000:
+        return ["CHECKPOINT_RECEIPTS_UNVERIFIED"]
+    for receipt in saved["receipts"]:
+        if not isinstance(receipt, dict):
+            return ["CHECKPOINT_RECEIPTS_UNVERIFIED"]
+        kind = receipt.get("receipt")
+        if not isinstance(kind, str):
+            return ["CHECKPOINT_RECEIPTS_UNVERIFIED"]
+        if kind not in {"GITHUB_MERGED_IN_LANE_LEDGER", "LOCAL_ACCEPTED_ONLY"}:
+            continue
+        key = receipt.get("key")
+        ident = receipt.get("attempt_id")
+        if not isinstance(key, str) or not isinstance(ident, str) or key not in keys:
+            return ["CHECKPOINT_RECEIPT_IDENTITY_UNVERIFIED"]
+        base = f"{plan['parent_id']}-{key}"
+        if not (ident == base or
+                (ident.startswith(base + "-r") and ident[len(base) + 2:].isdigit())):
+            return ["CHECKPOINT_RECEIPT_IDENTITY_UNVERIFIED"]
+        row = rows.get(ident)
+        if ident not in known or not isinstance(row, dict):
+            conflicts.append(key)
+        elif kind == "GITHUB_MERGED_IN_LANE_LEDGER" and row.get("outcome") != "MERGED":
+            conflicts.append(key)
+    return sorted(set(conflicts))
+
+
+def filter_replay_conflicted_items(
+    lane_root: Path,
+    approved: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Veto unsafe *existing* approved items before the actual Product dispatch.
+
+    This is a negative-only guard: checkpoint history cannot add approved
+    items or mark any item done. If any task receipt in an ACTIVE plan cannot
+    be reconciled with canonical approved items and backlog-state, withhold
+    that parent's existing child items. Independent plans stay eligible.
+    """
+    from . import iron_god_task_decomposer as decomposer
+
+    blocked_ids: set[str] = set()
+    for plan in decomposer.load_plans(lane_root):
+        if plan.get("status") != "ACTIVE" or not checkpoint_replay_conflicts(
+            lane_root, plan, approved, state
+        ):
+            continue
+        repo = plan.get("repository")
+        for sub in plan["subtasks"]:
+            if not isinstance(sub, dict) or not isinstance(sub.get("key"), str):
+                continue
+            base = f"{plan['parent_id']}-{sub['key']}"
+            for item in approved:
+                if not isinstance(item, dict) or item.get("repository") != repo:
+                    continue
+                ident = item.get("id")
+                if (isinstance(ident, str) and
+                        (ident == base or
+                         (ident.startswith(base + "-r") and
+                          ident[len(base) + 2:].isdigit()))):
+                    blocked_ids.add(ident)
+    return ([item for item in approved
+             if isinstance(item, dict) and item.get("id") not in blocked_ids],
+            sorted(blocked_ids))
+
+
 def _current_subtasks(
     lane_root: Path,
     plan: dict[str, Any],
@@ -197,6 +314,14 @@ def record_checkpoints(
         if plan.get("repository") != repository or not plan["subtasks"]:
             continue
         path = checkpoint_path(lane_root, plan)
+        # Refill runs BEFORE child_requests. Reject malformed or unreadable
+        # checkpoint evidence rather than overwrite it with empty receipts.
+        # For a VALID checkpoint whose historical receipt contradicts missing
+        # canonical state, preserve receipts while refreshing observational
+        # subtasks; the later replay veto still prevents dispatch.
+        conflicts = checkpoint_replay_conflicts(lane_root, plan, items, state)
+        if any(problem.startswith("CHECKPOINT_") for problem in conflicts):
+            continue
         try:
             previous = json.loads(path.read_text(encoding="utf-8"))
             if not isinstance(previous, dict):

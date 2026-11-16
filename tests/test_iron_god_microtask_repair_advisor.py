@@ -304,6 +304,14 @@ def test_cli_requires_supervisor_acknowledged_owner_grant_and_exact_clone_head(
 
 def test_actual_checkpoint_generator_feeds_owner_gated_advisor(lane: Path) -> None:
     """End-to-end read-only bridge from real #717 candidates, not a hand-built JSON fixture."""
+    # The shared fixture intentionally plants an old, incomplete hand-authored
+    # checkpoint for advisory-reader tests. Production must preserve that
+    # unverified history rather than overwrite it. This test instead exercises
+    # canonical checkpoint creation from a NEW plan with no prior record.
+    plan = json.loads(decomposer.plan_path(lane, PARENT).read_text(encoding="utf-8"))
+    legacy_fixture = progress.checkpoint_path(lane, plan)
+    assert legacy_fixture.is_file()
+    legacy_fixture.unlink()  # Test isolation only: never delete production evidence.
     t1 = PARENT + "-t1"
     r1 = PARENT + "-t1-r1"
     t3 = PARENT + "-t3"
