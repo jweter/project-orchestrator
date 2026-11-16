@@ -1,7 +1,6 @@
 """Godot scheduler integration: owner gates, one lease, crash recovery and publication."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 
