@@ -188,6 +188,19 @@ def snapshot(state_root: Path, *, now: datetime | None = None) -> dict[str, Any]
         reason = "CANON_LANE_" + str(canon["status"])
         status = "ACTIVE_UNVERIFIED_PROGRESS"
         fix = "Correlate the Canon-lane packet with worker and release evidence"
+    elif evidence["product"]["freshness"] == "FRESH" and product.get("status") in {
+        "WAITING_FOR_MEMORY", "WAITING_FOR_CALIBRATION", "WAITING_FOR_RESOURCES",
+    }:
+        # The commissioning Product lane has its own admission path. Preserve
+        # its fresh resource/capability blocker before the idle Canon fallback.
+        waiting = str(product["status"])
+        reason = "PRODUCT_LANE_" + waiting
+        status = "BLOCKED"
+        fix = {
+            "WAITING_FOR_MEMORY": "Inspect model-route memory requirements and wait for safe admission; do not lower memory floors",
+            "WAITING_FOR_CALIBRATION": "Inspect measured local builder capability and approved routes; do not substitute unapproved cloud models",
+            "WAITING_FOR_RESOURCES": "Inspect Product-lane admission and active leases; retry only when existing resource gates permit",
+        }[waiting]
     elif workers is not None and workers > 0:
         reason = "LEGACY_WORKERS_RUNNING_REPORTED"
         status = "ACTIVE_UNVERIFIED_PROGRESS"
@@ -229,6 +242,12 @@ def snapshot(state_root: Path, *, now: datetime | None = None) -> dict[str, Any]
         recovery_action = "OWNER_CONTROL_MAINTENANCE_ONLY"
     elif status == "ACTIVE_UNVERIFIED_PROGRESS":
         recovery_action = "OBSERVE_CURRENT_PACKET_NO_DUPLICATE_DISPATCH"
+    elif reason == "PRODUCT_LANE_WAITING_FOR_MEMORY":
+        recovery_action = "WAIT_FOR_SAFE_MEMORY_ADMISSION"
+    elif reason == "PRODUCT_LANE_WAITING_FOR_CALIBRATION":
+        recovery_action = "REVIEW_MEASURED_LOCAL_MODEL_CAPABILITY"
+    elif reason == "PRODUCT_LANE_WAITING_FOR_RESOURCES":
+        recovery_action = "RECHECK_PRODUCT_RESOURCE_ADMISSION"
     elif resource == "CRITICAL_MEMORY_NO_NEW_WORK":
         recovery_action = "WAIT_FOR_SAFE_MEMORY_ADMISSION"
     elif reason == "PRODUCT_CANONICAL_PREFLIGHT_FAILED":

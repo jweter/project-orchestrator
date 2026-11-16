@@ -224,3 +224,55 @@ def test_advisory_v2_status_is_bounded_idempotent_and_never_executes(tmp_path):
     pending = coord.list_pending_messages(db, recipient_label="iron-god")
     assert [m["message_id"] for m in pending["messages"]] == [bad["message_id"]]
     assert not (tmp_path / "IronGodControl").exists()
+
+
+@pytest.mark.parametrize(
+    ("product_wait", "expected_action", "fix_fragment"),
+    [
+        ("WAITING_FOR_MEMORY", "WAIT_FOR_SAFE_MEMORY_ADMISSION", "memory floors"),
+        ("WAITING_FOR_CALIBRATION", "REVIEW_MEASURED_LOCAL_MODEL_CAPABILITY", "capability"),
+        ("WAITING_FOR_RESOURCES", "RECHECK_PRODUCT_RESOURCE_ADMISSION", "resource gates"),
+    ],
+)
+def test_fresh_product_wait_takes_priority_over_canon_idle(
+    tmp_path, product_wait, expected_action, fix_fragment
+):
+    """Review regression: Product resource/capability blockers must not look like exhausted Canon work."""
+    now = datetime.now(UTC)
+    _state(tmp_path, now, product_status=product_wait, canon_status="IDLE_NO_READY_SLICE")
+    report = obs.snapshot(tmp_path, now=now)
+
+    assert report["status"] == "BLOCKED"
+    assert report["reason"] == "PRODUCT_LANE_" + product_wait
+    assert fix_fragment in report["remediation"]
+    assert report["recovery_advice"]["action"] == expected_action
+    assert report["recovery_advice"]["automatic_execution"] is False
+    assert report["recovery_advice"]["owner_grant_created"] is False
+    assert report["lanes"]["canon"]["status"] == "IDLE_NO_READY_SLICE"
+
+
+def test_stale_product_wait_does_not_override_fresh_canon_idle(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now, product_status="WAITING_FOR_MEMORY")
+    _put(tmp_path, "iron-god-products/lane-status.json", {
+        "observed_at_utc": (now - timedelta(minutes=40)).isoformat(),
+        "status": "WAITING_FOR_MEMORY", "repository": "jweter/VoiceStudio",
+    })
+    report = obs.snapshot(tmp_path, now=now)
+
+    assert report["evidence"]["product"]["freshness"] == "STALE"
+    assert report["reason"] == "CANON_NO_READY_SLICE"
+    assert report["recovery_advice"]["action"] == "INSPECT_CANON_AND_PRODUCT_FRONTIER"
+
+
+def test_owner_control_still_overrides_fresh_product_resource_block(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now, product_status="WAITING_FOR_RESOURCES")
+    _put(tmp_path, "supervisor-execution-authority.json", {
+        "observed_at_utc": now.isoformat(),
+        "permitted": False, "supervisor_instance_id": INSTANCE,
+    })
+    report = obs.snapshot(tmp_path, now=now)
+
+    assert report["reason"] == "OWNER_EXECUTION_NOT_PERMITTED"
+    assert report["recovery_advice"]["action"] == "OWNER_CONTROL_MAINTENANCE_ONLY"
