@@ -74,10 +74,10 @@ def independent_exact_head_review(
 
     # Last actionable decision per trusted reviewer wins: an earlier APPROVED cannot
     # survive a later CHANGES_REQUESTED, COMMENTED or DISMISSED submission.
-    active: dict[str, tuple[datetime, str]] = {}
+    active: dict[str, tuple[datetime, str, str]] = {}
     for review in reviews:
         who = str((review.get("user") or {}).get("login") or "")
-        if (not who or who == author_login or review.get("commit_id") != head_sha or
+        if (not who or who == author_login or
                 review.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}):
             continue
         submitted = review.get("submitted_at")
@@ -94,10 +94,10 @@ def independent_exact_head_review(
         if state not in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
             continue
         if who not in active or when >= active[who][0]:
-            active[who] = (when, state)
-    if any(state == "CHANGES_REQUESTED" for _, state in active.values()):
+            active[who] = (when, state, str(review.get("commit_id") or ""))
+    if any(state == "CHANGES_REQUESTED" for _, state, _ in active.values()):
         return False
-    authorized = any(state == "APPROVED" for _, state in active.values())
+    authorized = any(state == "APPROVED" and reviewed_head == head_sha for _, state, reviewed_head in active.values())
 
     for comment in gh_paginated(f"repos/{repo}/issues/{number}/comments?per_page=100"):
         if str((comment.get("user") or {}).get("login") or "") not in CODEX_REVIEW_BOTS:
