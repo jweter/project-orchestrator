@@ -37,3 +37,14 @@ Limitations: These are deterministic tests with simulated local Ollama and
 Godot processes. This is **not** a claim of an installed end-to-end Everward
 canary, verified native game behavior, or permission to bypass exact-head CI,
 independent review, the owner gate, worker leases, or release promotion.
+
+## Durable capability-graph progression
+
+After the common publisher records a Godot PR as MERGED,
+`roadmap_progress.completed_slices()` now recognizes its request **only**
+when the persisted merged Godot receipt matches the repository-scoped
+publication record with a valid merge SHA and PR URL. That explicit evidence
+feeds the existing graph-only roadmap progress PR builder. Scheduler overlay
+state alone never marks a capability-graph slice complete. Missing, unmerged,
+cross-repository, or malformed receipts remain unverified and cannot advance
+canonical product completion.

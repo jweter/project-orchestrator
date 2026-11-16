@@ -626,3 +626,64 @@ def test_variants_of_a_branch_are_recognised_but_unrelated_branches_are_not() ->
     assert progress.is_variant_of(base, base) and progress.is_variant_of(base + "-2", base) and progress.is_variant_of(base + "-4", base)
     assert not progress.is_variant_of(base + "-beta", base) and not progress.is_variant_of(base + "9", base)
     assert not progress.is_variant_of("iron-god/roadmap-progress/y-abc-12345678", base)
+
+
+def _godot_progress(world: dict, *, state: str = "MERGED",
+                    with_url: bool = True, merge_sha: str = "f" * 40,
+                    repository: str = REPO) -> tuple[dict, dict]:
+    """Real persisted common-publication shape, without a synthetic backlog item."""
+    request_id = refill.item_id(REPO, "cap-a", "s1")
+    pub = {
+        "lane": "godot", "repository": repository,
+        "source_request_id": request_id,
+        "state": state,
+        "merged_sha": merge_sha,
+        "pr": {"url": f"https://github.com/{REPO}/pull/41"} if with_url else {},
+    }
+    publications = {"godot-verified": pub}
+    (world["lane"] / "publications.json").write_text(
+        json.dumps({"items": publications}), encoding="utf-8",
+    )
+    payload = json.loads(
+        (world["state_root"] / "capability-graphs" / f"{REPO.replace('/', '__')}.json").read_text("utf-8")
+    )
+    return payload, publications
+
+
+def test_common_merged_godot_publication_advances_durable_capability_graph(world):
+    payload, pubs = _godot_progress(world)
+    found = progress.completed_slices(REPO, payload, [], {"items": {}}, pubs, world["lane"])
+    assert len(found) == 1
+    assert found[0]["capability"] == "cap-a"
+    assert found[0]["slice"] == "s1"
+    assert found[0]["evidence"] == [
+        f"https://github.com/{REPO}/pull/41 merged as {'f' * 12} (verified Godot publication)"
+    ]
+    updated = progress.apply_completions(
+        json.dumps(graph_payload(), indent=2) + "\n", found,
+    )
+    row = json.loads(updated)["capabilities"][0]["slices"][0]
+    assert row["state"] == "VERIFIED_COMPLETE"
+    assert row["verification"] == found[0]["evidence"]
+    assert json.loads(updated)["capabilities"][0]["slices"][1]["state"] == "PLANNED"
+
+
+@pytest.mark.parametrize("changes", [
+    {"state": "PUBLISH_PENDING"},
+    {"with_url": False},
+    {"merge_sha": "unverified"},
+    {"repository": "jweter/SomeOtherRepository"},
+])
+def test_unverified_or_cross_repository_godot_receipts_cannot_complete_graph(world, changes):
+    payload, pubs = _godot_progress(world, **changes)
+    assert progress.completed_slices(
+        REPO, payload, [], {"items": {}}, pubs, world["lane"],
+    ) == []
+
+
+def test_unpersisted_godot_status_cannot_claim_graph_progress(world):
+    payload, pubs = _godot_progress(world)
+    (world["lane"] / "publications.json").unlink()
+    assert progress.completed_slices(
+        REPO, payload, [], {"items": {}}, pubs, world["lane"],
+    ) == []
