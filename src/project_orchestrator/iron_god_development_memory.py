@@ -128,14 +128,28 @@ def record_attempt(lane_root: Path, packet: dict[str, Any], handback: dict[str, 
     failure_class = classify(str(handback.get("status", "")), str(handback.get("summary", "")), evidence)
     instructions = {"direction": plan.get("direction"), "objective": plan.get("objective"),
                     "add": plan.get("add"), "test_path": plan.get("test_path")}
+    values = (
+        packet["packet_id"], item.get("id"), packet["repository"], packet["base_sha"], plan.get("module_path"),
+        json.dumps(plan.get("targets") or []), plan.get("mode") or ("build" if plan else "none"),
+        directed.get("model"), json.dumps(instructions), directed.get("prompt"), directed.get("reply"),
+        json.dumps(handback.get("verification") or []), diagnostics, failure_class,
+        outcome[:300], _now(),
+    )
+    # A packet is a single historical observation. A repeated handback must
+    # neither replace it nor silently rewrite its classification/learning.
+    # INSERT OR IGNORE first serializes competing SQLite writers; the ensuing
+    # read checks the actual committed winner inside the same transaction.
     with closing(_connect(lane_root)) as connection, connection:
         connection.execute(
-            "INSERT OR REPLACE INTO attempts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (packet["packet_id"], item.get("id"), packet["repository"], packet["base_sha"], plan.get("module_path"),
-             json.dumps(plan.get("targets") or []), plan.get("mode") or ("build" if plan else "none"),
-             directed.get("model"), json.dumps(instructions), directed.get("prompt"), directed.get("reply"),
-             json.dumps(handback.get("verification") or []), diagnostics, failure_class,
-             outcome[:300], _now()))
+            "INSERT OR IGNORE INTO attempts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", values,
+        )
+        existing = connection.execute(
+            "SELECT * FROM attempts WHERE packet_id=?", (packet["packet_id"],),
+        ).fetchone()
+        if existing is None or tuple(existing)[:-1] != values[:-1]:
+            # recorded_at_utc is intentionally excluded: identical replays
+            # occur at different times but are not distinct attempts.
+            raise sqlite3.IntegrityError("ATTEMPT_REPLAY_CONFLICT")
     return failure_class
 
 

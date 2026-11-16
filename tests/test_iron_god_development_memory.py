@@ -86,3 +86,43 @@ def test_backfill_reads_the_lane_records_already_on_disk(tmp_path, capsys):
     assert dm.main(["backfill", "--lane-root", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out) == {"recorded": 1}
     assert dm.stats(tmp_path)["failure_classes"] == {"REPLY_MALFORMED_BLOCK": 1}
+
+
+def test_conflicting_packet_replay_never_overwrites_original_failure_or_source(tmp_path):
+    """Worker replay or forged handback cannot rewrite learning for an existing packet."""
+    import sqlite3
+
+    initial = packet("P1", "KEA-7")
+    dm.record_attempt(tmp_path, initial, handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL: original")
+    db_file = dm.db_path(tmp_path)
+    with sqlite3.connect(db_file) as db:
+        original = db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone()
+
+    # Same packet and exact input is a genuine no-op, even at a later timestamp.
+    assert dm.record_attempt(tmp_path, initial, handback("FAIL", "UNEXPECTED_UNIT: X"),
+                             "FAIL: original") == "REPLY_UNEXPECTED_UNIT"
+    with sqlite3.connect(db_file) as db:
+        assert db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone() == original
+
+    # A changed model result, source, repository, or outcome cannot erase history.
+    edits = [
+        (initial, handback("PASS", "ok"), "ACCEPTED_LOCAL"),
+        (initial, handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL: changed"),
+        ({**initial, "base_sha": "c" * 40}, handback("FAIL", "UNEXPECTED_UNIT: X"),
+         "FAIL: original"),
+        ({**initial, "repository": "jweter/VoiceStudio"},
+         handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL: original"),
+    ]
+    for changed_packet, changed_handback, outcome in edits:
+        with pytest.raises(sqlite3.IntegrityError, match="ATTEMPT_REPLAY_CONFLICT"):
+            dm.record_attempt(tmp_path, changed_packet, changed_handback, outcome)
+        with sqlite3.connect(db_file) as db:
+            assert db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone() == original
+    assert dm.stats(tmp_path)["failure_classes"] == {"REPLY_UNEXPECTED_UNIT": 1}
+
+
+def test_new_packet_id_keeps_independent_attempt_history(tmp_path):
+    dm.record_attempt(tmp_path, packet("P1", "S1"), handback("FAIL", "UNEXPECTED_UNIT: x"), "FAIL")
+    dm.record_attempt(tmp_path, packet("P2", "S1"), handback("PASS", "ok"), "ACCEPTED_LOCAL")
+    assert dm.stats(tmp_path)["attempts"] == 2
+    assert dm.stats(tmp_path)["first_attempt_judged"] == 1
