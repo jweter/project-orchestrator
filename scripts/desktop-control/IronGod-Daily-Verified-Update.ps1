@@ -56,10 +56,14 @@ function Record-IronGodDailyStatus(
   $directory = Split-Path -Parent $reportFile
   New-Item -ItemType Directory -Path $directory -Force -ErrorAction Stop | Out-Null
   $scratch = $reportFile + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+  $backup = $reportFile + '.' + [guid]::NewGuid().ToString('N') + '.bak'
   try {
     [IO.File]::WriteAllText($scratch, $json + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding $false))
     if ([IO.File]::Exists($reportFile)) {
-      [IO.File]::Replace($scratch, $reportFile, $null)
+      # Windows PowerShell/.NET Framework requires a nonempty backup path.
+      # File.Replace commits the new report atomically without a partial read.
+      [IO.File]::Replace($scratch, $reportFile, $backup)
+      if ([IO.File]::Exists($backup)) { [IO.File]::Delete($backup) }
     } else {
       [IO.File]::Move($scratch, $reportFile)
     }
@@ -83,7 +87,21 @@ if ($SelfTest) {
     $observed = Decide-IronGodDailyUpdate $case[0] $case[1] $case[2] $case[3] $case[4]
     if ($observed -cne $case[5]) { throw "DAILY_UPDATE_SELFTEST_FAILED: $observed vs $($case[5])" }
   }
-  Write-Output 'DAILY_UPDATE_SELFTEST_PASSED: 5 scenarios'
+  # Exercise two *real* Windows/.NET atomic replacements in an isolated temp
+  # directory, not just the decision table (File.Replace has platform quirks).
+  $originalReport = $reportFile
+  $scratchRoot = Join-Path ([IO.Path]::GetTempPath()) ('iron-god-daily-update-test-' + [guid]::NewGuid().ToString('N'))
+  $reportFile = Join-Path $scratchRoot 'daily-status.json'
+  try {
+    Record-IronGodDailyStatus 'SELFTEST_FIRST' 'isolated' $same $newer $same | Out-Null
+    Record-IronGodDailyStatus 'SELFTEST_SECOND' 'isolated' $same $newer $same | Out-Null
+    $verified = Get-Content -LiteralPath $reportFile -Raw | ConvertFrom-Json
+    if ($verified.status -cne 'SELFTEST_SECOND') { throw 'DAILY_UPDATE_ATOMIC_REPORT_SELFTEST_FAILED' }
+  } finally {
+    $reportFile = $originalReport
+    if ([IO.Directory]::Exists($scratchRoot)) { [IO.Directory]::Delete($scratchRoot, $true) }
+  }
+  Write-Output 'DAILY_UPDATE_SELFTEST_PASSED: 5 decisions and 2 atomic writes'
   exit 0
 }
 

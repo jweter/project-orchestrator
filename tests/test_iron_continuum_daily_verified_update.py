@@ -77,5 +77,6 @@ def test_checker_reports_pinned_release_before_and_after_without_false_activatio
     assert "owner_grant_created = $false" in script
     assert "workers_stopped = $false" in script
     assert "task_triggered_engine_start = $false" in script
-    assert "[IO.File]::Replace" in script
+    assert "[IO.File]::Replace($scratch, $reportFile, $backup)" in script
+    assert "SELFTEST_FIRST" in script and "SELFTEST_SECOND" in script
     assert "CHECK_OR_UPDATE_FAILED" in script

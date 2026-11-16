@@ -39,6 +39,13 @@ if ($existing) {
   if (-not $matchesTarget -or -not $matchesDaily) {
     throw 'EXISTING_DAILY_TASK_DIFFERS_MANUAL_RECONCILIATION_REQUIRED'
   }
+  if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
+    throw 'INSTALLED_DAILY_CHECK_MISSING_MANUAL_RECONCILIATION_REQUIRED'
+  }
+  if ((Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash -cne
+      (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash) {
+    throw 'INSTALLED_DAILY_CHECK_DIFFERS_MANUAL_RECONCILIATION_REQUIRED'
+  }
   Write-Output "ALREADY_REGISTERED: $taskName"
   exit 0
 }
