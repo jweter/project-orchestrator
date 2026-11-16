@@ -14,7 +14,12 @@ if ([string]::IsNullOrWhiteSpace($Source)) {
   $Source = Join-Path $PSScriptRoot 'IronGod-Daily-Verified-Update.ps1'
 }
 $taskName = 'IronGod-Daily-Verified-Update'
+$Base = [IO.Path]::GetFullPath($Base)
 $destination = Join-Path $Base 'tools\VerifiedReleaseUpdater\IronGod-Daily-Verified-Update.ps1'
+# The scheduled checker must inspect the SAME installation passed to this
+# installer; implicit %LOCALAPPDATA% would silently target another engine.
+$taskArguments = ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
+  $destination + '" -Base "' + $Base + '"')
 if ($At -cnotmatch '^([01][0-9]|2[0-3]):[0-5][0-9]$') { throw 'INVALID_LOCAL_UPDATE_TIME' }
 if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) { throw 'UPDATE_CHECK_SOURCE_MISSING' }
 if (-not (Test-Path -LiteralPath (Join-Path $Base 'tools\VerifiedReleaseUpdater\IronGod-Update.ps1') -PathType Leaf)) {
@@ -28,13 +33,23 @@ if ($Plan) {
   Write-Output "DRY_RUN_TASK: $taskName"
   Write-Output "DRY_RUN_SCHEDULE_LOCAL: daily $At"
   Write-Output "DRY_RUN_CHECKER: $destination"
+  Write-Output "DRY_RUN_ACTION_ARGUMENTS: $taskArguments"
   Write-Output 'DRY_RUN: does not register the task, install a release, disable workers, or change owner control'
   exit 0
 }
 $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if ($existing) {
-  $matchesTarget = (@($existing.Actions).Count -eq 1 -and
-    [string]$existing.Actions[0].Arguments -like ('*'+[IO.Path]::GetFileName($destination)+'*'))
+  # The already-installed task from v1 omits -Base but uses the same
+  # default ExponentialEngine root. Treat that exact legacy action as
+  # equivalent *only* for the default installation; never accept it for a
+  # caller-selected non-default installation.
+  $defaultBase = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'ExponentialEngine'))
+  $legacyArgs = ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
+    $destination + '"')
+  $actualArgs = [string]$existing.Actions[0].Arguments
+  $matchesTarget = (@($existing.Actions).Count -eq 1 -and (
+    $actualArgs -ceq $taskArguments -or
+    ($Base -ieq $defaultBase -and $actualArgs -ceq $legacyArgs)))
   $matchesDaily = @($existing.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskDailyTrigger' }).Count -eq 1
   if (-not $matchesTarget -or -not $matchesDaily) {
     throw 'EXISTING_DAILY_TASK_DIFFERS_MANUAL_RECONCILIATION_REQUIRED'
@@ -61,9 +76,7 @@ if (Test-Path -LiteralPath $destination -PathType Leaf) {
 }
 $timestamp = [DateTime]::Today.Add([TimeSpan]::ParseExact($At, 'hh\:mm', [Globalization.CultureInfo]::InvariantCulture))
 $trigger = New-ScheduledTaskTrigger -Daily -At $timestamp
-$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument (
-  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $destination + '"'
-)
+$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArguments
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Description 'Daily read-only GitHub main check; guarded install ONLY under existing owner-held quiescence; never restart workers' -ErrorAction Stop | Out-Null

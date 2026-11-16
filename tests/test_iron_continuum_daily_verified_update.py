@@ -61,7 +61,11 @@ def test_once_daily_windows_task_is_idempotent_no_immediate_install():
     assert "ALREADY_REGISTERED" in installer
     assert "EXISTING_DAILY_TASK_DIFFERS_MANUAL_RECONCILIATION_REQUIRED" in installer
     assert "INSTALLED_DAILY_CHECK_DIFFERS_MANUAL_RECONCILIATION_REQUIRED" in installer
-    assert "-File \"' + $destination + '\"" in installer
+    assert "$taskArguments = (" in installer
+    assert '" -Base "' in installer
+    assert "+ $Base + " in installer
+    assert "$actualArgs -ceq $taskArguments" in installer
+    assert "$Base -ieq $defaultBase -and $actualArgs -ceq $legacyArgs" in installer
     assert "if ($Plan)" in installer
     assert "exit 0" in installer
     assert "-SelfTest" not in installer  # cannot run updater on install
