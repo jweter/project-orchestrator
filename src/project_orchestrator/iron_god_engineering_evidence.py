@@ -337,15 +337,23 @@ def microtask_checkpoint_evidence(
                     or raw.get("planned_at_head") != head
                     or raw.get("product_acceptance") != "UNVERIFIED_BY_THIS_CHECKPOINT"):
                 continue
+            # Validate the complete collection shapes before projecting anything.
+            # Malformed but parseable JSON must not suppress other valid records.
+            tasks_in_checkpoint = raw.get("subtasks")
+            repairs_in_checkpoint = raw.get("repair_candidates")
+            if (not isinstance(tasks_in_checkpoint, list)
+                    or not 1 <= len(tasks_in_checkpoint) <= 5
+                    or any(not isinstance(task, dict) for task in tasks_in_checkpoint)
+                    or not isinstance(repairs_in_checkpoint, list)):
+                corrupt_records += 1
+                continue
             stamp = observability._time(raw.get("checkpointed_at_utc"))
             seconds = (moment - stamp).total_seconds() if stamp else None
             freshness = ("FRESH" if seconds is not None
                          and -120 <= seconds <= observability.FRESH_SECONDS
                          else "STALE" if seconds is not None else "UNVERIFIED")
             subtasks: list[dict[str, Any]] = []
-            for task in (raw.get("subtasks") or [])[:5]:
-                if not isinstance(task, dict):
-                    continue
+            for task in tasks_in_checkpoint:
                 packets = task.get("packet_ids")
                 subtasks.append({
                     "key": _token(task.get("key")),

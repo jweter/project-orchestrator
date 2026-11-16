@@ -501,3 +501,61 @@ def test_only_corrupt_plans_result_in_unverified_not_false_empty_queue(tmp_path)
     assert result["plans"] == []
     assert result["corrupt_records"] == 1
     assert result["resume_authorized"] is False
+
+
+@pytest.mark.parametrize("malformed", [
+    {"subtasks": 1},
+    {"subtasks": {"t1": {"status": "DONE"}}},
+    {"subtasks": "untrusted"},
+    {"subtasks": [None]},
+    {"subtasks": []},
+    {"repair_candidates": {"fake": "authorized"}},
+])
+def test_malformed_checkpoint_shape_isolated_without_hiding_valid_sibling_evidence(
+    tmp_path, malformed
+):
+    from project_orchestrator import iron_god_microtask_progress as progress
+
+    now = datetime.now(UTC)
+    good, _ = _microtask_fixture(tmp_path, now)
+    bad = {**good, "parent_id": "RM-another-repo-shape"}
+    # Corrupt sibling in the same repository must remain isolated.
+    _put(tmp_path, "iron-god-products/decompositions/RM-another-repo-shape.json", bad)
+    path = progress.checkpoint_path(tmp_path / "iron-god-products", bad)
+    payload = {
+        "schema_version": 1,
+        "product_acceptance": "UNVERIFIED_BY_THIS_CHECKPOINT",
+        "parent_id": bad["parent_id"],
+        "repository": bad["repository"],
+        "planned_at_head": SHA,
+        "checkpointed_at_utc": now.isoformat(),
+        "subtasks": [{"key": "t1", "status": "FAILED", "packet_ids": []}],
+        "repair_candidates": [],
+    }
+    payload.update(malformed)
+    _put(tmp_path, str(path.relative_to(tmp_path)), payload)
+
+    result = evidence.microtask_checkpoint_evidence(
+        tmp_path, repository=REPOSITORY, now=now,
+    )
+    assert result["status"] == "PARTIAL_UNVERIFIED"
+    assert result["corrupt_records"] == 1
+    assert len(result["plans"]) == 1
+    assert result["plans"][0]["parent_id"] == good["parent_id"]
+    assert result["resume_authorized"] is False
+    assert result["plans"][0]["replay_or_dispatch_authorized"] is False
+
+
+def test_all_malformed_checkpoint_shapes_do_not_claim_empty_approved_work(tmp_path):
+    from project_orchestrator import iron_god_microtask_progress as progress
+
+    now = datetime.now(UTC)
+    plan, path = _microtask_fixture(tmp_path, now)
+    corrupted = json.loads(path.read_text(encoding="utf-8"))
+    corrupted["subtasks"] = 1
+    _put(tmp_path, str(path.relative_to(tmp_path)), corrupted)
+    result = evidence.microtask_checkpoint_evidence(tmp_path, now=now)
+    assert result["status"] == "UNVERIFIED"
+    assert result["corrupt_records"] == 1
+    assert result["plans"] == []
+    assert result["resume_authorized"] is False
