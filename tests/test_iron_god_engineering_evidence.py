@@ -454,3 +454,50 @@ def test_corrupt_microtask_checkpoint_fails_closed_without_overwriting_source(tm
     assert result["plans"] == []
     assert file.read_text(encoding="utf-8") == "{invalid-json"
     assert result["resume_authorized"] is False
+
+
+def test_corrupt_unrelated_plan_does_not_hide_valid_repository_checkpoint(tmp_path):
+    now = datetime.now(UTC)
+    good, _ = _microtask_fixture(tmp_path, now)
+    (tmp_path / "iron-god-products" / "decompositions" / "other-broken.json").write_text(
+        "{invalid-json", encoding="utf-8",
+    )
+    result = evidence.microtask_checkpoint_evidence(
+        tmp_path, repository=REPOSITORY, now=now,
+    )
+    assert result["status"] == "PARTIAL_UNVERIFIED"
+    assert result["corrupt_records"] == 1
+    assert len(result["plans"]) == 1
+    assert result["plans"][0]["parent_id"] == good["parent_id"]
+    assert result["resume_authorized"] is False
+    assert result["plans"][0]["replay_or_dispatch_authorized"] is False
+
+
+def test_corrupt_other_checkpoint_is_isolated_without_losing_canonical_progress(tmp_path):
+    from project_orchestrator import iron_god_microtask_progress as progress
+
+    now = datetime.now(UTC)
+    valid_plan, _ = _microtask_fixture(tmp_path, now)
+    other = {**valid_plan, "parent_id": "RM-other-branch"}
+    _put(tmp_path, "iron-god-products/decompositions/RM-other-branch.json", other)
+    other_checkpoint = progress.checkpoint_path(tmp_path / "iron-god-products", other)
+    other_checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    other_checkpoint.write_text("broken-json", encoding="utf-8")
+
+    result = evidence.microtask_checkpoint_evidence(tmp_path, now=now)
+    assert result["status"] == "PARTIAL_UNVERIFIED"
+    assert result["corrupt_records"] == 1
+    assert len(result["plans"]) == 1
+    assert result["plans"][0]["parent_id"] == valid_plan["parent_id"]
+    assert other_checkpoint.read_text(encoding="utf-8") == "broken-json"
+
+
+def test_only_corrupt_plans_result_in_unverified_not_false_empty_queue(tmp_path):
+    plan_dir = tmp_path / "iron-god-products" / "decompositions"
+    plan_dir.mkdir(parents=True)
+    (plan_dir / "bad.json").write_text("{", encoding="utf-8")
+    result = evidence.microtask_checkpoint_evidence(tmp_path)
+    assert result["status"] == "UNVERIFIED"
+    assert result["plans"] == []
+    assert result["corrupt_records"] == 1
+    assert result["resume_authorized"] is False

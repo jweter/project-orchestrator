@@ -297,6 +297,7 @@ def microtask_checkpoint_evidence(
     moment = (now or datetime.now(UTC)).astimezone(UTC)
     reports: list[dict[str, Any]] = []
     examined = 0
+    corrupt_records = 0
     truncated = False
     try:
         for plan_file in plans.glob("*.json"):
@@ -304,10 +305,14 @@ def microtask_checkpoint_evidence(
             if examined > MAX_SCAN:
                 truncated = True
                 break
-            if (plan_file.is_symlink() or not plan_file.is_file()
-                    or plan_file.stat().st_size > MAX_JSON_LEN):
+            try:
+                if (plan_file.is_symlink() or not plan_file.is_file()
+                        or plan_file.stat().st_size > MAX_JSON_LEN):
+                    continue
+                plan = json.loads(plan_file.read_text(encoding="utf-8-sig"))
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                corrupt_records += 1
                 continue
-            plan = json.loads(plan_file.read_text(encoding="utf-8-sig"))
             if not isinstance(plan, dict) or plan.get("schema_version") != 1:
                 continue
             repo = plan.get("repository")
@@ -318,11 +323,15 @@ def microtask_checkpoint_evidence(
                     or not parent or not isinstance(head, str) or not _SHA.fullmatch(head)
                     or not isinstance(tasks, list) or not 1 <= len(tasks) <= 5):
                 continue
-            checkpoint = microtask_progress.checkpoint_path(root, plan)
-            if (checkpoint.is_symlink() or not checkpoint.is_file()
-                    or checkpoint.stat().st_size > MAX_JSON_LEN):
+            try:
+                checkpoint = microtask_progress.checkpoint_path(root, plan)
+                if (checkpoint.is_symlink() or not checkpoint.is_file()
+                        or checkpoint.stat().st_size > MAX_JSON_LEN):
+                    continue
+                raw = json.loads(checkpoint.read_text(encoding="utf-8-sig"))
+            except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+                corrupt_records += 1
                 continue
-            raw = json.loads(checkpoint.read_text(encoding="utf-8-sig"))
             if (not isinstance(raw, dict) or raw.get("schema_version") != 1
                     or raw.get("repository") != repo or raw.get("parent_id") != parent
                     or raw.get("planned_at_head") != head
@@ -372,8 +381,11 @@ def microtask_checkpoint_evidence(
                 "product_accepted": False, "replay_or_dispatch_authorized": False,
             })
         reports.sort(key=lambda x: (x["checkpoint_at_utc"] or "", x["parent_id"]), reverse=True)
-        return {"status": "PARTIAL_SCAN" if truncated else "OBSERVED_HISTORICAL",
-                "plans": reports[:limit], "matching_plans_scanned": len(reports),
+        status = ("PARTIAL_SCAN" if truncated else
+                  "PARTIAL_UNVERIFIED" if corrupt_records and reports else
+                  "UNVERIFIED" if corrupt_records else "OBSERVED_HISTORICAL")
+        return {"status": status, "plans": reports[:limit],
+                "matching_plans_scanned": len(reports), "corrupt_records": corrupt_records,
                 "historical_only": True, "resume_authorized": False,
                 "scan_limit": MAX_SCAN,
                 "independent_git_and_owner_authority_required": True}
