@@ -1548,6 +1548,126 @@ def build_native_requests(lane: ProductLane, name: str, report: dict[str, Any], 
                               outcome=None if row["status"] in ("STARTED", "BUILT_AND_VERIFIED", "PUBLICATION_REGISTERED") else "BLOCKED")
 
 
+def spawn_godot_author(release_repo: Path, release_sha: str, request_file: Path, result_file: Path,
+                       clone: Path, head: str, log_path: Path) -> dict[str, Any]:
+    """Release-pinned Godot worker; never push, merge, or loosen the owner grant."""
+    env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"),
+           "IRON_GOD_ACCEPTED_SHA": release_sha}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    with log_path.open("ab") as log:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_gdscript_author.py"),
+             "--request", str(request_file), "--result", str(result_file),
+             "--clone", str(clone), "--base", head, "--release-repo", str(release_repo)],
+            cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, creationflags=flags,
+        )
+    return {"pid": process.pid, "process_start_fingerprint":
+            owner_controller.process_start_fingerprint(process.pid) or "",
+            "host": owner_controller.socket.gethostname()}
+
+
+def godot_job_outcome(lane: ProductLane, request: dict[str, Any], outcome: dict[str, Any]) -> None:
+    """Observational progress from the same bounded roadmap/working-memory ledger."""
+    status = str(outcome.get("status") or "UNKNOWN")
+    if status in {"RUNNING", "WAITING_FOR_OTHER_LOCAL_WORK"}:
+        return
+    repo, ident = request["repository"], request["id"]
+    roadmap_refill.log_event(lane.root, "GODOT_" + status, repo, ident,
+                             {"reason": outcome.get("reason", "")})
+    working_memory.record(
+        lane.state_root, repo, "GODOT_" + status,
+        detail=f"{ident}: {str(outcome.get('reason') or '')[:160]}",
+        outcome="BLOCKED" if status in {"NOT_READY", "FAILED", "VERIFICATION_FAILED",
+                                        "NEEDS_RECONCILIATION", "NOT_AUTHORIZED"} else None,
+    )
+
+
+def harvest_godot_jobs(lane: ProductLane, lease_pool: Any) -> None:
+    """Harvest on *every* pass, even when the roadmap's 10-minute refill is not due."""
+    if lease_pool is None:
+        return
+    _reserve, release = runtime_lease(lease_pool)
+    for job in gdscript_lane.pending_jobs(lane.root):
+        request = job.get("request")
+        if not isinstance(request, dict) or not request.get("repository"):
+            continue
+        try:
+            result = gdscript_lane.advance(
+                lane.root, request, base=str(job["base"]), clone=lane.clone(request["repository"]),
+                may_start=False, reserve=lambda: None, release=release, spawn=lambda *_args: None,
+                alive=worker_alive,
+            )
+            if result["status"] == "BUILT":
+                result = gdscript_lane.finalize(
+                    lane.root, request,
+                    save_report=lambda verifier, data: atomic_json(
+                        lane.reports / f"{verifier}-verification.json", data),
+                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item),
+                )
+            if result["status"] not in {"RUNNING", "WAITING_FOR_OTHER_LOCAL_WORK"}:
+                godot_job_outcome(lane, request, result)
+        except Exception as exc:
+            godot_job_outcome(lane, request, {
+                "status": "NEEDS_RECONCILIATION",
+                "reason": f"HARVEST_EXCEPTION: {type(exc).__name__}: {str(exc)[:140]}",
+            })
+
+
+def _add_godot_publication(lane: ProductLane, verifier: str, item: dict[str, Any]) -> None:
+    """Use the existing exact-head publisher; no new PR/merge authority."""
+    records = lane.publications()["items"]
+    records.setdefault(verifier, item)
+    _save_publications(lane, records)
+
+
+def build_godot_requests(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
+                         release: tuple[Path, str] | None, lease_pool: Any) -> None:
+    """Start at most one declared, local, owner-authorized Godot request."""
+    if release is None or lease_pool is None:
+        return
+    release_repo, release_sha = release
+    owner = owner_controller.evaluate(
+        owner_controller.control_root(lane.state_root), release_sha=release_sha,
+    )
+    if owner.permitted is not True:
+        return
+    candidates = [r for r in report.get("local_requests", [])
+                  if gdscript_lane.eligible(r, repository=name, base=head)]
+    if not candidates:
+        return
+    reserve, give_back = runtime_lease(lease_pool)
+    for request in candidates:
+        try:
+            may_start = (lane.active() is None
+                         and not local_drafter.drafting_in_progress(lane.root)
+                         and not task_decomposer.planning_in_progress(lane.root)
+                         and not roadmap_progress.verifying(lane.workspaces / "progress"))
+            result = gdscript_lane.advance(
+                lane.root, request, base=head, clone=clone, may_start=may_start,
+                reserve=reserve, release=give_back,
+                spawn=lambda request_file, result_file, source, exact_head: spawn_godot_author(
+                    release_repo, release_sha, request_file, result_file, source, exact_head,
+                    lane.reports / f"godot-{result_file.stem}.log"),
+                alive=worker_alive,
+            )
+            if result["status"] == "BUILT":
+                result = gdscript_lane.finalize(
+                    lane.root, request,
+                    save_report=lambda verifier, data: atomic_json(
+                        lane.reports / f"{verifier}-verification.json", data),
+                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item),
+                )
+        except Exception as exc:
+            result = {"status": "NEEDS_RECONCILIATION",
+                      "reason": f"{type(exc).__name__}: {str(exc)[:180]}"}
+        godot_job_outcome(lane, request, result)
+        if result.get("status") in {"STARTED", "RUNNING", "NEEDS_RECONCILIATION",
+                                    "PUBLICATION_REGISTERED"}:
+            break
+
+
 def spawn_decompose_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str,
                            result: Path, log_path: Path) -> int:
     """Launch the local decomposition author like a product worker: release-bound, its own process."""
@@ -1691,6 +1811,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     capable = {**(capable or {"enabled": False, "daily_limit": capable_builder.DEFAULT_DAILY_LIMIT}),
                "release": release, "lease_pool": lease_pool}  # what an in-engine capable build is bound to
     clean_finished_worktrees(lane)
+    if release is not None:
+        harvest_godot_jobs(lane, lease_pool)
     for failure in roadmap_progress.harvest(lane.workspaces / "progress", release=runtime_lease(lease_pool)[1]
                                             if lease_pool is not None else None):
         # every turn, before any repository is synced: a finished or hung preflight must not hold the lease and the
@@ -1751,6 +1873,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
         hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None,
                                 queue=capable_queue, clone=clone)
         build_native_requests(lane, name, report, clone, head, release)
+        build_godot_requests(lane, name, report, clone, head, release, lease_pool)
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
             planning_later.append((name, report, clone, head))
