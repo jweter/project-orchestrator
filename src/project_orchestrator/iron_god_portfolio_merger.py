@@ -569,6 +569,32 @@ class GhPort:
             raise RuntimeError("REVIEW_THREADS_INCOMPLETE: cannot prove every conversation is resolved")
         return [{"id": str(n.get("id")), "resolved": n.get("isResolved") is True} for n in nodes if isinstance(n, dict)]
 
+    def independent_review(self, repo: str, number: int, head: str,
+                           reviews: list[dict[str, Any]]) -> bool:
+        """Require trusted independent review evidence anchored to the current PR head."""
+        if not re.fullmatch(r"[0-9a-f]{40}", head):
+            return False
+        pr = json.loads(self._gh(["api", f"repos/{repo}/pulls/{number}"]) or "{}")
+        author = str((pr.get("user") or {}).get("login") or "")
+        for review in reviews:
+            who = str((review.get("user") or {}).get("login") or "")
+            if (who and who != author and review.get("state") == "APPROVED" and
+                    review.get("commit_id") == head):
+                return True
+        for comment in self._paged(f"repos/{repo}/issues/{number}/comments?per_page=100"):
+            if str((comment.get("user") or {}).get("login") or "") != "chatgpt-codex-connector[bot]":
+                continue
+            body = str(comment.get("body") or "")
+            if not re.search(r"Codex Review:\s*Didn't find any major issues", body, re.I):
+                continue
+            marker = re.search(r"\*\*Reviewed commit:\*\*\s*`([0-9a-f]{10,40})`", body, re.I)
+            if marker is None or not head.startswith(marker.group(1).lower()):
+                continue
+            resolved = json.loads(self._gh(["api", f"repos/{repo}/commits/{marker.group(1)}"]) or "{}")
+            if str(resolved.get("sha") or "").lower() == head:
+                return True
+        return False
+
     def quiet_since(self, repo: str, number: int, head: str, created_at: str) -> str | None:
         """The latest of: PR creation, the head commit, review activity on the head, and the last ready-for-review."""
         stamps: list[datetime] = []
@@ -583,9 +609,12 @@ class GhPort:
         for comment in self._paged(f"repos/{repo}/pulls/{number}/comments?per_page=100"):
             if str(comment.get("commit_id") or "") == head and (stamp := _ts(comment.get("updated_at") or comment.get("created_at"))):
                 stamps.append(stamp)
-        for review in self._paged(f"repos/{repo}/pulls/{number}/reviews?per_page=100"):
+        reviews = self._paged(f"repos/{repo}/pulls/{number}/reviews?per_page=100")
+        for review in reviews:
             if str(review.get("commit_id") or head) == head and (stamp := _ts(review.get("submitted_at"))):
                 stamps.append(stamp)
+        if not self.independent_review(repo, number, head, reviews):
+            return None
         for event in self._paged(f"repos/{repo}/issues/{number}/events?per_page=100"):
             if event.get("event") == "ready_for_review" and (stamp := _ts(event.get("created_at"))):
                 stamps.append(stamp)
