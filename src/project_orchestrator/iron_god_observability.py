@@ -201,6 +201,32 @@ def snapshot(state_root: Path, *, now: datetime | None = None) -> dict[str, Any]
             "WAITING_FOR_CALIBRATION": "Inspect measured local builder capability and approved routes; do not substitute unapproved cloud models",
             "WAITING_FOR_RESOURCES": "Inspect Product-lane admission and active leases; retry only when existing resource gates permit",
         }[waiting]
+    elif evidence["product"]["freshness"] == "FRESH" and product.get("status") in {
+        "WAITING_FOR_RUNTIME_LEASE", "WORKER_LAUNCH_UNCONFIRMED",
+        "ORPHANED_PRODUCT_WORKER_OWNERSHIP", "ACTIVE_WORKER_STATE_UNVERIFIED",
+    }:
+        # A still-owned runtime lease or uncertain worker identity is NOT a
+        # shortage of approved work. Neither permits replaying or stealing it.
+        blocked = str(product["status"])
+        reason, status = "PRODUCT_LANE_" + blocked, "BLOCKED"
+        fix = {
+            "WAITING_FOR_RUNTIME_LEASE": (
+                "Check current lease holder, authenticated worker identity and expiry "
+                "using the existing runtime lease pool; never force reclaim or dispatch"
+            ),
+            "WORKER_LAUNCH_UNCONFIRMED": (
+                "Reconcile exact worker PID, packet, worktree and lease; preserve "
+                "possible active work and refuse duplicate dispatch"
+            ),
+            "ORPHANED_PRODUCT_WORKER_OWNERSHIP": (
+                "Reconcile ledger packet ownership with lease, process and worktree "
+                "before any new dispatch"
+            ),
+            "ACTIVE_WORKER_STATE_UNVERIFIED": (
+                "Inspect corrupt or missing worker state and reconcile live ownership "
+                "before any new dispatch"
+            ),
+        }[blocked]
     elif workers is not None and workers > 0:
         reason = "LEGACY_WORKERS_RUNNING_REPORTED"
         status = "ACTIVE_UNVERIFIED_PROGRESS"
@@ -248,6 +274,14 @@ def snapshot(state_root: Path, *, now: datetime | None = None) -> dict[str, Any]
         recovery_action = "REVIEW_MEASURED_LOCAL_MODEL_CAPABILITY"
     elif reason == "PRODUCT_LANE_WAITING_FOR_RESOURCES":
         recovery_action = "RECHECK_PRODUCT_RESOURCE_ADMISSION"
+    elif reason == "PRODUCT_LANE_WAITING_FOR_RUNTIME_LEASE":
+        recovery_action = "RECONCILE_EXISTING_RUNTIME_LEASE_NO_FORCE_RELEASE"
+    elif reason in {
+        "PRODUCT_LANE_WORKER_LAUNCH_UNCONFIRMED",
+        "PRODUCT_LANE_ORPHANED_PRODUCT_WORKER_OWNERSHIP",
+        "PRODUCT_LANE_ACTIVE_WORKER_STATE_UNVERIFIED",
+    }:
+        recovery_action = "RECONCILE_WORKER_PACKET_AND_LEASE_NO_DUPLICATE_DISPATCH"
     elif resource == "CRITICAL_MEMORY_NO_NEW_WORK":
         recovery_action = "WAIT_FOR_SAFE_MEMORY_ADMISSION"
     elif reason == "PRODUCT_CANONICAL_PREFLIGHT_FAILED":

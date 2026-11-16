@@ -276,3 +276,57 @@ def test_owner_control_still_overrides_fresh_product_resource_block(tmp_path):
 
     assert report["reason"] == "OWNER_EXECUTION_NOT_PERMITTED"
     assert report["recovery_advice"]["action"] == "OWNER_CONTROL_MAINTENANCE_ONLY"
+
+
+@pytest.mark.parametrize(
+    ("product_status", "recovery_action"),
+    [
+        ("WAITING_FOR_RUNTIME_LEASE", "RECONCILE_EXISTING_RUNTIME_LEASE_NO_FORCE_RELEASE"),
+        ("WORKER_LAUNCH_UNCONFIRMED", "RECONCILE_WORKER_PACKET_AND_LEASE_NO_DUPLICATE_DISPATCH"),
+        ("ORPHANED_PRODUCT_WORKER_OWNERSHIP", "RECONCILE_WORKER_PACKET_AND_LEASE_NO_DUPLICATE_DISPATCH"),
+        ("ACTIVE_WORKER_STATE_UNVERIFIED", "RECONCILE_WORKER_PACKET_AND_LEASE_NO_DUPLICATE_DISPATCH"),
+    ],
+)
+def test_product_lease_and_uncertain_worker_are_not_misreported_as_canon_idle(
+    tmp_path, product_status, recovery_action
+):
+    """Real Product dispatch admission blockers outrank empty legacy Canon queue."""
+    now = datetime.now(UTC)
+    _state(tmp_path, now, product_status=product_status)
+    report = obs.snapshot(tmp_path, now=now)
+    assert report["status"] == "BLOCKED"
+    assert report["reason"] == "PRODUCT_LANE_" + product_status
+    assert report["recovery_advice"]["action"] == recovery_action
+    assert report["recovery_advice"]["automatic_execution"] is False
+    assert report["recovery_advice"]["owner_grant_created"] is False
+    assert report["workers"]["running"] == 0
+    assert report["lanes"]["canon"]["status"] == "IDLE_NO_READY_SLICE"
+    assert report["delivery"]["product_reality_verified"] == 0
+
+
+def test_live_owner_veto_overrides_runtime_lease_wait(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now, product_status="WAITING_FOR_RUNTIME_LEASE")
+    _put(tmp_path, "supervisor-execution-authority.json", {
+        "observed_at_utc": now.isoformat(),
+        "permitted": False, "supervisor_instance_id": INSTANCE,
+    })
+    report = obs.snapshot(tmp_path, now=now)
+    assert report["reason"] == "OWNER_EXECUTION_NOT_PERMITTED"
+    assert report["recovery_advice"]["action"] == "OWNER_CONTROL_MAINTENANCE_ONLY"
+    assert report["recovery_advice"]["automatic_execution"] is False
+
+
+def test_stale_product_lease_wait_does_not_override_fresh_canon(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now, product_status="WORKER_LAUNCH_UNCONFIRMED")
+    _put(tmp_path, "iron-god-products/lane-status.json", {
+        "observed_at_utc": (now - timedelta(minutes=40)).isoformat(),
+        "status": "WORKER_LAUNCH_UNCONFIRMED",
+        "repository": "jweter/VoiceStudio",
+    })
+    report = obs.snapshot(tmp_path, now=now)
+    assert report["evidence"]["product"]["freshness"] == "STALE"
+    assert report["reason"] == "CANON_NO_READY_SLICE"
+    assert report["status"] == "IDLE"
+    assert report["recovery_advice"]["automatic_execution"] is False
