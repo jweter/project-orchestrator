@@ -39,7 +39,6 @@ from scripts.capability_slice_contract import derive_slices
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_development_memory as development_memory
-from . import iron_god_gdscript_lane as godot_lane
 from .capability_authority import CapabilityAuthorityError, compile_capability_authority
 from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
 from . import iron_god_model_routing as model_routing
@@ -767,6 +766,9 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
     payload: dict[str, Any] | None = None
     try:
         from . import iron_god_task_decomposer as decomposer  # local import: the decomposer builds on this module
+        # Late import prevents roadmap_refill -> godot_lane -> cpp_builder ->
+        # roadmap_refill circular initialization during pytest collection.
+        from . import iron_god_gdscript_lane as godot_lane
 
         decomposer.settle(lane_root, items, state)
         try:
