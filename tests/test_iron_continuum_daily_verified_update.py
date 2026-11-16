@@ -66,6 +66,11 @@ def test_once_daily_windows_task_is_idempotent_no_immediate_install():
     assert "+ $Base + " in installer
     assert "$actualArgs -ceq $taskArguments" in installer
     assert "$Base -ieq $defaultBase -and $actualArgs -ceq $legacyArgs" in installer
+    assert "[string]$existing.Actions[0].Execute -ieq 'powershell.exe'" in installer
+    assert "$triggers.Count -eq 1" in installer
+    assert "$daily.Enabled -eq $true" in installer
+    assert "[int]$daily.DaysInterval -eq 1" in installer
+    assert "[datetime]::Parse($daily.StartBoundary).TimeOfDay -eq $timestamp.TimeOfDay" in installer
     assert "if ($Plan)" in installer
     assert "exit 0" in installer
     assert "-SelfTest" not in installer  # cannot run updater on install

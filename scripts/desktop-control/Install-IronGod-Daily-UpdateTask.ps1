@@ -21,6 +21,7 @@ $destination = Join-Path $Base 'tools\VerifiedReleaseUpdater\IronGod-Daily-Verif
 $taskArguments = ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
   $destination + '" -Base "' + $Base + '"')
 if ($At -cnotmatch '^([01][0-9]|2[0-3]):[0-5][0-9]$') { throw 'INVALID_LOCAL_UPDATE_TIME' }
+$timestamp = [DateTime]::Today.Add([TimeSpan]::ParseExact($At, 'hh\:mm', [Globalization.CultureInfo]::InvariantCulture))
 if (-not (Test-Path -LiteralPath $Source -PathType Leaf)) { throw 'UPDATE_CHECK_SOURCE_MISSING' }
 if (-not (Test-Path -LiteralPath (Join-Path $Base 'tools\VerifiedReleaseUpdater\IronGod-Update.ps1') -PathType Leaf)) {
   throw 'EXISTING_VERIFIED_INSTALLER_MISSING'
@@ -47,10 +48,21 @@ if ($existing) {
   $legacyArgs = ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
     $destination + '"')
   $actualArgs = [string]$existing.Actions[0].Arguments
-  $matchesTarget = (@($existing.Actions).Count -eq 1 -and (
+  $matchesTarget = (@($existing.Actions).Count -eq 1 -and
+    [string]$existing.Actions[0].Execute -ieq 'powershell.exe' -and (
     $actualArgs -ceq $taskArguments -or
     ($Base -ieq $defaultBase -and $actualArgs -ceq $legacyArgs)))
-  $matchesDaily = @($existing.Triggers | Where-Object { $_.CimClass.CimClassName -eq 'MSFT_TaskDailyTrigger' }).Count -eq 1
+  $triggers = @($existing.Triggers)
+  $matchesDaily = $false
+  if ($triggers.Count -eq 1) {
+    $daily = $triggers[0]
+    $matchesDaily = (
+      $daily.CimClass.CimClassName -eq 'MSFT_TaskDailyTrigger' -and
+      $daily.Enabled -eq $true -and
+      [int]$daily.DaysInterval -eq 1 -and
+      [datetime]::Parse($daily.StartBoundary).TimeOfDay -eq $timestamp.TimeOfDay
+    )
+  }
   if (-not $matchesTarget -or -not $matchesDaily) {
     throw 'EXISTING_DAILY_TASK_DIFFERS_MANUAL_RECONCILIATION_REQUIRED'
   }
@@ -74,7 +86,6 @@ if (Test-Path -LiteralPath $destination -PathType Leaf) {
   New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
   Copy-Item -LiteralPath $Source -Destination $destination -ErrorAction Stop
 }
-$timestamp = [DateTime]::Today.Add([TimeSpan]::ParseExact($At, 'hh\:mm', [Globalization.CultureInfo]::InvariantCulture))
 $trigger = New-ScheduledTaskTrigger -Daily -At $timestamp
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $taskArguments
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 2) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
