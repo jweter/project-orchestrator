@@ -173,3 +173,45 @@ def test_portfolio_comment_only_review_preserves_prior_approval(monkeypatch):
     dismissed = {**approved, "state": "DISMISSED",
                  "submitted_at": "2026-11-16T14:20:00Z"}
     assert not port.independent_review(REPO, 7, HEAD, [approved, commented, dismissed])
+
+
+def test_old_head_changes_request_blocks_current_codex_receipt(monkeypatch):
+    clean = {
+        "user": {"login": "chatgpt-codex-connector[bot]"},
+        "body": "Codex Review: Didn't find any major issues.\n"
+        "**Reviewed commit:** `aaaaaaaaaa`",
+        "created_at": "2026-11-16T14:00:00Z",
+        "updated_at": "2026-11-16T14:00:00Z",
+    }
+    port = _port(monkeypatch, comments=[clean])
+    requested = {
+        "user": {"login": "collaborator"}, "author_association": "COLLABORATOR",
+        "commit_id": STALE, "state": "CHANGES_REQUESTED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    new_comment = {
+        **requested, "commit_id": HEAD, "state": "COMMENTED",
+        "submitted_at": "2026-11-16T13:40:00Z",
+    }
+    assert not port.independent_review(REPO, 7, HEAD, [requested, new_comment])
+    approval = {
+        **requested, "commit_id": HEAD, "state": "APPROVED",
+        "submitted_at": "2026-11-16T14:20:00Z",
+    }
+    assert port.independent_review(
+        REPO, 7, HEAD, [new_comment, approval, requested]
+    )
+
+
+def test_portfolio_old_head_approval_cannot_unlock_new_head(monkeypatch):
+    port = _port(monkeypatch)
+    approval = {
+        "user": {"login": "reviewer"}, "author_association": "COLLABORATOR",
+        "commit_id": STALE, "state": "APPROVED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    comment = {
+        **approval, "commit_id": HEAD, "state": "COMMENTED",
+        "submitted_at": "2026-11-16T14:00:00Z",
+    }
+    assert not port.independent_review(REPO, 7, HEAD, [approval, comment])
