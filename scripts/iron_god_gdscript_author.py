@@ -86,10 +86,17 @@ def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_
             raise
         return str(reply.get("response") or "")
 
-    evidence = bounded.build_change(
-        task, ask, limits=bounded.Limits(max_iterations=3, memory_waits=0),
-        admit=lambda: (True, "the shared guarded Ollama door independently checks memory and cancellation"),
-    )
+    try:
+        evidence = bounded.build_change(
+            task, ask, limits=bounded.Limits(max_iterations=3, memory_waits=0),
+            admit=lambda: (True, "guarded Ollama checks memory and cancellation"),
+        )
+    except (local_model.ModelNotAdmitted, local_model.ModelCancelled) as exc:
+        # A bounded unavailable-model wait is an environmental hold, NOT a
+        # spent implementation attempt. main() persists the receipt so the
+        # scheduler may safely release its lease and retry later.
+        return {**result, "status": "WAITING_FOR_MEMORY",
+                "reason": f"{type(exc).__name__}: {str(exc)[:180]}"}
     result["evidence"] = {key: evidence.get(key) for key in
                           ("status", "reason", "iterations", "files", "rolled_back")}
     if cancelled:
