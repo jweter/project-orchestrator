@@ -70,8 +70,12 @@ def test_old_head_spoofed_and_after_merge_note_not_a_premerge_receipt(monkeypatc
 
 def test_human_approval_must_be_independent_and_bound_to_exact_head(monkeypatch):
     port = _port(monkeypatch)
-    approved = [{"user": {"login": "reviewer"}, "state": "APPROVED", "commit_id": HEAD}]
+    approved = [{"user": {"login": "reviewer"}, "state": "APPROVED",
+                 "author_association": "COLLABORATOR", "commit_id": HEAD}]
     assert port.independent_review(REPO, 7, HEAD, approved)
+    approved[0]["author_association"] = "CONTRIBUTOR"
+    assert not port.independent_review(REPO, 7, HEAD, approved)
+    approved[0]["author_association"] = "COLLABORATOR"
     approved[0]["commit_id"] = STALE
     assert not port.independent_review(REPO, 7, HEAD, approved)
     approved[0]["commit_id"] = HEAD
