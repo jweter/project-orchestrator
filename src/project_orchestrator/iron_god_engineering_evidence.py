@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from . import iron_god_calibration as calibration
+from . import iron_god_microtask_progress as microtask_progress
 from . import iron_god_model_routing as model_routing
 from . import iron_god_development_memory as memory
 from . import iron_god_observability as observability
@@ -277,6 +278,110 @@ def measured_local_admission(state_root: Path, *, now: datetime | None = None) -
                 "cloud_spend_authorized": False}
 
 
+def microtask_checkpoint_evidence(
+    state_root: Path, *, repository: str = "", limit: int = 8,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Read existing plan-revision checkpoints, not new task or resume grants.
+
+    An old checkpoint is useful historical evidence, but only a checkpoint
+    that hashes to an *existing canonical plan* may appear in the result.
+    Never infer that a local MERGED outcome has independently passed GitHub CI.
+    """
+    _validate(repository, limit)
+    root = Path(state_root) / "iron-god-products"
+    plans = root / "decompositions"
+    if not plans.is_dir() or plans.is_symlink():
+        return {"status": "UNAVAILABLE", "plans": [], "historical_only": True,
+                "resume_authorized": False, "scan_limit": MAX_SCAN}
+    moment = (now or datetime.now(UTC)).astimezone(UTC)
+    reports: list[dict[str, Any]] = []
+    examined = 0
+    truncated = False
+    try:
+        for plan_file in plans.glob("*.json"):
+            examined += 1
+            if examined > MAX_SCAN:
+                truncated = True
+                break
+            if (plan_file.is_symlink() or not plan_file.is_file()
+                    or plan_file.stat().st_size > MAX_JSON_LEN):
+                continue
+            plan = json.loads(plan_file.read_text(encoding="utf-8-sig"))
+            if not isinstance(plan, dict) or plan.get("schema_version") != 1:
+                continue
+            repo = plan.get("repository")
+            parent = _token(plan.get("parent_id"))
+            head = plan.get("planned_at_head")
+            tasks = plan.get("subtasks")
+            if (repo not in observability.REPOSITORIES or (repository and repo != repository)
+                    or not parent or not isinstance(head, str) or not _SHA.fullmatch(head)
+                    or not isinstance(tasks, list) or not 1 <= len(tasks) <= 5):
+                continue
+            checkpoint = microtask_progress.checkpoint_path(root, plan)
+            if (checkpoint.is_symlink() or not checkpoint.is_file()
+                    or checkpoint.stat().st_size > MAX_JSON_LEN):
+                continue
+            raw = json.loads(checkpoint.read_text(encoding="utf-8-sig"))
+            if (not isinstance(raw, dict) or raw.get("schema_version") != 1
+                    or raw.get("repository") != repo or raw.get("parent_id") != parent
+                    or raw.get("planned_at_head") != head
+                    or raw.get("product_acceptance") != "UNVERIFIED_BY_THIS_CHECKPOINT"):
+                continue
+            stamp = observability._time(raw.get("checkpointed_at_utc"))
+            seconds = (moment - stamp).total_seconds() if stamp else None
+            freshness = ("FRESH" if seconds is not None
+                         and -120 <= seconds <= observability.FRESH_SECONDS
+                         else "STALE" if seconds is not None else "UNVERIFIED")
+            subtasks: list[dict[str, Any]] = []
+            for task in (raw.get("subtasks") or [])[:5]:
+                if not isinstance(task, dict):
+                    continue
+                packets = task.get("packet_ids")
+                subtasks.append({
+                    "key": _token(task.get("key")),
+                    "attempt_id": _token(task.get("attempt_id")),
+                    "state_as_reported": _token(task.get("status")),
+                    "receipt_as_reported": _token(task.get("receipt")),
+                    "packets": [_token(x) for x in packets[:4] if _token(x)]
+                               if isinstance(packets, list) else [],
+                    "attempts_spent_as_reported": (
+                        task["attempts"] if type(task.get("attempts")) is int
+                        and 0 <= task["attempts"] <= 1000 else None
+                    ),
+                    "verified_independent_git_merge": False,
+                })
+            observed_head = raw.get("observed_repository_head")
+            reports.append({
+                "repository": repo, "parent_id": parent,
+                "plan_sha": head,
+                "observed_repository_head": (
+                    observed_head if isinstance(observed_head, str)
+                    and _SHA.fullmatch(observed_head) else None
+                ),
+                "checkpoint_at_utc": stamp.isoformat() if stamp else None,
+                "freshness": freshness,
+                "plan_status_as_reported": _token(raw.get("plan_status")),
+                "subtasks": subtasks,
+                "repair_candidate_count": (
+                    min(len(raw["repair_candidates"]), 5)
+                    if isinstance(raw.get("repair_candidates"), list) else 0
+                ),
+                "source": "microtask-progress/" + checkpoint.name,
+                "plan_correlated_by_revision_hash": True,
+                "product_accepted": False, "replay_or_dispatch_authorized": False,
+            })
+        reports.sort(key=lambda x: (x["checkpoint_at_utc"] or "", x["parent_id"]), reverse=True)
+        return {"status": "PARTIAL_SCAN" if truncated else "OBSERVED_HISTORICAL",
+                "plans": reports[:limit], "matching_plans_scanned": len(reports),
+                "historical_only": True, "resume_authorized": False,
+                "scan_limit": MAX_SCAN,
+                "independent_git_and_owner_authority_required": True}
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return {"status": "UNVERIFIED", "plans": [], "historical_only": True,
+                "resume_authorized": False, "scan_limit": MAX_SCAN}
+
+
 def publication_evidence(state_root: Path, *, repository: str = "",
                          limit: int = 8) -> dict[str, Any]:
     """Correlate local publication receipts with exact SHA, not a GitHub verdict."""
@@ -364,6 +469,9 @@ def engineering_bundle(state_root: Path, *, repository: str = "", limit: int = 8
     history = event_history(state_root, repository=repository, limit=limit)
     learned = attempt_memory(state_root, repository=repository, limit=limit)
     frontier = frontier_evidence(state_root, repository=repository, limit=limit, now=observed)
+    microtasks = microtask_checkpoint_evidence(
+        state_root, repository=repository, limit=limit, now=observed,
+    )
     product = live["lanes"]["product"]
     active = product if product.get("repository") == repository or not repository else {}
     if repository and not active:
@@ -385,6 +493,7 @@ def engineering_bundle(state_root: Path, *, repository: str = "", limit: int = 8
             "resume_authorized": False,
             "requires_fresh_owner_lease_and_exact_head": True,
             "historical_only": True,
+            "local_microtask_progress": microtasks,
         },
         "mcp_handoff": {
             "transport": "LOCAL_STDIO", "tool": "get_engineering_evidence",

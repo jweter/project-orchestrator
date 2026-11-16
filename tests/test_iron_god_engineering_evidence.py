@@ -350,3 +350,107 @@ def test_publications_missing_or_corrupt_fail_closed_without_creating_files(tmp_
     result = evidence.publication_evidence(tmp_path)
     assert result["status"] == "UNVERIFIED"
     assert result["receipts"] == []
+
+
+def _microtask_fixture(root: Path, stamp: datetime, *, repo: str = REPOSITORY):
+    from project_orchestrator import iron_god_microtask_progress as progress
+
+    parent = "RM-voice-checkpoint-12345"
+    plan = {
+        "schema_version": 1, "parent_id": parent, "repository": repo,
+        "planned_at_head": SHA, "roadmap_ref": "graph#owner-approved-example",
+        "status": "ACTIVE",
+        "coverage": {"1": ["t1"], "2": ["t2"]},
+        "subtasks": [
+            {"key": "t1", "module_path": "pkg/one.py", "depends_on": []},
+            {"key": "t2", "module_path": "pkg/two.py", "depends_on": ["t1"]},
+        ],
+    }
+    _put(root, f"iron-god-products/decompositions/{parent}.json", plan)
+    path = progress.checkpoint_path(root / "iron-god-products", plan)
+    _put(root, str(path.relative_to(root)), {
+        "schema_version": 1, "advisory_only": True,
+        "product_acceptance": "UNVERIFIED_BY_THIS_CHECKPOINT",
+        "parent_id": parent, "repository": repo,
+        "planned_at_head": SHA, "observed_repository_head": "b" * 40,
+        "plan_status": "ACTIVE", "checkpointed_at_utc": stamp.isoformat(),
+        "subtasks": [
+            {"key": "t1", "attempt_id": parent + "-t1", "status": "DONE",
+             "receipt": "GITHUB_MERGED_IN_LANE_LEDGER", "packet_ids": ["PRODUCT-P1"],
+             "attempts": 1, "outcome": "SECRET_private_worker_stack"},
+            {"key": "t2", "attempt_id": parent + "-t2-r1", "status": "EXHAUSTED",
+             "receipt": "NO_VERIFIED_COMPLETION_RECEIPT",
+             "packet_ids": ["PRODUCT-P2"], "attempts": 4,
+             "outcome": "SECRET_another_private_worker_log"},
+        ],
+        "repair_candidates": [{"proposed_action": "SECRET_LOSSY_OWNER_NOTES"}],
+    })
+    return plan, path
+
+
+def test_current_plan_microtask_checkpoints_visible_via_mcp_without_replay_authority(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    plan, _ = _microtask_fixture(tmp_path, now)
+    data = evidence.engineering_bundle(tmp_path, repository=REPOSITORY, now=now)
+    checkpoints = data["durable_continuation"]["local_microtask_progress"]
+    assert checkpoints["status"] == "OBSERVED_HISTORICAL"
+    assert checkpoints["historical_only"] is True
+    assert checkpoints["resume_authorized"] is False
+    (row,) = checkpoints["plans"]
+    assert row["parent_id"] == plan["parent_id"]
+    assert row["plan_sha"] == SHA
+    assert row["observed_repository_head"] == "b" * 40
+    assert row["freshness"] == "FRESH"
+    assert [s["state_as_reported"] for s in row["subtasks"]] == ["DONE", "EXHAUSTED"]
+    assert row["subtasks"][0]["receipt_as_reported"] == "GITHUB_MERGED_IN_LANE_LEDGER"
+    assert row["subtasks"][0]["verified_independent_git_merge"] is False
+    assert row["repair_candidate_count"] == 1
+    assert row["replay_or_dispatch_authorized"] is False
+    assert "SECRET_" not in json.dumps(data)
+
+
+def test_checkpoint_survives_restart_as_history_not_live_admission(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now - timedelta(hours=2))
+    _microtask_fixture(tmp_path, now - timedelta(hours=2))
+    data = evidence.engineering_bundle(tmp_path, repository=REPOSITORY, now=now)
+    checkpoint = data["durable_continuation"]["local_microtask_progress"]
+    assert checkpoint["plans"][0]["freshness"] == "STALE"
+    assert checkpoint["resume_authorized"] is False
+    assert data["frontier_and_recovery"]["live_status"] == "UNVERIFIED"
+
+
+def test_revision_hash_prevents_superseded_checkpoint_becoming_current(tmp_path):
+    now = datetime.now(UTC)
+    plan, historical_path = _microtask_fixture(tmp_path, now)
+    plan["subtasks"][0]["module_path"] = "pkg/changed.py"
+    _put(tmp_path, f"iron-god-products/decompositions/{plan['parent_id']}.json", plan)
+    data = evidence.microtask_checkpoint_evidence(tmp_path, now=now)
+    assert data["plans"] == []
+    assert historical_path.is_file()
+    assert data["resume_authorized"] is False
+
+
+def test_microtask_checkpoints_scope_to_registered_repositories_and_limit(tmp_path):
+    now = datetime.now(UTC)
+    _microtask_fixture(tmp_path, now)
+    result = evidence.microtask_checkpoint_evidence(
+        tmp_path, repository="jweter/Project-Everward", limit=1, now=now,
+    )
+    assert result["plans"] == []
+    with pytest.raises(ValueError, match="UNKNOWN_OR_UNAUTHORIZED_REPOSITORY"):
+        evidence.microtask_checkpoint_evidence(tmp_path, repository="../private")
+    with pytest.raises(ValueError, match="INVALID_EVIDENCE_LIMIT"):
+        evidence.microtask_checkpoint_evidence(tmp_path, limit=99)
+
+
+def test_corrupt_microtask_checkpoint_fails_closed_without_overwriting_source(tmp_path):
+    now = datetime.now(UTC)
+    _, file = _microtask_fixture(tmp_path, now)
+    file.write_text("{invalid-json", encoding="utf-8")
+    result = evidence.microtask_checkpoint_evidence(tmp_path, now=now)
+    assert result["status"] == "UNVERIFIED"
+    assert result["plans"] == []
+    assert file.read_text(encoding="utf-8") == "{invalid-json"
+    assert result["resume_authorized"] is False
