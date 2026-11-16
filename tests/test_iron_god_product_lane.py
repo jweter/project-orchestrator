@@ -2737,3 +2737,64 @@ def test_evidence_retry_rejects_identical_attempt_and_never_loops(env):
     assert "LOCAL_REPAIR_REPEATED_IDENTICAL_REPLY" in harvested["worker_summary"]
     assert len(prompts) == 2
     assert step(env, runner)["status"] == "IDLE_NO_APPROVED_BACKLOG_ITEM"
+
+
+def test_real_product_dispatch_refuses_existing_item_after_canonical_replay_loss(env):
+    """Actual Product turn must not launch a previously merged microtask again."""
+    from project_orchestrator import iron_god_microtask_progress as progress
+    from project_orchestrator.state_io import atomic_json
+
+    parent = "RM-VoiceStudio-replay-safety"
+    child_id = parent + "-t1"
+    item = backlog_item(child_id, REPOS[1])
+    backlog_env(env, [item])
+    env.policy["portfolio_rotation"]["roadmap_refill"] = False
+    lane = pl.ProductLane(env.state)
+    plan = {
+        "schema_version": 1, "parent_id": parent, "repository": REPOS[1],
+        "status": "ACTIVE", "planned_at_head": "a" * 40,
+        "roadmap_ref": "docs/ROADMAP.md slice 1",
+        "subtasks": [{"key": "t1", "module_path": "pkg/extra.py",
+                      "depends_on": []}],
+    }
+    atomic_json(lane.root / "decompositions" / (parent + ".json"), plan)
+    former = {"items": {child_id: {
+        "outcome": "MERGED", "packets": ["PRODUCT-ACCEPTED-01"], "attempts": 1,
+    }}}
+    progress.record_checkpoints(lane.root, REPOS[1], "a" * 40, [item], former)
+    assert backlog_mod.next_item([item], {"items": {}}, REPOS[1], max_level=1) is not None
+    runner = Runner(plan=never_plans)
+    result = step(env, runner)
+    assert result["status"] == "WAITING_FOR_MICROTASK_RECONCILIATION"
+    assert result["blocked_item_ids"] == [child_id]
+    assert runner.spawned == 0
+    assert lane.active() is None
+
+
+def test_product_lane_skips_conflicted_item_and_dispatches_independent_approved_one(env):
+    from project_orchestrator import iron_god_microtask_progress as progress
+    from project_orchestrator.state_io import atomic_json
+
+    parent = "RM-VoiceStudio-conflict"
+    conflict_id = parent + "-t1"
+    blocked = backlog_item(conflict_id, REPOS[1])
+    good = backlog_item("RS-UNRELATED-SAFE", REPOS[1])
+    backlog_env(env, [blocked, good])
+    env.policy["portfolio_rotation"]["roadmap_refill"] = False
+    lane = pl.ProductLane(env.state)
+    atomic_json(lane.root / "decompositions" / (parent + ".json"), {
+        "schema_version": 1, "parent_id": parent, "repository": REPOS[1],
+        "status": "ACTIVE", "planned_at_head": "a" * 40,
+        "subtasks": [{"key": "t1", "module_path": "pkg/extra.py",
+                      "depends_on": []}],
+    })
+    progress.record_checkpoints(lane.root, REPOS[1], "a" * 40, [blocked], {
+        "items": {conflict_id: {
+            "outcome": "MERGED", "packets": ["PRODUCT-DONE"], "attempts": 1,
+        }},
+    })
+    runner = Runner(plan=never_plans)
+    result = step(env, runner)
+    assert result["status"] == "DISPATCHED"
+    assert result["backlog_item"] == good["id"]
+    assert runner.spawned == 1

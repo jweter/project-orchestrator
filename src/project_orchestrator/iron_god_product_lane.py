@@ -52,6 +52,7 @@ from . import iron_god_execution_status as execution_status
 from . import iron_god_model_routing as model_routing
 from . import iron_god_pipeline_trace as pipeline_trace
 from . import iron_god_local_drafter as local_drafter
+from . import iron_god_microtask_progress as microtask_progress
 from . import iron_god_task_decomposer as task_decomposer
 from . import iron_god_stall_recovery as stall_recovery
 from . import iron_god_strategic_upgrades as strategic_upgrades
@@ -1168,6 +1169,9 @@ def advance_product_lane(
                          "model": config.get("capable_builder_model")},
                 record_progress=config.get("roadmap_progress", True) is True, release=(release_repo, release_sha),
                 draft_locally=config.get("local_draft_author", True) is True, lease_pool=pool)
+        approved, replay_vetoed_ids = microtask_progress.filter_replay_conflicted_items(
+            lane.root, approved, state,
+        )
         repo_blocked = set(busy)  # repository-level blockers only, before the memory-derived exclusions below
         select_level = min(level, ceiling)  # a momentary memory dip must never reclassify work as "beyond the local builder"
         for name in repos:
@@ -1194,6 +1198,13 @@ def advance_product_lane(
         # the single local model is planning a roadmap slice; start no builder beside it
         return _report(lane, {"status": "WAITING_FOR_LOCAL_DRAFT", "repository": repo})
     if repo is None:
+        if config.get("planning") == "backlog" and replay_vetoed_ids:
+            return _report(lane, {
+                "status": "WAITING_FOR_MICROTASK_RECONCILIATION",
+                "blocked_item_ids": replay_vetoed_ids[:12],
+                "next_action": "RECONCILE_CANONICAL_BACKLOG_AND_IMMUTABLE_CHECKPOINT_BEFORE_DISPATCH",
+                "publications": published,
+            })
         idle = "IDLE_NO_APPROVED_BACKLOG_ITEM" if config.get("planning") == "backlog" and not items else (
             "IDLE_ALL_REPOSITORIES_AWAITING_CI")
         return _report(lane, {"status": idle, "publications": published, **idle_diagnostics(lane, explained, rejected)})
@@ -1247,6 +1258,19 @@ def advance_product_lane(
         # Below the comfortable level the model still runs (owner decision 2026-11-08); the standing rule is told so it can
         # free memory while the run proceeds. Sustained real pressure still cancels the run.
         lane.planning_memory_wait = {"required_gib": decision.required_gib, "available_gib": decision.available_gib}
+    if config.get("planning") == "backlog" and items.get(repo) is not None:
+        # Final dispatch boundary: re-read the canonical outcome immediately
+        # before worker admission; an approved item surviving a crash must not
+        # replay if its previous accepted/merged receipt lost the state row.
+        _safe, conflicts = microtask_progress.filter_replay_conflicted_items(
+            lane.root, approved, backlog.load_state(lane.root),
+        )
+        if items[repo]["id"] in conflicts:
+            return _report(lane, {
+                "status": "WAITING_FOR_MICROTASK_RECONCILIATION",
+                "repository": repo, "backlog_item": items[repo]["id"],
+                "next_action": "RECONCILE_CANONICAL_BACKLOG_AND_IMMUTABLE_CHECKPOINT_BEFORE_DISPATCH",
+            })
     admission = resources()
     if not admission.get("admitted"):
         return _report(lane, {"status": "WAITING_FOR_RESOURCES", "repository": repo, "admission": admission})
@@ -1824,7 +1848,10 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     planning_later: list[tuple[str, dict[str, Any], Path, str]] = []
     capable_queue: list[dict[str, Any]] = []
     for name in repos:
-        if name in busy or backlog.next_item(approved, state, name, max_level=level) is not None:
+        dispatchable, _conflicts = microtask_progress.filter_replay_conflicted_items(
+            lane.root, approved, state,
+        )
+        if name in busy or backlog.next_item(dispatchable, state, name, max_level=level) is not None:
             continue
         if not roadmap_refill.due(lane.root, name) and not (draft_locally and local_drafter.has_result_ready(lane.root)):
             continue
@@ -1871,7 +1898,10 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     admit_capable_requests(lane, capable_queue, capable)
     # Planning is the lowest-priority use of the one local model: it starts only when no repository has an admitted item
     # waiting for a worker and every repository's ready drafting has had its turn.
-    work_waiting = any(backlog.next_item(approved, state, repo, max_level=level) is not None for repo in repos) or (
+    dispatchable, _conflicts = microtask_progress.filter_replay_conflicted_items(
+        lane.root, approved, state,
+    )
+    work_waiting = any(backlog.next_item(dispatchable, state, repo, max_level=level) is not None for repo in repos) or (
         task_decomposer.local_work_waiting(lane.root, [r for _n, rep, _c, _h in planning_later
                                                        for r in rep.get('local_requests', [])]))
     for name, report, clone, head in [] if work_waiting else planning_later:

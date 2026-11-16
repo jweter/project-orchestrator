@@ -212,3 +212,61 @@ def test_checkpoint_guard_is_read_only_even_when_blocking_replay(tmp_path: Path)
     for _ in range(3):
         assert _ready(lane, [], {}) == []
     assert path.read_bytes() == before
+
+
+def test_existing_approved_child_is_vetoed_when_merged_state_row_disappears(tmp_path: Path):
+    from project_orchestrator import iron_god_backlog as backlog
+
+    lane = tmp_path / "lane"
+    _plan(lane)
+    items, state = _merged_state(1)
+    checkpoints.record_checkpoints(lane, REPO, HEAD, items, state)
+    missing_state = {"items": {}}
+    # The ordinary backlog would redispatch the old item after a crash.
+    # The full approved-item dispatch case is exercised in test_iron_god_product_lane.
+    safe, blocked = checkpoints.filter_replay_conflicted_items(lane, items, missing_state)
+    assert safe == []
+    assert blocked == [PARENT + "-t1"]
+    assert backlog.next_item(safe, missing_state, REPO, max_level=1) is None
+
+
+@pytest.mark.parametrize("malformed", ["{bad JSON", '{"receipts": 1}', '{"receipts": [null]}'])
+def test_corrupt_checkpoint_cannot_be_overwritten_before_refill_can_replay(
+    tmp_path: Path, malformed: str,
+):
+    lane = tmp_path / "lane"
+    plan = _plan(lane)
+    items, state = _merged_state(1)
+    checkpoints.record_checkpoints(lane, REPO, HEAD, items, state)
+    file = checkpoints.checkpoint_path(lane, plan)
+    if malformed.startswith("{bad"):
+        file.write_text(malformed, encoding="utf-8")
+    else:
+        valid = json.loads(file.read_text(encoding="utf-8"))
+        valid.update(json.loads(malformed))
+        atomic_json(file, valid)
+    before = file.read_bytes()
+    missing_state = {"items": {}}
+    # Same order as refill_repository: writer before child_request generation.
+    assert checkpoints.record_checkpoints(lane, REPO, HEAD, items, missing_state) == []
+    assert file.read_bytes() == before
+    assert _ready(lane, items, missing_state) == []
+    safe, blocked = checkpoints.filter_replay_conflicted_items(
+        lane, items, missing_state,
+    )
+    assert safe == []
+    assert blocked == [PARENT + "-t1"]
+
+
+def test_conflicted_parent_does_not_block_other_approved_item_in_same_repo(tmp_path: Path):
+    lane = tmp_path / "lane"
+    _plan(lane)
+    items, state = _merged_state(1)
+    checkpoints.record_checkpoints(lane, REPO, HEAD, items, state)
+    other = _item(3)
+    other["id"] = "RM-another-independent-owner-approved-slice"
+    safe, blocked = checkpoints.filter_replay_conflicted_items(
+        lane, [*items, other], {"items": {}},
+    )
+    assert blocked == [PARENT + "-t1"]
+    assert safe == [other]

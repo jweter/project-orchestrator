@@ -260,15 +260,18 @@ def test_checkpoints_are_scoped_to_the_selected_repository(tmp_path: Path) -> No
     ) == ["RM-other-feature"]
 
 
-def test_corrupt_checkpoint_is_replaced_without_changing_plan_or_execution(
+def test_corrupt_checkpoint_is_preserved_for_reconciliation_without_replay(
     tmp_path: Path,
 ) -> None:
     active = plan(tmp_path, second=False)
     path = progress.checkpoint_path(tmp_path, active)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{broken json", encoding="utf-8")
-    assert progress.record_checkpoints(tmp_path, REPO, "b" * 40, [], {}) == [PARENT]
-    assert json.loads(path.read_text(encoding="utf-8"))["advisory_only"] is True
+    # A normal refill must not overwrite unknown historical receipts before
+    # child-request eligibility performs its crash-recovery check.
+    assert progress.record_checkpoints(tmp_path, REPO, "b" * 40, [], {}) == []
+    assert path.read_text(encoding="utf-8") == "{broken json"
+    assert progress.checkpoint_replay_conflicts(tmp_path, active, [], {}) == ["CHECKPOINT_UNREADABLE"]
     assert (
         json.loads(
             (tmp_path / "decompositions" / f"{PARENT}.json").read_text(encoding="utf-8")
@@ -276,6 +279,7 @@ def test_corrupt_checkpoint_is_replaced_without_changing_plan_or_execution(
         == active
     )
     assert progress.record_checkpoints(tmp_path, REPO, "b" * 40, [], {}) == []
+    assert path.read_text(encoding="utf-8") == "{broken json"
 
 
 def _seeded_clone(tmp_path: Path) -> tuple[Path, str]:

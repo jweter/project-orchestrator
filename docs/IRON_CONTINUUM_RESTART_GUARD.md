@@ -38,6 +38,17 @@ existing canonical approved item/state rows.
   ready work. The veto never grants authority or consumes an attempt.
 - A **changed plan revision** gets a different checkpoint filename, so old
   receipts cannot force a new task to appear completed.
+- At the real Product dispatch boundary, `filter_replay_conflicted_items()`
+  removes existing approved children belonging to a conflicting ACTIVE parent
+  from candidate selection, including `-rN` revisions. The refill pass also
+  excludes these items from its short-circuit eligibility check. Unrelated
+  approved work remains dispatchable; when none exists, the lane reports
+  `WAITING_FOR_MICROTASK_RECONCILIATION` instead of a false empty queue.
+- `record_checkpoints()` now preserves **malformed** historical evidence
+  rather than silently replacing it with an empty snapshot before
+  `child_requests()` checks eligibility. A valid checkpoint may update its
+  observational subtask status, but the historical receipt list remains and
+  can still veto unsafe replay.
 
 No checkpoint is used as a positive authorization, no attempt budget is reset,
 no worker is restarted, and no background tasks or owner-control settings
