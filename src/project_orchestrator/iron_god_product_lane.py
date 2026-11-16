@@ -715,6 +715,16 @@ def _request_review_repair(lane: ProductLane, packet_id: str, item: dict[str, An
                            gate: readiness.Readiness) -> None:
     """Record the findings against the PR, commit, file and slice; queue a bounded repair or block."""
     repo = item["repository"]
+    if item.get("lane") == "godot":
+        # The existing directed review-repair worker is Python-only. Never
+        # attempt to modify Godot source with the wrong repair transport.
+        item.update(state="BLOCKED",
+                    reason="GODOT_REVIEW_REPAIR_REQUIRES_APPROVED_GDSCRIPT_PATH")
+        _record_slice_outcome(lane, packet_id, "PR_BLOCKED")
+        working_memory.record(lane.state_root, repo, "GODOT_REVIEW_REPAIR_BLOCKED",
+                              packet_id=packet_id, outcome="BLOCKED",
+                              blocker=item["reason"])
+        return
     attempts = int(item.get("repair_attempts", 0))
     plan = lane._json(lane.handbacks / f"{packet_id}.json", {}).get("plan") or {}
     module, test = plan.get("module_path"), plan.get("test_path")
@@ -1719,7 +1729,7 @@ def harvest_godot_jobs(lane: ProductLane, lease_pool: Any) -> None:
                     lane.root, request,
                     save_report=lambda verifier, data: atomic_json(
                         lane.reports / f"{verifier}-verification.json", data),
-                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item),
+                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item, request),
                 )
             if result["status"] not in {"RUNNING", "WAITING_FOR_OTHER_LOCAL_WORK"}:
                 godot_job_outcome(lane, request, result)
@@ -1730,9 +1740,36 @@ def harvest_godot_jobs(lane: ProductLane, lease_pool: Any) -> None:
             })
 
 
-def _add_godot_publication(lane: ProductLane, verifier: str, item: dict[str, Any]) -> None:
-    """Use the existing exact-head publisher; no new PR/merge authority."""
+def _add_godot_publication(lane: ProductLane, verifier: str, item: dict[str, Any],
+                           request: dict[str, Any]) -> None:
+    """Persist the exact packet consumed by the existing PR merger *before* publishing.
+
+    The common publication flow loads packets/{verifier}.json immediately
+    after merging to record product memory and completion evidence. Without
+    this packet, a green Godot PR would merge but remain falsely BLOCKED.
+    """
+    if item.get("lane") != "godot" or item.get("source_request_id") != request.get("id"):
+        raise RuntimeError("GODOT_PUBLICATION_REQUEST_BINDING_INVALID")
+    if item.get("base_sha") != request.get("exact_head"):
+        raise RuntimeError("GODOT_PUBLICATION_BASE_MISMATCH")
+    packet = {
+        "schema_version": 1, "packet_id": verifier,
+        "project": "everward", "repository": request["repository"],
+        "branch": item["branch"], "base_sha": item["base_sha"],
+        "task": request["objective"], "source_ref": request.get("roadmap_ref", ""),
+        "slice": {"id": request["id"], "level": request["capability_level"],
+                  "title": request["objective"], "build": None,
+                  "gdscript": request["gdscript"]},
+    }
+    packet_file = lane.packets / f"{verifier}.json"
+    if packet_file.is_file():
+        if lane._json(packet_file, None) != packet:
+            raise RuntimeError("GODOT_PUBLICATION_PACKET_CONFLICT")
+    else:
+        atomic_json(packet_file, packet)
     records = lane.publications()["items"]
+    if verifier in records and records[verifier] != item:
+        raise RuntimeError("GODOT_PUBLICATION_RECORD_CONFLICT")
     records.setdefault(verifier, item)
     _save_publications(lane, records)
 
@@ -1772,7 +1809,7 @@ def build_godot_requests(lane: ProductLane, name: str, report: dict[str, Any], c
                     lane.root, request,
                     save_report=lambda verifier, data: atomic_json(
                         lane.reports / f"{verifier}-verification.json", data),
-                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item),
+                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item, request),
                 )
         except Exception as exc:
             result = {"status": "NEEDS_RECONCILIATION",
