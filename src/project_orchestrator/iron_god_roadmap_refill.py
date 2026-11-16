@@ -39,6 +39,7 @@ from scripts.capability_slice_contract import derive_slices
 from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_development_memory as development_memory
+from . import iron_god_gdscript_lane as godot_lane
 from .capability_authority import CapabilityAuthorityError, compile_capability_authority
 from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
 from . import iron_god_model_routing as model_routing
@@ -784,7 +785,8 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
                          external_pending=frozenset(capable_builder.open_request_ids(lane_root))
                          | decomposer.active_parent_ids(lane_root),
                          external_done=frozenset(capable_builder.merged_request_ids(lane_root))
-                         | decomposer.done_parent_ids(lane_root))
+                         | decomposer.done_parent_ids(lane_root)
+                         | godot_lane.merged_request_ids(lane_root))
         derived["requests"].extend(decomposer.child_requests(lane_root, repository, head, items, state))
     except (CapabilityAuthorityError, ValueError, OSError, subprocess.SubprocessError) as exc:
         reason = str(exc)[:300] or type(exc).__name__
@@ -858,7 +860,8 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
                 external_pending=frozenset(capable_builder.open_request_ids(lane_root))
                 | decomposer_lookahead.active_parent_ids(lane_root),
                 external_done=frozenset(capable_builder.merged_request_ids(lane_root))
-                | decomposer_lookahead.done_parent_ids(lane_root))
+                | decomposer_lookahead.done_parent_ids(lane_root)
+                | godot_lane.merged_request_ids(lane_root))
         except Exception:  # the lookahead is an optimisation: failing it leaves the head-of-line behaviour exactly as it was
             extra = []
         for request in extra:
