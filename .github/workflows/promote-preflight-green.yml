@@ -19,6 +19,10 @@ jobs:
         startsWith(github.event.workflow_run.head_branch, 'agent/')
       )
     runs-on: ubuntu-latest
+    # This workflow_run job deliberately has no checkout. Give every gh call
+    # explicit repository context, including artifact download and draft promotion.
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
       - name: Confirm branch still points at the verified head
         env:
