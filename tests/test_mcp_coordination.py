@@ -196,8 +196,14 @@ def test_mcp_adapter_is_read_only_by_default_and_writes_are_opt_in(database, tmp
 
     read_only = gateway.create_server(database=database, state_root=tmp_path,
                                      repo_root=tmp_path, client_label="chatgpt")
-    assert set(read_only.tools) == {"get_targets", "get_engine_snapshot", "list_messages"}
+    assert set(read_only.tools) == {
+        "get_targets", "get_engine_snapshot", "get_development_diagnostics", "list_messages",
+    }
     assert read_only.tools["list_messages"]()["status"] == "UNINITIALIZED"
+    diagnostics = read_only.tools["get_development_diagnostics"]()
+    assert diagnostics["authority"] == "READ_ONLY_NO_OWNER_GRANTS_NO_RECOVERY_EXECUTION"
+    assert diagnostics["status"] == "UNVERIFIED"
+    assert not (tmp_path / "observability").exists()
 
     writer = gateway.create_server(database=database, state_root=tmp_path,
                                    repo_root=tmp_path, client_label="claude-code",
