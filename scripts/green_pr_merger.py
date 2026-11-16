@@ -87,8 +87,14 @@ def independent_exact_head_review(
                 continue
         except ValueError:
             continue
+        # COMMENTED has no actionable review decision. Do not clear a prior
+        # CHANGES_REQUESTED (or approval) until an explicit new decision arrives.
+        # DISMISSED explicitly removes the prior decision.
+        state = str(review.get("state") or "").upper()
+        if state not in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+            continue
         if who not in active or when >= active[who][0]:
-            active[who] = (when, str(review.get("state") or ""))
+            active[who] = (when, state)
     if any(state == "CHANGES_REQUESTED" for _, state in active.values()):
         return False
     authorized = any(state == "APPROVED" for _, state in active.values())
