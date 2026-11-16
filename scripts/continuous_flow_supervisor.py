@@ -34,6 +34,7 @@ from project_orchestrator import telemetry_continuation as _telemetry
 from project_orchestrator import activation_capability as _authority
 from project_orchestrator import supervisor_runtime as _supervisor_runtime
 from project_orchestrator import iron_god_advisory_mailbox as _advisory_mailbox
+from project_orchestrator import iron_god_observability as _observability
 from project_orchestrator.frontier_replenishment import replenish_frontiers, reconcile_issue_cycle
 from project_orchestrator.human_ownership import human_mode_active
 
@@ -904,6 +905,12 @@ def main()->int:
             "previous_process_instance_id":burst.get("previous_process_instance_id"),
             "resumed":burst["resumed"],"pass_count":burst_pass,"last_sequence":record["sequence"],"last_builder_status":builder_status,
             "immediate_continuation":record["immediate_continuation"],"updated_at_utc":datetime.now(UTC).isoformat()})
+        # Append diagnostic evidence after the continuation sequence is durable.
+        # This projection has no permission to dispatch, grant, resume or merge.
+        try:
+            _observability.record_supervisor_pass(state)
+        except Exception:
+            pass  # Telemetry must never block an authorized development pass.
         _supervisor_runtime.wait_for_completion_or_reclaim(worker_pool,delay,state)
 if __name__=="__main__": raise SystemExit(main())
 
