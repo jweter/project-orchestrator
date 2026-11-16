@@ -297,3 +297,118 @@ def test_godot_review_findings_block_wrong_python_repair_path(tmp_path, monkeypa
     )
     assert item["state"] == "BLOCKED"
     assert item["reason"] == "GODOT_REVIEW_REPAIR_REQUIRES_APPROVED_GDSCRIPT_PATH"
+
+
+def test_executable_godot_stays_local_without_python_examples():
+    req = request()
+    assert "acceptance_examples" not in req
+    report = {"local_requests": [req], "capable_requests": []}
+    moved = product.reroute_slices_the_local_lane_cannot_verify(report)
+    assert moved == []
+    assert report["local_requests"] == [req]
+    assert report["capable_requests"] == []
+
+
+def test_failed_godot_job_has_one_capped_retry_and_keeps_attempt_evidence(
+    tmp_path, monkeypatch,
+):
+    req = request()
+    monkeypatch.setattr(gd.builder, "validate", lambda *_: [])
+    monkeypatch.setattr(gd.builder, "toolchain_problems", lambda: [])
+    history = []
+    releases = []
+    def spawn(_source, _result, _clone, _base):
+        history.append(len(history) + 1)
+        return {"pid": len(history), "host": "local", "process_start_fingerprint": str(len(history))}
+
+    for index in (1, 2):
+        first = gd.advance(tmp_path, req, base=BASE, clone=tmp_path,
+                           may_start=True, reserve=lambda: "lease-"+str(index),
+                           release=releases.append, spawn=spawn, alive=lambda _: False)
+        assert first["status"] == "STARTED"
+        job = gd.read_job(tmp_path, req)
+        assert job["attempts"] == index
+        atomic_json(Path(job["result_path"]), {
+            "request": req["id"], "base": BASE, "status": "FAILED",
+            "reason": "TEST_FAILED_"+str(index),
+        })
+        failed = gd.advance(tmp_path, req, base=BASE, clone=tmp_path,
+                            may_start=False, reserve=lambda: None,
+                            release=releases.append, spawn=spawn, alive=lambda _: False)
+        assert failed["status"] == "FAILED"
+    job = gd.read_job(tmp_path, req)
+    assert job["attempts"] == gd.MAX_ATTEMPTS
+    assert len(job["prior_results"]) == 1
+    assert job["prior_results"][0]["worker_result"]["reason"] == "TEST_FAILED_1"
+    assert gd.advance(tmp_path, req, base=BASE, clone=tmp_path,
+                      may_start=True, reserve=lambda: "should-not-spend",
+                      release=releases.append, spawn=lambda *_: pytest.fail("third attempt forbidden"),
+                      alive=lambda _: False)["status"] == "ATTEMPTS_EXHAUSTED"
+    assert len(history) == 2
+    assert releases == ["lease-1", "lease-2"]
+
+
+def test_failed_independent_verification_can_retry_within_existing_budget(
+    tmp_path, monkeypatch,
+):
+    req = request()
+    path = gd.job_path(tmp_path, req)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_json(path, {
+        "id": req["id"], "repository": REPO, "state": "FAILED",
+        "attempts": 1, "reason": "INDEPENDENT_TEST_FAILED",
+        "result": {"status": "BUILT_AND_VERIFIED", "base": BASE},
+        "base": BASE, "request": req,
+    })
+    monkeypatch.setattr(gd.builder, "validate", lambda *_: [])
+    monkeypatch.setattr(gd.builder, "toolchain_problems", lambda: [])
+    launched = []
+    result = gd.advance(tmp_path, req, base=BASE, clone=tmp_path, may_start=True,
+                        reserve=lambda: "lease-2", release=lambda _: None,
+                        spawn=lambda *_: launched.append(True) or {
+                            "pid": 22, "host": "local", "process_start_fingerprint": "f2",
+                        }, alive=lambda _: False)
+    assert result["status"] == "STARTED"
+    assert launched == [True]
+    job = gd.read_job(tmp_path, req)
+    assert job["prior_results"][0]["independent_failure"] == "INDEPENDENT_TEST_FAILED"
+    assert job["attempts"] == 2
+
+
+def test_godot_generation_has_live_owner_abort_and_no_commit_after_takeover(
+    tmp_path, monkeypatch,
+):
+    from scripts import iron_god_gdscript_author as author
+
+    req = request()
+    permission = {"allowed": True}
+    monkeypatch.setattr(
+        author, "evaluate_execution_authority",
+        lambda **_kw: SimpleNamespace(permitted=permission["allowed"]),
+    )
+    def git_ok(_folder, *args):
+        if args[:2] == ("rev-parse", "HEAD"):
+            return SimpleNamespace(returncode=0, stdout=BASE, stderr="")
+        if args[:2] == ("rev-parse", "origin/main"):
+            return SimpleNamespace(returncode=0, stdout=BASE, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    monkeypatch.setattr(author, "git", git_ok)
+    def task_from_test(request, workspace):
+        test = workspace / request["gdscript"]["test_script"]
+        test.parent.mkdir(parents=True, exist_ok=True)
+        test.write_text("extends SceneTree\nfunc _initialize(): quit(1)\n", encoding="utf-8")
+        return SimpleNamespace(test=["godot", "test"], build=["godot", "parse"])
+    monkeypatch.setattr(author.gdscript, "make_task", task_from_test)
+    monkeypatch.setattr(author.bounded, "default_run", lambda *_: (1, "baseline fails"))
+    evidence = []
+    def fake_build(task, ask, **kwargs):
+        evidence.append(kwargs)
+        assert kwargs["should_abort"]() is None
+        permission["allowed"] = False
+        assert kwargs["should_abort"]() == "OWNER_AUTHORIZATION_REVOKED"
+        return {"status": "CANCELLED_BY_GUARD", "reason": "OWNER_AUTHORIZATION_REVOKED"}
+    monkeypatch.setattr(author.bounded, "build_change", fake_build)
+    result = author.run_once(req, tmp_path, BASE, tmp_path, BASE)
+    assert evidence and result["status"] == "BLOCKED"
+    assert result["reason"] == "OWNER_AUTHORIZATION_REVOKED_DURING_BUILD"
+    assert result.get("head") is None

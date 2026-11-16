@@ -254,3 +254,46 @@ def test_a_response_missing_a_required_file_is_retried_and_never_built_as_is(rep
     result = cb.build_change(task(repo), script.ask, run=script.run)
     assert result["iterations"][0]["stage"] == "SCOPE" and "MISSING_FILE:src/simulation/tests/foo_tests.cpp" in script.prompts[1]
     assert result["status"] == cb.SUCCESS and [c[0] for c in script.commands].count("build") == 1   # nothing was built from the incomplete first reply
+
+
+def test_owner_revoked_during_generation_never_writes_unauthorized_reply(repo: Path):
+    enabled = True
+    commands = []
+    def generate(prompt):
+        nonlocal enabled
+        enabled = False  # Give Me Control while the model was answering
+        return reply()
+    def run(cmd, cwd, timeout):
+        commands.append(cmd)
+        return 0, ""
+    evidence = cb.build_change(
+        task(repo), generate, run=run,
+        should_abort=lambda: None if enabled else "OWNER_CONTROL_ACTIVE",
+    )
+    assert evidence["status"] == "CANCELLED_BY_GUARD"
+    assert evidence["reason"] == "OWNER_CONTROL_ACTIVE"
+    assert evidence["rolled_back"] is True
+    assert not (repo / "src/simulation/include/x/foo.hpp").exists()
+    assert not (repo / "src/simulation/tests/foo_tests.cpp").exists()
+    assert commands == []
+
+
+def test_owner_revoked_after_authorized_write_prevents_build_and_rolls_back(repo: Path):
+    enabled = True
+    def check_authority():
+        nonlocal enabled
+        # Once the builder has written files, simulate immediate revocation.
+        if (repo / "src/simulation/include/x/foo.hpp").exists():
+            enabled = False
+        return None if enabled else "OWNER_CONTROL_ACTIVE"
+    called = []
+    evidence = cb.build_change(
+        task(repo), lambda _: reply(),
+        run=lambda *args: called.append(True) or (0, ""),
+        should_abort=check_authority,
+    )
+    assert evidence["status"] == "CANCELLED_BY_GUARD"
+    assert evidence["rolled_back"] is True
+    assert called == []
+    assert not (repo / "src/simulation/include/x/foo.hpp").exists()
+    assert not (repo / "src/simulation/tests/foo_tests.cpp").exists()

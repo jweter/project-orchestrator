@@ -1458,7 +1458,15 @@ def reroute_slices_the_local_lane_cannot_verify(
     # execution. Preserve the original LOCAL ledger and worker lifecycle.
     admitted = set(report.get("admitted") or []) | set(already_local)
     for request in report.get("local_requests", []):
-        if request.get("id") not in admitted and local_drafter.missing_examples(request):
+        # Executable Godot work has its own fixed, independently checked
+        # SceneTree oracle. Python acceptance_examples are irrelevant and
+        # must never route this approved LOCAL work into a paid builder.
+        godot_authorized = gdscript_lane.eligible(
+            request, repository=str(request.get("repository") or ""),
+            base=str(request.get("exact_head") or ""),
+        )
+        if (not godot_authorized and request.get("id") not in admitted
+                and local_drafter.missing_examples(request)):
             moved.append({**request, "route": {**request["route"], "builder": roadmap_refill.CAPABLE,
                                                "reason": "LOCAL_SLICE_WITHOUT_ACCEPTANCE_EXAMPLES", "was": "LOCAL"}})
         else:

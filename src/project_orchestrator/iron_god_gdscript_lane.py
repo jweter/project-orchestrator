@@ -145,8 +145,10 @@ def advance(
         if job.get("lease_id"):
             release(str(job["lease_id"]))
         return {"status": job["state"], "id": request["id"], "reason": result.get("reason", "")}
-    if job.get("state") in {"BUILT", "PUBLISHED", "FAILED"}:
+    if job.get("state") in {"BUILT", "PUBLISHED"}:
         return {"status": job["state"], "id": request["id"]}
+    if job.get("state") == "FAILED" and int(job.get("attempts", 0)) >= MAX_ATTEMPTS:
+        return {"status": "ATTEMPTS_EXHAUSTED", "id": request["id"]}
     if not may_start or in_progress(root):
         return {"status": "WAITING_FOR_OTHER_LOCAL_WORK"}
     if int(job.get("attempts", 0)) >= MAX_ATTEMPTS:
@@ -159,6 +161,16 @@ def advance(
     path.parent.mkdir(parents=True, exist_ok=True)
     request_file = path.with_suffix(".request.json")
     result_file = path.with_suffix(".result.json")
+    # Preserve prior failed attempt evidence; a retry never erases the
+    # initial worker handback, independent verifier reason or capped counter.
+    if job.get("state") == "FAILED":
+        prior = list(job.get("prior_results") or [])
+        prior.append({
+            "attempt": int(job.get("attempts", 0)),
+            "worker_result": job.get("result"),
+            "independent_failure": job.get("reason"),
+        })
+        job["prior_results"] = prior[:MAX_ATTEMPTS]
     # State is durable *before* Popen. A crash here requires owner-safe
     # reconciliation instead of creating a second potentially live worker.
     job.update(state="STARTING", base=base, lease_id=lease_id,

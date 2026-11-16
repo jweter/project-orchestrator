@@ -39,6 +39,9 @@ def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_
     def authorized() -> bool:
         return evaluate_execution_authority(release_sha=release_sha).permitted is True
 
+    def owner_abort_reason() -> str | None:
+        return None if authorized() else "OWNER_AUTHORIZATION_REVOKED"
+
     if not authorized():
         return {**result, "reason": "OWNER_EXECUTION_AUTHORITY_DENIED"}
     if not lane.eligible(request, repository=str(request.get("repository") or ""), base=base):
@@ -79,22 +82,28 @@ def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_
         try:
             reply = local_model.guarded_generate(
                 prompt, requested=None, num_ctx=6144, num_predict=2200,
-                timeout=900, wait_s=900,
+                timeout=900, wait_s=900, should_abort=owner_abort_reason,
             )
         except local_model.ModelCancelled as exc:
             cancelled.append(exc)
             raise
+        if not authorized():
+            raise local_model.ModelCancelled("OWNER_AUTHORIZATION_REVOKED")
         return str(reply.get("response") or "")
 
     try:
         evidence = bounded.build_change(
             task, ask, limits=bounded.Limits(max_iterations=3, memory_waits=0),
-            admit=lambda: (True, "guarded Ollama checks memory and cancellation"),
+            admit=lambda: (authorized(), "OWNER_AUTHORIZATION_REVOKED_OR_MODEL_UNAVAILABLE"),
+            should_abort=owner_abort_reason,
         )
     except (local_model.ModelNotAdmitted, local_model.ModelCancelled) as exc:
         # A bounded unavailable-model wait is an environmental hold, NOT a
         # spent implementation attempt. main() persists the receipt so the
         # scheduler may safely release its lease and retry later.
+        if not authorized():
+            return {**result, "status": "BLOCKED",
+                    "reason": "OWNER_AUTHORIZATION_REVOKED_DURING_BUILD"}
         return {**result, "status": "WAITING_FOR_MEMORY",
                 "reason": f"{type(exc).__name__}: {str(exc)[:180]}"}
     result["evidence"] = {key: evidence.get(key) for key in
