@@ -32,10 +32,12 @@ STRATEGIES = {
         "Avoid the previous implementation structure that triggered the type-check errors.",
     ),
     "STATIC_LINE_LENGTH": (
-        "Change the formatting approach: split complex expressions into named intermediate values and follow "
-        "the repository's actual lint and formatting configuration.",
-        "Change the implementation structure to avoid long expressions entirely, using short helper values "
-        "and multiline constructs permitted by the repository's formatter.",
+        "Inspect the reported E501 file and line. For an oversized docstring or comment, insert real short "
+        "source lines without changing meaning; Ruff format does not reflow triple-quoted prose. For code, "
+        "split long expressions into named intermediate values permitted by the repository's formatter.",
+        "Switch to a compact implementation structure: use concise docstring paragraphs with explicit line "
+        "breaks, shorter comments, and multiline parenthesized expressions. Recheck every source line "
+        "against the configured limit; preserve the approved tests and their expected behavior.",
     ),
 }
 
