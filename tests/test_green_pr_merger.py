@@ -222,8 +222,12 @@ def test_only_independent_current_head_approval_counts(monkeypatch):
 
     head = "c" * 40
     monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
-    accepted = [{"user": {"login": "reviewer"}, "commit_id": head, "state": "APPROVED"}]
+    accepted = [{"user": {"login": "reviewer"}, "commit_id": head, "state": "APPROVED",
+                 "author_association": "COLLABORATOR"}]
     assert merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
+    accepted[0]["author_association"] = "CONTRIBUTOR"
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
+    accepted[0]["author_association"] = "COLLABORATOR"
     assert not merger.independent_exact_head_review("o/r", 1, head, "reviewer", accepted)
     accepted[0]["commit_id"] = "d" * 40
     assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
