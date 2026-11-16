@@ -47,6 +47,7 @@ from . import iron_god_backlog as backlog
 from . import iron_god_capable_builder as capable_builder
 from . import iron_god_capable_admission as capable_admission
 from . import iron_god_cpp_lane as cpp_lane
+from . import iron_god_gdscript_lane as gdscript_lane
 from . import iron_god_dev_mode as dev_mode
 from . import iron_god_execution_status as execution_status
 from . import iron_god_model_routing as model_routing
@@ -224,7 +225,8 @@ def local_model_work_in_progress(lane: ProductLane) -> bool:
     """
     try:
         if local_drafter.drafting_in_progress(lane.root) or task_decomposer.planning_in_progress(lane.root) \
-                or roadmap_progress.verifying(lane.workspaces / "progress"):
+                or roadmap_progress.verifying(lane.workspaces / "progress") \
+                or gdscript_lane.in_progress(lane.root):
             return True
         return any(row.get("transport") == capable_builder.ENGINE_TRANSPORT and row.get("status") == "DISPATCHED"
                    for row in capable_builder._rows(capable_builder.dispatch_state(lane.root)))
@@ -714,6 +716,16 @@ def _request_review_repair(lane: ProductLane, packet_id: str, item: dict[str, An
                            gate: readiness.Readiness) -> None:
     """Record the findings against the PR, commit, file and slice; queue a bounded repair or block."""
     repo = item["repository"]
+    if item.get("lane") == "godot":
+        # The existing directed review-repair worker is Python-only. Never
+        # attempt to modify Godot source with the wrong repair transport.
+        item.update(state="BLOCKED",
+                    reason="GODOT_REVIEW_REPAIR_REQUIRES_APPROVED_GDSCRIPT_PATH")
+        _record_slice_outcome(lane, packet_id, "PR_BLOCKED")
+        working_memory.record(lane.state_root, repo, "GODOT_REVIEW_REPAIR_BLOCKED",
+                              packet_id=packet_id, outcome="BLOCKED",
+                              blocker=item["reason"])
+        return
     attempts = int(item.get("repair_attempts", 0))
     plan = lane._json(lane.handbacks / f"{packet_id}.json", {}).get("plan") or {}
     module, test = plan.get("module_path"), plan.get("test_path")
@@ -1470,7 +1482,15 @@ def reroute_slices_the_local_lane_cannot_verify(
     # execution. Preserve the original LOCAL ledger and worker lifecycle.
     admitted = set(report.get("admitted") or []) | set(already_local)
     for request in report.get("local_requests", []):
-        if request.get("id") not in admitted and local_drafter.missing_examples(request):
+        # Executable Godot work has its own fixed, independently checked
+        # SceneTree oracle. Python acceptance_examples are irrelevant and
+        # must never route this approved LOCAL work into a paid builder.
+        godot_authorized = gdscript_lane.eligible(
+            request, repository=str(request.get("repository") or ""),
+            base=str(request.get("exact_head") or ""),
+        )
+        if (not godot_authorized and request.get("id") not in admitted
+                and local_drafter.missing_examples(request)):
             moved.append({**request, "route": {**request["route"], "builder": roadmap_refill.CAPABLE,
                                                "reason": "LOCAL_SLICE_WITHOUT_ACCEPTANCE_EXAMPLES", "was": "LOCAL"}})
         else:
@@ -1650,7 +1670,11 @@ def spawn_cpp_author(release_repo: Path, release_sha: str, request_file: Path, c
 def build_native_requests(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
                           release: tuple[Path, str] | None) -> None:
     """Advance the local C++ lane for this repository's native requests; outcomes are logged, never fatal."""
-    native = [r for r in report.get("capable_requests", []) if cpp_lane.classify(r) is not None]
+    # Everward's active owner-directed stack is Godot/GDScript; the old C++
+    # profile must not silently restart obsolete Unreal development.
+    native = [r for r in report.get("capable_requests", [])
+              if r.get("repository") != "jweter/Project-Everward"
+              and cpp_lane.classify(r) is not None]
     if not native or release is None:
         return
     release_repo, release_sha = release
@@ -1679,6 +1703,169 @@ def build_native_requests(lane: ProductLane, name: str, report: dict[str, Any], 
         roadmap_refill.log_event(lane.root, "CPP_" + str(row["status"]), name, str(row["id"]), {"reason": row.get("reason", "")})
         working_memory.record(lane.state_root, name, "CPP_" + str(row["status"]), detail=f"{row['id']}: {row.get('reason', '')}",
                               outcome=None if row["status"] in ("STARTED", "BUILT_AND_VERIFIED", "PUBLICATION_REGISTERED") else "BLOCKED")
+
+
+def spawn_godot_author(release_repo: Path, release_sha: str, request_file: Path, result_file: Path,
+                       clone: Path, head: str, log_path: Path, *, model: str, state_root: Path) -> dict[str, Any]:
+    """Release-pinned Godot worker; never push, merge, or loosen the owner grant."""
+    env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"),
+           "IRON_GOD_ACCEPTED_SHA": release_sha}
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    with log_path.open("ab") as log:
+        process = subprocess.Popen(
+            [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_gdscript_author.py"),
+             "--request", str(request_file), "--result", str(result_file),
+             "--clone", str(clone), "--base", head, "--release-repo", str(release_repo),
+             "--model", model, "--state-root", str(state_root)],
+            cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, creationflags=flags,
+        )
+    return {"pid": process.pid, "process_start_fingerprint":
+            owner_controller.process_start_fingerprint(process.pid) or "",
+            "host": owner_controller.socket.gethostname()}
+
+
+def godot_job_outcome(lane: ProductLane, request: dict[str, Any], outcome: dict[str, Any]) -> None:
+    """Observational progress from the same bounded roadmap/working-memory ledger."""
+    status = str(outcome.get("status") or "UNKNOWN")
+    if status in {"RUNNING", "WAITING_FOR_OTHER_LOCAL_WORK"}:
+        return
+    repo, ident = request["repository"], request["id"]
+    roadmap_refill.log_event(lane.root, "GODOT_" + status, repo, ident,
+                             {"reason": outcome.get("reason", "")})
+    working_memory.record(
+        lane.state_root, repo, "GODOT_" + status,
+        detail=f"{ident}: {str(outcome.get('reason') or '')[:160]}",
+        outcome="BLOCKED" if status in {"NOT_READY", "FAILED", "VERIFICATION_FAILED",
+                                        "NEEDS_RECONCILIATION", "NOT_AUTHORIZED"} else None,
+    )
+
+
+def harvest_godot_jobs(lane: ProductLane, lease_pool: Any) -> None:
+    """Harvest on *every* pass, even when the roadmap's 10-minute refill is not due."""
+    if lease_pool is None:
+        return
+    _reserve, release = runtime_lease(lease_pool)
+    for job in gdscript_lane.pending_jobs(lane.root):
+        request = job.get("request")
+        if not isinstance(request, dict) or not request.get("repository"):
+            continue
+        try:
+            result = gdscript_lane.advance(
+                lane.root, request, base=str(job["base"]), clone=lane.clone(request["repository"]),
+                may_start=False, reserve=lambda: None, release=release, spawn=lambda *_args: None,
+                alive=worker_alive,
+            )
+            if result["status"] == "BUILT":
+                result = gdscript_lane.finalize(
+                    lane.root, request,
+                    save_report=lambda verifier, data: atomic_json(
+                        lane.reports / f"{verifier}-verification.json", data),
+                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item, request),
+                )
+            if result["status"] not in {"RUNNING", "WAITING_FOR_OTHER_LOCAL_WORK"}:
+                godot_job_outcome(lane, request, result)
+        except Exception as exc:
+            godot_job_outcome(lane, request, {
+                "status": "NEEDS_RECONCILIATION",
+                "reason": f"HARVEST_EXCEPTION: {type(exc).__name__}: {str(exc)[:140]}",
+            })
+
+
+def _add_godot_publication(lane: ProductLane, verifier: str, item: dict[str, Any],
+                           request: dict[str, Any]) -> None:
+    """Persist the exact packet consumed by the existing PR merger *before* publishing.
+
+    The common publication flow loads packets/{verifier}.json immediately
+    after merging to record product memory and completion evidence. Without
+    this packet, a green Godot PR would merge but remain falsely BLOCKED.
+    """
+    if item.get("lane") != "godot" or item.get("source_request_id") != request.get("id"):
+        raise RuntimeError("GODOT_PUBLICATION_REQUEST_BINDING_INVALID")
+    if item.get("base_sha") != request.get("exact_head"):
+        raise RuntimeError("GODOT_PUBLICATION_BASE_MISMATCH")
+    packet = {
+        "schema_version": 1, "packet_id": verifier,
+        "project": "everward", "repository": request["repository"],
+        "branch": item["branch"], "base_sha": item["base_sha"],
+        "task": request["objective"], "source_ref": request.get("roadmap_ref", ""),
+        "slice": {"id": request["id"], "level": request["capability_level"],
+                  "title": request["objective"], "build": None,
+                  "gdscript": request["gdscript"]},
+    }
+    packet_file = lane.packets / f"{verifier}.json"
+    if packet_file.is_file():
+        if lane._json(packet_file, None) != packet:
+            raise RuntimeError("GODOT_PUBLICATION_PACKET_CONFLICT")
+    else:
+        atomic_json(packet_file, packet)
+    records = lane.publications()["items"]
+    if verifier in records and records[verifier] != item:
+        raise RuntimeError("GODOT_PUBLICATION_RECORD_CONFLICT")
+    records.setdefault(verifier, item)
+    _save_publications(lane, records)
+
+
+def build_godot_requests(lane: ProductLane, name: str, report: dict[str, Any], clone: Path, head: str,
+                         release: tuple[Path, str] | None, lease_pool: Any) -> None:
+    """Start at most one declared, local, owner-authorized Godot request."""
+    if release is None or lease_pool is None:
+        return
+    release_repo, release_sha = release
+    owner = owner_controller.evaluate(
+        owner_controller.control_root(lane.state_root), release_sha=release_sha,
+    )
+    if owner.permitted is not True:
+        return
+    candidates = [r for r in report.get("local_requests", [])
+                  if gdscript_lane.eligible(r, repository=name, base=head)]
+    if not candidates:
+        return
+    reserve, give_back = runtime_lease(lease_pool)
+    for request in candidates:
+        try:
+            # Use the same measured per-model memory/capability routing as
+            # the main Product lane, not Ollama's unrelated default 7B model.
+            selected = model_routing.route(
+                1, load_profiles(lane.state_root), available_gib(),
+                after_pressure=recent_pressure(),
+            )
+            if selected.model is None:
+                godot_job_outcome(lane, request, {
+                    "status": ("WAITING_FOR_MEMORY" if selected.reason.startswith(
+                        ("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+                        else "WAITING_FOR_CALIBRATION"),
+                    "reason": selected.reason,
+                })
+                continue
+            may_start = (lane.active() is None
+                         and not local_drafter.drafting_in_progress(lane.root)
+                         and not task_decomposer.planning_in_progress(lane.root)
+                         and not roadmap_progress.verifying(lane.workspaces / "progress"))
+            result = gdscript_lane.advance(
+                lane.root, request, base=head, clone=clone, may_start=may_start,
+                reserve=reserve, release=give_back,
+                spawn=lambda request_file, result_file, source, exact_head: spawn_godot_author(
+                    release_repo, release_sha, request_file, result_file, source, exact_head,
+                    lane.reports / f"godot-{result_file.stem}.log",
+                    model=selected.model, state_root=lane.state_root),
+                alive=worker_alive,
+            )
+            if result["status"] == "BUILT":
+                result = gdscript_lane.finalize(
+                    lane.root, request,
+                    save_report=lambda verifier, data: atomic_json(
+                        lane.reports / f"{verifier}-verification.json", data),
+                    add_publication=lambda verifier, item: _add_godot_publication(lane, verifier, item, request),
+                )
+        except Exception as exc:
+            result = {"status": "NEEDS_RECONCILIATION",
+                      "reason": f"{type(exc).__name__}: {str(exc)[:180]}"}
+        godot_job_outcome(lane, request, result)
+        if result.get("status") in {"STARTED", "RUNNING", "NEEDS_RECONCILIATION",
+                                    "PUBLICATION_REGISTERED"}:
+            break
 
 
 def spawn_decompose_author(release_repo: Path, release_sha: str, request_file: Path, clone: Path, base: str,
@@ -1824,6 +2011,8 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
     capable = {**(capable or {"enabled": False, "daily_limit": capable_builder.DEFAULT_DAILY_LIMIT}),
                "release": release, "lease_pool": lease_pool}  # what an in-engine capable build is bound to
     clean_finished_worktrees(lane)
+    if release is not None:
+        harvest_godot_jobs(lane, lease_pool)
     for failure in roadmap_progress.harvest(lane.workspaces / "progress", release=runtime_lease(lease_pool)[1]
                                             if lease_pool is not None else None):
         # every turn, before any repository is synced: a finished or hung preflight must not hold the lease and the
@@ -1887,6 +2076,7 @@ def refill_from_roadmaps(lane: ProductLane, repos: list[str], busy: set[str], st
         hand_to_capable_builder(lane, name, report, capable, hold_for_local=draft_locally and release is not None,
                                 queue=capable_queue, clone=clone)
         build_native_requests(lane, name, report, clone, head, release)
+        build_godot_requests(lane, name, report, clone, head, release, lease_pool)
         if draft_locally:
             draft_with_local_builder(lane, name, report, clone, head, release, lease_pool)
             planning_later.append((name, report, clone, head))

@@ -214,7 +214,8 @@ class Workspace:
 def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits = Limits(),
                  free_gib: Callable[[], float] = lambda: 99.0, sleep: Callable[[float], None] = time.sleep,
                  clock: Callable[[], float] = time.monotonic,
-                 admit: Callable[[], tuple[bool, str]] | None = None) -> dict[str, Any]:
+                 admit: Callable[[], tuple[bool, str]] | None = None,
+                 should_abort: Callable[[], str | None] | None = None) -> dict[str, Any]:
     """Run the generate -> compile -> test -> repair loop. Returns the evidence record; ``status`` is SUCCESS only when the
     repository's own build and tests passed on the final files."""
     started = clock()
@@ -231,14 +232,24 @@ def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits
             evidence["diff"] = workspace.diff()
         return evidence
 
+    def abort_if_revoked() -> dict[str, Any] | None:
+        reason = should_abort() if should_abort else None
+        return finish("CANCELLED_BY_GUARD", str(reason)[:160]) if reason else None
+
     for command in task.prelude:
+        if (halt := abort_if_revoked()) is not None:
+            return halt
         code, out = run(command, task.workspace, limits.build_timeout_s)
         if code != 0:
             return finish("PRELUDE_FAILED", out[-600:])
     prompt, current, last_fingerprint = initial_prompt(task, limits), {}, None
     for iteration in range(1, limits.max_iterations + 1):
+        if (halt := abort_if_revoked()) is not None:
+            return halt
         waits = 0
         while True:  # admission: no model call without memory (and idleness, when required); waiting spends no attempt
+            if (halt := abort_if_revoked()) is not None:
+                return halt
             if admit:
                 admitted, why = admit()
             else:
@@ -259,6 +270,10 @@ def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits
             record.update(model_seconds=round(clock() - t, 1), stage="MODEL", problems=[f"{type(exc).__name__}: {str(exc)[:200]}"])
             return finish("MODEL_UNAVAILABLE", record["problems"][0])
         record.update(model_seconds=round(clock() - t, 1), response_chars=len(response))
+        # The model can finish after Give Me Control was clicked; never apply
+        # that now-unauthorized response to disk.
+        if (halt := abort_if_revoked()) is not None:
+            return halt
         files = parse_files(response)
         if not files:
             record["stage"] = "PARSE"
@@ -270,11 +285,15 @@ def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits
             record.update(stage="SCOPE", problems=problems + [f"MISSING_FILE:{m}" for m in missing])
             prompt = repair_prompt(task, current, "scope", record["problems"], "")
             continue  # nothing is written or verified until every required file is present and in scope
+        if (halt := abort_if_revoked()) is not None:
+            return halt
         workspace.write({p: t for p, t in files.items() if p not in problems})
         current = {p: files[p] for p in files if p not in problems}
         evidence["files"] = sorted(current)
         code, out = 0, ""
         for command in [*task.configure, task.build]:
+            if (halt := abort_if_revoked()) is not None:
+                return halt
             code, out = run(command, task.workspace, limits.build_timeout_s)
             if code != 0:
                 break
@@ -289,7 +308,11 @@ def build_change(task: Task, ask: Ask, *, run: Run = default_run, limits: Limits
             last_fingerprint = print_id
             prompt = repair_prompt(task, current, "compile", found, out)
             continue
+        if (halt := abort_if_revoked()) is not None:
+            return halt
         code, out = run(task.test, task.workspace, limits.test_timeout_s)
+        if (halt := abort_if_revoked()) is not None:
+            return halt
         record.update(test_exit=code, test_tail=out[-500:])
         if code == 0:
             record["stage"] = SUCCESS
