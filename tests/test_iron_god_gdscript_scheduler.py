@@ -1,6 +1,8 @@
 """Godot scheduler integration: owner gates, one lease, crash recovery and publication."""
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -205,3 +207,93 @@ def test_owner_authorization_is_checked_in_product_lane(monkeypatch):
         Lane(), REPO, {"local_requests": [req]}, Path("/not-used"), BASE,
         (Path("/not-used"), BASE), lease_pool=object(),
     )
+
+
+def test_model_not_admitted_becomes_refundable_wait_result(tmp_path, monkeypatch):
+    """No result-file disappearance or leaked model lease on temporary shortage."""
+    from scripts import iron_god_gdscript_author as author
+
+    req = request()
+    monkeypatch.setattr(author, "evaluate_execution_authority",
+                        lambda **kw: SimpleNamespace(permitted=True))
+
+    def fake_git(folder, *args):
+        if args[:2] == ("rev-parse", "HEAD"):
+            return SimpleNamespace(returncode=0, stdout=BASE, stderr="")
+        if args[:2] == ("rev-parse", "origin/main"):
+            return SimpleNamespace(returncode=0, stdout=BASE, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(author, "git", fake_git)
+
+    def fake_task(request, workspace):
+        path = workspace / request["gdscript"]["test_script"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("extends SceneTree\\nfunc _initialize(): quit(1)\\n")
+        return SimpleNamespace(test=["godot", "--headless", "--script", "tests/test_move.gd"])
+
+    monkeypatch.setattr(author.gdscript, "make_task", fake_task)
+    monkeypatch.setattr(author.bounded, "default_run", lambda *args: (1, "assert failed"))
+
+    def unavailable(*args, **kwargs):
+        raise author.local_model.ModelNotAdmitted("model slot busy")
+
+    monkeypatch.setattr(author.bounded, "build_change", unavailable)
+    result = author.run_once(req, tmp_path, BASE, tmp_path, BASE)
+    assert result["status"] == "WAITING_FOR_MEMORY"
+    assert "ModelNotAdmitted" in result["reason"]
+
+
+def test_godot_publication_writes_packet_before_common_merger(tmp_path, monkeypatch):
+    req = request()
+    lane = product.ProductLane(tmp_path)
+    lane.root.mkdir(parents=True)
+    result = {"base": BASE, "head": HEAD, "branch": "ig/godot-test"}
+    item = gd.publication_item(req, result, "godot-verified")
+    product._add_godot_publication(lane, "godot-verified", item, req)
+    packet_file = lane.packets / "godot-verified.json"
+    assert packet_file.exists()
+    packet = json.loads(packet_file.read_text(encoding="utf-8"))
+    assert packet["packet_id"] == "godot-verified"
+    assert packet["base_sha"] == BASE
+    assert packet["slice"]["id"] == req["id"]
+    assert lane.publications()["items"]["godot-verified"] == item
+    # Replaying the registration is idempotent rather than overwriting evidence.
+    product._add_godot_publication(lane, "godot-verified", item, req)
+    with pytest.raises(RuntimeError, match="PUBLICATION_PACKET_CONFLICT"):
+        modified = {**req, "objective": "different task"}
+        product._add_godot_publication(lane, "godot-verified", item, modified)
+
+
+def test_only_verified_merged_godot_publications_complete_graph(tmp_path):
+    req = request()
+    lane = product.ProductLane(tmp_path)
+    lane.root.mkdir(parents=True)
+    item = gd.publication_item(
+        req, {"base": BASE, "head": HEAD, "branch": "ig/godot-test"},
+        "godot-verified",
+    )
+    product._add_godot_publication(lane, "godot-verified", item, req)
+    assert gd.merged_request_ids(lane.root) == frozenset()
+    records = lane.publications()["items"]
+    records["godot-verified"].update(state="MERGED", merged_sha="f" * 40)
+    product._save_publications(lane, records)
+    assert gd.merged_request_ids(lane.root) == frozenset({req["id"]})
+
+
+def test_godot_review_findings_block_wrong_python_repair_path(tmp_path, monkeypatch):
+    req = request()
+    lane = product.ProductLane(tmp_path)
+    lane.root.mkdir(parents=True)
+    item = gd.publication_item(
+        req, {"base": BASE, "head": HEAD, "branch": "ig/godot-test"},
+        "godot-verified",
+    )
+    product._add_godot_publication(lane, "godot-verified", item, req)
+    monkeypatch.setattr(product.working_memory, "record", lambda *a, **kw: None)
+    product._request_review_repair(
+        lane, "godot-verified", item,
+        SimpleNamespace(findings=[{"path": req["gdscript"]["module"]}]),
+    )
+    assert item["state"] == "BLOCKED"
+    assert item["reason"] == "GODOT_REVIEW_REPAIR_REQUIRES_APPROVED_GDSCRIPT_PATH"
