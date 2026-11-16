@@ -502,13 +502,15 @@ def actual_result(worktree: Path, plan: dict[str, Any], call: str) -> str | None
 
 def adjudicate(worktree: Path, packet: dict[str, Any], plan: dict[str, Any], failure: str,
                check: Callable[[], None], rederive: Callable[..., Any] | None) -> list[dict[str, Any]]:
-    """Correct failing examples only where two independent derivations agree against the plan.
+    """Only self-planned examples may be reconsidered; never owner-approved ones.
 
-    A failing example is corrected to the code's result only when a fresh model
-    call, given just the objective, signature and call, derives the same value.
-    Every failing example must be resolved this way and at most half of the
-    examples may change; otherwise nothing is corrected and the slice fails.
+    The runtime once changed an independently approved case-sensitive ratio
+    example from 1.0 to 0.0 by agreeing with a mistaken fresh model answer.
+    A model's interpretation, even corroborated by another model call, cannot
+    supersede the immutable owner's acceptance oracle.
     """
+    if isinstance((packet.get("slice") or {}).get("build"), dict):
+        return []  # fail tests instead of revising owner-authorized success criteria
     failing = sorted({int(n) for n in re.findall(rf"test_{plan['function_name']}_example_(\d+)", failure)
                       if "FAILED" in failure})
     examples = plan["examples"]
@@ -1113,7 +1115,9 @@ def execute_product_packet(
             return finish("FAIL", f"STDLIB_GATE: {foreign}")
         quick = slice_checks(worktree, module, test, check)
         handback["repaired"] = True
-    if not quick["ok"] and "pytest" in quick["command"]:
+    if not quick["ok"] and "pytest" in quick["command"] and not approved:
+        # Only non-authoritative, self-planned examples may be reconsidered.
+        # The owner-approved backlog's literal tests are immutable.
         corrected = adjudicate(worktree, packet, slice_plan, quick["output_tail"], check, rederive)
         if corrected:
             handback["adjudicated_examples"] = corrected
