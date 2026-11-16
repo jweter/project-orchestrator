@@ -216,6 +216,7 @@ def test_model_not_admitted_becomes_refundable_wait_result(tmp_path, monkeypatch
     req = request()
     monkeypatch.setattr(author, "evaluate_execution_authority",
                         lambda **kw: SimpleNamespace(permitted=True))
+    _allow_test_calibration(monkeypatch, author)
 
     def fake_git(folder, *args):
         if args[:2] == ("rev-parse", "HEAD"):
@@ -239,7 +240,8 @@ def test_model_not_admitted_becomes_refundable_wait_result(tmp_path, monkeypatch
         raise author.local_model.ModelNotAdmitted("model slot busy")
 
     monkeypatch.setattr(author.bounded, "build_change", unavailable)
-    result = author.run_once(req, tmp_path, BASE, tmp_path, BASE)
+    result = author.run_once(req, tmp_path, BASE, tmp_path, BASE,
+                             model="qwen3.5:4b", state_root=tmp_path)
     assert result["status"] == "WAITING_FOR_MEMORY"
     assert "ModelNotAdmitted" in result["reason"]
 
@@ -408,7 +410,161 @@ def test_godot_generation_has_live_owner_abort_and_no_commit_after_takeover(
         assert kwargs["should_abort"]() == "OWNER_AUTHORIZATION_REVOKED"
         return {"status": "CANCELLED_BY_GUARD", "reason": "OWNER_AUTHORIZATION_REVOKED"}
     monkeypatch.setattr(author.bounded, "build_change", fake_build)
-    result = author.run_once(req, tmp_path, BASE, tmp_path, BASE)
+    _allow_test_calibration(monkeypatch, author)
+    result = author.run_once(req, tmp_path, BASE, tmp_path, BASE,
+                             model="qwen3.5:4b", state_root=tmp_path)
     assert evidence and result["status"] == "BLOCKED"
     assert result["reason"] == "OWNER_AUTHORIZATION_REVOKED_DURING_BUILD"
     assert result.get("head") is None
+
+
+def _allow_test_calibration(monkeypatch, author):
+    """Production validates actual hardware fingerprints; isolated tests inject one."""
+    monkeypatch.setattr(
+        author, "load_profiles",
+        lambda _root: {"ollama/qwen3.5:4b": {"model": "ollama/qwen3.5:4b"}},
+    )
+    monkeypatch.setattr(
+        author, "capability_gate",
+        lambda profile, *_args, **_kw: None if profile else "CALIBRATION_REQUIRED",
+    )
+
+
+def test_godot_author_blocks_uncalibrated_model_before_worktree_or_model(tmp_path, monkeypatch):
+    from scripts import iron_god_gdscript_author as author
+
+    monkeypatch.setattr(author, "evaluate_execution_authority",
+                        lambda **_kw: SimpleNamespace(permitted=True))
+    calls = []
+    monkeypatch.setattr(
+        author, "git",
+        lambda *_a: calls.append(True) or pytest.fail("uncalibrated must not run git"),
+    )
+    req = request()
+    response = author.run_once(req, tmp_path, BASE, tmp_path, BASE,
+                               model="qwen3.5:4b", state_root=tmp_path)
+    assert response["status"] == "BLOCKED"
+    assert response["reason"].startswith("GODOT_MODEL_CALIBRATION_INVALID")
+    assert calls == []
+    response = author.run_once(req, tmp_path, BASE, tmp_path, BASE,
+                               model="unapproved-model", state_root=tmp_path)
+    assert response["status"] == "BLOCKED"
+    assert response["reason"] == "GODOT_MODEL_NOT_IN_APPROVED_LADDER"
+
+
+def test_godot_author_explicitly_requests_qualified_routed_model(tmp_path, monkeypatch):
+    from scripts import iron_god_gdscript_author as author
+
+    _allow_test_calibration(monkeypatch, author)
+    monkeypatch.setattr(author, "evaluate_execution_authority",
+                        lambda **_kw: SimpleNamespace(permitted=True))
+    def fake_git(_folder, *args):
+        if args[:2] == ("rev-parse", "HEAD"):
+            return SimpleNamespace(returncode=0, stdout=BASE, stderr="")
+        if args[:2] == ("rev-parse", "origin/main"):
+            return SimpleNamespace(returncode=0, stdout=BASE, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    monkeypatch.setattr(author, "git", fake_git)
+
+    def fake_task(request, workspace):
+        path = workspace / request["gdscript"]["test_script"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("extends SceneTree\nfunc _initialize(): quit(1)\n", encoding="utf-8")
+        return SimpleNamespace(test=["godot", "test"], build=["godot", "parse"])
+    monkeypatch.setattr(author.gdscript, "make_task", fake_task)
+    monkeypatch.setattr(author.bounded, "default_run", lambda *_: (1, "baseline failed"))
+    calls = []
+    def generate(_prompt, **kwargs):
+        calls.append(kwargs["requested"])
+        return {"response": "INVALID_REPLY_FORMAT", "model_used": kwargs["requested"]}
+    monkeypatch.setattr(author.local_model, "guarded_generate", generate)
+    monkeypatch.setattr(
+        author.bounded, "build_change",
+        lambda task, ask, **_kwargs: {"status": "MODEL_UNAVAILABLE", "reason": ask("code")},
+    )
+    out = author.run_once(request(), tmp_path, BASE, tmp_path, BASE,
+                          model="qwen3.5:4b", state_root=tmp_path)
+    assert calls == ["qwen3.5:4b"]
+    assert out["model"] == "qwen3.5:4b"
+    assert out["status"] == "FAILED"
+
+
+def test_product_godot_dispatch_passes_actual_calibrated_model_and_state_root(
+    tmp_path, monkeypatch,
+):
+    class LocalLane:
+        state_root = tmp_path / "state"
+        root = tmp_path / "lane"
+        workspaces = tmp_path / "workspaces"
+        reports = tmp_path / "reports"
+
+        def active(self):
+            return None
+
+    lane = LocalLane()
+    req = request()
+    launched = []
+    monkeypatch.setattr(product.owner_controller, "evaluate",
+                        lambda *_a, **_kw: SimpleNamespace(permitted=True))
+    monkeypatch.setattr(product.owner_controller, "control_root", lambda x: x)
+    monkeypatch.setattr(product, "load_profiles", lambda *_: {"ollama/qwen3.5:4b": {}})
+    monkeypatch.setattr(product, "available_gib", lambda: 6.0)
+    monkeypatch.setattr(product, "recent_pressure", lambda: False)
+    monkeypatch.setattr(
+        product.model_routing, "route",
+        lambda *_a, **_kw: SimpleNamespace(model="qwen3.5:4b", reason="QUALIFIED_LOCAL"),
+    )
+    monkeypatch.setattr(product, "runtime_lease",
+                        lambda *_: (lambda: "lease", lambda _: None))
+    monkeypatch.setattr(product.local_drafter, "drafting_in_progress", lambda *_: False)
+    monkeypatch.setattr(product.task_decomposer, "planning_in_progress", lambda *_: False)
+    monkeypatch.setattr(product.roadmap_progress, "verifying", lambda *_: False)
+    monkeypatch.setattr(product, "godot_job_outcome", lambda *_: None)
+    monkeypatch.setattr(
+        product, "spawn_godot_author",
+        lambda *args, **kwargs: launched.append(kwargs) or {
+            "pid": 11, "host": "local", "process_start_fingerprint": "test",
+        },
+    )
+    def fake_advance(root, request, **kwargs):
+        kwargs["spawn"](tmp_path / "req.json", tmp_path / "res.json", tmp_path, BASE)
+        return {"status": "STARTED"}
+    monkeypatch.setattr(product.gdscript_lane, "advance", fake_advance)
+    product.build_godot_requests(
+        lane, REPO, {"local_requests": [req]}, tmp_path, BASE,
+        (tmp_path, BASE), lease_pool=object(),
+    )
+    assert len(launched) == 1
+    assert launched[0]["model"] == "qwen3.5:4b"
+    assert launched[0]["state_root"] == lane.state_root
+
+
+def test_godot_model_admission_denial_never_spawns_worker(tmp_path, monkeypatch):
+    class LocalLane:
+        state_root = tmp_path / "state"
+        root = tmp_path / "lane"
+        workspaces = tmp_path / "workspaces"
+        reports = tmp_path / "reports"
+
+    monkeypatch.setattr(product.owner_controller, "evaluate",
+                        lambda *_a, **_kw: SimpleNamespace(permitted=True))
+    monkeypatch.setattr(product.owner_controller, "control_root", lambda x: x)
+    monkeypatch.setattr(product, "load_profiles", lambda *_: {})
+    monkeypatch.setattr(product, "available_gib", lambda: 0.1)
+    monkeypatch.setattr(product, "recent_pressure", lambda: False)
+    monkeypatch.setattr(product.model_routing, "route",
+                        lambda *_a, **_kw: SimpleNamespace(
+                            model=None, reason="WAITING_FOR_MEMORY: locally qualified, not admitted"))
+    monkeypatch.setattr(product, "runtime_lease",
+                        lambda *_: (lambda: pytest.fail("no lease"), lambda _: None))
+    monkeypatch.setattr(product.gdscript_lane, "advance",
+                        lambda *_a, **_kw: pytest.fail("no unqualified spawn"))
+    outcomes = []
+    monkeypatch.setattr(product, "godot_job_outcome",
+                        lambda _lane, _req, report: outcomes.append(report))
+    product.build_godot_requests(
+        LocalLane(), REPO, {"local_requests": [request()]}, tmp_path, BASE,
+        (tmp_path, BASE), lease_pool=object(),
+    )
+    assert len(outcomes) == 1
+    assert outcomes[0]["status"] == "WAITING_FOR_MEMORY"

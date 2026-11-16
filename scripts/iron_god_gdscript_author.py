@@ -23,6 +23,8 @@ from project_orchestrator import iron_god_cpp_lane as common  # noqa: E402
 from project_orchestrator import iron_god_gdscript_builder as gdscript  # noqa: E402
 from project_orchestrator import iron_god_gdscript_lane as lane  # noqa: E402
 from project_orchestrator import iron_god_local_model as local_model  # noqa: E402
+from project_orchestrator import iron_god_model_routing as model_routing  # noqa: E402
+from project_orchestrator.iron_god_calibration import capability_gate, load_profiles  # noqa: E402
 from project_orchestrator.state_io import atomic_json  # noqa: E402
 from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
 
@@ -33,7 +35,8 @@ def git(folder: Path, *args: str) -> subprocess.CompletedProcess[str]:
                           timeout=300, check=False)
 
 
-def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_sha: str) -> dict:
+def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_sha: str,
+             *, model: str, state_root: Path) -> dict:
     """Build, verify and commit only one independently specified GDScript unit."""
     result: dict = {"request": request.get("id"), "base": base, "status": "BLOCKED"}
     def authorized() -> bool:
@@ -46,6 +49,19 @@ def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_
         return {**result, "reason": "OWNER_EXECUTION_AUTHORITY_DENIED"}
     if not lane.eligible(request, repository=str(request.get("repository") or ""), base=base):
         return {**result, "reason": "UNAUTHORIZED_GODOT_REQUEST"}
+    # The supervisor picks an admitted calibrated model and passes its exact
+    # identity here. Refuse stale, unsupported, or changed model/hardware
+    # profiles BEFORE creating a worktree or making any Ollama request.
+    if model not in model_routing.LADDER:
+        return {**result, "reason": "GODOT_MODEL_NOT_IN_APPROVED_LADDER"}
+    qualified = capability_gate(
+        load_profiles(state_root).get("ollama/" + model),
+        {"capability_level": request.get("capability_level")},
+        model="ollama/" + model,
+    )
+    if qualified is not None:
+        return {**result, "reason": "GODOT_MODEL_CALIBRATION_INVALID: " + qualified}
+    result["model"] = model
     if (not lane.HEX.fullmatch(release_sha)
             or git(release_repo, "rev-parse", "HEAD").stdout.strip() != release_sha):
         return {**result, "reason": "RELEASE_HEAD_MISMATCH"}
@@ -81,7 +97,7 @@ def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_
     def ask(prompt: str) -> str:
         try:
             reply = local_model.guarded_generate(
-                prompt, requested=None, num_ctx=6144, num_predict=2200,
+                prompt, requested=model, num_ctx=6144, num_predict=2200,
                 timeout=900, wait_s=900, should_abort=owner_abort_reason,
             )
         except local_model.ModelCancelled as exc:
@@ -147,11 +163,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base", required=True)
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--release-repo", type=Path, required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--state-root", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         request = json.loads(args.request.read_text(encoding="utf-8"))
         outcome = run_once(request, args.clone, args.base, args.release_repo,
-                           os.environ.get("IRON_GOD_ACCEPTED_SHA", ""))
+                           os.environ.get("IRON_GOD_ACCEPTED_SHA", ""),
+                           model=args.model, state_root=args.state_root)
     except (OSError, ValueError, subprocess.SubprocessError, KeyError) as exc:
         outcome = {"request": request.get("id") if isinstance(locals().get("request"), dict) else None,
                    "base": args.base, "status": "BLOCKED",

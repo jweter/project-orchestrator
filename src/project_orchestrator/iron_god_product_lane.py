@@ -1682,7 +1682,7 @@ def build_native_requests(lane: ProductLane, name: str, report: dict[str, Any], 
 
 
 def spawn_godot_author(release_repo: Path, release_sha: str, request_file: Path, result_file: Path,
-                       clone: Path, head: str, log_path: Path) -> dict[str, Any]:
+                       clone: Path, head: str, log_path: Path, *, model: str, state_root: Path) -> dict[str, Any]:
     """Release-pinned Godot worker; never push, merge, or loosen the owner grant."""
     env = {**os.environ, "PYTHONPATH": str(Path(release_repo) / "src"),
            "IRON_GOD_ACCEPTED_SHA": release_sha}
@@ -1692,7 +1692,8 @@ def spawn_godot_author(release_repo: Path, release_sha: str, request_file: Path,
         process = subprocess.Popen(
             [sys.executable, str(Path(release_repo) / "scripts" / "iron_god_gdscript_author.py"),
              "--request", str(request_file), "--result", str(result_file),
-             "--clone", str(clone), "--base", head, "--release-repo", str(release_repo)],
+             "--clone", str(clone), "--base", head, "--release-repo", str(release_repo),
+             "--model", model, "--state-root", str(state_root)],
             cwd=str(release_repo), env=env, stdout=log, stderr=subprocess.STDOUT,
             stdin=subprocess.DEVNULL, creationflags=flags,
         )
@@ -1800,6 +1801,20 @@ def build_godot_requests(lane: ProductLane, name: str, report: dict[str, Any], c
     reserve, give_back = runtime_lease(lease_pool)
     for request in candidates:
         try:
+            # Use the same measured per-model memory/capability routing as
+            # the main Product lane, not Ollama's unrelated default 7B model.
+            selected = model_routing.route(
+                1, load_profiles(lane.state_root), available_gib(),
+                after_pressure=recent_pressure(),
+            )
+            if selected.model is None:
+                godot_job_outcome(lane, request, {
+                    "status": ("WAITING_FOR_MEMORY" if selected.reason.startswith(
+                        ("WAITING_FOR_MEMORY", "AVAILABLE_MEMORY_UNKNOWN"))
+                        else "WAITING_FOR_CALIBRATION"),
+                    "reason": selected.reason,
+                })
+                continue
             may_start = (lane.active() is None
                          and not local_drafter.drafting_in_progress(lane.root)
                          and not task_decomposer.planning_in_progress(lane.root)
@@ -1809,7 +1824,8 @@ def build_godot_requests(lane: ProductLane, name: str, report: dict[str, Any], c
                 reserve=reserve, release=give_back,
                 spawn=lambda request_file, result_file, source, exact_head: spawn_godot_author(
                     release_repo, release_sha, request_file, result_file, source, exact_head,
-                    lane.reports / f"godot-{result_file.stem}.log"),
+                    lane.reports / f"godot-{result_file.stem}.log",
+                    model=selected.model, state_root=lane.state_root),
                 alive=worker_alive,
             )
             if result["status"] == "BUILT":

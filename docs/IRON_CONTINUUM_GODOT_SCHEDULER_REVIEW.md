@@ -19,6 +19,15 @@ the already-approved Godot capability graph as the only work authority.
    checked attempt, preserving earlier evidence. Reaching the cap emits
    `ATTEMPTS_EXHAUSTED`. A still-running or uncertain worker continues to
    demand reconciliation; no worker lease or owner permission is synthesized.
+4. **Calibrated model identity**: the Product scheduler asks the existing
+   measured capability/memory router for a currently admitted Level-1 model.
+   It passes that exact model and the installed state root to the Godot child
+   process. The child verifies the model is in the approved ladder and its
+   calibration still matches this hardware/level, **before any Git worktree or
+   Ollama call**. Ollama receives an explicit `requested=model`; its default
+   builder cannot override the qualified selection. Missing calibration or
+   insufficient memory leads to a blocked/waiting outcome, never an
+   unqualified fallback or paid transport.
 
 Targeted tests cover the generation-to-file race, post-write authority
 revocation rollback, local-only task routing, independent-verifier failure,
