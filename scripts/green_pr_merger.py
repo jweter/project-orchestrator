@@ -72,6 +72,7 @@ def independent_exact_head_review(repo: str, number: int, head_sha: str,
     for review in reviews:
         reviewer = str((review.get("user") or {}).get("login") or "")
         if (reviewer and reviewer != author_login and
+                review.get("author_association") in {"OWNER", "MEMBER", "COLLABORATOR"} and
                 review.get("commit_id") == head_sha and review.get("state") == "APPROVED"):
             return True
     comments = gh_paginated(f"repos/{repo}/issues/{number}/comments?per_page=100")
