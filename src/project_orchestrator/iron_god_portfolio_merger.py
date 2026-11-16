@@ -569,6 +569,68 @@ class GhPort:
             raise RuntimeError("REVIEW_THREADS_INCOMPLETE: cannot prove every conversation is resolved")
         return [{"id": str(n.get("id")), "resolved": n.get("isResolved") is True} for n in nodes if isinstance(n, dict)]
 
+    def independent_review(
+        self, repo: str, number: int, head: str, reviews: list[dict[str, Any]],
+        receipt_times: list[datetime] | None = None,
+    ) -> bool:
+        """Require trusted, unedited, exact-head independent review evidence."""
+        if not re.fullmatch(r"[0-9a-f]{40}", head):
+            return False
+        pr = json.loads(self._gh(["api", f"repos/{repo}/pulls/{number}"]) or "{}")
+        author = str((pr.get("user") or {}).get("login") or "")
+        if not author:
+            return False
+
+        active: dict[str, tuple[datetime, str, str]] = {}
+        for review in reviews:
+            who = str((review.get("user") or {}).get("login") or "")
+            if (not who or who == author or
+                    review.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}):
+                continue
+            submitted = review.get("submitted_at")
+            try:
+                when = datetime.fromisoformat(str(submitted).replace("Z", "+00:00"))
+                if when.tzinfo is None:
+                    continue
+            except ValueError:
+                continue
+            # COMMENTED does not withdraw an actionable review decision; an
+            # explicit APPROVED, CHANGES_REQUESTED, or DISMISSED does.
+            state = str(review.get("state") or "").upper()
+            if state not in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                continue
+            if who not in active or when >= active[who][0]:
+                active[who] = (when, state, str(review.get("commit_id") or ""))
+        if any(state == "CHANGES_REQUESTED" for _, state, _ in active.values()):
+            return False
+        authorized = any(state == "APPROVED" and reviewed_head == head for _, state, reviewed_head in active.values())
+
+        for comment in self._paged(f"repos/{repo}/issues/{number}/comments?per_page=100"):
+            if str((comment.get("user") or {}).get("login") or "") != "chatgpt-codex-connector[bot]":
+                continue
+            created = str(comment.get("created_at") or "")
+            if not created or created != str(comment.get("updated_at") or ""):
+                continue
+            try:
+                posted = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                if posted.tzinfo is None:
+                    continue
+            except ValueError:
+                continue
+            body = str(comment.get("body") or "")
+            if not re.search(r"Codex Review:\s*Didn't find any major issues", body, re.I):
+                continue
+            marker = re.search(r"\*\*Reviewed commit:\*\*\s*`([0-9a-f]{10,40})`", body, re.I)
+            if marker is None or not head.startswith(marker.group(1).lower()):
+                continue
+            resolved = json.loads(self._gh(["api", f"repos/{repo}/commits/{marker.group(1)}"]) or "{}")
+            if str(resolved.get("sha") or "").lower() != head:
+                continue
+            authorized = True
+            if receipt_times is not None:
+                receipt_times.append(posted)
+        return authorized
+
     def quiet_since(self, repo: str, number: int, head: str, created_at: str) -> str | None:
         """The latest of: PR creation, the head commit, review activity on the head, and the last ready-for-review."""
         stamps: list[datetime] = []
@@ -583,9 +645,14 @@ class GhPort:
         for comment in self._paged(f"repos/{repo}/pulls/{number}/comments?per_page=100"):
             if str(comment.get("commit_id") or "") == head and (stamp := _ts(comment.get("updated_at") or comment.get("created_at"))):
                 stamps.append(stamp)
-        for review in self._paged(f"repos/{repo}/pulls/{number}/reviews?per_page=100"):
+        reviews = self._paged(f"repos/{repo}/pulls/{number}/reviews?per_page=100")
+        for review in reviews:
             if str(review.get("commit_id") or head) == head and (stamp := _ts(review.get("submitted_at"))):
                 stamps.append(stamp)
+        accepted_receipts: list[datetime] = []
+        if not self.independent_review(repo, number, head, reviews, accepted_receipts):
+            return None
+        stamps.extend(accepted_receipts)
         for event in self._paged(f"repos/{repo}/issues/{number}/events?per_page=100"):
             if event.get("event") == "ready_for_review" and (stamp := _ts(event.get("created_at"))):
                 stamps.append(stamp)

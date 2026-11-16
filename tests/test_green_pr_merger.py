@@ -179,3 +179,232 @@ def test_review_reader_rejects_missing_or_invalid_pagination_metadata(monkeypatc
         "data":{"repository":{"pullRequest":{"reviewThreads":{
             "pageInfo":{"hasNextPage":False},"nodes":[]}}}}})
     assert merger.review_threads("o/r",1)==[]
+
+def test_independent_exact_head_review_requires_clean_codex_receipt_and_resolved_sha(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    body = (
+        "<!-- codex-review-receipt:v1 -->\n"
+        "Codex Review: Didn't find any major issues.\n"
+        "**Reviewed commit:** `aaaaaaaaaa`"
+    )
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [
+        {"user": {"login": "chatgpt-codex-connector[bot]"}, "body": body,
+         "created_at": "2026-11-16T14:00:00Z", "updated_at": "2026-11-16T14:00:00Z"}
+    ])
+    monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": head})
+    assert merger.independent_exact_head_review("o/r", 1, head, "jweter", []) is True
+    monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": "b" * 40})
+    assert merger.independent_exact_head_review("o/r", 1, head, "jweter", []) is False
+
+
+def test_stale_or_spoofed_codex_receipts_do_not_unlock_merge(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    body = (
+        "Codex Review: Didn't find any major issues.\n"
+        "**Reviewed commit:** `bbbbbbbbbb`"
+    )
+    comments = [{"user": {"login": "chatgpt-codex-connector[bot]"}, "body": body}]
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: comments)
+    monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": "b" * 40})
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [])
+    comments[0] = {
+        "user": {"login": "jweter"},
+        "body": body.replace("bbbbbbbbbb", "aaaaaaaaaa"),
+    }
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [])
+
+
+def test_only_independent_current_head_approval_counts(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "c" * 40
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    accepted = [{"user": {"login": "reviewer"}, "commit_id": head, "state": "APPROVED",
+                 "author_association": "COLLABORATOR", "submitted_at": "2026-11-16T13:00:00Z"}]
+    assert merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
+    accepted[0]["author_association"] = "CONTRIBUTOR"
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
+    accepted[0]["author_association"] = "COLLABORATOR"
+    assert not merger.independent_exact_head_review("o/r", 1, head, "reviewer", accepted)
+    accepted[0]["commit_id"] = "d" * 40
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
+    accepted[0]["commit_id"] = head
+    accepted[0]["state"] = "COMMENTED"
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
+
+
+def test_quiet_period_without_independent_current_head_review_still_blocks(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    def gh_fake(args):
+        if args[1].startswith("repos/o/r/commits/"):
+            return {"commit": {"committer": {"date": "2020-01-01T00:00:00Z"}}}
+        return {"user": {"login": "jweter"}}
+    monkeypatch.setattr(merger, "gh_json", gh_fake)
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    assert not merger.review_settled("o/r", 1, head, "2020-01-01T00:00:00Z")
+
+
+def test_clean_receipt_edited_by_repository_writer_is_not_independent_evidence(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    comment = {
+        "user": {"login": "chatgpt-codex-connector[bot]"},
+        "body": "Codex Review: Didn't find any major issues.\n**Reviewed commit:** `aaaaaaaaaa`",
+        "created_at": "2026-11-16T14:00:00Z",
+        "updated_at": "2026-11-16T14:00:02Z",
+    }
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [comment])
+    monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": head})
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [])
+
+
+def test_later_changes_requested_revokes_an_earlier_exact_head_approval(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    who = {"login": "trusted-reviewer"}
+    earlier = {"user": who, "author_association": "COLLABORATOR", "commit_id": head,
+               "state": "APPROVED", "submitted_at": "2026-11-16T13:00:00Z"}
+    later = {**earlier, "state": "CHANGES_REQUESTED", "submitted_at": "2026-11-16T14:00:00Z"}
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [earlier, later])
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [later, earlier])
+
+
+def test_recent_valid_codex_receipt_restarts_merge_quiet_period(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    created = (merger.datetime.now(merger.UTC) - __import__("datetime").timedelta(seconds=900)).isoformat()
+    recent = (merger.datetime.now(merger.UTC) - __import__("datetime").timedelta(seconds=10)).isoformat()
+    def gh_fake(args):
+        if "/commits/" in args[-1]:
+            return {"sha": head, "commit": {"committer": {"date": created}}}
+        return {"user": {"login": "jweter"}}
+    def paged(endpoint):
+        if "issues/1/comments" in endpoint:
+            return [{"user": {"login": "chatgpt-codex-connector[bot]"},
+                     "body": "Codex Review: Didn't find any major issues.\n**Reviewed commit:** `aaaaaaaaaa`",
+                     "created_at": recent, "updated_at": recent}]
+        return []
+    monkeypatch.setattr(merger, "gh_json", gh_fake)
+    monkeypatch.setattr(merger, "gh_paginated", paged)
+    assert merger.review_settled("o/r", 1, head, created) is False
+
+
+def test_comment_only_review_does_not_clear_active_changes_request(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    requesting = {
+        "user": {"login": "reviewer1"}, "commit_id": head,
+        "author_association": "COLLABORATOR", "state": "CHANGES_REQUESTED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    commented = {**requesting, "state": "COMMENTED",
+                 "submitted_at": "2026-11-16T14:00:00Z"}
+    other_approval = {
+        "user": {"login": "reviewer2"}, "commit_id": head,
+        "author_association": "MEMBER", "state": "APPROVED",
+        "submitted_at": "2026-11-16T14:10:00Z",
+    }
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [requesting, commented, other_approval]
+    )
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [other_approval, commented, requesting]
+    )
+
+    # Only an explicit new decision can supersede the active rejection.
+    approved_later = {**requesting, "state": "APPROVED",
+                      "submitted_at": "2026-11-16T14:20:00Z"}
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [requesting, commented, approved_later]
+    )
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [approved_later, commented, requesting]
+    )
+
+
+def test_comment_only_review_preserves_a_prior_approval(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    approved = {
+        "user": {"login": "reviewer"}, "commit_id": head,
+        "author_association": "COLLABORATOR", "state": "APPROVED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    commented = {**approved, "state": "COMMENTED",
+                 "submitted_at": "2026-11-16T14:00:00Z"}
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [approved, commented]
+    )
+    dismissed = {**approved, "state": "DISMISSED",
+                 "submitted_at": "2026-11-16T14:20:00Z"}
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [approved, commented, dismissed]
+    )
+
+
+def test_old_head_changes_request_blocks_clean_current_head_codex_receipt(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    old_head = "b" * 40
+    bot = {
+        "user": {"login": "chatgpt-codex-connector[bot]"},
+        "body": "Codex Review: Didn't find any major issues.\n"
+        "**Reviewed commit:** `aaaaaaaaaa`",
+        "created_at": "2026-11-16T14:00:00Z",
+        "updated_at": "2026-11-16T14:00:00Z",
+    }
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [bot])
+    monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": head})
+    requested = {
+        "user": {"login": "collaborator"}, "author_association": "COLLABORATOR",
+        "commit_id": old_head, "state": "CHANGES_REQUESTED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    new_head_comment = {
+        **requested, "commit_id": head, "state": "COMMENTED",
+        "submitted_at": "2026-11-16T13:40:00Z",
+    }
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [requested, new_head_comment]
+    )
+    explicit_approval = {
+        **requested, "commit_id": head, "state": "APPROVED",
+        "submitted_at": "2026-11-16T14:20:00Z",
+    }
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter",
+        [new_head_comment, explicit_approval, requested],
+    )
+
+
+def test_prior_head_approval_does_not_satisfy_exact_head_gate(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    old_approval = {
+        "user": {"login": "reviewer"}, "author_association": "COLLABORATOR",
+        "commit_id": "b" * 40, "state": "APPROVED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    newer_comment = {
+        **old_approval, "commit_id": "a" * 40, "state": "COMMENTED",
+        "submitted_at": "2026-11-16T14:00:00Z",
+    }
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, "a" * 40, "jweter", [old_approval, newer_comment]
+    )

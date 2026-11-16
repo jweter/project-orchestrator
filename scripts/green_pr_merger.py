@@ -59,6 +59,76 @@ def _age_seconds(created_at:str)->float:
     created=datetime.fromisoformat(created_at.replace("Z","+00:00"))
     return max(0.0,(datetime.now(UTC)-created).total_seconds())
 
+CODEX_CLEAN_RE = re.compile(r"Codex Review:\s*Didn't find any major issues", re.IGNORECASE)
+CODEX_REVIEWED_SHA_RE = re.compile(r"\*\*Reviewed commit:\*\*\s*`([0-9a-f]{10,40})`", re.IGNORECASE)
+CODEX_REVIEW_BOTS = frozenset({"chatgpt-codex-connector[bot]"})
+
+
+def independent_exact_head_review(
+    repo: str, number: int, head_sha: str, author_login: str,
+    reviews: list[dict[str, Any]], receipt_times: list[datetime] | None = None,
+) -> bool:
+    """Require independently authenticated evidence on the current exact PR head."""
+    if not re.fullmatch(r"[0-9a-f]{40}", head_sha) or not author_login:
+        return False
+
+    # Last actionable decision per trusted reviewer wins: an earlier APPROVED cannot
+    # survive a later CHANGES_REQUESTED, COMMENTED or DISMISSED submission.
+    active: dict[str, tuple[datetime, str, str]] = {}
+    for review in reviews:
+        who = str((review.get("user") or {}).get("login") or "")
+        if (not who or who == author_login or
+                review.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}):
+            continue
+        submitted = review.get("submitted_at")
+        try:
+            when = datetime.fromisoformat(str(submitted).replace("Z", "+00:00"))
+            if when.tzinfo is None:
+                continue
+        except ValueError:
+            continue
+        # COMMENTED has no actionable review decision. Do not clear a prior
+        # CHANGES_REQUESTED (or approval) until an explicit new decision arrives.
+        # DISMISSED explicitly removes the prior decision.
+        state = str(review.get("state") or "").upper()
+        if state not in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+            continue
+        if who not in active or when >= active[who][0]:
+            active[who] = (when, state, str(review.get("commit_id") or ""))
+    if any(state == "CHANGES_REQUESTED" for _, state, _ in active.values()):
+        return False
+    authorized = any(state == "APPROVED" and reviewed_head == head_sha for _, state, reviewed_head in active.values())
+
+    for comment in gh_paginated(f"repos/{repo}/issues/{number}/comments?per_page=100"):
+        if str((comment.get("user") or {}).get("login") or "") not in CODEX_REVIEW_BOTS:
+            continue
+        # Repository writers can edit even bot-authored comments: an edited receipt
+        # is no longer immutable reviewer evidence regardless of original creator.
+        created = str(comment.get("created_at") or "")
+        if not created or created != str(comment.get("updated_at") or ""):
+            continue
+        try:
+            posted = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if posted.tzinfo is None:
+                continue
+        except ValueError:
+            continue
+        body = str(comment.get("body") or "")
+        match = CODEX_REVIEWED_SHA_RE.search(body)
+        if not (CODEX_CLEAN_RE.search(body) and match):
+            continue
+        abbreviated = match.group(1).lower()
+        if not head_sha.startswith(abbreviated):
+            continue
+        # Never treat a ten-character prefix as a full commit identity.
+        resolved = gh_json(["api", f"repos/{repo}/commits/{abbreviated}"])
+        if str(resolved.get("sha") or "").lower() != head_sha:
+            continue
+        authorized = True
+        if receipt_times is not None:
+            receipt_times.append(posted)
+    return authorized
+
 def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
     """Require a quiet review window anchored to the current exact head."""
     created=datetime.fromisoformat(created_at.replace("Z","+00:00"))
@@ -83,6 +153,17 @@ def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
         stamp=review.get("submitted_at")
         if stamp:
             latest=max(latest,datetime.fromisoformat(str(stamp).replace("Z","+00:00")))
+    if (datetime.now(UTC)-latest).total_seconds() < REVIEW_SETTLE_SECONDS:
+        return False
+    author = gh_json(["api", f"repos/{repo}/pulls/{number}"])
+    accepted_receipts: list[datetime] = []
+    if not independent_exact_head_review(
+        repo, number, head_sha, str((author.get("user") or {}).get("login") or ""),
+        reviews, accepted_receipts,
+    ):
+        return False
+    if accepted_receipts:
+        latest = max(latest, *accepted_receipts)
     return (datetime.now(UTC)-latest).total_seconds() >= REVIEW_SETTLE_SECONDS
 
 def review_threads(repo:str, number:int)->list[dict[str,Any]]:

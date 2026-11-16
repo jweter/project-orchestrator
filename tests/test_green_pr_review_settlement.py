@@ -17,28 +17,58 @@ def test_exact_head_recent_review_keeps_merge_in_settlement_window(monkeypatch):
     assert merger.review_settled("o/r",1,"head",created) is False
 
 def test_old_exact_head_review_allows_settlement(monkeypatch):
-    created=_iso(900)
-    def fake(args):
-        if args[-1].endswith("/comments"):
-            return [{"commit_id":"head","updated_at":_iso(600),"body":"done"}]
-        if args[-1].endswith("/reviews"):
-            return [{"commit_id":"head","submitted_at":_iso(550)}]
-        raise AssertionError(args)
-    monkeypatch.setattr(merger,"gh_json",lambda args:{"commit":{"committer":{"date":created}}})
-    monkeypatch.setattr(merger,"gh_paginated",lambda endpoint: fake(["api",endpoint]))
-    assert merger.review_settled("o/r",1,"head",created) is True
+    head = "a" * 40
+    created = _iso(900)
+
+    def gh_fake(args):
+        if args[-1].endswith("/pulls/1"):
+            return {"user": {"login": "jweter"}}
+        return {"commit": {"committer": {"date": created}}}
+
+    def paged(endpoint):
+        if endpoint.endswith("/pulls/1/comments"):
+            return [{"commit_id": head, "updated_at": _iso(600), "body": "done"}]
+        if endpoint.endswith("/pulls/1/reviews"):
+            return [{
+                "user": {"login": "reviewer"},
+                "author_association": "COLLABORATOR",
+                "state": "APPROVED",
+                "commit_id": head,
+                "submitted_at": _iso(550),
+            }]
+        return []
+
+    monkeypatch.setattr(merger, "gh_json", gh_fake)
+    monkeypatch.setattr(merger, "gh_paginated", paged)
+    assert merger.review_settled("o/r", 1, head, created) is True
+
 
 def test_stale_head_comment_does_not_delay_current_head(monkeypatch):
-    created=_iso(600)
-    def fake(args):
-        if args[-1].endswith("/comments"):
-            return [{"commit_id":"old","updated_at":_iso(10),"body":"late old-head finding"}]
-        if args[-1].endswith("/reviews"):
-            return []
-        raise AssertionError(args)
-    monkeypatch.setattr(merger,"gh_json",lambda args:{"commit":{"committer":{"date":created}}})
-    monkeypatch.setattr(merger,"gh_paginated",lambda endpoint: fake(["api",endpoint]))
-    assert merger.review_settled("o/r",1,"head",created) is True
+    head = "a" * 40
+    created = _iso(900)
+
+    def gh_fake(args):
+        if args[-1].endswith("/pulls/1"):
+            return {"user": {"login": "jweter"}}
+        return {"commit": {"committer": {"date": created}}}
+
+    def paged(endpoint):
+        if endpoint.endswith("/pulls/1/comments"):
+            return [{"commit_id": "old", "updated_at": _iso(10), "body": "late old-head finding"}]
+        if endpoint.endswith("/pulls/1/reviews"):
+            return [{
+                "user": {"login": "reviewer"},
+                "author_association": "COLLABORATOR",
+                "state": "APPROVED",
+                "commit_id": head,
+                "submitted_at": _iso(550),
+            }]
+        return []
+
+    monkeypatch.setattr(merger, "gh_json", gh_fake)
+    monkeypatch.setattr(merger, "gh_paginated", paged)
+    assert merger.review_settled("o/r", 1, head, created) is True
+
 
 def test_decision_rejects_unsettled_review_even_when_ci_green():
     pr={"isDraft":False,"author":{"login":"jweter"},"mergeStateStatus":"CLEAN",
