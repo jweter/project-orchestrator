@@ -154,13 +154,36 @@ def record_attempt(lane_root: Path, packet: dict[str, Any], handback: dict[str, 
 
 
 def derive_rules(lane_root: Path) -> list[dict[str, Any]]:
-    """Rules for failure classes seen on at least MIN_INDEPENDENT_SLICES different slices, with evidence."""
+    """Recommendations require independent *lineages*, not repairs of one slice.
+
+    Repeated -rN attempts cannot inflate the evidence threshold. Historical
+    inferred rules that no longer qualify under this normalization are
+    removed, while every original attempt remains immutable.
+    """
+    from . import iron_god_backlog as backlog
+
     with closing(_connect(lane_root)) as connection, connection:
         rows = connection.execute("SELECT failure_class, item_id, packet_id FROM attempts "
                                   "WHERE item_id IS NOT NULL ORDER BY recorded_at_utc").fetchall()
         groups: dict[str, dict[str, list[str]]] = {}
         for row in rows:
-            groups.setdefault(row["failure_class"], {}).setdefault(row["item_id"], []).append(row["packet_id"])
+            lineage = backlog.lineage_base(row["item_id"])
+            groups.setdefault(row["failure_class"], {}).setdefault(lineage, []).append(row["packet_id"])
+        supported = {
+            failure_class for failure_class, slices in groups.items()
+            if failure_class in RULE_CATALOG and len(slices) >= MIN_INDEPENDENT_SLICES
+        }
+        # Old databases may contain rules derived by incorrectly counting
+        # retries as separate slices. Retire only inferred rows; never erase
+        # the underlying attempts or externally governed knowledge.
+        for old in connection.execute(
+            "SELECT failure_class FROM rules WHERE kind='INFERRED_RECOMMENDATION'"
+        ).fetchall():
+            if old["failure_class"] not in supported:
+                connection.execute(
+                    "DELETE FROM rules WHERE failure_class=? AND kind='INFERRED_RECOMMENDATION'",
+                    (old["failure_class"],),
+                )
         derived = []
         for failure_class, slices in sorted(groups.items()):
             if failure_class not in RULE_CATALOG or len(slices) < MIN_INDEPENDENT_SLICES:
@@ -191,14 +214,16 @@ def rules_for(lane_root: Path, repository: str | None = None) -> list[dict[str, 
 
 
 def stats(lane_root: Path) -> dict[str, Any]:
-    """First-attempt acceptance: how often a slice's first attempt was accepted locally (the measured rate)."""
+    """First-attempt acceptance per independent lineage, not each -rN retry."""
+    from . import iron_god_backlog as backlog
+
     with closing(_connect(lane_root)) as connection:
         rows = connection.execute("SELECT item_id, failure_class, outcome FROM attempts WHERE item_id IS NOT NULL "
                                   "ORDER BY recorded_at_utc").fetchall()
     first: dict[str, Any] = {}
     classes: dict[str, int] = {}
     for row in rows:
-        first.setdefault(row["item_id"], row)
+        first.setdefault(backlog.lineage_base(row["item_id"]), row)
         classes[row["failure_class"]] = classes.get(row["failure_class"], 0) + 1
     judged = [r for r in first.values() if r["failure_class"] not in
               {"COMPLETED_EXTERNALLY", "BLOCKED_CONFLICT", "ENVIRONMENT", "TEST_NOT_DISCRIMINATING"}]
