@@ -160,3 +160,46 @@ def test_both_level2_and_level1_failure_classification_remain_supported(tmp_path
                 "plan": {"mode": "directed"},
                 "directed": {"test_failure": "example.py:10: E501 line too long"}}
     assert memory.record_attempt(tmp_path, packet, handback, "FAIL: SLICE_TESTS_FAILED") == "STATIC_LINE_LENGTH"
+
+
+def test_observed_e501_docstring_failure_gets_specific_distinct_recovery(tmp_path):
+    # Azathoth's real 2026-11-16 Level-1 code was rejected on a long docstring
+    # even after Ruff formatting, then re-generated with another long docstring.
+    write_failure(
+        tmp_path,
+        test_failure="knowledge_engine_ai/copilot/cited_excerpt_ids.py:5:101: "
+        "E501 Line too long (153 > 100)",
+    )
+    first = strategy.recovery_strategy(tmp_path, ITEM, row())
+    assert first is not None and first["strategy"] == "STATIC_LINE_LENGTH"
+    first_advice = strategy.coding_guidance(
+        {"slice": {"build": ITEM["build"]}, "recovery_strategy": first}
+    )
+    assert "docstring" in first_advice
+    assert "Ruff format does not reflow" in first_advice
+
+    write_failure(
+        tmp_path,
+        "PACKET-2",
+        test_failure="knowledge_engine_ai/copilot/cited_excerpt_ids.py:5:101: "
+        "E501 Line too long (133 > 100)",
+    )
+    second = strategy.recovery_strategy(
+        tmp_path, ITEM, row(["PACKET-1", "PACKET-2"], attempts=2)
+    )
+    assert second is not None and second["revision"] == 2
+    second_advice = strategy.coding_guidance(
+        {"slice": {"build": ITEM["build"]}, "recovery_strategy": second}
+    )
+    assert "explicit line breaks" in second_advice
+    assert second_advice != first_advice
+
+
+def test_local_builder_warns_that_formatter_will_not_wrap_docstrings(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        "[tool.ruff]\nline-length = 100\n", encoding="utf-8"
+    )
+    guidance = worker.quality_rules(tmp_path)
+    assert any("100" in rule for rule in guidance)
+    assert any("Ruff format does NOT reflow" in rule for rule in guidance)
+    assert any("triple-quoted prose" in rule for rule in guidance)
