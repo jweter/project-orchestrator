@@ -51,6 +51,11 @@ are included; a scoped query never assumes that another repository is idle.
   and repair-candidate count; stale checkpoints remain historical and never
   become admission or owner grants. Superseded revision checkpoints cannot
   silently masquerade as the current plan.
+- `delivery.daily_verified_update` exposes the separate owner-gated daily
+  update checker's **advisory** status, observed GitHub main SHA, local
+  installed pin SHA, and whether a newer release was reported at that check.
+  It explicitly distinguishes stale reports and pin drift; MCP cannot install,
+  resume, stop workers, or independently certify the latest CI/release.
 - Local `GITHUB_MERGED_IN_LANE_LEDGER` is explicitly only a lane-reported
   receipt, **not an independent GitHub merge or product acceptance**. Raw
   repair instructions, acceptance text, worker logs and prompts are excluded

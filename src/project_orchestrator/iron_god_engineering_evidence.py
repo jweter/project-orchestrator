@@ -402,6 +402,101 @@ def microtask_checkpoint_evidence(
                 "resume_authorized": False, "scan_limit": MAX_SCAN}
 
 
+def daily_release_update_evidence(
+    state_root: Path, *, now: datetime | None = None,
+) -> dict[str, Any]:
+    """Expose the installed daily checker's advisory result without side effects.
+
+    The report is not GitHub evidence, a release receipt, a worker grant or
+    permission to change the pinned release. A stale or mismatched report
+    must never appear as a current maintenance instruction in MCP.
+    """
+    directory = Path(state_root)
+    report_path = directory / "iron-god-self-update" / "daily-status.json"
+    pin_path = directory / "supervisor-pinned-release.json"
+    unavailable = {
+        "status": "UNAVAILABLE",
+        "reported_update_status": None,
+        "pending_update_as_observed": False,
+        "owner_control_required": True,
+        "install_authorized_by_mcp": False,
+        "stop_workers_authorized": False,
+        "restart_authorized": False,
+        "github_ci_verified": False,
+        "installed_release_verified": False,
+    }
+    if not report_path.exists():
+        return unavailable
+    try:
+        if (report_path.is_symlink() or not report_path.is_file()
+                or report_path.stat().st_size > 32_768
+                or pin_path.is_symlink() or not pin_path.is_file()
+                or pin_path.stat().st_size > 32_768):
+            raise ValueError("RELEASE_UPDATE_RECORD_INVALID")
+        record = json.loads(report_path.read_text(encoding="utf-8-sig"))
+        pin = json.loads(pin_path.read_text(encoding="utf-8-sig"))
+        if not isinstance(record, dict) or not isinstance(pin, dict):
+            raise ValueError("RELEASE_UPDATE_ROOT_INVALID")
+        statuses = {
+            "CURRENT", "UPDATE_PENDING_OWNER_CONTROL",
+            "UPDATE_PENDING_QUIESCENCE", "UPDATE_READY_DRY_RUN",
+            "UPDATED_DISABLED_OWNER_RESUME_REQUIRED", "CHECK_OR_UPDATE_FAILED",
+        }
+        reported_status = record.get("status")
+        pinned_sha = pin.get("accepted_sha")
+        prior_sha = record.get("installed_before")
+        after_sha = record.get("installed_after")
+        latest_sha = record.get("latest_main_observed")
+        if (record.get("schema_version") != 1
+                or record.get("repository") != "jweter/project-orchestrator"
+                or record.get("branch") != "main"
+                or reported_status not in statuses
+                or not isinstance(pinned_sha, str) or not _SHA.fullmatch(pinned_sha)
+                or not isinstance(prior_sha, str) or not _SHA.fullmatch(prior_sha)
+                or not isinstance(after_sha, str) or not _SHA.fullmatch(after_sha)
+                or (latest_sha is not None and
+                    (not isinstance(latest_sha, str) or not _SHA.fullmatch(latest_sha)))
+                or record.get("advisory_only") is not True
+                or any(record.get(key) is not False for key in
+                       ("owner_grant_created", "workers_stopped",
+                        "task_triggered_engine_start"))):
+            raise ValueError("RELEASE_UPDATE_REPORT_SCHEMA_INVALID")
+        observed_at = observability._time(record.get("observed_at_utc"))
+        if observed_at is None:
+            raise ValueError("RELEASE_UPDATE_TIME_INVALID")
+        moment = (now or datetime.now(UTC)).astimezone(UTC)
+        age_seconds = (moment - observed_at).total_seconds()
+        historical = after_sha != pinned_sha
+        freshness = ("STALE" if historical or age_seconds > 36 * 3600 else
+                     "UNVERIFIED" if age_seconds < -120 else "FRESH")
+        pending = (reported_status in {
+            "UPDATE_PENDING_OWNER_CONTROL", "UPDATE_PENDING_QUIESCENCE",
+            "UPDATE_READY_DRY_RUN",
+        } and latest_sha is not None and latest_sha != pinned_sha)
+        if (reported_status.startswith("UPDATE_PENDING_")
+                and latest_sha == pinned_sha and not historical):
+            freshness = "UNVERIFIED"
+        return {
+            "status": "OBSERVED_" + freshness,
+            "reported_update_status": reported_status,
+            "observed_at_utc": observed_at.isoformat(),
+            "installed_sha_at_check": prior_sha,
+            "current_pinned_sha": pinned_sha,
+            "observed_github_main_sha": latest_sha,
+            "pending_update_as_observed": pending and freshness == "FRESH",
+            "owner_control_required": True,
+            "installed_pin_matches_report": not historical,
+            "install_authorized_by_mcp": False,
+            "stop_workers_authorized": False,
+            "restart_authorized": False,
+            "github_ci_verified": False,
+            "installed_release_verified": False,
+            "source": "iron-god-self-update/daily-status.json",
+        }
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return {**unavailable, "status": "UNVERIFIED"}
+
+
 def publication_evidence(state_root: Path, *, repository: str = "",
                          limit: int = 8) -> dict[str, Any]:
     """Correlate local publication receipts with exact SHA, not a GitHub verdict."""
@@ -532,6 +627,9 @@ def engineering_bundle(state_root: Path, *, repository: str = "", limit: int = 8
         "evidence_graph": _graph(history["events"], learned["attempts"]),
         "delivery": {
             "runtime_projection": live["delivery"],
+            "daily_verified_update": daily_release_update_evidence(
+                state_root, now=observed,
+            ),
             "local_publication_receipts": publication_evidence(
                 state_root, repository=repository, limit=limit,
             ),
