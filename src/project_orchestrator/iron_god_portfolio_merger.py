@@ -578,8 +578,9 @@ class GhPort:
         author = str((pr.get("user") or {}).get("login") or "")
         for review in reviews:
             who = str((review.get("user") or {}).get("login") or "")
-            if (who and who != author and review.get("state") == "APPROVED" and
-                    review.get("commit_id") == head):
+            if (who and who != author and
+                    review.get("author_association") in {"OWNER", "MEMBER", "COLLABORATOR"} and
+                    review.get("state") == "APPROVED" and review.get("commit_id") == head):
                 return True
         for comment in self._paged(f"repos/{repo}/issues/{number}/comments?per_page=100"):
             if str((comment.get("user") or {}).get("login") or "") != "chatgpt-codex-connector[bot]":
