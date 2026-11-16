@@ -64,20 +64,48 @@ CODEX_REVIEWED_SHA_RE = re.compile(r"\*\*Reviewed commit:\*\*\s*`([0-9a-f]{10,40
 CODEX_REVIEW_BOTS = frozenset({"chatgpt-codex-connector[bot]"})
 
 
-def independent_exact_head_review(repo: str, number: int, head_sha: str,
-                                  author_login: str, reviews: list[dict[str, Any]]) -> bool:
-    """A current-head independent approval or a clean Codex receipt, never a quiet timer alone."""
-    if not re.fullmatch(r"[0-9a-f]{40}", head_sha):
+def independent_exact_head_review(
+    repo: str, number: int, head_sha: str, author_login: str,
+    reviews: list[dict[str, Any]], receipt_times: list[datetime] | None = None,
+) -> bool:
+    """Require independently authenticated evidence on the current exact PR head."""
+    if not re.fullmatch(r"[0-9a-f]{40}", head_sha) or not author_login:
         return False
+
+    # Last actionable decision per trusted reviewer wins: an earlier APPROVED cannot
+    # survive a later CHANGES_REQUESTED, COMMENTED or DISMISSED submission.
+    active: dict[str, tuple[datetime, str]] = {}
     for review in reviews:
-        reviewer = str((review.get("user") or {}).get("login") or "")
-        if (reviewer and reviewer != author_login and
-                review.get("author_association") in {"OWNER", "MEMBER", "COLLABORATOR"} and
-                review.get("commit_id") == head_sha and review.get("state") == "APPROVED"):
-            return True
-    comments = gh_paginated(f"repos/{repo}/issues/{number}/comments?per_page=100")
-    for comment in comments:
+        who = str((review.get("user") or {}).get("login") or "")
+        if (not who or who == author_login or review.get("commit_id") != head_sha or
+                review.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}):
+            continue
+        submitted = review.get("submitted_at")
+        try:
+            when = datetime.fromisoformat(str(submitted).replace("Z", "+00:00"))
+            if when.tzinfo is None:
+                continue
+        except ValueError:
+            continue
+        if who not in active or when >= active[who][0]:
+            active[who] = (when, str(review.get("state") or ""))
+    if any(state == "CHANGES_REQUESTED" for _, state in active.values()):
+        return False
+    authorized = any(state == "APPROVED" for _, state in active.values())
+
+    for comment in gh_paginated(f"repos/{repo}/issues/{number}/comments?per_page=100"):
         if str((comment.get("user") or {}).get("login") or "") not in CODEX_REVIEW_BOTS:
+            continue
+        # Repository writers can edit even bot-authored comments: an edited receipt
+        # is no longer immutable reviewer evidence regardless of original creator.
+        created = str(comment.get("created_at") or "")
+        if not created or created != str(comment.get("updated_at") or ""):
+            continue
+        try:
+            posted = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if posted.tzinfo is None:
+                continue
+        except ValueError:
             continue
         body = str(comment.get("body") or "")
         match = CODEX_REVIEWED_SHA_RE.search(body)
@@ -86,12 +114,14 @@ def independent_exact_head_review(repo: str, number: int, head_sha: str,
         abbreviated = match.group(1).lower()
         if not head_sha.startswith(abbreviated):
             continue
-        # GitHub resolves a short hash to the full object ID; a prefix alone is not exact-head proof.
+        # Never treat a ten-character prefix as a full commit identity.
         resolved = gh_json(["api", f"repos/{repo}/commits/{abbreviated}"])
-        if str(resolved.get("sha") or "").lower() == head_sha:
-            return True
-    return False
-
+        if str(resolved.get("sha") or "").lower() != head_sha:
+            continue
+        authorized = True
+        if receipt_times is not None:
+            receipt_times.append(posted)
+    return authorized
 
 def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
     """Require a quiet review window anchored to the current exact head."""
@@ -120,9 +150,15 @@ def review_settled(repo:str, number:int, head_sha:str, created_at:str)->bool:
     if (datetime.now(UTC)-latest).total_seconds() < REVIEW_SETTLE_SECONDS:
         return False
     author = gh_json(["api", f"repos/{repo}/pulls/{number}"])
-    return independent_exact_head_review(
-        repo, number, head_sha, str((author.get("user") or {}).get("login") or ""), reviews
-    )
+    accepted_receipts: list[datetime] = []
+    if not independent_exact_head_review(
+        repo, number, head_sha, str((author.get("user") or {}).get("login") or ""),
+        reviews, accepted_receipts,
+    ):
+        return False
+    if accepted_receipts:
+        latest = max(latest, *accepted_receipts)
+    return (datetime.now(UTC)-latest).total_seconds() >= REVIEW_SETTLE_SECONDS
 
 def review_threads(repo:str, number:int)->list[dict[str,Any]]:
     """Every review thread as {id, resolved, path, line, comments:[{body, commit}]}; fails closed if unavailable."""
