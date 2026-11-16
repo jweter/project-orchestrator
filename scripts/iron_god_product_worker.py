@@ -579,8 +579,14 @@ def quality_rules(worktree: Path) -> list[str]:
         ruff = {**ruff, **toml(name)}
     length = ruff.get("line-length")
     if isinstance(length, int) and length > 0:
-        rules.append(f"Keep every line at most {length} characters; split a long string into adjacent "
-                     "string literals.")
+        # Observed E501 on several otherwise workable Level-1 builds came from
+        # a single long *docstring* line. Ruff format does not reflow prose.
+        rules.append(
+            f"Keep every physical Python line at most {length} characters, including "
+            "docstrings, comments and examples. Ruff format does NOT reflow long "
+            "docstrings: wrap triple-quoted prose onto separate short lines. "
+            "Split expressions or string literals only without changing behavior."
+        )
     return rules
 
 
