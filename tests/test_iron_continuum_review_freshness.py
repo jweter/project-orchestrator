@@ -132,3 +132,44 @@ def test_valid_recent_receipt_must_still_finish_five_minute_settlement(monkeypat
     stamp = port.quiet_since(REPO, 7, HEAD, "2020-01-01T00:00:00Z")
     assert stamp is not None
     assert datetime.fromisoformat(stamp) >= datetime.now(UTC) - timedelta(seconds=30)
+
+
+def test_portfolio_comment_only_review_cannot_withdraw_changes_request(monkeypatch):
+    port = _port(monkeypatch)
+    request = {
+        "user": {"login": "reviewer1"}, "commit_id": HEAD,
+        "author_association": "COLLABORATOR", "state": "CHANGES_REQUESTED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    commented = {**request, "state": "COMMENTED",
+                 "submitted_at": "2026-11-16T14:00:00Z"}
+    other_approval = {
+        "user": {"login": "reviewer2"}, "commit_id": HEAD,
+        "author_association": "MEMBER", "state": "APPROVED",
+        "submitted_at": "2026-11-16T14:10:00Z",
+    }
+    assert not port.independent_review(
+        REPO, 7, HEAD, [request, commented, other_approval]
+    )
+    assert not port.independent_review(
+        REPO, 7, HEAD, [other_approval, commented, request]
+    )
+    approved_later = {**request, "state": "APPROVED",
+                      "submitted_at": "2026-11-16T14:20:00Z"}
+    assert port.independent_review(REPO, 7, HEAD, [request, commented, approved_later])
+    assert port.independent_review(REPO, 7, HEAD, [approved_later, commented, request])
+
+
+def test_portfolio_comment_only_review_preserves_prior_approval(monkeypatch):
+    port = _port(monkeypatch)
+    approved = {
+        "user": {"login": "reviewer"}, "commit_id": HEAD,
+        "author_association": "COLLABORATOR", "state": "APPROVED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    commented = {**approved, "state": "COMMENTED",
+                 "submitted_at": "2026-11-16T14:00:00Z"}
+    assert port.independent_review(REPO, 7, HEAD, [approved, commented])
+    dismissed = {**approved, "state": "DISMISSED",
+                 "submitted_at": "2026-11-16T14:20:00Z"}
+    assert not port.independent_review(REPO, 7, HEAD, [approved, commented, dismissed])
