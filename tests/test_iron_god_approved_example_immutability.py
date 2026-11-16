@@ -13,6 +13,7 @@ OWNER_CASE = "claim_coverage_ratio(['Insufficient_Evidence'])"
 def plan():
     return {
         "function_name": "claim_coverage_ratio",
+        "import_path": "knowledge_engine.online_evidence_claim_coverage",
         "examples": [
             {"call": OWNER_CASE, "expected": "1.0"},
             {"call": "claim_coverage_ratio([])", "expected": "0.0"},
@@ -80,6 +81,6 @@ def test_nonapproved_provisional_examples_retains_prior_adjudication(tmp_path, m
 
 
 def test_execution_path_never_invokes_adjudication_for_approved_backlog():
-    source = inspect.getsource(worker.execute)
+    source = inspect.getsource(worker.execute_product_packet)
     assert 'and not approved:' in source
     assert 'corrected = adjudicate(' in source
