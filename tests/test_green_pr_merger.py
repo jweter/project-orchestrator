@@ -354,3 +354,57 @@ def test_comment_only_review_preserves_a_prior_approval(monkeypatch):
     assert not merger.independent_exact_head_review(
         "o/r", 1, head, "jweter", [approved, commented, dismissed]
     )
+
+
+def test_old_head_changes_request_blocks_clean_current_head_codex_receipt(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    old_head = "b" * 40
+    bot = {
+        "user": {"login": "chatgpt-codex-connector[bot]"},
+        "body": "Codex Review: Didn't find any major issues.\n"
+        "**Reviewed commit:** `aaaaaaaaaa`",
+        "created_at": "2026-11-16T14:00:00Z",
+        "updated_at": "2026-11-16T14:00:00Z",
+    }
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [bot])
+    monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": head})
+    requested = {
+        "user": {"login": "collaborator"}, "author_association": "COLLABORATOR",
+        "commit_id": old_head, "state": "CHANGES_REQUESTED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    new_head_comment = {
+        **requested, "commit_id": head, "state": "COMMENTED",
+        "submitted_at": "2026-11-16T13:40:00Z",
+    }
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [requested, new_head_comment]
+    )
+    explicit_approval = {
+        **requested, "commit_id": head, "state": "APPROVED",
+        "submitted_at": "2026-11-16T14:20:00Z",
+    }
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter",
+        [new_head_comment, explicit_approval, requested],
+    )
+
+
+def test_prior_head_approval_does_not_satisfy_exact_head_gate(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    old_approval = {
+        "user": {"login": "reviewer"}, "author_association": "COLLABORATOR",
+        "commit_id": "b" * 40, "state": "APPROVED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    newer_comment = {
+        **old_approval, "commit_id": "a" * 40, "state": "COMMENTED",
+        "submitted_at": "2026-11-16T14:00:00Z",
+    }
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, "a" * 40, "jweter", [old_approval, newer_comment]
+    )
