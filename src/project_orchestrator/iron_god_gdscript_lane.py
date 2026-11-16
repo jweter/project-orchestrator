@@ -69,6 +69,8 @@ def pending_jobs(root: Path) -> list[dict[str, Any]]:
 def in_progress(root: Path) -> bool:
     folder = Path(root) / JOB_DIR
     for path in folder.glob("*.json") if folder.is_dir() else []:
+        if path.name.endswith((".request.json", ".result.json")):
+            continue
         try:
             job = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -92,6 +94,8 @@ def advance(
     job = read_job(root, request)
     if job.get("id") != request["id"] or job.get("repository") != request["repository"]:
         return {"status": "NEEDS_RECONCILIATION", "reason": "JOB_IDENTITY_CHANGED"}
+    if job.get("request") is not None and job["request"] != request:
+        return {"status": "NEEDS_RECONCILIATION", "reason": "AUTHORITY_SNAPSHOT_CHANGED"}
     if job.get("base") and job["base"] != base:
         return {"status": "NEEDS_RECONCILIATION", "reason": "BASE_HEAD_CHANGED"}
     if job.get("state") in {"STARTING", "NEEDS_RECONCILIATION"}:
@@ -171,8 +175,10 @@ def independent_verification(request: dict[str, Any], result: dict[str, Any], *,
         return report
     code, current = run(["git", "rev-parse", "HEAD"], workspace, 60)
     code2, diff = run(["git", "diff", "--name-only", base, head], workspace, 60)
+    clean_code, dirty = run(["git", "status", "--porcelain"], workspace, 60)
     wanted = request["gdscript"]["module"]
-    if code != 0 or code2 != 0 or current.strip() != head or diff.splitlines() != [wanted]:
+    if (code != 0 or code2 != 0 or clean_code != 0 or dirty.strip()
+            or current.strip() != head or diff.splitlines() != [wanted]):
         report["reason"] = "EXACT_HEAD_OR_SCOPE_MISMATCH"
         return report
     # Never trust the author's status alone: unchanged acceptance source is
