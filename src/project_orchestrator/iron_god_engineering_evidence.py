@@ -1,0 +1,423 @@
+"""Read-only multi-surface engineering evidence for Iron God's seven repositories.
+
+One query joins the EXISTING event ledger, the EXISTING development-memory SQLite
+store and fresh supervisor projections. It is not a second owner controller,
+lease database, acceptance authority, dispatcher, or process. No database is
+created or migrated on a read. The existing supervisor alone records events.
+"""
+from __future__ import annotations
+
+import json
+import re
+import sqlite3
+from contextlib import closing
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from . import iron_god_calibration as calibration
+from . import iron_god_model_routing as model_routing
+from . import iron_god_development_memory as memory
+from . import iron_god_observability as observability
+
+SCHEMA_VERSION = 1
+MAX_RESULTS = 20
+MAX_SCAN = 200
+MAX_JSON_LEN = 60_000
+_SAFE = re.compile(r"^[a-zA-Z0-9._:/#@+\\-]{1,120}$")
+_SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _token(value: Any) -> str | None:
+    return value if isinstance(value, str) and _SAFE.fullmatch(value) else None
+
+
+def _source(path: Path) -> dict[str, Any]:
+    """One explicit existing database, never open a missing path for writing."""
+    return {"path": path.name, "status": "AVAILABLE" if path.is_file() else "UNAVAILABLE"}
+
+
+def _connect_existing(path: Path) -> sqlite3.Connection:
+    if not path.is_file():
+        raise FileNotFoundError(path.name)
+    db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=3)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA query_only=ON")
+    return db
+
+
+def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> dict[str, Any]:
+    """Small, provenance-bound historical projection. Never use as live authority."""
+    _validate(repository, limit)
+    path = Path(state_root) / "observability" / "development-events.sqlite"
+    if not path.is_file():
+        return {"source": "development-events.sqlite", "status": "UNAVAILABLE",
+                "historical_only": True, "events": [], "scan_limit": MAX_SCAN}
+    events: list[dict[str, Any]] = []
+    try:
+        with closing(_connect_existing(path)) as db:
+            rows = db.execute("""SELECT seq,event_key,supervisor_instance,continuation_sequence,
+                observed_at_utc,status,reason,evidence_json
+                FROM development_events ORDER BY seq DESC LIMIT ?""", (MAX_SCAN,)).fetchall()
+        for row in rows:
+            raw = row["evidence_json"]
+            if not isinstance(raw, str) or len(raw) > MAX_JSON_LEN:
+                continue
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                continue
+            lane = (payload.get("lanes") or {}).get("product") or {}
+            if not isinstance(lane, dict):
+                lane = {}
+            repo = lane.get("repository")
+            if repo not in observability.REPOSITORIES:
+                repo = None
+            if repository and repo != repository:
+                continue
+            packet = _token(lane.get("packet_id"))
+            events.append({
+                "event_seq": row["seq"], "event_key": row["event_key"],
+                "supervisor_generation": _token(row["supervisor_instance"]),
+                "continuation_sequence": row["continuation_sequence"],
+                "observed_at_utc": row["observed_at_utc"],
+                "source": "development-events.sqlite:development_events",
+                "repository": repo, "packet_id": packet,
+                "status": _token(row["status"]), "reason": _token(row["reason"]),
+                "product_lane_status": _token(lane.get("status")),
+                "source_revision": _token((payload.get("supervisor") or {}).get("release_sha")),
+                "evidence_state": "OBSERVED_NOT_PRODUCT_ACCEPTED",
+            })
+            if len(events) >= limit:
+                break
+        return {"source": "development-events.sqlite", "status": "OK",
+                "historical_only": True, "events": events,
+                "scan_limit": MAX_SCAN,
+                "scan_exhaustive": len(rows) < MAX_SCAN}
+    except (sqlite3.Error, OSError, ValueError, TypeError, json.JSONDecodeError):
+        return {"source": "development-events.sqlite", "status": "UNVERIFIED",
+                "historical_only": True, "events": [], "scan_limit": MAX_SCAN}
+
+
+def attempt_memory(state_root: Path, *, repository: str = "", limit: int = 8) -> dict[str, Any]:
+    """Provenance-linked worker results, without prompts, replies or test logs."""
+    _validate(repository, limit)
+    path = memory.db_path(Path(state_root) / "iron-god-products")
+    if not path.is_file():
+        return {"source": "development-memory.sqlite3", "status": "UNAVAILABLE",
+                "attempts": [], "rules": []}
+    try:
+        with closing(_connect_existing(path)) as db:
+            if repository:
+                rows = db.execute("""SELECT packet_id,item_id,repository,base_sha,model,
+                    failure_class,outcome,recorded_at_utc FROM attempts WHERE repository=?
+                    ORDER BY recorded_at_utc DESC,packet_id DESC LIMIT ?""",
+                    (repository, limit)).fetchall()
+            else:
+                rows = db.execute("""SELECT packet_id,item_id,repository,base_sha,model,
+                    failure_class,outcome,recorded_at_utc FROM attempts
+                    ORDER BY recorded_at_utc DESC,packet_id DESC LIMIT ?""", (limit,)).fetchall()
+            rules = db.execute("""SELECT failure_class,kind,slices,derived_at_utc
+                FROM rules ORDER BY slices DESC,failure_class LIMIT ?""", (limit,)).fetchall()
+        result = []
+        for row in rows:
+            # Outcome is worker-reported, never proof of CI/merge/native acceptance.
+            if row["repository"] not in observability.REPOSITORIES:
+                continue
+            result.append({
+                "packet_id": _token(row["packet_id"]), "item_id": _token(row["item_id"]),
+                "repository": row["repository"],
+                "base_sha": row["base_sha"] if _SHA.fullmatch(row["base_sha"] or "") else None,
+                "model": _token(row["model"]),
+                "failure_class": _token(row["failure_class"]),
+                "worker_outcome": "OBSERVED_WORKER_RESULT",
+                "outcome_class": "PASS" if row["failure_class"] == "PASSED" else "NOT_VERIFIED_PASS",
+                "recorded_at_utc": row["recorded_at_utc"],
+            })
+        return {
+            "source": "development-memory.sqlite3", "status": "OK",
+            "attempts": result,
+            "rules": [{"failure_class": _token(row["failure_class"]),
+                       "kind": _token(row["kind"]), "independent_slices": row["slices"],
+                       "derived_at_utc": row["derived_at_utc"],
+                       "authority": "ADVISORY_ONLY"} for row in rules],
+        }
+    except (sqlite3.Error, OSError, ValueError, TypeError):
+        return {"source": "development-memory.sqlite3", "status": "UNVERIFIED",
+                "attempts": [], "rules": []}
+
+
+def _validate(repository: str, limit: int) -> None:
+    if repository and repository not in observability.REPOSITORIES:
+        raise ValueError("UNKNOWN_OR_UNAUTHORIZED_REPOSITORY")
+    if type(limit) is not int or not 1 <= limit <= MAX_RESULTS:
+        raise ValueError("INVALID_EVIDENCE_LIMIT")
+
+
+def frontier_evidence(state_root: Path, *, repository: str = "", limit: int = 8,
+                      now: datetime | None = None) -> dict[str, Any]:
+    """Live eligible/excluded slice IDs, retaining the actual admission gate.
+
+    This is an explanation of the already-produced Product lane eligibility
+    artifact, NOT a new scheduler or permission to dispatch stale work.
+    """
+    _validate(repository, limit)
+    moment = (now or datetime.now(UTC)).astimezone(UTC)
+    report = observability.snapshot(state_root, now=moment)
+    source = report["evidence"]["eligibility"]
+    if source["freshness"] != "FRESH":
+        return {"status": "UNVERIFIED" if source["status"] != "OBSERVED" else "STALE",
+                "source": source, "candidates": [], "next_candidate": None,
+                "dispatch_authorized": False}
+    path = Path(state_root) / "iron-god-products" / "eligibility.json"
+    try:
+        if not path.is_file() or path.stat().st_size > observability.MAX_JSON_BYTES:
+            raise ValueError("ELIGIBILITY_UNAVAILABLE")
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(raw, dict):
+            raise ValueError("ELIGIBILITY_ROOT_INVALID")
+        if observability._time(raw.get("observed_at_utc")) != observability._time(
+            source.get("observed_at_utc")
+        ):
+            raise ValueError("ELIGIBILITY_GENERATION_CHANGED_DURING_READ")
+        items = raw.get("items")
+        if not isinstance(items, list):
+            raise ValueError("ELIGIBILITY_ITEMS_INVALID")
+        selected: list[dict[str, Any]] = []
+        for item in items[:1000]:
+            if not isinstance(item, dict) or item.get("repository") not in observability.REPOSITORIES:
+                continue
+            if repository and item["repository"] != repository:
+                continue
+            item_id = _token(item.get("id"))
+            if item_id is None:
+                continue
+            selected.append({
+                "id": item_id,
+                "repository": item["repository"],
+                "eligible_as_observed": item.get("eligible") is True,
+                "reason": _token(item.get("reason")) or "UNVERIFIED_REASON",
+                "attempts": item["attempts"] if type(item.get("attempts")) is int
+                             and 0 <= item["attempts"] <= 1000 else None,
+                "observed_at_utc": source.get("observed_at_utc"),
+            })
+        earliest = next((entry for entry in selected
+                         if entry["eligible_as_observed"]), None)
+        return {"status": "OBSERVED_FRESH", "source": source,
+                "candidates": selected[:limit], "next_candidate": earliest,
+                "matching_items_scanned": len(selected), "dispatch_authorized": False,
+                "new_owner_grant": False, "model_qualified_for_candidate": "UNVERIFIED"}
+    except (ValueError, OSError, TypeError, json.JSONDecodeError):
+        return {"status": "UNVERIFIED", "source": source,
+                "candidates": [], "next_candidate": None,
+                "dispatch_authorized": False}
+
+
+def measured_local_admission(state_root: Path, *, now: datetime | None = None) -> dict[str, Any]:
+    """Advisory view of the existing calibrated local-model router.
+
+    Never load Ollama, start models, spend cloud tokens or override the existing
+    runtime's live admission, capability gate or resource-pressure cooldown.
+    """
+    current = observability.snapshot(state_root, now=now)
+    memory_source = current["evidence"]["memory"]
+    mib = current["resources"]["free_mib"]
+    if memory_source["freshness"] != "FRESH" or type(mib) is not int:
+        return {"status": "UNVERIFIED_MEMORY", "qualified_level": None,
+                "model": None, "new_worker_authorized": False,
+                "cloud_spend_authorized": False}
+    profiles: dict[str, dict[str, Any]] = {}
+    root = Path(state_root)
+    for model in model_routing.LADDER:
+        full = "ollama/" + model
+        file = calibration.profile_path(root, full)
+        if not file.is_file() or file.stat().st_size > 128_000:
+            continue
+        try:
+            item = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if isinstance(item, dict) and item.get("model") == full:
+            profiles[full] = item
+    legacy = calibration.profile_path(root)
+    if legacy.is_file() and legacy.stat().st_size <= 128_000:
+        try:
+            item = json.loads(legacy.read_text(encoding="utf-8"))
+            if isinstance(item, dict) and item.get("model") in {
+                "ollama/" + name for name in model_routing.LADDER
+            }:
+                profiles.setdefault(item["model"], item)
+        except (OSError, ValueError, TypeError):
+            pass
+    if not profiles:
+        return {"status": "CALIBRATION_UNVERIFIED", "qualified_level": None,
+                "model": None, "new_worker_authorized": False,
+                "cloud_spend_authorized": False}
+    try:
+        hardware = calibration.hardware_fingerprint()
+        free_gib = mib / 1024
+        # Conservative memory-pressure setting; the live controller owns its
+        # actual pressure state and decides whether admission may proceed.
+        max_level = model_routing.max_level_now(
+            profiles, free_gib, hardware=hardware, after_pressure=True,
+        )
+        route = model_routing.route(
+            1, profiles, free_gib, hardware=hardware, after_pressure=True,
+        )
+        return {"status": "MEASURED_ADVISORY", "qualified_level": max_level,
+                "model": _token(route.model), "reason_class":
+                "ADMITTED_LOCAL" if route.model else "NOT_ADMITTED_LOCAL",
+                "qualified_models": [_token(x) for x in route.qualified],
+                "available_gib": round(free_gib, 2),
+                "new_worker_authorized": False, "cloud_spend_authorized": False,
+                "native_toolchain_qualification": "UNVERIFIED",
+                "runtime_pressure_and_owner_grants_must_be_rechecked": True}
+    except (OSError, ValueError, TypeError):
+        return {"status": "CALIBRATION_UNVERIFIED", "qualified_level": None,
+                "model": None, "new_worker_authorized": False,
+                "cloud_spend_authorized": False}
+
+
+def publication_evidence(state_root: Path, *, repository: str = "",
+                         limit: int = 8) -> dict[str, Any]:
+    """Correlate local publication receipts with exact SHA, not a GitHub verdict."""
+    _validate(repository, limit)
+    path = Path(state_root) / "iron-god-products" / "publications.json"
+    if not path.is_file():
+        return {"status": "UNAVAILABLE", "receipts": [], "github_verified": False}
+    try:
+        if path.stat().st_size > observability.MAX_JSON_BYTES:
+            raise ValueError("PUBLICATION_TOO_LARGE")
+        raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(raw, dict):
+            raise ValueError("PUBLICATION_ROOT_INVALID")
+        rows = raw.get("items")
+        if not isinstance(rows, dict):
+            raise ValueError("PUBLICATION_ITEMS_INVALID")
+        receipts: list[dict[str, Any]] = []
+        for packet_id, item in list(rows.items())[:1000]:
+            if not isinstance(item, dict) or item.get("repository") not in observability.REPOSITORIES:
+                continue
+            if repository and item["repository"] != repository:
+                continue
+            packet = _token(packet_id)
+            if packet is None:
+                continue
+            pr = item.get("pr") if isinstance(item.get("pr"), dict) else {}
+            number = pr.get("number")
+            receipts.append({
+                "repository": item["repository"], "packet_id": packet,
+                "local_state": _token(item.get("state")),
+                "pr_number": number if type(number) is int and 0 < number < 1_000_000 else None,
+                "head_sha": item["head_sha"] if _SHA.fullmatch(item.get("head_sha") or "") else None,
+                "local_merged_sha": (item.get("merged_sha") if
+                                    _SHA.fullmatch(item.get("merged_sha") or "") else None),
+                "source": "iron-god-products/publications.json",
+                "evidence_class": "LOCAL_REPORTED_NOT_INDEPENDENT_GITHUB_PROOF",
+                "current_head_ci_verified": False,
+                "release_installed_verified": False,
+                "product_accepted_verified": False,
+            })
+            if len(receipts) == limit:
+                break
+        return {"status": "OBSERVED_LOCAL", "receipts": receipts,
+                "github_verified": False,
+                "fresh_exact_head_review_required": True}
+    except (ValueError, OSError, TypeError, json.JSONDecodeError):
+        return {"status": "UNVERIFIED", "receipts": [], "github_verified": False}
+
+
+def _graph(events: list[dict[str, Any]], attempts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Only evidenced relationships; no inferred/LLM-generated dependencies."""
+    edges: list[dict[str, str | int]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for event in events:
+        repo, packet = event.get("repository"), event.get("packet_id")
+        if not repo or not packet:
+            continue
+        key = (repo, "REPOSITORY_OBSERVED_PACKET", packet)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append({"subject": repo, "predicate": key[1], "object": packet,
+                      "source_event_seq": event["event_seq"],
+                      "evidence_class": "OBSERVED"})
+    for attempt in attempts:
+        packet, failure = attempt.get("packet_id"), attempt.get("failure_class")
+        if not packet or not failure:
+            continue
+        key = (packet, "ATTEMPT_REPORTED_CLASS", failure)
+        if key in seen:
+            continue
+        seen.add(key)
+        edges.append({"subject": packet, "predicate": key[1], "object": failure,
+                      "source": "development-memory.sqlite3",
+                      "evidence_class": "WORKER_REPORTED"})
+    return {"status": "EVIDENCED_ONLY", "edges": edges, "inferred_dependencies": 0}
+
+
+def engineering_bundle(state_root: Path, *, repository: str = "", limit: int = 8,
+                       now: datetime | None = None) -> dict[str, Any]:
+    """Bounded, restart-safe, seven-repository evidence. Absolutely no side effects."""
+    _validate(repository, limit)
+    observed = (now or datetime.now(UTC)).astimezone(UTC)
+    live = observability.snapshot(state_root, now=observed)
+    history = event_history(state_root, repository=repository, limit=limit)
+    learned = attempt_memory(state_root, repository=repository, limit=limit)
+    frontier = frontier_evidence(state_root, repository=repository, limit=limit, now=observed)
+    product = live["lanes"]["product"]
+    active = product if product.get("repository") == repository or not repository else {}
+    if repository and not active:
+        # Another active repository is not proof this repository has no work.
+        lane_status = "UNVERIFIED_FOR_REPOSITORY"
+    else:
+        lane_status = live["status"]
+    advice = live["recovery_advice"]
+    replay = (history["events"][0] if history["events"] else None)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "observed_at_utc": observed.isoformat(),
+        "repository_scope": repository or "ALL_REGISTERED",
+        "registered_repositories": list(observability.REPOSITORIES),
+        "authority": "READ_ONLY_ADVISORY_NO_OWNER_GRANTS_NO_WORKER_LAUNCH",
+        "durable_continuation": {
+            "source": history["source"], "source_status": history["status"],
+            "last_observed_checkpoint": replay,
+            "resume_authorized": False,
+            "requires_fresh_owner_lease_and_exact_head": True,
+            "historical_only": True,
+        },
+        "mcp_handoff": {
+            "transport": "LOCAL_STDIO", "tool": "get_engineering_evidence",
+            "advisory_only": True, "can_acknowledge": False,
+            "can_dispatch": False,
+        },
+        "frontier_and_recovery": {
+            "live_status": lane_status,
+            "reason": live["reason"] if lane_status != "UNVERIFIED_FOR_REPOSITORY" else "NO_LIVE_REPO_EVIDENCE",
+            "advice": advice if lane_status != "UNVERIFIED_FOR_REPOSITORY" else None,
+            "eligibility": live["frontier"],
+            "observed_candidate_ids": frontier,
+            "execution_authorized_by_bundle": False,
+        },
+        "learning": learned,
+        "evidence_graph": _graph(history["events"], learned["attempts"]),
+        "delivery": {
+            "runtime_projection": live["delivery"],
+            "local_publication_receipts": publication_evidence(
+                state_root, repository=repository, limit=limit,
+            ),
+            "ci": "UNVERIFIED", "merge": "UNVERIFIED",
+            "native_product_acceptance": "UNVERIFIED",
+            "git_and_product_reality_must_be_verified_independently": True,
+        },
+        "resource_admission": {
+            "current": live["resources"],
+            "calibrated_local_router": measured_local_admission(state_root, now=observed),
+            "cloud_spend_authorized": False,
+            "worker_launch_authorized": False,
+            "local_model_routing_remains_separate_authoritative_gate": True,
+        },
+        "history": history,
+        "live_evidence": live["evidence"],
+        "supervisor": live["supervisor"],
+    }
