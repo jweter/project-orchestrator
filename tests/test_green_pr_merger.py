@@ -297,3 +297,60 @@ def test_recent_valid_codex_receipt_restarts_merge_quiet_period(monkeypatch):
     monkeypatch.setattr(merger, "gh_json", gh_fake)
     monkeypatch.setattr(merger, "gh_paginated", paged)
     assert merger.review_settled("o/r", 1, head, created) is False
+
+
+def test_comment_only_review_does_not_clear_active_changes_request(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    requesting = {
+        "user": {"login": "reviewer1"}, "commit_id": head,
+        "author_association": "COLLABORATOR", "state": "CHANGES_REQUESTED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    commented = {**requesting, "state": "COMMENTED",
+                 "submitted_at": "2026-11-16T14:00:00Z"}
+    other_approval = {
+        "user": {"login": "reviewer2"}, "commit_id": head,
+        "author_association": "MEMBER", "state": "APPROVED",
+        "submitted_at": "2026-11-16T14:10:00Z",
+    }
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [requesting, commented, other_approval]
+    )
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [other_approval, commented, requesting]
+    )
+
+    # Only an explicit new decision can supersede the active rejection.
+    approved_later = {**requesting, "state": "APPROVED",
+                      "submitted_at": "2026-11-16T14:20:00Z"}
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [requesting, commented, approved_later]
+    )
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [approved_later, commented, requesting]
+    )
+
+
+def test_comment_only_review_preserves_a_prior_approval(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    approved = {
+        "user": {"login": "reviewer"}, "commit_id": head,
+        "author_association": "COLLABORATOR", "state": "APPROVED",
+        "submitted_at": "2026-11-16T13:00:00Z",
+    }
+    commented = {**approved, "state": "COMMENTED",
+                 "submitted_at": "2026-11-16T14:00:00Z"}
+    assert merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [approved, commented]
+    )
+    dismissed = {**approved, "state": "DISMISSED",
+                 "submitted_at": "2026-11-16T14:20:00Z"}
+    assert not merger.independent_exact_head_review(
+        "o/r", 1, head, "jweter", [approved, commented, dismissed]
+    )
