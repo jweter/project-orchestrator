@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from . import mcp_coordination as coord
+from . import iron_god_observability as observability
 
 
 def create_server(*, database: Path, state_root: Path, repo_root: Path,
@@ -33,6 +34,11 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
     def get_engine_snapshot() -> dict:
         """Read a minimal allowlisted runtime status; NOT permission or liveness proof."""
         return coord.engine_snapshot(state_root)
+
+    @server.tool()
+    def get_development_diagnostics(history_limit: int = 8) -> dict:
+        """Read fresh supervisor/Canon/Product evidence and durable events; no execution authority."""
+        return observability.diagnostics(state_root, history_limit=history_limit)
 
     @server.tool()
     def list_messages(after_seq: int = 0, limit: int = 30) -> dict:

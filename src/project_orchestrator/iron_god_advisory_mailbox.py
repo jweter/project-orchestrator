@@ -43,6 +43,8 @@ _MAX_REPORT_MESSAGES = 30
 _MAX_PUBLICATIONS = 30
 _STATUS_QUERY_BODY = "engine_status_v1"
 _STATUS_QUERY_REFERENCE = "protocol:engine-status-v1"
+_STATUS_QUERY_V2_BODY = "engine_status_v2"
+_STATUS_QUERY_V2_REFERENCE = "protocol:engine-status-v2"
 _MAX_STATUS_REPLIES_PER_PASS = 5
 
 
@@ -227,12 +229,40 @@ def _reported_status_snapshot(state_root: Path, *, response_to: str) -> str:
     }, sort_keys=True)
 
 
+def _reported_status_v2(state_root: Path, *, response_to: str) -> str:
+    """Read current Canon/Product and SQLite history without forwarding secrets."""
+    from . import iron_god_observability
+
+    report = iron_god_observability.diagnostics(state_root, history_limit=3)
+    lanes = report["lanes"]
+    return json.dumps({
+        "schema_version": 2,
+        "response_to": response_to,
+        "status": "REPORTED_NOT_INDEPENDENTLY_VERIFIED",
+        "observed_at_utc": report["observed_at_utc"],
+        "engine_status": report["status"],
+        "reason": report["reason"],
+        "release_sha": report["supervisor"]["release_sha"],
+        "canon": {"status": lanes["canon"].get("status")},
+        "product": {key: lanes["product"].get(key) for key in ("status", "repository", "packet_id")},
+        "resources": report["resources"],
+        "frontier": {"eligibility_fresh": report["frontier"]["eligibility_fresh"],
+                     "eligible": report["frontier"]["eligibility"].get("eligible"),
+                     "exclusions": dict(list(report["frontier"]["eligibility"].get("reasons", {}).items())[:8]),
+                     "approved_roadmap_items": report["frontier"]["refill"].get("approved_roadmap_items")},
+        "recent_events": report["recent_events"],
+        "recovery_advice": report["recovery_advice"],
+        "authority": "ADVISORY_ONLY_NO_OWNER_GRANTS",
+    }, sort_keys=True)
+
+
 def _verified_replay_body(previous: Mapping[str, Any],
-                          request: Mapping[str, Any]) -> str:
+                          request: Mapping[str, Any], *,
+                          protocol_ref: str = _STATUS_QUERY_REFERENCE) -> str:
     """Never mark a query handled based on an unrelated or forged prior post."""
     if (previous.get("recipient") != request["sender_label"]
             or previous.get("kind") != "status"
-            or previous.get("reference") != _STATUS_QUERY_REFERENCE):
+            or previous.get("reference") != protocol_ref):
         raise ValueError("STATUS_REPLY_REPLAY_MISMATCH")
     try:
         payload = json.loads(previous["body"])
@@ -262,21 +292,27 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> lis
             break
         if (message["recipient"] != "iron-god"
                 or message["sender_label"] not in _RECIPIENTS
-                or message["kind"] != "question"
-                or message["body"] != _STATUS_QUERY_BODY
-                or message["reference"] != _STATUS_QUERY_REFERENCE):
+                or message["kind"] != "question"):
             continue
-        reply_key = "engine-status-response:" + message["message_id"]
+        v1 = (message["body"] == _STATUS_QUERY_BODY
+              and message["reference"] == _STATUS_QUERY_REFERENCE)
+        v2 = (message["body"] == _STATUS_QUERY_V2_BODY
+              and message["reference"] == _STATUS_QUERY_V2_REFERENCE)
+        if not (v1 or v2):
+            continue
+        protocol_ref = _STATUS_QUERY_REFERENCE if v1 else _STATUS_QUERY_V2_REFERENCE
+        reply_key = ("engine-status-response:" if v1 else "engine-status-v2-response:") + message["message_id"]
         previous = mcp_coordination.lookup_posted_message(
             db, sender_label="iron-god", idempotency_key=reply_key,
         )
-        text = (_verified_replay_body(previous, message) if previous
-                else _reported_status_snapshot(state_root, response_to=message["message_id"]))
+        text = (_verified_replay_body(previous, message, protocol_ref=protocol_ref) if previous
+                else (_reported_status_snapshot(state_root, response_to=message["message_id"])
+                      if v1 else _reported_status_v2(state_root, response_to=message["message_id"])))
         try:
             response = mcp_coordination.post_message(
                 db, sender_label="iron-god", recipient=message["sender_label"],
                 kind="status", body=text, idempotency_key=reply_key,
-                reference=_STATUS_QUERY_REFERENCE,
+                reference=protocol_ref,
             )
         except ValueError as exc:
             if str(exc) != "IDEMPOTENCY_CONFLICT":
@@ -288,7 +324,7 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> lis
             )
             if prior is None:
                 raise
-            _verified_replay_body(prior, message)
+            _verified_replay_body(prior, message, protocol_ref=protocol_ref)
             response = prior
         receipt = mcp_coordination.ack_message(
             db, recipient_label="iron-god", message_id=message["message_id"],
