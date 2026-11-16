@@ -24,6 +24,7 @@ from project_orchestrator import iron_god_gdscript_builder as gdscript  # noqa: 
 from project_orchestrator import iron_god_gdscript_lane as lane  # noqa: E402
 from project_orchestrator import iron_god_local_model as local_model  # noqa: E402
 from project_orchestrator.state_io import atomic_json  # noqa: E402
+from project_orchestrator.execution_authority import evaluate_execution_authority  # noqa: E402
 
 
 def git(folder: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -35,6 +36,11 @@ def git(folder: Path, *args: str) -> subprocess.CompletedProcess[str]:
 def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_sha: str) -> dict:
     """Build, verify and commit only one independently specified GDScript unit."""
     result: dict = {"request": request.get("id"), "base": base, "status": "BLOCKED"}
+    def authorized() -> bool:
+        return evaluate_execution_authority(release_sha=release_sha).permitted is True
+
+    if not authorized():
+        return {**result, "reason": "OWNER_EXECUTION_AUTHORITY_DENIED"}
     if not lane.eligible(request, repository=str(request.get("repository") or ""), base=base):
         return {**result, "reason": "UNAUTHORIZED_GODOT_REQUEST"}
     if (not lane.HEX.fullmatch(release_sha)
@@ -88,6 +94,8 @@ def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_
                           ("status", "reason", "iterations", "files", "rolled_back")}
     if cancelled:
         return {**result, "status": "WAITING_FOR_MEMORY", "reason": "CANCELLED_ON_PRESSURE"}
+    if not authorized():
+        return {**result, "status": "BLOCKED", "reason": "OWNER_AUTHORIZATION_REVOKED_DURING_BUILD"}
     if evidence.get("status") != bounded.SUCCESS:
         why = evidence.get("reason") or evidence.get("status")
         return {**result, "status": "FAILED", "reason": str(why)[:300]}
@@ -100,11 +108,15 @@ def run_once(request: dict, clone: Path, base: str, release_repo: Path, release_
     added = git(workspace, "add", "--", request["gdscript"]["module"])
     if added.returncode:
         return {**result, "status": "FAILED", "reason": "GIT_ADD_FAILED"}
+    if not authorized():
+        return {**result, "status": "BLOCKED", "reason": "OWNER_AUTHORIZATION_REVOKED_BEFORE_COMMIT"}
     committed = git(workspace, "commit", "-q", "-m", f"iron-god: Godot {request['id']}"[:140])
     if committed.returncode:
         return {**result, "status": "FAILED", "reason": "COMMIT_FAILED"}
     head = git(workspace, "rev-parse", "HEAD").stdout.strip()
     result["head"] = head
+    if not authorized():
+        return {**result, "status": "BLOCKED", "reason": "OWNER_AUTHORIZATION_REVOKED_BEFORE_PREFLIGHT"}
     preflight = common.preflight_record(workspace, head)
     result["preflight"] = preflight
     if not preflight.get("ok"):
