@@ -581,10 +581,10 @@ class GhPort:
         if not author:
             return False
 
-        active: dict[str, tuple[datetime, str]] = {}
+        active: dict[str, tuple[datetime, str, str]] = {}
         for review in reviews:
             who = str((review.get("user") or {}).get("login") or "")
-            if (not who or who == author or review.get("commit_id") != head or
+            if (not who or who == author or
                     review.get("author_association") not in {"OWNER", "MEMBER", "COLLABORATOR"}):
                 continue
             submitted = review.get("submitted_at")
@@ -600,10 +600,10 @@ class GhPort:
             if state not in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
                 continue
             if who not in active or when >= active[who][0]:
-                active[who] = (when, state)
-        if any(state == "CHANGES_REQUESTED" for _, state in active.values()):
+                active[who] = (when, state, str(review.get("commit_id") or ""))
+        if any(state == "CHANGES_REQUESTED" for _, state, _ in active.values()):
             return False
-        authorized = any(state == "APPROVED" for _, state in active.values())
+        authorized = any(state == "APPROVED" and reviewed_head == head for _, state, reviewed_head in active.values())
 
         for comment in self._paged(f"repos/{repo}/issues/{number}/comments?per_page=100"):
             if str((comment.get("user") or {}).get("login") or "") != "chatgpt-codex-connector[bot]":
