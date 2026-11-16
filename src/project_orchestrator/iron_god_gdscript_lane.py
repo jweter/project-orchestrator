@@ -210,6 +210,7 @@ def publication_item(request: dict[str, Any], result: dict[str, Any], verifier: 
     return {
         "repository": request["repository"], "branch": result["branch"], "head_sha": result["head"],
         "state": "PUBLISH_PENDING", "verified_by": verifier, "note": "local Godot/GDScript lane",
+        "lane": "godot", "source_request_id": request["id"], "base_sha": result["base"],
         "title": (f"Iron God [{request['id']}]: " + request["objective"])[:120],
         "body": (f"Local Godot GDScript slice: {request['id']}\\n\\n"
                  f"{request['objective']}\\n\\n"
