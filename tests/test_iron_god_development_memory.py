@@ -86,3 +86,110 @@ def test_backfill_reads_the_lane_records_already_on_disk(tmp_path, capsys):
     assert dm.main(["backfill", "--lane-root", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out) == {"recorded": 1}
     assert dm.stats(tmp_path)["failure_classes"] == {"REPLY_MALFORMED_BLOCK": 1}
+
+
+def test_conflicting_packet_replay_never_overwrites_original_failure_or_source(tmp_path):
+    """Worker replay or forged handback cannot rewrite learning for an existing packet."""
+    import sqlite3
+
+    initial = packet("P1", "KEA-7")
+    dm.record_attempt(tmp_path, initial, handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL: original")
+    db_file = dm.db_path(tmp_path)
+    with sqlite3.connect(db_file) as db:
+        original = db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone()
+
+    # Same packet and exact input is a genuine no-op, even at a later timestamp.
+    assert dm.record_attempt(tmp_path, initial, handback("FAIL", "UNEXPECTED_UNIT: X"),
+                             "FAIL: original") == "REPLY_UNEXPECTED_UNIT"
+    with sqlite3.connect(db_file) as db:
+        assert db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone() == original
+
+    # A changed model result, source, repository, or outcome cannot erase history.
+    edits = [
+        (initial, handback("PASS", "ok"), "ACCEPTED_LOCAL"),
+        (initial, handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL: changed"),
+        ({**initial, "base_sha": "c" * 40}, handback("FAIL", "UNEXPECTED_UNIT: X"),
+         "FAIL: original"),
+        ({**initial, "repository": "jweter/VoiceStudio"},
+         handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL: original"),
+    ]
+    for changed_packet, changed_handback, outcome in edits:
+        with pytest.raises(sqlite3.IntegrityError, match="ATTEMPT_REPLAY_CONFLICT"):
+            dm.record_attempt(tmp_path, changed_packet, changed_handback, outcome)
+        with sqlite3.connect(db_file) as db:
+            assert db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone() == original
+    assert dm.stats(tmp_path)["failure_classes"] == {"REPLY_UNEXPECTED_UNIT": 1}
+
+
+def test_new_packet_id_keeps_independent_attempt_history(tmp_path):
+    dm.record_attempt(tmp_path, packet("P1", "S1"), handback("FAIL", "UNEXPECTED_UNIT: x"), "FAIL")
+    dm.record_attempt(tmp_path, packet("P2", "S1"), handback("PASS", "ok"), "ACCEPTED_LOCAL")
+    assert dm.stats(tmp_path)["attempts"] == 2
+    assert dm.stats(tmp_path)["first_attempt_judged"] == 1
+
+
+def _write_backfill_packet(root, ident, attempt, *, status, summary="SLICE_TESTS_FAILED"):
+    root.joinpath("packets").mkdir(exist_ok=True)
+    root.joinpath("handbacks").mkdir(exist_ok=True)
+    root.joinpath("packets", ident + ".json").write_text(json.dumps(attempt), encoding="utf-8")
+    root.joinpath("handbacks", ident + ".json").write_text(json.dumps({
+        "status": status, "summary": summary, "plan": {"mode": "directed", "module_path": "pkg/mod.py",
+                                                       "targets": ["f"], "direction": "do it"},
+        "directed": {"model": "ollama/qwen2.5-coder:7b", "prompt": "P", "reply": "R"},
+    }), encoding="utf-8")
+
+
+def test_backfill_after_retry_preserves_original_failure_and_imports_other_packets(tmp_path):
+    """A mutable latest outcome must not replace the first packet's recorded failure."""
+    import sqlite3
+
+    p1 = packet("P1", "S1")
+    p2 = packet("P2", "S1")
+    p3 = packet("P3", "S2")
+    dm.record_attempt(tmp_path, p1, handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL: first")
+    with sqlite3.connect(dm.db_path(tmp_path)) as db:
+        before = db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone()
+    _write_backfill_packet(tmp_path, "P1", p1, status="FAIL", summary="UNEXPECTED_UNIT: X")
+    _write_backfill_packet(tmp_path, "P2", p2, status="PASS", summary="ok")
+    _write_backfill_packet(tmp_path, "P3", p3, status="FAIL")
+    tmp_path.joinpath("backlog-state.json").write_text(json.dumps({
+        "items": {
+            "S1": {"packets": ["P1", "P2"], "outcome": "ACCEPTED_LOCAL"},
+            "S2": {"packets": ["P3"], "outcome": "FAIL: SLICE_TESTS_FAILED"},
+        },
+    }), encoding="utf-8")
+    assert dm.backfill(tmp_path) == 2
+    assert dm.backfill(tmp_path) == 0
+    with sqlite3.connect(dm.db_path(tmp_path)) as db:
+        assert db.execute("SELECT * FROM attempts WHERE packet_id='P1'").fetchone() == before
+        records = dict(db.execute("SELECT packet_id,outcome FROM attempts").fetchall())
+    assert records == {"P1": "FAIL: first", "P2": "ACCEPTED_LOCAL",
+                       "P3": "FAIL: SLICE_TESTS_FAILED"}
+
+
+def test_backfill_missing_original_attempt_does_not_inherit_last_retry_pass(tmp_path):
+    import sqlite3
+
+    for ident, status, summary in [("P1", "FAIL", "SLICE_TESTS_FAILED"),
+                                   ("P2", "PASS", "ok")]:
+        _write_backfill_packet(tmp_path, ident, packet(ident, "S1"),
+                               status=status, summary=summary)
+    tmp_path.joinpath("backlog-state.json").write_text(json.dumps({
+        "items": {"S1": {"packets": ["P1", "P2"], "outcome": "ACCEPTED_LOCAL"}},
+    }), encoding="utf-8")
+    assert dm.backfill(tmp_path) == 2
+    with sqlite3.connect(dm.db_path(tmp_path)) as db:
+        records = dict(db.execute("SELECT packet_id,outcome FROM attempts").fetchall())
+    assert records == {"P1": "FAIL", "P2": "ACCEPTED_LOCAL"}
+
+
+def test_backfill_rejects_conflicting_packet_identity_even_if_packet_already_recorded(tmp_path):
+    import sqlite3
+
+    dm.record_attempt(tmp_path, packet("P1", "S1"), handback("FAIL", "UNEXPECTED_UNIT: X"), "FAIL")
+    _write_backfill_packet(tmp_path, "P1",
+                           {**packet("P1", "S1"), "repository": "jweter/VoiceStudio"},
+                           status="FAIL")
+    with pytest.raises(sqlite3.IntegrityError, match="ATTEMPT_REPLAY_CONFLICT"):
+        dm.backfill(tmp_path)
+    assert dm.stats(tmp_path)["attempts"] == 1
