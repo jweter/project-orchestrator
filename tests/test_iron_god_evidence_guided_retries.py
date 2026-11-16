@@ -81,10 +81,14 @@ def test_mypy_failure_uses_specific_approved_strategy(tmp_path):
 
 def test_forged_mismatched_and_non_failing_evidence_never_becomes_advice(tmp_path):
     assert strategy.recovery_strategy(tmp_path, ITEM, row()) is None
-    write_failure(tmp_path, item_id="another-task")
-    assert strategy.recovery_strategy(tmp_path, ITEM, row()) is None
-    write_failure(tmp_path, item_id=ITEM["id"], repository="jweter/another-repository")
-    assert strategy.recovery_strategy(tmp_path, ITEM, row()) is None
+    other_task = tmp_path / "other-task"
+    write_failure(other_task, item_id="another-task")
+    assert strategy.recovery_strategy(other_task, ITEM, row()) is None
+    other_repo = tmp_path / "other-repository"
+    write_failure(other_repo, item_id=ITEM["id"], repository="jweter/another-repository")
+    assert strategy.recovery_strategy(other_repo, ITEM, row()) is None
+    # Each packet is an immutable observation; independent forged cases must
+    # not rewrite the historical attempt under the same packet identifier.
     write_failure(tmp_path)
     assert strategy.recovery_strategy(tmp_path, ITEM, row(outcome="ENVIRONMENT_FAILURE")) is None
     assert strategy.recovery_strategy(tmp_path, ITEM, row(outcome="MERGED")) is None
