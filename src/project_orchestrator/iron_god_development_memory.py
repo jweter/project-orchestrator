@@ -208,14 +208,41 @@ def stats(lane_root: Path) -> dict[str, Any]:
             "first_attempt_rate": round(accepted / len(judged), 3) if judged else None, "failure_classes": classes}
 
 
+def _already_backfilled(lane_root: Path, packet: dict[str, Any]) -> bool:
+    """Check canonical packet identity; mutable backlog outcome is not packet history."""
+    db = db_path(lane_root)
+    if not db.is_file():
+        return False
+    with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+        existing = connection.execute(
+            "SELECT item_id, repository, base_sha FROM attempts WHERE packet_id=?",
+            (packet["packet_id"],),
+        ).fetchone()
+    if existing is None:
+        return False
+    item = packet.get("slice") or (packet.get("repair") or {}).get("slice") or {}
+    if (existing[0] != item.get("id") or existing[1] != packet.get("repository")
+            or existing[2] != packet.get("base_sha")):
+        raise sqlite3.IntegrityError("ATTEMPT_REPLAY_CONFLICT")
+    return True
+
+
 def backfill(lane_root: Path) -> int:
-    """Record every harvested attempt already on disk (packets, handback diagnostics, backlog outcomes)."""
+    """Import missing historical attempts; never rewrite an existing packet.
+
+    Item-level backlog outcome is mutable (latest retry/merge), so it can only
+    describe the final packet. Older unrecorded packets retain their worker
+    handback status rather than inherit a later packet's accepted outcome.
+    """
     lane_root = Path(lane_root)
     try:
         outcomes = json.loads((lane_root / "backlog-state.json").read_text(encoding="utf-8")).get("items", {})
     except (OSError, ValueError):
         outcomes = {}
-    by_packet = {packet: row.get("outcome", "") for row in outcomes.values() for packet in row.get("packets", [])}
+    by_packet = {row["packets"][-1]: row.get("outcome", "")
+                 for row in outcomes.values()
+                 if isinstance(row, dict) and isinstance(row.get("packets"), list)
+                 and row["packets"]}
     count = 0
     for packet_path in sorted((lane_root / "packets").glob("*.json")):
         try:
@@ -223,13 +250,23 @@ def backfill(lane_root: Path) -> int:
             handback = json.loads((lane_root / "handbacks" / packet_path.name).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        if _already_backfilled(lane_root, packet):
+            continue
         try:
             diagnostics = json.loads((lane_root / "reports" / f"{packet_path.stem}-handback-diagnostics.json")
                                      .read_text(encoding="utf-8"))
         except (OSError, ValueError):
             diagnostics = {}
-        record_attempt(lane_root, packet, {**diagnostics, **handback},
-                       str(by_packet.get(packet["packet_id"]) or handback.get("status", "")))
+        outcome = str(by_packet.get(packet["packet_id"]) or handback.get("status", ""))
+        try:
+            record_attempt(lane_root, packet, {**diagnostics, **handback}, outcome)
+        except sqlite3.IntegrityError:
+            # A live harvester can win the race between read and INSERT. Its
+            # canonical observation takes precedence; incompatible identity
+            # is still a hard conflict rather than silently accepted.
+            if not _already_backfilled(lane_root, packet):
+                raise
+            continue
         count += 1
     return count
 
