@@ -49,6 +49,24 @@ def read_job(root: Path, request: dict[str, Any]) -> dict[str, Any]:
     return item if isinstance(item, dict) else {"state": "NEEDS_RECONCILIATION"}
 
 
+def merged_request_ids(root: Path) -> frozenset[str]:
+    """Only the common publisher's verified MERGED receipt completes a graph slice."""
+    try:
+        publications = json.loads((Path(root) / "publications.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return frozenset()
+    items = publications.get("items") if isinstance(publications, dict) else None
+    if not isinstance(items, dict):
+        return frozenset()
+    return frozenset(
+        item["source_request_id"] for item in items.values()
+        if isinstance(item, dict) and item.get("lane") == "godot"
+        and item.get("state") == "MERGED"
+        and isinstance(item.get("source_request_id"), str)
+        and item.get("merged_sha")
+    )
+
+
 def pending_jobs(root: Path) -> list[dict[str, Any]]:
     """Previously accepted jobs are always harvested, even between 10-min refills."""
     folder = Path(root) / JOB_DIR
