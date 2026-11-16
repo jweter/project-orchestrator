@@ -14,7 +14,6 @@ from typing import Any, Callable
 
 from . import iron_god_gdscript_builder as builder
 from . import iron_god_cpp_builder as bounded
-from . import iron_god_cpp_lane as native
 from .state_io import atomic_json
 
 MAX_ATTEMPTS = 2
