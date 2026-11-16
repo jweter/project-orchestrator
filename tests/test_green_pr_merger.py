@@ -190,7 +190,8 @@ def test_independent_exact_head_review_requires_clean_codex_receipt_and_resolved
         "**Reviewed commit:** `aaaaaaaaaa`"
     )
     monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [
-        {"user": {"login": "chatgpt-codex-connector[bot]"}, "body": body}
+        {"user": {"login": "chatgpt-codex-connector[bot]"}, "body": body,
+         "created_at": "2026-11-16T14:00:00Z", "updated_at": "2026-11-16T14:00:00Z"}
     ])
     monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": head})
     assert merger.independent_exact_head_review("o/r", 1, head, "jweter", []) is True
@@ -223,7 +224,7 @@ def test_only_independent_current_head_approval_counts(monkeypatch):
     head = "c" * 40
     monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
     accepted = [{"user": {"login": "reviewer"}, "commit_id": head, "state": "APPROVED",
-                 "author_association": "COLLABORATOR"}]
+                 "author_association": "COLLABORATOR", "submitted_at": "2026-11-16T13:00:00Z"}]
     assert merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
     accepted[0]["author_association"] = "CONTRIBUTOR"
     assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", accepted)
@@ -247,3 +248,52 @@ def test_quiet_period_without_independent_current_head_review_still_blocks(monke
     monkeypatch.setattr(merger, "gh_json", gh_fake)
     monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
     assert not merger.review_settled("o/r", 1, head, "2020-01-01T00:00:00Z")
+
+
+def test_clean_receipt_edited_by_repository_writer_is_not_independent_evidence(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    comment = {
+        "user": {"login": "chatgpt-codex-connector[bot]"},
+        "body": "Codex Review: Didn't find any major issues.\n**Reviewed commit:** `aaaaaaaaaa`",
+        "created_at": "2026-11-16T14:00:00Z",
+        "updated_at": "2026-11-16T14:00:02Z",
+    }
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [comment])
+    monkeypatch.setattr(merger, "gh_json", lambda _args: {"sha": head})
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [])
+
+
+def test_later_changes_requested_revokes_an_earlier_exact_head_approval(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    monkeypatch.setattr(merger, "gh_paginated", lambda _endpoint: [])
+    who = {"login": "trusted-reviewer"}
+    earlier = {"user": who, "author_association": "COLLABORATOR", "commit_id": head,
+               "state": "APPROVED", "submitted_at": "2026-11-16T13:00:00Z"}
+    later = {**earlier, "state": "CHANGES_REQUESTED", "submitted_at": "2026-11-16T14:00:00Z"}
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [earlier, later])
+    assert not merger.independent_exact_head_review("o/r", 1, head, "jweter", [later, earlier])
+
+
+def test_recent_valid_codex_receipt_restarts_merge_quiet_period(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    head = "a" * 40
+    created = (merger.datetime.now(merger.UTC) - __import__("datetime").timedelta(seconds=900)).isoformat()
+    recent = (merger.datetime.now(merger.UTC) - __import__("datetime").timedelta(seconds=10)).isoformat()
+    def gh_fake(args):
+        if "/commits/" in args[-1]:
+            return {"sha": head, "commit": {"committer": {"date": created}}}
+        return {"user": {"login": "jweter"}}
+    def paged(endpoint):
+        if "issues/1/comments" in endpoint:
+            return [{"user": {"login": "chatgpt-codex-connector[bot]"},
+                     "body": "Codex Review: Didn't find any major issues.\n**Reviewed commit:** `aaaaaaaaaa`",
+                     "created_at": recent, "updated_at": recent}]
+        return []
+    monkeypatch.setattr(merger, "gh_json", gh_fake)
+    monkeypatch.setattr(merger, "gh_paginated", paged)
+    assert merger.review_settled("o/r", 1, head, created) is False
