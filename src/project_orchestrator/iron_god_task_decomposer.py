@@ -815,9 +815,17 @@ def child_requests(
     state: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Requests for every ready subtask of this repository's active plans (dependencies merged, none in flight)."""
+    from . import iron_god_microtask_progress as progress
+
     out = []
     for plan in load_plans(lane_root):
         if plan.get("status") != "ACTIVE" or plan.get("repository") != repository:
+            continue
+        # Following a crash, canonical backlog may be missing while an older
+        # checkpoint still proves that a microtask was already attempted.
+        # An advisory receipt may veto duplicate dispatch but never authorizes
+        # completion, new attempts, leases or model admission.
+        if progress.checkpoint_replay_conflicts(lane_root, plan, items, state):
             continue
         status_of = {}
         for sub in plan["subtasks"]:

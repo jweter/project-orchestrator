@@ -42,6 +42,80 @@ def checkpoint_path(lane_root: Path, plan: dict[str, Any]) -> Path:
     return Path(lane_root) / PROGRESS_DIR / f"{safe}-{parent_hash}-{revision}.json"
 
 
+def checkpoint_replay_conflicts(
+    lane_root: Path,
+    plan: dict[str, Any],
+    items: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> list[str]:
+    """Fail closed when restart state contradicts an already-observed child receipt.
+
+    The canonical backlog/ledger alone decides what is DONE and what may be
+    dispatched. Historical checkpoint receipts are never used to *grant*
+    completion or a new worker. They can, however, veto replay when a
+    checkpoint says a child was merged or accepted locally but the canonical
+    state/approved item needed to reconcile it has vanished.
+
+    Caller must leave the plan ACTIVE for reconciliation: do not reset lineage
+    budgets, create a new queue or infer a live owner/lease from this history.
+    """
+    path = checkpoint_path(lane_root, plan)
+    if not path.exists():
+        return []
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 60_000:
+            return ["CHECKPOINT_INVALID_FILE"]
+        saved = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return ["CHECKPOINT_UNREADABLE"]
+    if (
+        not isinstance(saved, dict)
+        or saved.get("schema_version") != SCHEMA_VERSION
+        or saved.get("parent_id") != plan.get("parent_id")
+        or saved.get("repository") != plan.get("repository")
+        or saved.get("planned_at_head") != plan.get("planned_at_head")
+        or saved.get("product_acceptance") != "UNVERIFIED_BY_THIS_CHECKPOINT"
+        or not isinstance(saved.get("receipts"), list)
+    ):
+        return ["CHECKPOINT_IDENTITY_UNVERIFIED"]
+    known = {
+        item["id"] for item in items
+        if (isinstance(item, dict) and isinstance(item.get("id"), str)
+            and item.get("repository") == plan.get("repository"))
+    }
+    rows = state.get("items") if isinstance(state, dict) else None
+    rows = rows if isinstance(rows, dict) else {}
+    keys = {
+        sub.get("key") for sub in plan.get("subtasks", [])
+        if isinstance(sub, dict) and isinstance(sub.get("key"), str)
+    }
+    conflicts: list[str] = []
+    if len(saved["receipts"]) > 1000:
+        return ["CHECKPOINT_RECEIPTS_UNVERIFIED"]
+    for receipt in saved["receipts"]:
+        if not isinstance(receipt, dict):
+            return ["CHECKPOINT_RECEIPTS_UNVERIFIED"]
+        kind = receipt.get("receipt")
+        if not isinstance(kind, str):
+            return ["CHECKPOINT_RECEIPTS_UNVERIFIED"]
+        if kind not in {"GITHUB_MERGED_IN_LANE_LEDGER", "LOCAL_ACCEPTED_ONLY"}:
+            continue
+        key = receipt.get("key")
+        ident = receipt.get("attempt_id")
+        if not isinstance(key, str) or not isinstance(ident, str) or key not in keys:
+            return ["CHECKPOINT_RECEIPT_IDENTITY_UNVERIFIED"]
+        base = f"{plan['parent_id']}-{key}"
+        if not (ident == base or
+                (ident.startswith(base + "-r") and ident[len(base) + 2:].isdigit())):
+            return ["CHECKPOINT_RECEIPT_IDENTITY_UNVERIFIED"]
+        row = rows.get(ident)
+        if ident not in known or not isinstance(row, dict):
+            conflicts.append(key)
+        elif kind == "GITHUB_MERGED_IN_LANE_LEDGER" and row.get("outcome") != "MERGED":
+            conflicts.append(key)
+    return sorted(set(conflicts))
+
+
 def _current_subtasks(
     lane_root: Path,
     plan: dict[str, Any],
