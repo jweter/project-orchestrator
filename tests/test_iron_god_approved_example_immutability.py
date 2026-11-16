@@ -26,7 +26,7 @@ def plan():
     }
 
 
-def test_approved_backlog_examples_remain_immutable_even_when_two_models_disagree(tmp_path, monkeypatch):
+def test_approved_examples_are_immutable(tmp_path, monkeypatch):
     spec = plan()
     original = copy.deepcopy(spec)
     packet = {"slice": {"build": {"function_name": "claim_coverage_ratio",
