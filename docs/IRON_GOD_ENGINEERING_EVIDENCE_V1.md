@@ -44,6 +44,17 @@ are included; a scoped query never assumes that another repository is idle.
   supervisor, load Ollama, open a port, spend cloud tokens, or grant work.
 - History is always `historical_only`; an observed checkpoint is not a
   recoverable live lease or a replay authorization.
+- `durable_continuation.local_microtask_progress` exposes the existing
+  `microtask-progress/` checkpoint **only when its plan-revision hash matches
+  a current canonical decomposition**. Each row includes the plan/base SHA,
+  observed repository SHA, bounded subtask IDs, local receipt type, freshness,
+  and repair-candidate count; stale checkpoints remain historical and never
+  become admission or owner grants. Superseded revision checkpoints cannot
+  silently masquerade as the current plan.
+- Local `GITHUB_MERGED_IN_LANE_LEDGER` is explicitly only a lane-reported
+  receipt, **not an independent GitHub merge or product acceptance**. Raw
+  repair instructions, acceptance text, worker logs and prompts are excluded
+  from the MCP response.
 - Eligibility IDs are returned only from fresh recorded Product-lane evidence.
   No attempt limits are extended, no exhausted plan is revived, and
   `eligible_as_observed` is not an independent owner grant.
