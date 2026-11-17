@@ -103,6 +103,30 @@ def configured_endpoint() -> tuple[str, int]:
     return parsed.hostname or "127.0.0.1", parsed.port or 11434
 
 
+def local_server_ready(*, timeout_s: float = 0.6) -> bool:
+    """Read-only Ollama health check; never starts a model or weakens resource admission.
+
+    A live TCP port alone is insufficient: require Ollama's own /api/version
+    response. If the service is down, don't spend an approved worker attempt
+    on an immediate ConnectionRefusedError (observed 2026-11-16).
+    """
+    connection: http.client.HTTPConnection | None = None
+    try:
+        host, port = configured_endpoint()
+        connection = http.client.HTTPConnection(host, port, timeout=timeout_s)
+        connection.request("GET", "/api/version")
+        response = connection.getresponse()
+        if response.status != 200:
+            return False
+        payload = json.loads(response.read(1024).decode("utf-8"))
+        return isinstance(payload, dict) and isinstance(payload.get("version"), str) and bool(payload["version"])
+    except (OSError, http.client.HTTPException, ValueError, TypeError):
+        return False
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 THREAD_ENV = "IRON_GOD_OLLAMA_NUM_THREAD"
 
 

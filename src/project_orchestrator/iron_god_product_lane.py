@@ -68,7 +68,7 @@ from . import iron_god_working_memory as working_memory
 from . import iron_god_worktree_cleanup as worktree_cleanup
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .iron_god_calibration import capability_gate, load_profile, load_profiles, remove_tree
-from .iron_god_local_model import available_gib, default_ollama_model, recent_pressure
+from .iron_god_local_model import available_gib, default_ollama_model, local_server_ready, recent_pressure
 from .iron_god_canon_lane import (
     WORKER_LEASE_ID,
     WORKER_LEASE_RUNTIME,
@@ -2106,6 +2106,15 @@ def dispatch(lane: ProductLane, release_repo: Path, ledger: dict[str, Any], repo
              route: dict[str, Any] | None = None) -> dict[str, Any]:
     name = repo.split("/", 1)[-1]
     packet_id = f"PRODUCT-{name.upper()}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+    if not local_server_ready():
+        # An offline Ollama service is an environment wait, not a failed code
+        # attempt. Do not provision a worktree or consume the worker budget.
+        # The caller releases the acquired runtime lease on this outcome.
+        return _report(lane, {
+            "status": "WAITING_FOR_RESOURCES", "repository": repo,
+            "admission": {"admitted": False, "reason": "OLLAMA_ENDPOINT_UNAVAILABLE"},
+            "next_action": "RESTORE_LOCAL_OLLAMA_SERVICE_WITH_RESOURCE_GATES_INTACT",
+        })
     try:
         clone, base = sync(lane, repo)
         avoid = owned_paths(repo)

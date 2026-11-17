@@ -153,13 +153,16 @@ def make_env(tmp_path):
 
 
 @pytest.fixture
-def env(tmp_path):
+def env(tmp_path, monkeypatch):
+    # Synthetic GitHub/worker tests must not depend on a real local Ollama service.
+    monkeypatch.setattr(pl, "local_server_ready", lambda: True)
     return make_env(tmp_path)
 
 
 @pytest.fixture
-def compact_env(tmp_path_factory):
+def compact_env(tmp_path_factory, monkeypatch):
     """Keep nested Git worktrees below Windows Git's internal path limit."""
+    monkeypatch.setattr(pl, "local_server_ready", lambda: True)
     return make_env(tmp_path_factory.mktemp("ig"))
 
 
