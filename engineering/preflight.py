@@ -23,8 +23,12 @@ SRC = ROOT / "src"
 _ROOT_KEY = hashlib.sha256(
     os.path.normcase(str(ROOT.resolve())).encode("utf-8")
 ).hexdigest()[:16]
-PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / "ig-preflight" / _ROOT_KEY
-PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)
+# Reproduction on Azathoth, 2026-11-18: the long basetemp prefix caused six
+# restore-backup fixtures to fail at `git add -A` (128) while the same fixture
+# passed with a short OS-temp prefix. Keep the worktree-specific namespace,
+# but reserve path budget for deep git fixture trees on Windows.
+PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / ("ig-" + _ROOT_KEY[:8])
+PREFLIGHT_BASETEMP.mkdir(parents=True, exist_ok=True)
 # Output is diagnostic and potentially sensitive: keep it under the local
 # user's OS temp directory, never inside the repository or committed evidence.
 FAILURE_LOG_ROOT = Path(tempfile.gettempdir()) / "ig-preflight-failures" / _ROOT_KEY

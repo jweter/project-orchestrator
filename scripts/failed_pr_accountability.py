@@ -4,6 +4,7 @@ import json, subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from scripts.green_pr_merger import PORTFOLIO_REPOS, open_prs
+from scripts import pr_review_intake
 
 FAIL_CONCLUSIONS={"FAILURE","CANCELLED","TIMED_OUT","ACTION_REQUIRED","STARTUP_FAILURE","STALE"}
 
@@ -28,6 +29,12 @@ def cycle(repo_root:Path,state_root:Path)->list[dict]:
             results.append({"repository":repo,"state":"OBSERVATION_FAILED","error_class":type(exc).__name__})
             continue
         for pr in prs:
+            # Reuse the established PR controller and its owner-veto/lock.
+            # Review findings become inert exact-head evidence, never a new
+            # worker or a source of execution authority. CI routing is separate.
+            review = pr_review_intake.observe(repo, pr, state_root)
+            if review is not None and review.get("state") != "REVIEW_INTAKE_UNCHANGED":
+                results.append(review)
             if not failed(pr):
                 continue
             number=int(pr["number"]); head=str(pr.get("headRefOid") or "")
