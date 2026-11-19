@@ -89,6 +89,25 @@ def env(tmp_path, worker_module, monkeypatch):
     # The live worker still checks actual disk/RAM; the explicit veto
     # regression overrides this fixture to False to prove denial.
     monkeypatch.setattr(worker_module, "resources", lambda: True)
+    # This disposable end-to-end proof is about orchestration, not the host
+    # computer's changing disk capacity. Keep the real allocation decision
+    # and thresholds, but feed it deterministic, healthy fixture disk usage.
+    # Production allocation and its fail-closed storage checks stay untouched.
+    from project_orchestrator import iron_god_orchestration_caller as caller
+    from project_orchestrator.iron_god_allocation_gate import decide_allocation
+    from project_orchestrator.local_storage_pressure import DiskUsageProbe
+
+    def fixture_allocation(path: Path):
+        return decide_allocation(
+            path,
+            probe=lambda _path: DiskUsageProbe(
+                total=100 * 1024**3,
+                used=50 * 1024**3,
+                free=50 * 1024**3,
+            ),
+        )
+
+    monkeypatch.setattr(caller, "decide_allocation", fixture_allocation)
     (tmp_path / "handoffs").mkdir()
     assert worker_module.gate() is True
 
