@@ -52,7 +52,7 @@ def gh_paginated(endpoint:str)->list[dict[str,Any]]:
     return [item for page in pages if isinstance(page,list) for item in page if isinstance(item,dict)]
 
 def open_prs(repo:str)->list[dict[str,Any]]:
-    fields="number,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"
+    fields="number,title,isDraft,headRefOid,mergeStateStatus,reviewDecision,statusCheckRollup,createdAt,author"
     return gh_json(["pr","list","--repo",repo,"--state","open","--json",fields,"--limit","100"])
 
 def _age_seconds(created_at:str)->float:

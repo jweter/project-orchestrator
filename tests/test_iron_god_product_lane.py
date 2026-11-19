@@ -1418,13 +1418,18 @@ REPAIRED_MODULE = ('def add_two(value: int) -> int:\n    """Return value plus tw
 
 
 def build_then_repair_agent(worktree, message, files, check):
-    """Builds the slice, and on a review repair edits only the module named by the findings."""
+    """Model the current review-repair contract: source plus an additive regression test."""
     check()
-    assert files == ["pkg/extra.py"]
     if "Code review of pull request" in message:
-        assert "Fix only pkg/extra.py" in message and "P1 incorrect result" in message
+        assert files == ["pkg/extra.py", "tests/test_extra.py"]
+        assert "Fix only pkg/extra.py and append a regression test to tests/test_extra.py" in message
+        assert "P1 incorrect result" in message
         (worktree / "pkg" / "extra.py").write_text(REPAIRED_MODULE, encoding="utf-8")
+        test_path = worktree / "tests" / "test_extra.py"
+        with test_path.open("a", encoding="utf-8") as output:
+            output.write("\\n\\ndef test_review_negative_input():\\n    assert add_two(-2) == 0\\n".replace("\\n", "\n"))
     else:
+        assert files == ["pkg/extra.py"]
         good_agent(worktree, message, files, check)
 
 

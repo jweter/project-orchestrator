@@ -13,10 +13,9 @@ def test_preflight_isolates_imports_and_temp_root():
     assert 'os.path.normcase(str(ROOT.resolve()))' in text
     assert "hashlib.sha256(" in text
     assert (
-        'PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / "ig-preflight" / _ROOT_KEY'
+        'PREFLIGHT_BASETEMP = Path(tempfile.gettempdir()) / ("ig-" + _ROOT_KEY[:8])'
         in text
     )
-    assert 'PREFLIGHT_BASETEMP.parent.mkdir(parents=True, exist_ok=True)' in text
     assert 'PREFLIGHT_BASETEMP.mkdir(parents=True, exist_ok=True)' in text
     assert '"--basetemp", str(PREFLIGHT_BASETEMP / "main")' in text
     assert text.index('("controller_proofs",') < text.index('("tests",')
