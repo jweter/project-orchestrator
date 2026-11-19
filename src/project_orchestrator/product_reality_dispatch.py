@@ -54,5 +54,14 @@ def dispatch_plan(entry: dict[str, Any], *, branch: str, base_sha: str) -> dict[
             "dependency_scope": debt["dependency_scope"],
             "source_ref": debt["source_ref"],
             "kind": debt["kind"],
+            **({
+                "free_native_runner": "tools/unreal_free_agent_stack.py",
+                "free_native_suite": (
+                    "automation" if debt["kind"] == "unreal_playtest"
+                    else "package"
+                ),
+                "free_native_execution_authorized": False,
+            } if debt["repository"] == "jweter/Project-Everward"
+                and debt["kind"] in {"unreal_playtest", "packaged_app"} else {}),
         },
     }
