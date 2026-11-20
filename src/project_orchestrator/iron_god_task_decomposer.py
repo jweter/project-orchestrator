@@ -65,6 +65,11 @@ GATE_LINE = re.compile(
 )
 KEY = re.compile(r"^t([1-9])$")
 SIGNATURE = re.compile(r"^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+# The Level-1 worker edits one module + its tests. It cannot update a
+# repository-required service inventory document in the same PR.
+SERVICE_COUNT_DOC = re.compile(
+    r"docs/STRUCTURE\.md.*service count.*if a service file is added", re.IGNORECASE,
+)
 
 
 def _now() -> str:
@@ -217,6 +222,46 @@ def _io_problems(key: Any, stub: Any, usable: list[dict[str, Any]]) -> list[str]
     return []
 
 
+def companion_gate_problems(request: dict[str, Any], sub: dict[str, Any]) -> list[str]:
+    """Fail early on an explicit native preflight coupling outside the local worker envelope.
+
+    The parent retains its full acceptance and any rejected child is residual
+    work. No guessed document requirements, bypass or implicit approval.
+    """
+    path = str(sub.get("module_path") or "").replace("\\", "/")
+    if (
+        sub.get("kind", "new") == "new"
+        and path.startswith("backend/services/")
+        and path.endswith(".py")
+        and any(SERVICE_COUNT_DOC.search(str(c)) for c in request.get("slice_acceptance") or [])
+    ):
+        return [
+            f"{sub.get('key')}: STRUCTURE_COUNT_COMPANION_REQUIRED: adding {path} changes "
+            "the service inventory but a one-module worker cannot also update "
+            "docs/STRUCTURE.md; use a scoped native integration slice"
+        ]
+    return []
+
+
+def _missing_pytest_import(test_source: str) -> bool:
+    """Self-authored tests using the pytest namespace must import that namespace."""
+    try:
+        tree = ast.parse(test_source)
+    except SyntaxError:
+        return False  # existing validator supplies the syntax diagnostic
+    bound = any(
+        isinstance(node, ast.Import) and any(
+            alias.name == "pytest" and alias.asname in (None, "pytest") for alias in node.names
+        )
+        for node in tree.body
+    )
+    used = any(
+        isinstance(node, ast.Name) and node.id == "pytest" and isinstance(node.ctx, ast.Load)
+        for node in ast.walk(tree)
+    )
+    return used and not bound
+
+
 def _example_problems(sub: dict[str, Any]) -> list[str]:
     """Literal, well-formed, mutually consistent examples that bind to the declared signature."""
     key = sub.get("key")
@@ -325,6 +370,8 @@ def _edit_subtask(
     }
     if drafter.directed_spec({"directed_edit": declared}) is None:
         problems.append(f"{key}: the test must parse, define test_*, assert, and exercise a named unit")
+    if _missing_pytest_import(sub["test_source"]):
+        problems.append(f"{key}: UNBOUND_PYTEST_REFERENCE: import pytest before using pytest")
     if len(sub["done_when"].strip()) < 20:
         problems.append(f"{key}: done_when must state the required behaviour (20+ characters)")
     if problems:
@@ -454,6 +501,7 @@ def validate_plan(
             )
             deps = []
         problems += _example_problems({**sub, "key": key})
+        problems += companion_gate_problems(request, sub)
         keys.append(key)
         clean.append(
             {
