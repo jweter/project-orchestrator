@@ -76,3 +76,23 @@ def test_self_authored_pytest_test_must_import_pytest():
         _edit(True), "t1", request, exists, source, set(),
     )
     assert valid is not None and not problems
+
+
+def test_import_scope_is_respected_for_generated_tests():
+    function_import = (
+        "from pkg.core import one\n\ndef test_one():\n"
+        "    import pytest\n    with pytest.raises(ValueError):\n"
+        "        one('invalid')\n"
+    )
+    module_try_import = (
+        "try:\n    import pytest\nexcept ImportError:\n    pass\n"
+        "def test_one():\n    with pytest.raises(ValueError):\n"
+        "        one('invalid')\n"
+    )
+    import_in_other_function = (
+        "def helper():\n    import pytest\n\ndef test_one():\n"
+        "    with pytest.raises(ValueError):\n        one('invalid')\n"
+    )
+    assert not decomposition._missing_pytest_import(function_import)
+    assert not decomposition._missing_pytest_import(module_try_import)
+    assert decomposition._missing_pytest_import(import_in_other_function)
