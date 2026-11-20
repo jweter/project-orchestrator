@@ -73,6 +73,10 @@ class PlanRejected(ValueError):
     """The model's slice plan is unusable; nothing was built."""
 
 
+class LocalOllamaConnectionRefused(RuntimeError):
+    """The configured local Ollama endpoint refused a request; no model reply was received."""
+
+
 def repository_brief(worktree: Path, base: str, roots: list[str]) -> str:
     """Bounded planning context: agent contract + README openings and the package layout."""
     parts = []
@@ -1038,6 +1042,12 @@ def execute_product_packet(
                                           authority=authority, check=check, generate=generate or production_generate,
                                           tests=directed_tests or directed_checks, gates=gates, preflight=preflight,
                                           format_files=format_files)
+        except LocalOllamaConnectionRefused:
+            # Only the first model refusal is non-attempting. After a model reply, an edit may
+            # already have run, so its failure cannot be refunded as a pre-build outage.
+            if "directed" not in handback:
+                return finish("ENVIRONMENT_FAILURE", "LOCAL_OLLAMA_REFUSED_BEFORE_FIRST_MODEL_REPLY")
+            return finish("ENVIRONMENT_FAILURE", "DIRECTED_SLICE_FAILED_TO_RUN: LOCAL_OLLAMA_REFUSED_AFTER_MODEL_REPLY")
         except RuntimeError as exc:
             if "EXECUTION_AUTHORITY_REVOKED" in str(exc):
                 return finish("ENVIRONMENT_FAILURE", "EXECUTION_AUTHORITY_REVOKED_DURING_DIRECTED_SLICE")
@@ -1334,8 +1344,13 @@ def production_generate(prompt: str, num_predict: int, check: Callable[[], None]
     from project_orchestrator.iron_god_local_model import guarded_generate
 
     check()
-    reply = guarded_generate(prompt, requested=default_ollama_model(), num_ctx=DIRECT_NUM_CTX,
-                             num_predict=num_predict, timeout=1800)
+    try:
+        reply = guarded_generate(prompt, requested=default_ollama_model(), num_ctx=DIRECT_NUM_CTX,
+                                 num_predict=num_predict, timeout=1800)
+    except ConnectionRefusedError as exc:
+        # Only the configured Ollama request is in this try block: errors in
+        # repository tests cannot masquerade as a pre-generation model outage.
+        raise LocalOllamaConnectionRefused("LOCAL_OLLAMA_CONNECTION_REFUSED") from exc
     check()
     return {"text": reply.get("response") or "", "prompt_tokens": reply.get("prompt_eval_count"),
             "output_tokens": reply.get("eval_count"), "model_s": round((reply.get("total_duration") or 0) / 1e9, 1),
