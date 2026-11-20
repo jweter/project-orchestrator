@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .decision_learning import compile_decision_learning
+from .iron_god_learning_feedback import snapshot as development_feedback_snapshot
 from .decision_outcome import attribute as attribute_decision_outcome
 from . import iron_god_owner_control as _owner_controller
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -102,6 +103,11 @@ def refresh_decision_learning(state_root: Path) -> dict:
         "schema_version": 1,
         "attributed_outcomes": len(rows),
         "learning": learning,
+        # Separate from JEV selector attribution: worker-reported local results
+        # cannot falsely become verified GitHub or product-delivery outcomes.
+        "development_feedback": development_feedback_snapshot(
+            state_root / "iron-god-products",
+        ),
         "updated_at_utc": datetime.now(UTC).isoformat(),
     }
     atomic_json(state_root / "decision-learning.json", payload)

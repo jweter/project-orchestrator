@@ -17,6 +17,7 @@ from typing import Any
 
 from . import iron_god_calibration as calibration
 from . import iron_god_microtask_progress as microtask_progress
+from . import iron_god_learning_feedback as learning_feedback
 from . import iron_god_model_routing as model_routing
 from . import iron_god_development_memory as memory
 from . import iron_god_observability as observability
@@ -623,7 +624,9 @@ def engineering_bundle(state_root: Path, *, repository: str = "", limit: int = 8
             "observed_candidate_ids": frontier,
             "execution_authorized_by_bundle": False,
         },
-        "learning": learned,
+        "learning": {**learned, "effectiveness": learning_feedback.snapshot(
+            Path(state_root) / "iron-god-products", repository=repository,
+        )},
         "evidence_graph": _graph(history["events"], learned["attempts"]),
         "delivery": {
             "runtime_projection": live["delivery"],

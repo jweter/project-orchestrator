@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 DB_NAME = "development-memory.sqlite3"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MIN_INDEPENDENT_SLICES = 2  # a rule needs the same failure class on this many different slices
 
 # Failure class -> the planning rule it supports (reviewed text; never generated).
@@ -70,8 +70,17 @@ def _connect(lane_root: Path) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS rules (
             failure_class TEXT PRIMARY KEY, rule TEXT NOT NULL, evidence TEXT NOT NULL,
             slices INTEGER NOT NULL, kind TEXT NOT NULL, derived_at_utc TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS strategy_exposures (
+            packet_id TEXT PRIMARY KEY REFERENCES attempts(packet_id),
+            strategy TEXT NOT NULL,
+            revision INTEGER NOT NULL CHECK (revision IN (1, 2)),
+            evidence_packet TEXT NOT NULL REFERENCES attempts(packet_id));
     """)
-    connection.execute("INSERT OR IGNORE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+    # Additive migration: existing attempt and rule rows remain byte-for-byte
+    # unchanged. No parallel controller, memory store or new execution authority.
+    connection.execute("INSERT INTO meta VALUES ('schema_version', ?) "
+                       "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                       (str(SCHEMA_VERSION),))
     return connection
 
 
@@ -100,6 +109,38 @@ def classify(status: str, summary: str, directed: dict[str, Any]) -> str:
     if status == "ENVIRONMENT_FAILURE":
         return "ENVIRONMENT"
     return "OTHER"
+
+
+def _validated_strategy(connection: sqlite3.Connection, packet: dict[str, Any],
+                        item: dict[str, Any]) -> tuple[str, int, str] | None:
+    """Only a canonically recorded earlier failure may be credited as guidance.
+
+    Never trust worker-written instructions or an arbitrary packet hint as a
+    new approved policy. A valid hint has to be one the existing Level-1
+    worker's catalog would actually use, bound to the same item and repo.
+    """
+    hint = packet.get("recovery_strategy")
+    if not isinstance(hint, dict) or hint.get("schema_version") != 1:
+        return None
+    if not isinstance(item.get("build"), dict) or not item.get("id"):
+        return None
+    from .iron_god_failure_strategy import STRATEGIES
+
+    name, revision, source_id = hint.get("strategy"), hint.get("revision"), hint.get("evidence_packet")
+    if (not isinstance(name, str) or name not in STRATEGIES
+            or type(revision) is not int or not 1 <= revision <= len(STRATEGIES[name])
+            or not isinstance(source_id, str) or not source_id or source_id == packet["packet_id"]):
+        return None
+    source = connection.execute(
+        "SELECT item_id,repository,failure_class,outcome FROM attempts WHERE packet_id=?",
+        (source_id,),
+    ).fetchone()
+    if (source is None or source["item_id"] != item["id"]
+            or source["repository"] != packet["repository"]
+            or source["failure_class"] != name
+            or not str(source["outcome"]).startswith("FAIL")):
+        return None
+    return name, revision, source_id
 
 
 def record_attempt(lane_root: Path, packet: dict[str, Any], handback: dict[str, Any], outcome: str) -> str:
@@ -140,15 +181,30 @@ def record_attempt(lane_root: Path, packet: dict[str, Any], handback: dict[str, 
     # INSERT OR IGNORE first serializes competing SQLite writers; the ensuing
     # read checks the actual committed winner inside the same transaction.
     with closing(_connect(lane_root)) as connection, connection:
-        connection.execute(
+        inserted = connection.execute(
             "INSERT OR IGNORE INTO attempts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", values,
-        )
+        ).rowcount == 1
         existing = connection.execute(
             "SELECT * FROM attempts WHERE packet_id=?", (packet["packet_id"],),
         ).fetchone()
         if existing is None or tuple(existing)[:-1] != values[:-1]:
             # recorded_at_utc is intentionally excluded: identical replays
             # occur at different times but are not distinct attempts.
+            raise sqlite3.IntegrityError("ATTEMPT_REPLAY_CONFLICT")
+        exposure = _validated_strategy(connection, packet, item)
+        stored = connection.execute(
+            "SELECT strategy,revision,evidence_packet FROM strategy_exposures WHERE packet_id=?",
+            (packet["packet_id"],),
+        ).fetchone()
+        if inserted:
+            if exposure is not None:
+                connection.execute(
+                    "INSERT INTO strategy_exposures VALUES (?,?,?,?)",
+                    (packet["packet_id"], *exposure),
+                )
+        elif (tuple(stored) if stored is not None else None) != exposure:
+            # Prevent a later duplicate handback from attributing an old
+            # unadvised pass to newly supplied guidance.
             raise sqlite3.IntegrityError("ATTEMPT_REPLAY_CONFLICT")
     return failure_class
 
@@ -298,7 +354,7 @@ def backfill(lane_root: Path) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Iron God development memory (read-mostly).")
-    parser.add_argument("command", choices=("rules", "stats", "backfill"))
+    parser.add_argument("command", choices=("rules", "stats", "backfill", "feedback"))
     parser.add_argument("--repository")
     parser.add_argument("--lane-root", type=Path, default=Path(os.environ.get("LOCALAPPDATA", "."))
                         / "ExponentialEngine" / "flow-state" / "iron-god-products")
@@ -307,6 +363,9 @@ def main(argv: list[str] | None = None) -> int:
         result: Any = {"recorded": backfill(args.lane_root)}
     elif args.command == "stats":
         result = stats(args.lane_root)
+    elif args.command == "feedback":
+        from .iron_god_learning_feedback import snapshot
+        result = snapshot(args.lane_root, repository=args.repository or "")
     else:
         result = {"rules": rules_for(args.lane_root, args.repository)}
     json.dump(result, sys.stdout, indent=2)
