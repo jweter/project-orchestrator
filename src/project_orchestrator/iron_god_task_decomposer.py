@@ -33,6 +33,7 @@ import ast
 import json
 import re
 import subprocess
+import symtable
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -244,23 +245,24 @@ def companion_gate_problems(request: dict[str, Any], sub: dict[str, Any]) -> lis
 
 
 def _missing_pytest_import(test_source: str) -> bool:
-    """Self-authored tests using the pytest namespace must import that namespace."""
-    try:
-        tree = ast.parse(test_source)
-    except SyntaxError:
-        return False  # existing validator supplies the syntax diagnostic
-    bound = any(
-        isinstance(node, ast.Import) and any(
-            alias.name == "pytest" and alias.asname in (None, "pytest") for alias in node.names
-        )
-        for node in tree.body
-    )
-    used = any(
-        isinstance(node, ast.Name) and node.id == "pytest" and isinstance(node.ctx, ast.Load)
-        for node in ast.walk(tree)
-    )
-    return used and not bound
+    """Resolve pytest bindings per lexical scope, including function-local imports.
 
+    A sibling function's import does not bind pytest in another test function.
+    Imports in a module-level try block and imports in the using function do.
+    """
+    try:
+        root = symtable.symtable(test_source, "<generated-pytest>", "exec")
+    except SyntaxError:
+        return False  # existing validator reports syntax errors
+
+    def unbound(table: symtable.SymbolTable, outer_import: bool = False) -> bool:
+        symbol = next((s for s in table.get_symbols() if s.get_name() == "pytest"), None)
+        imported = bool(symbol is not None and symbol.is_imported())
+        if symbol is not None and symbol.is_referenced() and not (outer_import or imported):
+            return True
+        return any(unbound(child, outer_import or imported) for child in table.get_children())
+
+    return unbound(root)
 
 def _example_problems(sub: dict[str, Any]) -> list[str]:
     """Literal, well-formed, mutually consistent examples that bind to the declared signature."""
