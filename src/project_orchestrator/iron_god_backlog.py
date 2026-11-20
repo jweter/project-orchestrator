@@ -47,7 +47,7 @@ import os
 import re
 import sys
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -62,7 +62,9 @@ REQUIRED_LISTS = ("interfaces", "depends_on", "acceptance_criteria", "tests")
 BUILD_FIELDS = ("module_path", "function_name", "signature", "objective", "examples")
 DIRECT_FIELDS = ("module_path", "targets", "direction", "test_path", "test_source")
 MAX_ITEM_ATTEMPTS = 3
-MAX_ENVIRONMENT_RETRIES = 10  # environment failures that do not spend an item's attempts
+MAX_ENVIRONMENT_RETRIES = 10  # existing bound for non-attempting environment failures
+LOCAL_OLLAMA_REFUSAL = "ENVIRONMENT_FAILURE: LOCAL_OLLAMA_REFUSED_BEFORE_FIRST_MODEL_REPLY"
+LOCAL_OLLAMA_RETRY_COOLDOWN_SECONDS = 300  # avoid rapid redispatch while the local service is offline
 MAX_TEXT = 1100  # Canon bounds handoff text at 1200 characters; the packet adds an id prefix
 BUILDABLE_LEVELS = {1, 2}  # the levels the local product worker can build (measured)
 DIRECT_ATTEMPTS = 1  # measured: a repeated directed edit re-emits the same answer; a failure goes back to planning
@@ -232,7 +234,9 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
     environmental = [p for p in row.get("environment_packets", []) if p != packet_id]
     # Owner 2026-11-08: the laptop's memory is not the slice's fault either. A build that never got memory, or that the
     # memory brake cancelled, is refunded the same way (same bound).
-    if outcome.startswith("ENVIRONMENT_FAILURE") and ("AUTHORITY_REVOKED" in outcome or _memory_wait(outcome)):
+    if outcome.startswith("ENVIRONMENT_FAILURE") and (
+        "AUTHORITY_REVOKED" in outcome or _memory_wait(outcome) or outcome == LOCAL_OLLAMA_REFUSAL
+    ):
         environmental.append(packet_id)
     row["environment_packets"] = environmental
     row["attempts"] = len(row["packets"]) - min(len(environmental), MAX_ENVIRONMENT_RETRIES)
@@ -450,6 +454,18 @@ def exclusion(item: dict[str, Any], state: dict[str, Any], *, items: list[dict[s
         return "LEVEL_NOT_BUILDABLE_LOCALLY", f"level {item['level']}"
     if attempts >= MAX_ITEM_ATTEMPTS:
         return "ATTEMPTS_EXHAUSTED", f"{attempts} of {MAX_ITEM_ATTEMPTS}: {outcome}"
+    if outcome == LOCAL_OLLAMA_REFUSAL:
+        # Do not repeatedly launch a local builder into a confirmed endpoint outage.
+        # The next pass must still satisfy owner, lease, capability and RAM gates.
+        try:
+            observed = datetime.fromisoformat(str(row["updated_at_utc"]).replace("Z", "+00:00"))
+            if observed.tzinfo is None:
+                raise ValueError("timestamp has no UTC offset")
+        except (KeyError, TypeError, ValueError):
+            return "LOCAL_OLLAMA_OUTAGE_TIME_UNVERIFIED", "Cannot establish safe retry time"
+        retry_at = observed + timedelta(seconds=LOCAL_OLLAMA_RETRY_COOLDOWN_SECONDS)
+        if datetime.now(UTC) < retry_at:
+            return "WAITING_FOR_LOCAL_OLLAMA", f"Local Ollama refused the connection; retry after {retry_at.isoformat()}"
     if row.get("outcome") not in IN_FLIGHT and lineage_capped(state, item["id"]):
         return "NEEDS_DIFFERENT_CAPABILITY", f"{lineage_test_failures(state, item['id'])} slice-test failures across {lineage_base(item['id'])}"
     if repeated_failed_source(row):
