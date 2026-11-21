@@ -142,6 +142,53 @@ def test_examples_the_validator_dropped_are_not_carried_into_the_draft(world: di
         "newest_entries([1, 2, 3, 4], 2)", "newest_entries([1, 2, 3], 0)", "newest_entries([1, 2], 5)"]
 
 
+
+def test_owner_oracles_take_priority_over_optional_model_examples_when_budget_is_full(world: dict) -> None:
+    """The real failure: five owner cases + four model cases formerly became nine and exhausted the local worker."""
+    request = request_of(world)
+    owner = [
+        {"call": f"{{fn}}([1, 2, 3], {limit})", "expected": expected, "why": "owner-approved edge case"}
+        for limit, expected in ((1, [3]), (2, [2, 3]), (0, []), (-1, []), (9, [1, 2, 3]))
+    ]
+    request["acceptance_examples"] = owner
+    model_examples = [
+        {"call": f"newest_entries([{i}, {i + 1}], 1)", "why": "last one is the second entry",
+         "expected": [i + 1]} for i in range(5, 10)
+    ]
+    plan = {**GOOD_PLAN, "examples": model_examples}
+    packet = author.build_packet(request, ["pkg/"], world["head"], [".github/", "engineering/", "docs/"], [])
+    validated = WORKER.validate_plan(plan, world["clone"], world["head"], packet)
+
+    draft = drafter.plan_to_draft(request, plan, validated)
+
+    assert len(draft["build"]["examples"]) == drafter.MAX_WORKER_EXAMPLES == 8
+    assert [e["call"] for e in draft["build"]["examples"][:5]] == [
+        o["call"].replace("{fn}", "newest_entries") for o in owner
+    ]
+    assert [e["call"] for e in draft["build"]["examples"][5:]] == [
+        e["call"] for e in model_examples[:3]
+    ]
+    assert all(
+        f"{e['call']} returns {repr(e['expected'])}" not in draft["acceptance_criteria"]
+        for e in model_examples[3:]
+    )
+    assert backlog.item_problems({**draft, "status": "approved", "assignee": backlog.AGENT_ID}) == []
+    # The same strict worker validator that rejected the nine-example draft now
+    # accepts the owner's unchanged five examples plus three optional cases.
+    WORKER.validate_plan(draft["build"], world["clone"], world["head"], packet)
+
+
+def test_more_owner_oracles_than_worker_can_check_is_not_silently_truncated(world: dict) -> None:
+    request = request_of(world)
+    request["acceptance_examples"] = [
+        {"call": f"{{fn}}([{n}], 1)", "expected": [n], "why": "one-item owner requirement"}
+        for n in range(drafter.MAX_WORKER_EXAMPLES + 1)
+    ]
+
+    with pytest.raises(drafter.ContradictsRoadmap, match="OWNER_ORACLES_EXCEED_LOCAL_WORKER_CAPACITY"):
+        drafter.plan_to_draft(request, GOOD_PLAN, validated_good(world, request))
+
+
 # --- who may be drafted -------------------------------------------------------------------------------------------
 
 
