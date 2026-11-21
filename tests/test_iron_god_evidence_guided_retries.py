@@ -1,8 +1,13 @@
 """Evidence-guided retries change the implementation approach, not the owner's test oracle."""
 from __future__ import annotations
 
+import json
+import sqlite3
+
 from scripts import iron_god_product_worker as worker
 from project_orchestrator import iron_god_development_memory as memory
+from project_orchestrator import iron_god_backlog as backlog
+from project_orchestrator import iron_god_learning_feedback as feedback
 from project_orchestrator import iron_god_failure_strategy as strategy
 
 
@@ -203,3 +208,79 @@ def test_local_builder_warns_that_formatter_will_not_wrap_docstrings(tmp_path):
     assert any("100" in rule for rule in guidance)
     assert any("Ruff format does NOT reflow" in rule for rule in guidance)
     assert any("triple-quoted prose" in rule for rule in guidance)
+
+
+def test_approved_reauthoring_reuses_proven_previous_failure_and_records_real_learning(tmp_path) -> None:
+    """A fresh -r1 has no attempt row; its prior failed packet is still valid guidance."""
+    write_failure(tmp_path, "PACKET-1")
+    backlog.state_path(tmp_path).write_text(json.dumps({
+        "schema_version": 1,
+        "items": {ITEM["id"]: {
+            "packets": ["PACKET-1"], "attempts": 3, "outcome": "FAIL: SLICE_TESTS_FAILED",
+        }},
+    }), encoding="utf-8")
+    successor = {**ITEM, "id": ITEM["id"] + "-r1"}
+    hint = strategy.recovery_strategy(tmp_path, successor, {})
+    assert hint == {
+        "schema_version": 1, "strategy": "SLICE_TESTS_FAILED", "revision": 1,
+        "evidence_packet": "PACKET-1", "source_item_id": ITEM["id"],
+    }
+    assert "fresh algorithm" in strategy.coding_guidance({"slice": successor, "recovery_strategy": hint})
+    packet = {"packet_id": "PACKET-2", "repository": REPO, "base_sha": "a" * 40,
+              "slice": successor, "recovery_strategy": hint}
+    handback = {"status": "PASS", "summary": "ok", "plan": {"mode": "build", "module_path": "example.py"}}
+    memory.record_attempt(tmp_path, packet, handback, "ACCEPTED_LOCAL")
+    with sqlite3.connect(memory.db_path(tmp_path)) as db:
+        assert db.execute("SELECT strategy,revision,evidence_packet FROM strategy_exposures").fetchall() == [
+            ("SLICE_TESTS_FAILED", 1, "PACKET-1"),
+        ]
+    report = feedback.snapshot(tmp_path)
+    assert report["strategies_observed"] == 1
+    assert report["independent_recovery_lineages"] == 1
+    assert report["strategies"][0]["worker_reported_local_passes"] == 1
+    assert report["learning_effectiveness_proven"] is False
+    assert report["automatic_promotion_authorized"] is False
+
+
+def test_reauthoring_guidance_cannot_claim_unrelated_failure_or_forge_credit(tmp_path) -> None:
+    write_failure(tmp_path, "PACKET-1")
+    backlog.state_path(tmp_path).write_text(json.dumps({
+        "schema_version": 1,
+        "items": {ITEM["id"]: {
+            "packets": ["PACKET-1"], "attempts": 3, "outcome": "FAIL: SLICE_TESTS_FAILED",
+        }},
+    }), encoding="utf-8")
+    successor = {**ITEM, "id": ITEM["id"] + "-r1"}
+    valid = strategy.recovery_strategy(tmp_path, successor, {})
+    assert valid is not None
+    forged = {**ITEM, "id": "RM-another-task-r1"}
+    packet = {"packet_id": "PACKET-2", "repository": REPO, "base_sha": "a" * 40,
+              "slice": forged, "recovery_strategy": valid}
+    memory.record_attempt(
+        tmp_path, packet, {"status": "PASS", "summary": "ok", "plan": {"mode": "build"}},
+        "ACCEPTED_LOCAL",
+    )
+    assert feedback.snapshot(tmp_path)["strategies_observed"] == 0
+
+    # The parent must be the actual immediately preceding revision, not
+    # a similarly named or cross-repository failure.
+    assert strategy.recovery_strategy(tmp_path, {**ITEM, "id": ITEM["id"] + "-r3"}, {}) is None
+    assert strategy.recovery_strategy(
+        tmp_path, {**successor, "repository": "jweter/VoiceStudio"}, {},
+    ) is None
+
+
+def test_second_reauthoring_uses_distinct_strategy_with_exact_predecessor(tmp_path) -> None:
+    first = ITEM["id"] + "-r1"
+    write_failure(tmp_path, "PACKET-R1", item_id=first)
+    backlog.state_path(tmp_path).write_text(json.dumps({
+        "schema_version": 1,
+        "items": {first: {
+            "packets": ["PACKET-R1"], "attempts": 3, "outcome": "FAIL: SLICE_TESTS_FAILED",
+        }},
+    }), encoding="utf-8")
+    successor = {**ITEM, "id": ITEM["id"] + "-r2"}
+    hint = strategy.recovery_strategy(tmp_path, successor, {})
+    assert hint is not None
+    assert hint["revision"] == 2 and hint["source_item_id"] == first
+    assert "decision table" in strategy.coding_guidance({"slice": successor, "recovery_strategy": hint})
