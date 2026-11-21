@@ -97,12 +97,44 @@ def test_the_edit_preserves_the_files_line_endings() -> None:
     assert "\r\n" in edited and "\n" not in edited.replace("\r\n", "")
 
 
-@pytest.mark.parametrize("text,reason", [
-    (json.dumps(graph_payload()) + "\n", "GRAPH_FORMAT_NOT_CANONICAL"),  # compact: an edit would reformat everything
-    (json.dumps(graph_payload(), indent=4) + "\n", "GRAPH_FORMAT_NOT_CANONICAL"),
+@pytest.mark.parametrize("text", [
+    json.dumps(graph_payload()) + "\n",
+    json.dumps(graph_payload(), indent=4) + "\n",
+    (json.dumps(graph_payload(), indent=4) + "\n").replace("\n", "\r\n"),
 ])
-def test_a_graph_that_is_not_in_canonical_form_is_refused_not_reformatted(text: str, reason: str) -> None:
-    with pytest.raises(progress.ProgressRefused, match=reason):
+def test_noncanonical_graph_records_progress_without_reformatting_unrelated_fields(text: str) -> None:
+    edited = progress.apply_completions(text, [{"capability": "cap-a", "slice": "s1", "evidence": ["e"]}])
+
+    before, after = json.loads(text), json.loads(edited)
+    assert after["capabilities"][0]["slices"][0]["state"] == "VERIFIED_COMPLETE"
+    assert after["capabilities"][0]["slices"][0]["verification"] == ["e"]
+    after["capabilities"][0]["slices"][0].update(state="PLANNED")
+    del after["capabilities"][0]["slices"][0]["verification"]
+    assert before == after
+    # A progress update must not rewrite the owner's graph or normalize its indentation.
+    assert edited[:edited.index('"capabilities"')] == text[:text.index('"capabilities"')]
+    if "\r\n" in text:
+        assert "\n" not in edited.replace("\r\n", "")
+    assert '"id": "s2"' in edited or '"id": "s2"' in text
+
+
+def test_noncanonical_graph_with_existing_verification_replaces_only_named_evidence() -> None:
+    payload = graph_payload()
+    payload["capabilities"][0]["slices"][0]["verification"] = ["old evidence"]
+    text = json.dumps(payload, indent=4) + "\n"
+
+    edited = progress.apply_completions(text, [{"capability": "cap-a", "slice": "s1", "evidence": ["PR merged"]}])
+
+    assert json.loads(edited)["capabilities"][0]["slices"][0]["verification"] == ["PR merged"]
+    assert '"verification": ["PR merged"]' in edited
+    assert '"id": "s2"' in edited
+
+
+def test_ambiguous_duplicate_json_member_is_refused_without_edit() -> None:
+    text = (json.dumps(graph_payload(), indent=4) + "\n").replace(
+        '"state": "PLANNED"', '"state": "PLANNED", "state": "PLANNED"', 1,
+    )
+    with pytest.raises(progress.ProgressRefused, match="GRAPH_JSON_MEMBER_AMBIGUOUS"):
         progress.apply_completions(text, [{"capability": "cap-a", "slice": "s1", "evidence": ["e"]}])
 
 
@@ -326,7 +358,7 @@ def test_nothing_merged_means_nothing_is_started(world: dict) -> None:
     assert result["status"] == "NOTHING_TO_RECORD" and publisher.calls == [] and preflight.spawned == []
 
 
-def test_a_non_canonical_graph_is_a_blocker_and_starts_nothing(world: dict) -> None:
+def test_a_noncanonical_graph_still_reaches_the_verified_progress_pr_gate(world: dict) -> None:
     items, state, publications = merged_item(world)
     (world["clone"] / SOURCE).write_text(json.dumps(graph_payload()) + "\n", encoding="utf-8", newline="\n")
     run(world["clone"], "commit", "-qam", "compact graph")
@@ -334,11 +366,18 @@ def test_a_non_canonical_graph_is_a_blocker_and_starts_nothing(world: dict) -> N
     world["head"] = run(world["clone"], "rev-parse", "HEAD")
     refill.refill_repository(world["lane"], world["state_root"], REPO, world["clone"], world["head"], items=[], state={},
                              reserved=set(), max_level=2)
-    preflight = Preflight()
+    preflight, publisher = Preflight(), Publisher()
 
-    result = step(world, items, state, publications, preflight=preflight)
+    assert step(world, items, state, publications, publisher=publisher, preflight=preflight)["status"] == "VERIFYING"
+    result = step(world, items, state, publications, publisher=publisher, preflight=preflight)
 
-    assert result == {"status": "BLOCKED", "reason": "GRAPH_FORMAT_NOT_CANONICAL"} and preflight.spawned == []
+    assert result["status"] == "OPENED" and len(preflight.spawned) == 1
+    assert len(publisher.calls) == 1
+    pushed = run(world["origin"], "rev-parse", f"refs/heads/{result['branch']}")
+    original = run(world["origin"], "show", f"{world['head']}:{SOURCE}")
+    changed = run(world["origin"], "show", f"{pushed}:{SOURCE}")
+    assert len(changed) - len(original) < 150  # only two named fields; no whole-file rewrite
+    assert json.loads(changed)["capabilities"][0]["slices"][0]["state"] == "VERIFIED_COMPLETE"
 
 
 def test_a_graph_compiled_for_a_different_head_is_not_used(world: dict) -> None:
