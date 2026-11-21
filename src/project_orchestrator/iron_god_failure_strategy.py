@@ -63,7 +63,7 @@ def recovery_strategy(lane_root: Path, item: dict[str, Any], row: dict[str, Any]
     evidence_item_id = item_id
     outcome = str(row.get("outcome") or "")
     cross_revision = False
-    if type(attempts) is int and attempts == 0 and not packet_ids:
+    if attempts in (None, 0) and not packet_ids:
         # A roadmap re-authoring has a NEW item id, so a same-item retry
         # lookup never sees its predecessor's failures. Resolve only the
         # immediately previous -rN item from the canonical backlog ledger.
