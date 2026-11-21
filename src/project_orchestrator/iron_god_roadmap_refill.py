@@ -848,15 +848,29 @@ def refill_repository(lane_root: Path, state_root: Path, repository: str, clone:
         route_request(request)
         report["routed"][request["route"]["builder"]].append(request["id"])
     report["local_lookahead"] = []
-    if payload is not None and not repo_problem and not any(can_start_locally(r) for r in derived["requests"]):
-        # The head of the line needs a stronger builder (above Level 2, or its budget is spent): the free local builder
-        # would be offered nothing from this repository however many small slices sit behind it. Look past it.
+
+    def locally_unreserved(request: dict[str, Any]) -> bool:
+        """A locally buildable slice is not *available* while another open PR owns its effective scope.
+
+        Keep the graph in the scope, as the capable builder may update it for completion evidence.
+        This only unlocks independent owner-approved work: the existing draft admission still
+        checks file reservations, dependency order, owner control, and all attempt/model gates.
+        """
+        if not can_start_locally(request):
+            return False
+        scope = [*_strings(request.get("allowed_paths")), *([source] if source else [])]
+        return not any(_matches(path, scope) for path in reserved)
+
+    if payload is not None and not repo_problem and not any(locally_unreserved(r) for r in derived["requests"]):
+        # A head slice awaiting a stronger builder OR an open PR's file ownership must not
+        # monopolize the local lane when independent owner-approved capabilities remain.
+        # The original blocked request remains unchanged and retains its place.
         try:
             from . import iron_god_task_decomposer as decomposer_lookahead
 
             extra = local_lookahead(
                 repository, head, payload, source, items=items, state=state, route_request=route_request,
-                can_take=can_start_locally,
+                can_take=locally_unreserved,
                 skip={str(r["capability"]) for r in derived["requests"] if r.get("capability")}
                 | {str(row["capability"]) for row in derived["skipped"] if row.get("capability")},
                 external_pending=frozenset(capable_builder.open_request_ids(lane_root))
