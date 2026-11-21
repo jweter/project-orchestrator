@@ -1129,6 +1129,50 @@ def test_no_lookahead_when_the_head_of_the_line_is_already_local(tmp_path: Path)
     assert [r["slice"] for r in report["local_requests"]] == ["first"] and report["local_lookahead"] == []
 
 
+def test_a_pr_reserved_local_head_does_not_starve_unrelated_authorized_local_work(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    first = {**small_slice("first"), "allowed_paths": ["pkg/first.py", "tests/test_first.py"]}
+    second = {**small_slice("second"), "allowed_paths": ["pkg/second.py", "tests/test_second.py"]}
+    caps = [capability("cap-first", first), capability("cap-second", second)]
+    payload = {"schema_version": 1, "repository": repository, "capabilities": caps,
+               "roadmap": ["cap-first", "cap-second"]}
+    clone, head = product(tmp_path, repository, payload)
+
+    report = run_refill(tmp_path, repository, clone, head, reserved={"pkg/first.py"})
+
+    assert [request["slice"] for request in report["local_requests"]] == ["first", "second"]
+    assert [request["slice"] for request in report["local_requests"]
+            if request["id"] in report["local_lookahead"]] == ["second"]
+    assert report["local_requests"][0]["reserved_conflicts"] == ["pkg/first.py"]
+    assert report["local_requests"][1]["reserved_conflicts"] == []
+    # The reserved first request remains pending and does not gain an attempt or execution grant.
+    assert refill.admitted_items(tmp_path / "lane") == []
+
+
+def test_lookahead_skips_other_reserved_capabilities_and_preserves_graph_ownership(tmp_path: Path) -> None:
+    repository = PORTFOLIO[0]
+    caps = [
+        capability(f"cap-{name}", {**small_slice(name),
+                                  "allowed_paths": [f"pkg/{name}.py", f"tests/test_{name}.py"]})
+        for name in ("first", "second", "third")
+    ]
+    payload = {"schema_version": 1, "repository": repository, "capabilities": caps,
+               "roadmap": [cap["id"] for cap in caps]}
+    clone, head = product(tmp_path, repository, payload)
+    report = run_refill(tmp_path, repository, clone, head,
+                        reserved={"pkg/first.py", "pkg/second.py"})
+
+    assert [request["slice"] for request in report["local_requests"]
+            if request["id"] in report["local_lookahead"]] == ["third"]
+    assert next(r for r in report["local_requests"] if r["slice"] == "third")["reserved_conflicts"] == []
+
+    # If a PR reserves the graph itself, none of these slices has a disjoint
+    # effective scope: do not work around the ownership boundary.
+    guard = run_refill(tmp_path / "graph-reserved", repository, *product(
+        tmp_path / "graph-reserved", repository, payload), reserved={SOURCE})
+    assert guard["local_lookahead"] == []
+
+
 def test_the_lookahead_steps_past_several_stronger_builder_slices_but_only_a_few(tmp_path: Path) -> None:
     caps = [capability(f"cap-big-{n}", {**BIG, "id": f"big-{n}"}) for n in range(3)] + [capability("cap-small", small_slice())]
     assert [r["slice"] for r in lookahead_report(tmp_path / "near", caps)["local_requests"]] == ["small"]
