@@ -54,6 +54,7 @@ MAX_INTERRUPTIONS = 20  # a bound, so a request that is always interrupted canno
 DRAFT_TIMEOUT_S = 30 * 60
 SUPPORTED_LEVEL = 1
 MIN_ROADMAP_EXAMPLES = 2
+MAX_WORKER_EXAMPLES = 8  # scripts/iron_god_product_worker.validate_plan bounds the completed plan to 3..8
 AVOID_LESSONS = 2  # the newest distinct failures of this slice that the builder is shown
 BUILD_OBJECTIVE_CHARS = 600  # the worker re-validates a build objective at this length
 ROADMAP_GOAL_PREFIX = "Roadmap slice goal: "
@@ -352,6 +353,11 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
         raise ContradictsRoadmap(f"OWNER_FUNCTION_NAME_MISMATCH: expected {pinned_name}, got {name}")
     given = {" ".join(call.split()): example for example in roadmap_examples(request)
              for call in [example["call"].replace("{fn}", name, 1)]}
+    if len(given) > MAX_WORKER_EXAMPLES:
+        # All owner-approved oracles remain mandatory; a local worker that can
+        # validate only eight must refuse this task rather than silently omit
+        # some approved cases or spend its attempts failing downstream.
+        raise ContradictsRoadmap("OWNER_ORACLES_EXCEED_LOCAL_WORKER_CAPACITY")
     usable = {" ".join(str(e["call"]).split()) for e in validated["examples"]}
     own = []
     misread = False
@@ -375,13 +381,25 @@ def plan_to_draft(request: dict[str, Any], raw: dict[str, Any], validated: dict[
                 for call, example in given.items()]
     if misread:
         own = []
-    examples = [*injected, *own]
+    # The worker accepts at most eight exact examples. Preserve *all*
+    # independent roadmap oracles first, then as many additional model cases
+    # as fit. This is an example-budget decision, not a relaxation of a test
+    # or a change to the owner's expected outputs. Previously five owner cases
+    # plus four model extras produced nine and failed every worker attempt.
+    optional = own[:MAX_WORKER_EXAMPLES - len(injected)]
+    examples = [*injected, *optional]
+    # An optional example that did not fit must not survive as a contradictory
+    # free-text completion criterion after its executable assertion is dropped.
+    omitted_criteria = {
+        f"{e['call']} returns {e['expected']}" for e in validated["examples"]
+        if e["call"] not in {case["call"] for case in examples}
+    }
     # When the planner misreads an authoritative example, its criteria are no
     # more trustworthy than its objective or examples. Keep only roadmap-owned
     # acceptance criteria; otherwise a discarded interpretation can still
     # become a conflicting completion gate for the local builder.
     criteria = ([*request.get("slice_acceptance", [])] if misread
-                else [*validated["acceptance_criteria"]])
+                else [text for text in validated["acceptance_criteria"] if text not in omitted_criteria])
     criteria.extend(f"{e['call']} returns {e['expected']!r} ({criteria_origin})"
                     for e in injected)
     objective = build_objective("" if misread else validated["objective"], request["objective"])
