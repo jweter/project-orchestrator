@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 from contextlib import closing
@@ -135,8 +136,29 @@ def _validated_strategy(connection: sqlite3.Connection, packet: dict[str, Any],
         "SELECT item_id,repository,failure_class,outcome FROM attempts WHERE packet_id=?",
         (source_id,),
     ).fetchone()
-    if (source is None or source["item_id"] != item["id"]
-            or source["repository"] != packet["repository"]
+    if source is None:
+        return None
+    # A new owner-approved -rN item can inherit a *proven* failed predecessor
+    # for advisory coding guidance. The predecessor must be the immediately
+    # preceding revision of this exact task, never merely another failed
+    # task in the same repository or an arbitrary asserted packet.
+    from . import iron_god_backlog as backlog
+
+    expected_source = item["id"]
+    if source["item_id"] != expected_source:
+        match = re.fullmatch(r"(.+)-r([12])", expected_source)
+        if (match is None or item.get("status") != "approved"
+                or item.get("assignee") != backlog.AGENT_ID or item.get("level") != 1):
+            return None
+        expected_source = match.group(1) if match.group(2) == "1" else f"{match.group(1)}-r1"
+        if (source["item_id"] != expected_source
+                or hint.get("source_item_id") != expected_source
+                or int(match.group(2)) != revision
+                or backlog.lineage_base(expected_source) != backlog.lineage_base(item["id"])):
+            return None
+    elif hint.get("source_item_id") not in (None, item["id"]):
+        return None
+    if (source["repository"] != packet["repository"]
             or source["failure_class"] != name
             or not str(source["outcome"]).startswith("FAIL")):
         return None
