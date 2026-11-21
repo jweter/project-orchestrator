@@ -8,8 +8,8 @@ owner reads is current.
 
 The edit is mechanical and checked before anything is published:
 
-* the graph file must already be in the canonical ``json.dumps(indent=2)`` form (otherwise the edit would reformat
-  the whole file, so it is refused as a blocker);
+* canonical graph files keep their existing representation; valid noncanonical JSON is updated with a localized
+  source-span edit that preserves unrelated bytes and rejects ambiguous duplicate keys;
 * after the edit, only ``state`` and ``verification`` of the named slices may differ from the original, and the
   result must still pass the capability-graph validator;
 * a capability is never marked complete here: that needs product-level evidence.
@@ -286,8 +286,8 @@ def render_body(completions: list[dict[str, Any]], source: str, head: str) -> st
              "not re-planned after a restart.", ""]
     for c in completions:
         lines.append(f"- `{c['capability']}` / `{c['slice']}`: " + "; ".join(c["evidence"]))
-    lines += ["", "Only `state` and `verification` of the listed slices changed; the file was verified to be in canonical "
-              "form before and after, the graph still passes the capability-graph validator, and the repository's native "
+    lines += ["", "Only `state` and `verification` of the listed slices changed; original graph formatting was "
+              "preserved outside the named fields, the graph still passes capability-graph validation, and native "
               "preflight passed at this exact commit before it was pushed. No capability is marked complete here."]
     return "\n".join(lines)
 
