@@ -124,13 +124,128 @@ class ProgressRefused(RuntimeError):
     """The mechanical edit cannot be made safely; the reason is recorded as a blocker, nothing is published."""
 
 
+
+def _json_value_spans(text: str) -> dict[str, Any]:
+    """Map JSON values to their exact spans without normalizing formatting.
+
+    The ordinary JSON decoder checks grammar first. This walk also rejects
+    duplicate keys: they make an in-place edit ambiguous even if json.loads
+    would silently select the last duplicate.
+    """
+    decoder = json.JSONDecoder()
+
+    def whitespace(index: int) -> int:
+        while index < len(text) and text[index] in " \t\r\n":
+            index += 1
+        return index
+
+    def walk(index: int) -> tuple[dict[str, Any], int]:
+        index = whitespace(index)
+        start = index
+        if text[index] == "{":
+            fields: dict[str, Any] = {}
+            keys: dict[str, int] = {}
+            index = whitespace(index + 1)
+            while text[index] != "}":
+                key_start = index
+                key, index = decoder.raw_decode(text, index)
+                if not isinstance(key, str) or key in fields:
+                    raise ProgressRefused("GRAPH_JSON_MEMBER_AMBIGUOUS")
+                index = whitespace(index)
+                if text[index] != ":":
+                    raise ProgressRefused("GRAPH_JSON_SPAN_INVALID")
+                member, index = walk(index + 1)
+                fields[key] = member
+                keys[key] = key_start
+                index = whitespace(index)
+                if text[index] != ",":
+                    break
+                index = whitespace(index + 1)
+            if text[index] != "}":
+                raise ProgressRefused("GRAPH_JSON_SPAN_INVALID")
+            return {"start": start, "end": index + 1, "fields": fields, "keys": keys}, index + 1
+        if text[index] == "[":
+            items: list[dict[str, Any]] = []
+            index = whitespace(index + 1)
+            while text[index] != "]":
+                member, index = walk(index)
+                items.append(member)
+                index = whitespace(index)
+                if text[index] != ",":
+                    break
+                index = whitespace(index + 1)
+            if text[index] != "]":
+                raise ProgressRefused("GRAPH_JSON_SPAN_INVALID")
+            return {"start": start, "end": index + 1, "items": items}, index + 1
+        _, end = decoder.raw_decode(text, index)
+        return {"start": start, "end": end}, end
+
+    try:
+        root, end = walk(0)
+        if whitespace(end) != len(text):
+            raise ProgressRefused("GRAPH_JSON_SPAN_INVALID")
+        return root
+    except (IndexError, KeyError, TypeError, ValueError) as exc:
+        raise ProgressRefused("GRAPH_JSON_SPAN_INVALID") from exc
+
+
+def _format_preserving_completion(
+    graph_text: str, edited: dict[str, Any], wanted: dict[tuple[str, str], list[str]],
+) -> str:
+    """Patch proven slices without changing unrelated graph bytes or member order."""
+    spans = _json_value_spans(graph_text)
+    try:
+        capabilities = spans["fields"]["capabilities"]["items"]
+        patches: list[tuple[int, int, str]] = []
+        touched: set[tuple[str, str]] = set()
+        newline = "\r\n" if "\r\n" in graph_text else "\n"
+        for capability in capabilities:
+            ident = capability["fields"]["id"]
+            cid = json.loads(graph_text[ident["start"]:ident["end"]])
+            for row in capability["fields"].get("slices", {}).get("items", []):
+                ident = row["fields"]["id"]
+                sid = json.loads(graph_text[ident["start"]:ident["end"]])
+                key = (cid, sid)
+                if key not in wanted:
+                    continue
+                if key in touched:
+                    raise ProgressRefused("GRAPH_SLICE_ID_AMBIGUOUS")
+                touched.add(key)
+                state = row["fields"]["state"]
+                patches.append((state["start"], state["end"], '"VERIFIED_COMPLETE"'))
+                evidence = json.dumps(wanted[key], ensure_ascii=False)
+                if "verification" in row["fields"]:
+                    member = row["fields"]["verification"]
+                    patches.append((member["start"], member["end"], evidence))
+                else:
+                    # Keep the existing member separator and match the indentation
+                    # of this slice's state key, without rewriting nearby fields.
+                    key_start = row["keys"]["state"]
+                    line_start = graph_text.rfind("\n", 0, key_start) + 1
+                    indent = graph_text[line_start:key_start]
+                    if indent.isspace() and "\n" in graph_text[row["start"]:row["end"]]:
+                        addition = "," + newline + indent + '"verification": ' + evidence
+                    else:
+                        addition = ', "verification": ' + evidence
+                    patches.append((state["end"], state["end"], addition))
+        if touched != set(wanted):
+            raise ProgressRefused("SLICE_NOT_FOUND_IN_GRAPH")
+        result = graph_text
+        for start, end, replacement in sorted(patches, key=lambda patch: (patch[0], patch[1]), reverse=True):
+            result = result[:start] + replacement + result[end:]
+        if json.loads(result) != edited:
+            raise ProgressRefused("EDIT_TOUCHED_MORE_THAN_THE_NAMED_SLICES")
+        return result
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ProgressRefused("GRAPH_JSON_SPAN_INVALID") from exc
+
+
 def apply_completions(graph_text: str, completions: list[dict[str, Any]]) -> str:
     """The graph file text with only the named slices' state and verification changed, or ProgressRefused."""
     newline = "\r\n" if "\r\n" in graph_text else "\n"
     normalized = graph_text.replace("\r\n", "\n")
     original = json.loads(normalized)
-    if json.dumps(original, indent=2) + "\n" != normalized:
-        raise ProgressRefused("GRAPH_FORMAT_NOT_CANONICAL")
+    canonical = json.dumps(original, indent=2) + "\n" == normalized
     edited = json.loads(normalized)
     wanted = {(c["capability"], c["slice"]): c["evidence"] for c in completions}
     touched = set()
@@ -155,7 +270,9 @@ def apply_completions(graph_text: str, completions: list[dict[str, Any]]) -> str
         raise ProgressRefused("EDIT_TOUCHED_MORE_THAN_THE_NAMED_SLICES")
     if validate(edited)["status"] == "DIRECTION_REQUIRED":
         raise ProgressRefused("EDITED_GRAPH_FAILS_VALIDATION")
-    return (json.dumps(edited, indent=2) + "\n").replace("\n", newline)
+    if canonical:
+        return (json.dumps(edited, indent=2) + "\n").replace("\n", newline)
+    return _format_preserving_completion(graph_text, edited, wanted)
 
 
 def branch_name(repository: str, completions: list[dict[str, Any]], head: str) -> str:
