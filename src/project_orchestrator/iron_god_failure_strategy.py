@@ -8,6 +8,7 @@ it is neither a new planner nor permission to spend cloud tokens.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -54,15 +55,40 @@ def recovery_strategy(lane_root: Path, item: dict[str, Any], row: dict[str, Any]
             or item.get("assignee") != backlog.AGENT_ID
             or item.get("level") != 1 or not isinstance(item.get("build"), dict)):
         return None
+    item_id = item.get("id")
+    if not isinstance(item_id, str) or not item_id:
+        return None
     packet_ids = row.get("packets")
     attempts = row.get("attempts")
+    evidence_item_id = item_id
+    outcome = str(row.get("outcome") or "")
+    cross_revision = False
+    if type(attempts) is int and attempts == 0 and not packet_ids:
+        # A roadmap re-authoring has a NEW item id, so a same-item retry
+        # lookup never sees its predecessor's failures. Resolve only the
+        # immediately previous -rN item from the canonical backlog ledger.
+        # This supplies catalogued advice, NOT an attempt refund, new grant,
+        # or permission to repeat byte-identical failed source.
+        match = re.fullmatch(r"(.+)-r([12])", item_id)
+        if match is None:
+            return None
+        evidence_item_id = match.group(1) if match.group(2) == "1" else f"{match.group(1)}-r1"
+        try:
+            previous = backlog.load_state(lane_root).get("items", {}).get(evidence_item_id)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(previous, dict):
+            return None
+        packet_ids = previous.get("packets")
+        outcome = str(previous.get("outcome") or "")
+        attempts = int(match.group(2))
+        cross_revision = True
+    elif backlog.repeated_failed_source(row):
+        return None
     if (not isinstance(packet_ids, list) or not packet_ids
             or not isinstance(packet_ids[-1], str) or not packet_ids[-1]
             or type(attempts) is not int or not 1 <= attempts <= 2
-            or backlog.repeated_failed_source(row)):
-        return None
-    outcome = str(row.get("outcome") or "")
-    if not outcome.startswith("FAIL"):
+            or not outcome.startswith("FAIL")):
         return None
     db = memory.db_path(Path(lane_root))
     if not db.is_file():
@@ -77,13 +103,16 @@ def recovery_strategy(lane_root: Path, item: dict[str, Any], row: dict[str, Any]
             ).fetchone()
     except (sqlite3.Error, OSError, ValueError):
         return None
-    if (fact is None or fact[0] != item.get("id") or fact[1] != item.get("repository")
+    if (fact is None or fact[0] != evidence_item_id or fact[1] != item.get("repository")
             or fact[2] not in STRATEGIES or not str(fact[3]).startswith("FAIL")):
         return None
-    return {
+    hint = {
         "schema_version": 1, "strategy": fact[2], "revision": attempts,
         "evidence_packet": packet_ids[-1],
     }
+    if cross_revision:
+        hint["source_item_id"] = evidence_item_id
+    return hint
 
 
 def coding_guidance(packet: dict[str, Any]) -> str:
