@@ -8,6 +8,7 @@ re-authorings of the same roadmap task count at most once per strategy.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections import defaultdict
 from contextlib import closing
@@ -103,12 +104,25 @@ def snapshot(lane_root: Path, *, repository: str = "") -> dict[str, Any]:
                 continue
             source = by_packet.get(row["evidence_packet"])
             if (source is None or source["packet_id"] == row["packet_id"]
-                    or source["item_id"] != row["item_id"]
+                    or not isinstance(source["item_id"], str)
+                    or not isinstance(row["item_id"], str)
                     or source["repository"] != row["repository"]
                     or source["failure_class"] != name
                     or not str(source["outcome"]).startswith("FAIL")
                     or source["recorded_at_utc"] >= row["recorded_at_utc"]):
                 continue
+            if source["item_id"] != row["item_id"]:
+                # An exposure across task ids must be the same exact, bounded
+                # roadmap re-authoring edge validated when the packet was
+                # originally recorded. A sibling task or forged lineage hint
+                # can never earn independent learning credit.
+                match = re.fullmatch(r"(.+)-r([12])", row["item_id"])
+                if match is None:
+                    continue
+                predecessor = match.group(1) if match.group(2) == "1" else f"{match.group(1)}-r1"
+                if (predecessor != source["item_id"] or int(match.group(2)) != row["revision"]
+                        or backlog.lineage_base(predecessor) != backlog.lineage_base(row["item_id"])):
+                    continue
             # The latest observed strategy wins within this lineage; retries
             # must never appear as multiple independent learning samples.
             latest_exposure[lineage] = row
