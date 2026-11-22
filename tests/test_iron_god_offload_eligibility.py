@@ -9,6 +9,7 @@ import pytest
 from project_orchestrator import iron_god_backlog as backlog
 from project_orchestrator import iron_god_development_memory as memory
 from project_orchestrator import iron_god_offload_eligibility as eligibility
+from project_orchestrator import iron_god_product_lane as product_lane
 from project_orchestrator import iron_god_roadmap_refill as roadmap_refill
 
 REPO = "jweter/VoiceStudio"
@@ -163,6 +164,118 @@ def test_runtime_admitted_file_reservation_blocks_static_offload(source, in_flig
     assert inspect(source)["status"] == "CANDIDATE_UNVERIFIED"
 
 
+def _admit_failed_runtime_slice(source):
+    """Provide the same approved runtime item in roadmap, packet, and SQLite."""
+    release, lane, item, _ = source
+    static_item = json.loads(json.dumps(item))
+    static_item["status"] = "proposed"
+    (release / backlog.BACKLOG_PATH).write_text(
+        json.dumps({"items": [static_item]}), encoding="utf-8",
+    )
+    runtime = json.loads(json.dumps(item))
+    runtime["id"] = "RM-VS-RUNTIME-FAILED-1"
+    runtime["origin"] = roadmap_refill.ORIGIN
+    runtime["authorization"] = {"declared_capability_level": 1}
+    runtime["build"]["module_path"] = "src/runtime_unit.py"
+    runtime["build"]["test_path"] = "tests/test_runtime_unit.py"
+    runtime["interfaces"] = ["src/runtime_unit.py"]
+    assert backlog.item_problems(runtime) == []
+    store = lane / roadmap_refill.STORE
+    store.write_text(json.dumps({"schema_version": 1, "items": [runtime]}), encoding="utf-8")
+    state_path = lane / "backlog-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["items"][runtime["id"]] = {
+        "outcome": "FAIL: SLICE_TESTS_FAILED", "attempts": 3,
+        "packets": ["RUNTIME-P-1"], "test_failed_packets": ["RUNTIME-P-1"],
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    # A real product worker packet intentionally contains only an execution
+    # snapshot, not the entire mutable runtime backlog row. Exercise that
+    # producer contract directly (previous fixture accidentally used runtime).
+    packet = product_lane.build_product_packet(
+        REPO, packet_id="RUNTIME-P-1", base=BASE,
+        worktree=lane / "worker", branch="test-runtime-offload",
+        roots=["src/runtime_unit.py", "tests/test_runtime_unit.py"],
+        avoid=[], memory_text="", project="VoiceStudio", item=runtime,
+    )
+    assert packet["slice"]["origin"] == roadmap_refill.ORIGIN
+    assert packet["slice"]["authorization"] == runtime["authorization"]
+    assert packet["slice"]["authorization"] is not runtime["authorization"]
+    assert packet["slice"]["status"] == "approved"
+    assert packet["slice"]["assignee"] == backlog.AGENT_ID
+    assert "interfaces" not in packet["slice"]
+    (lane / "packets" / "RUNTIME-P-1.json").write_text(
+        json.dumps(packet), encoding="utf-8",
+    )
+    memory.record_attempt(
+        lane, packet,
+        {"status": "FAIL", "summary": "SLICE_TESTS_FAILED",
+         "plan": {"mode": "build", "module_path": "src/runtime_unit.py"}},
+        "FAIL: SLICE_TESTS_FAILED",
+    )
+    return runtime
+
+
+def test_verified_runtime_admission_can_supply_advisory_offload_candidate(source):
+    runtime = _admit_failed_runtime_slice(source)
+    found = inspect(source)
+    assert found["status"] == "CANDIDATE_UNVERIFIED"
+    assert found["source"] == "RUNTIME_ADMITTED_ROADMAP_AND_FAILED_PACKET_SQLITE"
+    assert found["candidate"]["slice_id"] == runtime["id"]
+    assert found["candidate"]["allowed_paths"] == [
+        "src/runtime_unit.py", "tests/test_runtime_unit.py",
+    ]
+    assert found["candidate"]["failure_ref"] == "packet:RUNTIME-P-1"
+    assert found["execution_authorized"] is False
+    assert found["can_claim_worker"] is False
+
+
+def test_runtime_only_backlog_still_yields_inert_candidate(source):
+    runtime = _admit_failed_runtime_slice(source)
+    release, _, _, _ = source
+    (release / backlog.BACKLOG_PATH).write_text(
+        json.dumps({"items": []}), encoding="utf-8",
+    )
+    found = inspect(source)
+    assert found["status"] == "CANDIDATE_UNVERIFIED"
+    assert found["candidate"]["slice_id"] == runtime["id"]
+    assert found["execution_authorized"] is False
+
+
+def test_runtime_candidate_needs_actual_implementation_failure(source):
+    runtime = _admit_failed_runtime_slice(source)
+    _, lane, _, _ = source
+    with sqlite3.connect(memory.db_path(lane)) as db:
+        db.execute(
+            "UPDATE attempts SET failure_class='ENVIRONMENT' WHERE packet_id=?",
+            ("RUNTIME-P-1",),
+        )
+    assert inspect(source)["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"
+    assert runtime["id"] not in str(inspect(source).get("candidate", {}))
+
+
+def test_runtime_candidate_requires_unchanged_packet_admission_provenance(source):
+    runtime = _admit_failed_runtime_slice(source)
+    _, lane, _, _ = source
+    runtime["authorization"]["owner_attestation"] = "new-unverified-claim"
+    (lane / roadmap_refill.STORE).write_text(
+        json.dumps({"items": [runtime]}), encoding="utf-8",
+    )
+    assert inspect(source)["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"
+
+
+def test_unknown_canonical_inflight_owner_prevents_runtime_offload(source):
+    _admit_failed_runtime_slice(source)
+    _, lane, _, _ = source
+    state_path = lane / "backlog-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["items"]["RM-UNKNOWN-RESERVATION"] = {
+        "outcome": "DISPATCHED", "packets": ["UNRECONCILED-P-1"], "attempts": 1,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    assert inspect(source)["reason"] == "UNKNOWN_CANONICAL_IN_FLIGHT_OWNER"
+
+
 def test_corrupted_runtime_store_fails_closed(source):
     _, lane, _, _ = source
     (lane / roadmap_refill.STORE).write_text("invalid json", encoding="utf-8")
@@ -291,3 +404,28 @@ def test_recorded_implementation_failures_are_still_eligible(source, failure_cla
     result = inspect(source)
     assert result["status"] == "CANDIDATE_UNVERIFIED"
     assert result["execution_authorized"] is False
+
+
+def test_actual_legacy_static_product_packet_does_not_forge_runtime_origin(source):
+    _, lane, item, _ = source
+    packet = product_lane.build_product_packet(
+        REPO, packet_id="STATIC-P-1", base=BASE,
+        worktree=lane / "static-worker", branch="static-test",
+        roots=["src/unit.py", "tests/test_unit.py"],
+        avoid=[], memory_text="", project="VoiceStudio", item=item,
+    )
+    assert packet["slice"]["id"] == item["id"]
+    assert "origin" not in packet["slice"]
+    assert "authorization" not in packet["slice"]
+    assert "status" not in packet["slice"]
+    assert "assignee" not in packet["slice"]
+
+
+def test_missing_production_runtime_admission_snapshot_is_not_inferred(source):
+    _admit_failed_runtime_slice(source)
+    _, lane, _, _ = source
+    packet_path = lane / "packets" / "RUNTIME-P-1.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    packet["slice"].pop("origin")
+    packet_path.write_text(json.dumps(packet), encoding="utf-8")
+    assert inspect(source)["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"

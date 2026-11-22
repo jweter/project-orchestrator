@@ -30,6 +30,7 @@ While the owner holds control nothing is dispatched, pushed or merged.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -490,8 +491,18 @@ def build_product_packet(repo: str, *, packet_id: str, base: str, worktree: Path
         },
     }
     if item is not None:
-        packet["slice"] = {key: item.get(key) for key in ("id", "title", "roadmap_ref", "addresses", "why",
-                                                          "consumer", "level", "build", "direct")}
+        slice_snapshot = {key: item.get(key) for key in ("id", "title", "roadmap_ref", "addresses", "why",
+                                                           "consumer", "level", "build", "direct")}
+        if item.get("origin") == roadmap_refill.ORIGIN:
+            # Snapshot the admission exactly when a *real* product worker
+            # starts. The offload selector later compares this immutable
+            # packet against today's admitted roadmap and SQLite failure.
+            # Standing roadmap authorization is not an execution grant.
+            slice_snapshot.update({
+                key: copy.deepcopy(item.get(key))
+                for key in ("origin", "authorization", "status", "assignee")
+            })
+        packet["slice"] = slice_snapshot
         packet["planning"]["roadmap_ref"] = item["roadmap_ref"]
         packet["planning"]["handoff_instructions"] = ("Build the approved backlog slice exactly as specified, run "
                                                       "the canonical preflight, and hand back exact evidence.")
