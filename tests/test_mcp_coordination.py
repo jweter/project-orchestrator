@@ -198,7 +198,7 @@ def test_mcp_adapter_is_read_only_by_default_and_writes_are_opt_in(database, tmp
                                      repo_root=tmp_path, client_label="chatgpt")
     assert set(read_only.tools) == {
         "get_targets", "get_engine_snapshot", "get_development_diagnostics",
-        "get_engineering_evidence", "list_messages",
+        "get_engineering_evidence", "get_offload_proposals", "list_messages",
     }
     assert read_only.tools["list_messages"]()["status"] == "UNINITIALIZED"
     diagnostics = read_only.tools["get_development_diagnostics"]()
