@@ -200,3 +200,31 @@ def test_local_diff_ignore_submodules_cannot_hide_unauthorized_gitlink(tmp_path)
     with pytest.raises(offload.OffloadRejected, match="GITHUB_BRANCH_PATH_FENCE_VIOLATION|UNSAFE_INDEX_OBJECT_MODE"):
         stage(tmp_path, data)
     assert not (tmp_path / "stage").exists()
+
+
+def test_legacy_git_grafts_cannot_forge_raw_candidate_parent(tmp_path):
+    data = world(tmp_path)
+    repo, _, _, base, candidate, ref = data
+    (repo / "src" / "unit.py").write_text(
+        "def answer():\n    return 3\n", encoding="utf-8",
+    )
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "unreviewed second commit")
+    second = git(repo, "rev-parse", "HEAD")
+    git(repo, "update-ref", ref, second)
+    grafts = repo / ".git" / "info" / "grafts"
+    grafts.parent.mkdir(parents=True, exist_ok=True)
+    grafts.write_text(f"{second} {base}\n", encoding="ascii")
+
+    # --no-replace-objects is insufficient against legacy info/grafts.
+    fake = git(repo, "--no-replace-objects", "rev-list",
+               "--parents", "-n", "1", second).split()
+    assert fake == [second, base]
+    # The raw commit bytes remain bound to the genuine intermediate parent.
+    raw = git(repo, "--no-replace-objects", "cat-file", "commit", second)
+    assert f"parent {candidate}" in raw
+    assert f"parent {base}" not in raw
+
+    with pytest.raises(offload.OffloadRejected, match="SINGLE_EXACT_BASE_PARENT_REQUIRED"):
+        stage(tmp_path, data, candidate_head=second)
+    assert not (tmp_path / "stage").exists()

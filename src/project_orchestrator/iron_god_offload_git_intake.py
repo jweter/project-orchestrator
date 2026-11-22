@@ -78,8 +78,18 @@ def stage_fetched_github_candidate(
         raise offload.OffloadRejected("BASE_COMMIT_NOT_AVAILABLE")
     if _git(repo, "cat-file", "-t", candidate_head).strip() != b"commit":
         raise offload.OffloadRejected("CANDIDATE_COMMIT_NOT_AVAILABLE")
-    lineage = _git(repo, "rev-list", "--parents", "-n", "1", candidate_head).split()
-    if lineage != [candidate_head.encode("ascii"), observed_base_head.encode("ascii")]:
+    # rev-list may inherit legacy .git/info/grafts and report fictional
+    # parents even with --no-replace-objects. The raw content-addressed
+    # commit object's parent headers are the only immutable ancestry proof.
+    raw_commit = _git(repo, "cat-file", "commit", candidate_head)
+    header, separator, _ = raw_commit.partition(b"\n\n")
+    if not separator:
+        raise offload.OffloadRejected("SINGLE_EXACT_BASE_PARENT_REQUIRED")
+    parents = [
+        line[len(b"parent "):] for line in header.split(b"\n")
+        if line.startswith(b"parent ")
+    ]
+    if parents != [observed_base_head.encode("ascii")]:
         raise offload.OffloadRejected("SINGLE_EXACT_BASE_PARENT_REQUIRED")
 
     # Diff ALL paths, not an allowed-path filter (which could hide injected
