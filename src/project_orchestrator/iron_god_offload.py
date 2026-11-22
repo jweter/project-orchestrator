@@ -34,7 +34,7 @@ _BLOCKED_ROOTS = frozenset({
 _BAD_DIFF_LINES = (
     "GIT binary patch", "Binary files ", "rename from ", "rename to ",
     "copy from ", "copy to ", "new file mode 120000",
-    "deleted file mode ", "old mode ", "new mode 120000",
+    "deleted file mode ", "old mode ", "new mode ",
     "Subproject commit ",
 )
 
