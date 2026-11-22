@@ -9,6 +9,7 @@ import pytest
 from project_orchestrator import iron_god_backlog as backlog
 from project_orchestrator import iron_god_development_memory as memory
 from project_orchestrator import iron_god_offload_eligibility as eligibility
+from project_orchestrator import iron_god_product_lane as product_lane
 from project_orchestrator import iron_god_roadmap_refill as roadmap_refill
 
 REPO = "jweter/VoiceStudio"
@@ -188,8 +189,21 @@ def _admit_failed_runtime_slice(source):
         "packets": ["RUNTIME-P-1"], "test_failed_packets": ["RUNTIME-P-1"],
     }
     state_path.write_text(json.dumps(state), encoding="utf-8")
-    packet = {"packet_id": "RUNTIME-P-1", "repository": REPO,
-              "base_sha": BASE, "slice": runtime}
+    # A real product worker packet intentionally contains only an execution
+    # snapshot, not the entire mutable runtime backlog row. Exercise that
+    # producer contract directly (previous fixture accidentally used runtime).
+    packet = product_lane.build_product_packet(
+        REPO, packet_id="RUNTIME-P-1", base=BASE,
+        worktree=lane / "worker", branch="test-runtime-offload",
+        roots=["src/runtime_unit.py", "tests/test_runtime_unit.py"],
+        avoid=[], memory_text="", project="VoiceStudio", item=runtime,
+    )
+    assert packet["slice"]["origin"] == roadmap_refill.ORIGIN
+    assert packet["slice"]["authorization"] == runtime["authorization"]
+    assert packet["slice"]["authorization"] is not runtime["authorization"]
+    assert packet["slice"]["status"] == "approved"
+    assert packet["slice"]["assignee"] == backlog.AGENT_ID
+    assert "interfaces" not in packet["slice"]
     (lane / "packets" / "RUNTIME-P-1.json").write_text(
         json.dumps(packet), encoding="utf-8",
     )
@@ -390,3 +404,28 @@ def test_recorded_implementation_failures_are_still_eligible(source, failure_cla
     result = inspect(source)
     assert result["status"] == "CANDIDATE_UNVERIFIED"
     assert result["execution_authorized"] is False
+
+
+def test_actual_legacy_static_product_packet_does_not_forge_runtime_origin(source):
+    _, lane, item, _ = source
+    packet = product_lane.build_product_packet(
+        REPO, packet_id="STATIC-P-1", base=BASE,
+        worktree=lane / "static-worker", branch="static-test",
+        roots=["src/unit.py", "tests/test_unit.py"],
+        avoid=[], memory_text="", project="VoiceStudio", item=item,
+    )
+    assert packet["slice"]["id"] == item["id"]
+    assert "origin" not in packet["slice"]
+    assert "authorization" not in packet["slice"]
+    assert "status" not in packet["slice"]
+    assert "assignee" not in packet["slice"]
+
+
+def test_missing_production_runtime_admission_snapshot_is_not_inferred(source):
+    _admit_failed_runtime_slice(source)
+    _, lane, _, _ = source
+    packet_path = lane / "packets" / "RUNTIME-P-1.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    packet["slice"].pop("origin")
+    packet_path.write_text(json.dumps(packet), encoding="utf-8")
+    assert inspect(source)["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"
