@@ -25,6 +25,16 @@ _CAPABILITY_BLOCKERS = frozenset({
     "DIRECTED_ATTEMPT_SPENT",
     "LEVEL_ABOVE_MEASURED_CAPABILITY",
 })
+# A saturated local attempt is not necessarily a failed implementation. In
+# particular, non-discriminating acceptance tests fail before the model runs;
+# conflicting ownership, environmental faults and unclassified outcomes must
+# not be offered to a stronger model as proven capability failures.
+_IMPLEMENTATION_FAILURE_CLASSES = frozenset({
+    "REPLY_UNEXPECTED_UNIT", "REPLY_DUPLICATE_UNIT", "REPLY_MALFORMED_BLOCK",
+    "REPLY_MISSING_UNITS", "REPLY_NO_CODE", "REPLY_UNNAMED_CODE",
+    "SLICE_TESTS_FAILED", "STATIC_MYPY_UNTYPED", "STATIC_LINE_LENGTH",
+    "STATIC_MYPY",
+})
 MAX_SCAN = 1_000
 
 
@@ -186,7 +196,7 @@ def inspect_difficult_slice(
         if (attempt is None or attempt.get("item_id") != item["id"]
                 or attempt.get("repository") != repository
                 or attempt.get("base_sha") != observed_remote_head
-                or attempt.get("failure_class") in ("ENVIRONMENT", "PASSED")
+                or attempt.get("failure_class") not in _IMPLEMENTATION_FAILURE_CLASSES
                 or not str(attempt.get("outcome", "")).startswith("FAIL")):
             continue
         try:
