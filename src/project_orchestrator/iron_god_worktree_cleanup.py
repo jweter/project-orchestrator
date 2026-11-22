@@ -183,11 +183,40 @@ def _delete_tree(path: Path) -> None:
         shutil.rmtree(path, ignore_errors=True)
 
 
+def _verified_recovery_archive(state_root: Path, shell: Path, packet_id: str) -> str | None:
+    """Accept only a same-packet, lossless archive written by the standard cleanup path.
+
+    Direct capable-runner git removals may leave behind an orphan shell but no
+    saved diff/untracked bytes. Never treat a filenames-only shell manifest as
+    recovery evidence for those paths.
+    """
+    archive = (Path(state_root) / "iron-god-products" / "reports" /
+               "worktree-archive" / f"{packet_id}.json")
+    try:
+        saved = archive.read_bytes()
+        record = json.loads(saved)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict) or record.get("packet_id") != packet_id \
+            or record.get("path") != str(shell):
+        return None
+    # _evidence() populates all these fields before remove_one() calls git.
+    if not all(isinstance(record.get(key), str) for key in (
+            "head_sha", "status", "diff_against_head", "commits")):
+        return None
+    if not isinstance(record.get("untracked"), dict) or record.get("unreadable") != []:
+        return None
+    return hashlib.sha256(saved).hexdigest()
+
+
 def remove_orphan_shell(state_root: Path, row: dict[str, Any]) -> dict[str, Any]:
     """Archive a leftover folder's manifest (and its preflight evidence), delete it, then prune stale registrations."""
     shell = Path(row["path"])
     if (shell / ".git").exists():
         return {**row, "result": "KEPT_IS_A_GIT_WORKTREE"}
+    original_archive_sha256 = _verified_recovery_archive(state_root, shell, str(row["packet_id"]))
+    if original_archive_sha256 is None:
+        return {**row, "result": "KEPT_NO_VERIFIED_LOSSLESS_ARCHIVE"}
     free = _free_ram_gib()
     if free is not None and free < SHELL_MIN_FREE_RAM_GIB:
         return {**row, "result": "KEPT_LOW_MEMORY", "free_ram_gib": round(free, 2)}
@@ -203,7 +232,9 @@ def remove_orphan_shell(state_root: Path, row: dict[str, Any]) -> dict[str, Any]
     except OSError:
         evidence = None
     payload = json.dumps({**row, "kind": "ORPHAN_SHELL", "top_level_entries": top,
-                          "preflight_evidence": evidence}, indent=2, sort_keys=True).encode("utf-8")
+                          "preflight_evidence": evidence,
+                          "recovery_archive_sha256": original_archive_sha256},
+                         indent=2, sort_keys=True).encode("utf-8")
     # The original <packet>.json holds the complete tracked diff and untracked file data.
     # Git removal may fail after creating it. Never overwrite that recovery evidence
     # when a subsequent pass encounters only the shell left by the interrupted removal.
