@@ -137,6 +137,25 @@ def test_three_independent_workers_are_only_candidates_not_proven_product_learni
     assert report["native_product_acceptance"] == "UNVERIFIED"
 
 
+def test_coarse_windows_clock_timestamps_do_not_erase_independent_lineages(
+    tmp_path, monkeypatch,
+):
+    """Windows can stamp multiple inserts with the same UTC time; SQLite order is evidence."""
+    monkeypatch.setattr(memory, "_now", lambda: "2026-11-22T15:00:00+00:00")
+    for n in range(3):
+        name = f"WIN-COARSE-{n}"
+        source = f"F{n}"
+        _record(tmp_path, name, source, passed=False)
+        _record(tmp_path, name, f"R{n}", passed=n != 2,
+                hint=_hint(tmp_path, name, source))
+    result = feedback.snapshot(tmp_path)
+    assert result["status"] == "OBSERVED_WORKER_FEEDBACK"
+    assert result["independent_recovery_lineages"] == 3
+    assert result["strategies"][0]["independent_lineages"] == 3
+    assert result["strategies"][0]["worker_reported_local_passes"] == 2
+    assert result["strategies"][0]["worker_reported_failures"] == 1
+
+
 def test_pass_word_without_local_acceptance_does_not_count(tmp_path):
     _record(tmp_path, "S1", "P1", passed=False)
     _record(tmp_path, "S1", "P2", passed=True, hint=_hint(tmp_path, "S1", "P1"),
