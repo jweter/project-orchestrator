@@ -101,6 +101,24 @@ def inspect_difficult_slice(
         return _blocked("BACKLOG_STATE_INVALID")
     if len(state["items"]) > MAX_SCAN:
         return _blocked("BACKLOG_STATE_UNBOUNDED")
+    # Never feed malformed local-state rows to backlog.is_done/exclusion:
+    # those helpers assume a canonical engine-written row structure.
+    for item_id, row in state["items"].items():
+        if (not isinstance(item_id, str) or not isinstance(row, dict)
+                or type(row.get("attempts", 0)) is not int
+                or row.get("attempts", 0) < 0
+                or not isinstance(row.get("outcome", ""), str)):
+            return _blocked("BACKLOG_STATE_INVALID")
+        for field in ("packets", "environment_packets", "test_failed_packets"):
+            values = row.get(field, [])
+            if not isinstance(values, list) or any(not isinstance(p, str) for p in values):
+                return _blocked("BACKLOG_STATE_INVALID")
+        fingerprints = row.get("failed_source_by_packet", {})
+        if not isinstance(fingerprints, dict) or any(
+            not isinstance(k, str) or not isinstance(v, str)
+            for k, v in fingerprints.items()
+        ):
+            return _blocked("BACKLOG_STATE_INVALID")
     done = {item["id"] for item in items if backlog.is_done(item, state)}
     for item in items:
         if item["repository"] != repository:
@@ -143,6 +161,26 @@ def inspect_difficult_slice(
             or not isinstance(packet.get("slice"), dict)
             or packet["slice"].get("id") != item["id"]
         ):
+            continue
+        # The worker packet stores only these execution-relevant fields,
+        # not the entire mutable backlog row. An edited build/direct spec,
+        # scope, or roadmap must not inherit a previous model's failure.
+        original = packet["slice"]
+        snapshot_fields = (
+            "id", "title", "roadmap_ref", "addresses", "why", "consumer",
+            "level", "build", "direct",
+        )
+        if any(original.get(key) != item.get(key) for key in snapshot_fields):
+            continue
+        packet_scope = original.get("build") or original.get("direct")
+        if not isinstance(packet_scope, dict):
+            continue
+        attempted_files = {
+            packet_scope.get("module_path"), packet_scope.get("test_path"),
+        }
+        # Interface files are not individually snapshotted in legacy packets;
+        # refuse unproven extra scope rather than treating it as attempted.
+        if any(path not in attempted_files for path in allowed):
             continue
         attempt = _attempt(lane_root, failed_packet_id)
         if (attempt is None or attempt.get("item_id") != item["id"]
