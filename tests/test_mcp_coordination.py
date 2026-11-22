@@ -199,6 +199,7 @@ def test_mcp_adapter_is_read_only_by_default_and_writes_are_opt_in(database, tmp
     assert set(read_only.tools) == {
         "get_targets", "get_engine_snapshot", "get_development_diagnostics",
         "get_engineering_evidence", "get_offload_proposals",
+        "get_offload_verification_references",
         "get_storage_housekeeping", "list_messages",
     }
     assert read_only.tools["list_messages"]()["status"] == "UNINITIALIZED"

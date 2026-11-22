@@ -199,3 +199,57 @@ def test_bounded_read_only_view_rejects_invalid_limit(case):
     for limit in (0, -1, 31, True, 1.5):
         with pytest.raises(offload.OffloadRejected, match="INVALID_VERIFICATION_PAGE_SIZE"):
             receipts.read_verification_references(db, offer_id=data["offer_id"], limit=limit)
+
+
+def test_mcp_read_only_receipts_are_visible_across_server_recreation(case, monkeypatch):
+    """Existing verified reference is observable without MCP execution/writes."""
+    import sys
+    import types
+
+    from project_orchestrator import iron_god_mcp_server as gateway
+
+    db, data = params(case)
+    recorded = receipts.record_independently_checked_evidence(db, **data)
+    assert recorded["status"] == "EXTERNALLY_CHECKED_EVIDENCE_RECORDED"
+
+    class LocalMCP:
+        def __init__(self, _name):
+            self.tools = {}
+
+        def tool(self):
+            def register(func):
+                self.tools[func.__name__] = func
+                return func
+            return register
+
+    mcp_module = types.ModuleType("mcp")
+    server_module = types.ModuleType("mcp.server")
+    server_module.MCPServer = LocalMCP
+    monkeypatch.setitem(sys.modules, "mcp", mcp_module)
+    monkeypatch.setitem(sys.modules, "mcp.server", server_module)
+
+    for _ in range(2):  # no new session state needed on restart
+        server = gateway.create_server(
+            database=db, repo_root=db.parent, state_root=db.parent,
+            client_label="chatgpt", allow_advisory_writes=False,
+        )
+        assert "post_message" not in server.tools
+        assert "ack_message" not in server.tools
+        assert "stage_fetched_github_candidate" not in server.tools
+        view = server.tools["get_offload_verification_references"](
+            data["offer_id"], limit=1,
+        )
+        assert view["authority"] == "ADVISORY_ONLY"
+        assert view["execution_authorized"] is False
+        assert view["merge_authorized"] is False
+        assert view["learning_promotion_authorized"] is False
+        assert len(view["items"]) == 1
+        assert view["items"][0]["receipt_id"] == recorded["receipt_id"]
+        assert "manifest_path" not in str(view)
+        assert "candidate" not in str(view)
+
+    with sqlite3.connect(db) as connection:
+        count = connection.execute(
+            "SELECT count(*) FROM offload_verification_receipts",
+        ).fetchone()[0]
+    assert count == 1

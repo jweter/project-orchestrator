@@ -13,6 +13,7 @@ from . import mcp_coordination as coord
 from . import iron_god_observability as observability
 from . import iron_god_engineering_evidence as engineering_evidence
 from . import iron_god_offload as offload
+from . import iron_god_offload_receipts as offload_receipts
 from . import iron_god_mcp_housekeeping as housekeeping
 
 
@@ -54,6 +55,13 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
     def get_offload_proposals(limit: int = 12) -> dict:
         """Read untrusted, durable proposed slices; never dispatch or authorize them."""
         return offload.list_offload_proposals(database, limit=limit)
+
+    @server.tool()
+    def get_offload_verification_references(offer_id: str, limit: int = 15) -> dict:
+        """Read immutable evidence references, never live native proof or owner authority."""
+        return offload_receipts.read_verification_references(
+            database, offer_id=offer_id, limit=limit,
+        )
 
     @server.tool()
     def get_storage_housekeeping() -> dict:

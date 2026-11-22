@@ -44,6 +44,7 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
             assert {t.name for t in tools.tools} == {
                 "get_targets", "get_engine_snapshot", "get_development_diagnostics",
                 "get_engineering_evidence", "get_offload_proposals",
+                "get_offload_verification_references",
                 "get_storage_housekeeping", "list_messages",
                 "post_message", "ack_message",
             }
