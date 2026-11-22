@@ -19,7 +19,8 @@ def git(repo: Path, *args: str) -> str:
     return run.stdout.strip()
 
 
-def world(tmp_path: Path, *, claim: bool = True, unexpected_file: bool = False):
+def world(tmp_path: Path, *, claim: bool = True, unexpected_file: bool = False,
+          submodule_change: bool = False):
     repo = tmp_path / "repo"
     repo.mkdir()
     git(repo, "init", "-q")
@@ -30,6 +31,10 @@ def world(tmp_path: Path, *, claim: bool = True, unexpected_file: bool = False):
         "def answer():\n    return 1\n", encoding="utf-8",
     )
     git(repo, "add", "-A")
+    if submodule_change:
+        # A gitlink requires no checked-out submodule directory.
+        git(repo, "update-index", "--add", "--cacheinfo",
+            "160000," + "a" * 40 + ",vendor/hidden")
     git(repo, "commit", "-qm", "base")
     base = git(repo, "rev-parse", "HEAD")
     db = tmp_path / "private" / "coordination.sqlite"
@@ -53,6 +58,9 @@ def world(tmp_path: Path, *, claim: bool = True, unexpected_file: bool = False):
     if unexpected_file:
         (repo / "src" / "injected.py").write_text("unapproved", encoding="utf-8")
     git(repo, "add", "-A")
+    if submodule_change:
+        git(repo, "update-index", "--add", "--cacheinfo",
+            "160000," + "b" * 40 + ",vendor/hidden")
     git(repo, "commit", "-qm", "implement difficult unit")
     candidate = git(repo, "rev-parse", "HEAD")
     ref = f"refs/remotes/origin/offload/chatgpt/{offer['offer_id']}"
@@ -152,3 +160,43 @@ def test_unfetched_remote_ref_has_no_authority(tmp_path):
     git(repo, "update-ref", "-d", ref)
     with pytest.raises(offload.OffloadRejected, match="GIT_EVIDENCE_UNAVAILABLE"):
         stage(tmp_path, data)
+
+
+def test_local_replace_objects_cannot_spoof_exact_parent_lineage(tmp_path):
+    data = world(tmp_path)
+    repo, _, _, base, candidate, ref = data
+    (repo / "src" / "unit.py").write_text(
+        "def answer():\n    return 3\n", encoding="utf-8",
+    )
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "unreviewed second commit")
+    second = git(repo, "rev-parse", "HEAD")
+    git(repo, "update-ref", ref, second)
+    # This local graft is not in GitHub's real immutable second commit.
+    # An adapter that reads Git replacement objects will observe false
+    # one-parent evidence and seal a patch under the wrong commit identity.
+    git(repo, "replace", "--graft", second, base)
+    assert git(repo, "rev-list", "--parents", "-n", "1", second).split() == [
+        second, base,
+    ]
+    assert git(repo, "--no-replace-objects", "rev-list", "--parents", "-n", "1",
+               second).split() == [second, candidate]
+    with pytest.raises(offload.OffloadRejected, match="SINGLE_EXACT_BASE_PARENT_REQUIRED"):
+        stage(tmp_path, data, candidate_head=second)
+    assert not (tmp_path / "stage").exists()
+
+
+def test_local_diff_ignore_submodules_cannot_hide_unauthorized_gitlink(tmp_path):
+    data = world(tmp_path, submodule_change=True)
+    repo, _, _, base, candidate, _ = data
+    git(repo, "config", "diff.ignoreSubmodules", "all")
+    # A user/system gitconfig setting must not reduce the "diff all paths"
+    # security envelope. With the unsafe default this hides vendor/hidden.
+    ordinary = git(repo, "diff", "--name-only", base, candidate)
+    assert "vendor/hidden" not in ordinary
+    rigorous = git(repo, "diff", "--ignore-submodules=none",
+                   "--name-only", base, candidate)
+    assert "vendor/hidden" in rigorous
+    with pytest.raises(offload.OffloadRejected, match="GITHUB_BRANCH_PATH_FENCE_VIOLATION|UNSAFE_INDEX_OBJECT_MODE"):
+        stage(tmp_path, data)
+    assert not (tmp_path / "stage").exists()

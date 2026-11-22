@@ -23,7 +23,9 @@ _HEAD = re.compile(r"^[0-9a-f]{40}$")
 def _git(repo: Path, *args: str) -> bytes:
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo), *args],
+            # refs/replace and GIT_REPLACE_REF_BASE may otherwise rewrite
+            # commit parents/tree contents beneath a trusted remote SHA.
+            ["git", "--no-replace-objects", "-C", str(repo), *args],
             capture_output=True, check=False, timeout=90,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -85,7 +87,7 @@ def stage_fetched_github_candidate(
     # renames, symlinks, submodules and unsafe metadata.
     patch = _git(
         repo, "diff", "--no-ext-diff", "--no-textconv", "--no-renames",
-        observed_base_head, candidate_head, "--",
+        "--ignore-submodules=none", observed_base_head, candidate_head, "--",
     )
     paths = offload.changed_paths(patch)
     if not set(paths).issubset(offer["allowed_paths"]):
