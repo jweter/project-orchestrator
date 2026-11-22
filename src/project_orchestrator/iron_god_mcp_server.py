@@ -12,6 +12,7 @@ from pathlib import Path
 from . import mcp_coordination as coord
 from . import iron_god_observability as observability
 from . import iron_god_engineering_evidence as engineering_evidence
+from . import iron_god_mcp_housekeeping as housekeeping
 
 
 def create_server(*, database: Path, state_root: Path, repo_root: Path,
@@ -47,6 +48,11 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
         return engineering_evidence.engineering_bundle(
             state_root, repository=repository, limit=limit,
         )
+
+    @server.tool()
+    def get_storage_housekeeping() -> dict:
+        """Read bounded Steward/worktree cleanup telemetry; not a deletion command."""
+        return housekeeping.housekeeping_snapshot(state_root)
 
     @server.tool()
     def list_messages(after_seq: int = 0, limit: int = 30) -> dict:
