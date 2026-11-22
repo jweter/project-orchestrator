@@ -113,7 +113,7 @@ Target **practical two-way collaboration** for each supported client, not unrest
 
 ### M2 — Scheduled DoWork delivers real source code
 - [ ] Keep **existing task ID** `6a960254309c81919feb459eacd1b527`, hourly cadence, Chat mode, enabled state and seven-repository product mission. No duplicate scheduled task or changes to Workflow Watch.
-- [ ] Confirm current DoWork instructions support a difficult-slice builder role, but treat prompt configuration as **not** proof of executing that role.
+- [x] Existing hourly DoWork instructions include guarded difficult-slice builder behavior; task ID, hourly schedule and enabled state independently verified on 2026-11-22. **Its most recent observed hourly run produced ZERO new code**, with no validated offer and an owner-control blocker; prompt text does not prove runtime intake or owner authority.
 - [ ] Run a single genuine scheduled-task execution with exact registered offer, authenticated supported transport and a nontrivial source/test diff. Record scheduled run ID, correct slice ref, proposal commit and true hashes.
 - [ ] Laptop independently imports, executes real native required tests/preflight, publishes through existing PR reviewer/merger, records verified outcome and resumes the next eligible product slice. Keep ordinary GitHub development fallback when no offload is offered.
 - [ ] Repeat with intentional crash/duplicate-run and owner-revocation cases before enabling routine auto-offload.
@@ -138,7 +138,8 @@ Target **practical two-way collaboration** for each supported client, not unrest
 
 ### M5 — BLACKICE remote desktop integration and safe cutover
 - [ ] Keep current Remote Desktop Commander connection and Norton 360. Do not alter established Tailscale HTTPS routes 443/8443.
-- [ ] Verify [BLACKICE PR #24](https://github.com/MoonlightClarity/BLACKICE/pull/24) is accepted/released and [account-capability issue #25](https://github.com/MoonlightClarity/BLACKICE/issues/25) resolved or independently tested; confirm actual client supports every necessary operation. A host MCP endpoint cannot override ChatGPT plan entitlements.
+- [x] BLACKICE [upstream PR #24](https://github.com/MoonlightClarity/BLACKICE/pull/24) is **merged** as of verification on 2026-11-22 (source milestone only; installed signed Windows release not proven).
+- [ ] [Account-capability issue #25](https://github.com/MoonlightClarity/BLACKICE/issues/25) remains open with no response at verification; establish a supported real ChatGPT client and all required remote operations before any cutover. A host MCP endpoint cannot override ChatGPT plan entitlements.
 - [ ] Trace installer provenance/signature and the current Windows "Access is denied" case using evidence. Never disable antivirus, bypass Windows protections or deploy a public remote-shell listener.
 - [ ] Install a pinned, rollback-ready candidate in parallel only after compatible-client/security approval; bind authenticated private tailnet/local-only routes with least privilege, scoped capabilities and audited tool calls. Port 10000 remains conditional, not automatic.
 - [ ] Validate full file read/write, bounded command, structured errors, terminal/process completion, transfer, Git/test workflows, security revocation, connection recovery after reboot, owner veto, resource use and actual ChatGPT/scheduled-task client compatibility.
