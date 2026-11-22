@@ -28,6 +28,23 @@ The target is sustained operation below roughly 80 C when temperature telemetry 
 80% used begins YELLOW pressure. 90% begins ORANGE. Absolute free-space thresholds also apply, because a percentage alone can hide dangerous low-free-space conditions. Cleanup is deliberately narrow: only actor-owned `.log`, `.jsonl`, and stale `.tmp` files inside known automation directories may be removed automatically.
 Steward does not automatically purge product workspaces, Git repositories, npm/pip caches, commercial/private evidence, or unrecognized user files. Package-cache cleanup requires repository-specific evidence and authorization because a cache may be part of reproducible or offline verification.
 
+
+## Integrated storage accounting (issue #763)
+
+The product lane's existing `clean_finished_worktrees` idle hook writes
+`iron-god-products/reports/storage-housekeeping.json` in its engine state root
+after each eligible maintenance pass, including passes when cleanup is not due or
+fails. This receipt records disk capacity and Steward's storage-pressure band,
+counts known worktree and recovery-archive entries, and retains only the latest
+24 observations. No recursive scan of user files, deletion, or new background
+worker is introduced. Symlinks and unreadable paths remain explicitly unknown.
+
+`observed_free_delta_bytes` is the free-space change since the previous
+observation. It includes any concurrent disk activity and is **not** proof that
+maintenance reclaimed that number of bytes. The original cleanup result is
+reported separately. Any new destructive retention policy remains subject to
+the owner gates and lossless evidence requirements in issue #763 and PR #762.
+
 ## Daily reboot boundary
 
 The existing 02:00 local reboot remains the reset boundary. Steward does not require elevated Task Scheduler access to protect the machine: LaptopActor performs bounded actor-owned hygiene at most once per 20 hours, so log/temp control continues even when the reboot task cannot be edited.
