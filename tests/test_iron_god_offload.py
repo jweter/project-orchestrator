@@ -319,3 +319,14 @@ def test_real_git_base_tree_symlink_is_rejected_without_worktree_mutation(tmp_pa
     assert b"120000" in git(repo, "ls-tree", base, "--", "src/link").stdout
     with pytest.raises(offload.OffloadRejected, match="BASE_TREE_SYMLINK"):
         offload._reject_special_git_modes(repo, base, ["src/link"])
+
+
+def test_codex_review_standalone_new_mode_executable_is_rejected(case):
+    """Changing mode by a standalone 'new mode' line must fail at parser boundary."""
+    _, _, repo, _, _ = case
+    patch = patch_for(repo)
+    spoofed = patch.replace(
+        b"index ", b"new mode 100755\nindex ", 1,
+    )
+    with pytest.raises(offload.OffloadRejected, match="UNSUPPORTED_DESTRUCTIVE"):
+        offload.changed_paths(spoofed)
