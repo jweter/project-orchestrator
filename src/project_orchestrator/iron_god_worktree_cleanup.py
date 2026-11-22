@@ -118,9 +118,10 @@ def classify(lane_root: Path, worktree: Path) -> dict[str, Any]:
 def _classify_orphan_shell(lane_root: Path, worktree: Path) -> dict[str, Any]:
     """A leftover folder git no longer tracks. Removable only when the lane's own records say its turn is over.
 
-    The engine's ``git worktree remove --force`` already discarded any uncommitted work, and commits live on the turn
-    branch in the lane's clone, so what is left is the part of a checkout that could not be deleted. Anything the
-    lane's records do not clearly close (no record, an active turn or dispatch, an open pull request, a turn held for
+    A direct Git remove or interrupted capable-runner may leave uncommitted bytes here.
+    Classification only identifies finished turns; actual deletion additionally requires a
+    verified, same-packet lossless work archive. Anything the lane's records do not clearly
+    close (no record, an active turn or dispatch, an open pull request, a turn held for
     review) is kept.
     """
     from . import iron_god_capable_builder as capable_builder
