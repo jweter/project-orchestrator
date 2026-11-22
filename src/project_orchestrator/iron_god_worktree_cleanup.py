@@ -26,6 +26,11 @@ C: had reached 35.03 GiB, the allocation gate's limit, because this tool only ra
 lane is the one thing that starts turns, so none can start meanwhile - at most every ``AUTO_INTERVAL_S`` and at most
 ``AUTO_MAX_REMOVALS`` worktrees per run. It also takes the worktree an in-engine capable build left behind once that
 build is no longer running (an owner takeover kills the runner before it can remove its own).
+
+A folder git no longer tracks (``git worktree remove`` leaves files behind on Windows when a path is too long or a
+file is locked, and an interrupted removal leaves the rest) used to be ``UNKNOWN`` and so was never removed: 46 of
+them, about 1.1 GB each, filled C: on 2026-11-21. Such a folder is an ``ORPHAN_SHELL`` once the lane's own records say
+its turn is over; its manifest is archived and it is removed with a long-path delete.
 """
 
 from __future__ import annotations
@@ -46,10 +51,12 @@ KEEP_PUBLICATION_STATES = {"PUBLISH_PENDING", "AWAITING_CI", "AWAITING_OWNER_REV
                            "REPAIRING"}
 MAX_ARCHIVE_BYTES = 2_000_000
 REMOVABLE = {"FAILED_NO_COMMITS", "UNCOMMITTED_CHANGES", "UNPUBLISHED_COMMITS", "MERGED", "PUBLICATION_BLOCKED",
-             "CAPABLE_BUILD_FINISHED"}
+             "CAPABLE_BUILD_FINISHED", "ORPHAN_SHELL"}
 AUTO_INTERVAL_S = 30 * 60
 AUTO_MAX_REMOVALS = 10       # a knowledge-engine-core checkout is ~600 MB: bound the time one lane pass can spend
 AUTO_STAMP = "worktree-cleanup-auto.json"
+SHELL_MIN_FREE_RAM_GIB = 1.0  # deleting a ~1 GB checkout is memory-heavy on Windows; never do it while RAM is short
+MAX_SHELL_EVIDENCE_BYTES = 200_000
 CAPABLE_PREFIX = "capable-"  # iron_god_capable_engine: <worktrees>/capable-<dispatch id>
 
 
@@ -68,6 +75,8 @@ def _json(path: Path, default: Any) -> Any:
 def classify(lane_root: Path, worktree: Path) -> dict[str, Any]:
     """What a worktree holds, from the lane's own records and git; never guesses."""
     pid = worktree.name
+    if not (worktree / ".git").exists():  # git no longer tracks it; asking git would read some enclosing repository
+        return _classify_orphan_shell(lane_root, worktree)
     if pid.startswith(CAPABLE_PREFIX):
         return _classify_capable(lane_root, worktree)
     packet = _json(lane_root / "packets" / f"{pid}.json", {})
@@ -104,6 +113,111 @@ def classify(lane_root: Path, worktree: Path) -> dict[str, Any]:
         kind = "UNKNOWN"
     row["class"] = kind
     return row
+
+
+def _classify_orphan_shell(lane_root: Path, worktree: Path) -> dict[str, Any]:
+    """A leftover folder git no longer tracks. Removable only when the lane's own records say its turn is over.
+
+    The engine's ``git worktree remove --force`` already discarded any uncommitted work, and commits live on the turn
+    branch in the lane's clone, so what is left is the part of a checkout that could not be deleted. Anything the
+    lane's records do not clearly close (no record, an active turn or dispatch, an open pull request, a turn held for
+    review) is kept.
+    """
+    from . import iron_god_capable_builder as capable_builder
+    pid = worktree.name
+    row: dict[str, Any] = {"packet_id": pid, "path": str(worktree), "branch": None, "base_sha": None,
+                           "publication": None, "head_sha": None, "dirty": None, "commits_ahead": None}
+    if pid.startswith(CAPABLE_PREFIX):
+        dispatch = _json(lane_root / "capable-dispatches" / f"{pid[len(CAPABLE_PREFIX):]}.json", {})
+        row["publication"] = dispatch.get("status")
+        if not dispatch.get("status"):
+            row["class"] = "UNKNOWN"
+        elif dispatch["status"] == "DISPATCHED" or capable_builder.runner_alive(dispatch):
+            row["class"] = "ACTIVE"
+        else:
+            row["class"] = "ORPHAN_SHELL"
+        return row
+    handback = _json(lane_root / "handbacks" / f"{pid}.json", {})
+    publication = _json(lane_root / "publications.json", {"items": {}}).get("items", {}).get(pid, {})
+    row["publication"] = publication.get("state")
+    if pid == (_json(lane_root / "active.json", None) or {}).get("packet_id"):
+        row["class"] = "ACTIVE"
+    elif not handback:
+        row["class"] = "UNKNOWN"
+    elif publication.get("state") in KEEP_PUBLICATION_STATES:
+        row["class"] = "PUBLICATION_OPEN"
+    elif handback.get("status") == "REVIEW_REQUIRED":
+        row["class"] = "REVIEW_REQUIRED"
+    else:
+        row["class"] = "ORPHAN_SHELL"
+    return row
+
+
+def _free_ram_gib() -> float | None:
+    """Free physical memory in GiB on Windows; None where it cannot be read (then the guard does not apply)."""
+    if os.name != "nt":
+        return None
+    import ctypes
+
+    class _Status(ctypes.Structure):
+        _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong), ("total", ctypes.c_ulonglong),
+                    ("avail", ctypes.c_ulonglong), ("page_total", ctypes.c_ulonglong),
+                    ("page_avail", ctypes.c_ulonglong), ("virt_total", ctypes.c_ulonglong),
+                    ("virt_avail", ctypes.c_ulonglong), ("ext", ctypes.c_ulonglong)]
+
+    status = _Status()
+    status.length = ctypes.sizeof(_Status)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        return None
+    return status.avail / 2 ** 30
+
+
+def _delete_tree(path: Path) -> None:
+    """Delete a folder tree whatever its path length; on Windows through the extended-length prefix, which
+    ``rmdir`` does not follow into links, so a hardlinked file elsewhere is never touched."""
+    if os.name == "nt":
+        subprocess.run(["cmd", "/c", "rmdir", "/s", "/q", "\\\\?\\" + str(path)], capture_output=True,
+                       check=False)
+    else:
+        import shutil
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def remove_orphan_shell(state_root: Path, row: dict[str, Any]) -> dict[str, Any]:
+    """Archive a leftover folder's manifest (and its preflight evidence), delete it, then prune stale registrations."""
+    shell = Path(row["path"])
+    if (shell / ".git").exists():
+        return {**row, "result": "KEPT_IS_A_GIT_WORKTREE"}
+    free = _free_ram_gib()
+    if free is not None and free < SHELL_MIN_FREE_RAM_GIB:
+        return {**row, "result": "KEPT_LOW_MEMORY", "free_ram_gib": round(free, 2)}
+    try:
+        top = sorted(entry.name for entry in shell.iterdir())
+    except OSError:
+        return {**row, "result": "KEPT_UNREADABLE"}
+    evidence = None
+    evidence_file = shell / "preflight-evidence.json"
+    try:
+        if evidence_file.is_file() and evidence_file.stat().st_size <= MAX_SHELL_EVIDENCE_BYTES:
+            evidence = evidence_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        evidence = None
+    payload = json.dumps({**row, "kind": "ORPHAN_SHELL", "top_level_entries": top,
+                          "preflight_evidence": evidence}, indent=2, sort_keys=True).encode("utf-8")
+    archive = Path(state_root) / "iron-god-products" / "reports" / "worktree-archive" / f"{row['packet_id']}.json"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    archive.write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
+        return {**row, "result": "KEPT_ARCHIVE_VERIFICATION_FAILED"}
+    _delete_tree(shell)
+    if shell.exists():
+        return {**row, "result": "KEPT_REMOVE_FAILED"}
+    products = shell.parent.parent
+    for clone in sorted(products.iterdir()) if products.is_dir() else []:
+        if (clone / ".git").is_dir():
+            _git(clone, "worktree", "prune")
+    return {**row, "result": "REMOVED", "archive": str(archive), "archive_sha256": digest}
 
 
 def _classify_capable(lane_root: Path, worktree: Path) -> dict[str, Any]:
@@ -170,6 +284,8 @@ def plan(state_root: Path) -> list[dict[str, Any]]:
 
 def remove_one(state_root: Path, row: dict[str, Any]) -> dict[str, Any]:
     """Archive, verify, then remove one worktree; any doubt keeps it."""
+    if row.get("class") == "ORPHAN_SHELL":
+        return remove_orphan_shell(state_root, row)
     worktree = Path(row["path"])
     common = _git(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir").stdout.strip()
     if not common:
@@ -235,7 +351,14 @@ def auto_clean(state_root: Path, *, now: float | None = None, interval: float = 
 
 
 def _size_mb(path: Path) -> float:
-    return round(sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) / 1e6, 1)
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.lstat(os.path.join(root, name)).st_size
+            except OSError:
+                pass  # a path past MAX_PATH or a file mid-delete: the size is only a report
+    return round(total / 1e6, 1)
 
 
 def main(argv: list[str] | None = None) -> int:

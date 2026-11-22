@@ -251,3 +251,89 @@ def test_a_capable_worktree_is_kept_while_its_runner_exists_whatever_its_row_say
 
     monkeypatch.setattr(capable, "process_command_line", lambda pid: None)       # the runner is gone
     assert cleanup.auto_clean(state, now=3.0, interval=0)["results"] == {"capable-abc": "REMOVED"} and not tree.exists()
+
+
+def _shell(root, clone, name, *, handback=None, publication=None, evidence=False, deep=False):
+    """A folder git no longer tracks: what is left of a checkout whose removal could not finish."""
+    shell = clone.parent / "worktrees" / name
+    (shell / "src" / "pkg").mkdir(parents=True)
+    (shell / "src" / "pkg" / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    if deep:
+        (shell / "src" / ("d" * 120) / ("e" * 120)).mkdir(parents=True)
+        (shell / "src" / ("d" * 120) / ("e" * 120) / "deep.txt").write_text("deep", encoding="utf-8")
+    if evidence:
+        (shell / "preflight-evidence.json").write_text(json.dumps({"verdict": "GREEN"}), encoding="utf-8")
+    if handback:
+        (root / "handbacks" / f"{name}.json").write_text(json.dumps({"status": handback}), encoding="utf-8")
+    if publication:
+        path = root / "publications.json"
+        items = json.loads(path.read_text(encoding="utf-8"))["items"] if path.exists() else {}
+        items[name] = {"state": publication}
+        path.write_text(json.dumps({"items": items}), encoding="utf-8")
+    return shell
+
+
+def test_a_leftover_folder_git_no_longer_tracks_is_removable_only_when_the_lane_says_its_turn_is_over(
+        tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    for name, kwargs in {"P-DONE": {"handback": "FAIL"}, "P-REVIEW": {"handback": "REVIEW_REQUIRED"},
+                         "P-OPEN": {"handback": "FAIL", "publication": "AWAITING_CI"}, "P-NORECORD": {},
+                         "P-ACTIVE": {"handback": "FAIL"}}.items():
+        _shell(root, clone, name, **kwargs)
+    (root / "active.json").write_text(json.dumps({"packet_id": "P-ACTIVE"}), encoding="utf-8")
+    # No ".git" entry: git must not be asked at all (run inside some enclosing repository it would answer for that).
+    monkeypatch.setattr(cleanup, "_git", lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked git")))
+
+    classes = {row["packet_id"]: row["class"] for row in cleanup.plan(state)}
+
+    assert classes == {"P-DONE": "ORPHAN_SHELL", "P-REVIEW": "REVIEW_REQUIRED", "P-OPEN": "PUBLICATION_OPEN",
+                       "P-NORECORD": "UNKNOWN", "P-ACTIVE": "ACTIVE"}
+    assert {k for k, v in classes.items() if v in cleanup.REMOVABLE} == {"P-DONE"}
+
+
+def test_a_leftover_folder_is_archived_then_removed_even_with_paths_past_the_windows_limit(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL", evidence=True, deep=True)
+    keep = _shell(root, clone, "P-KEEP")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    report = cleanup.auto_clean(state, now=1.0, interval=0)
+
+    assert report["results"] == {"P-DONE": "REMOVED"} and report["kept"] == {"P-KEEP": "UNKNOWN"}
+    assert not shell.exists() and keep.exists()
+    archived = json.loads((root / "reports" / "worktree-archive" / "P-DONE.json").read_text(encoding="utf-8"))
+    assert archived["kind"] == "ORPHAN_SHELL" and archived["top_level_entries"] == ["preflight-evidence.json", "src"]
+    assert json.loads(archived["preflight_evidence"]) == {"verdict": "GREEN"}
+
+
+def test_a_leftover_folder_is_kept_while_memory_is_short_and_removed_once_it_recovers(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 0.4)
+    first = cleanup.auto_clean(state, now=1.0, interval=0)
+    assert first["results"] == {"P-DONE": "KEPT_LOW_MEMORY"} and shell.exists()
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 3.0)
+    second = cleanup.auto_clean(state, now=2.0, interval=0)
+    assert second["results"] == {"P-DONE": "REMOVED"} and not shell.exists()
+
+
+def test_a_capable_builds_leftover_folder_follows_its_dispatch_row_and_runner(tmp_path, monkeypatch):
+    from project_orchestrator import iron_god_capable_builder as capable
+
+    state, root, clone, base = lane(tmp_path)
+    worktrees = clone.parent / "worktrees"
+    (root / "capable-dispatches").mkdir()
+    for ident, status in {"aaa": "DISPATCHED", "bbb": "INTERRUPTED", "ccc": None}.items():
+        (worktrees / f"capable-{ident}" / "src").mkdir(parents=True)
+        if status:
+            (root / "capable-dispatches" / f"{ident}.json").write_text(
+                json.dumps({"status": status, "dispatch_id": ident, "pid": 1}), encoding="utf-8")
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: None)      # no runner exists
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    classes = {row["packet_id"]: row["class"] for row in cleanup.plan(state)}
+    assert classes == {"capable-aaa": "ACTIVE", "capable-bbb": "ORPHAN_SHELL", "capable-ccc": "UNKNOWN"}
+
+    monkeypatch.setattr(capable, "process_command_line",
+                        lambda pid: f"python {capable.RUNNER_SCRIPT} --job bbb.job.json")
+    assert {r["packet_id"]: r["class"] for r in cleanup.plan(state)}["capable-bbb"] == "ACTIVE"
