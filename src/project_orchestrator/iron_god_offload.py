@@ -276,7 +276,9 @@ def seal_candidate(offer: dict[str, Any], patch: bytes, stage_root: Path) -> dic
 def register_candidate(db_path: Path, candidate: dict[str, Any]) -> dict[str, Any]:
     """Persist an immutable receipt, never asserting the code passed tests."""
     oid = candidate["offer_id"]
-    read_offer(db_path, oid)
+    offer = read_offer(db_path, oid)
+    # Never register a self-attested digest without reading the actual bytes.
+    verify_candidate(offer, candidate)
     sha, manifest_sha = candidate["patch_sha256"], candidate["manifest_sha256"]
     if any(not isinstance(x, str) or not re.fullmatch(r"[0-9a-f]{64}", x)
            for x in (sha, manifest_sha)):
@@ -305,6 +307,41 @@ def register_candidate(db_path: Path, candidate: dict[str, Any]) -> dict[str, An
             raise
     return {"offer_id": oid, "patch_sha256": sha, "status": "STAGED_UNVERIFIED",
             "execution_authorized": False}
+
+
+def require_registered_candidate(
+    db_path: Path, offer: dict[str, Any], candidate: dict[str, Any],
+    stage_root: Path,
+) -> None:
+    """Independently tie this artifact to the exact durable SQLite offer/claim.
+
+    This is *necessary but insufficient* for execution; local authenticated
+    owner authority, current worker ownership and native testing follow.
+    """
+    oid = offer["offer_id"]
+    trusted = read_offer(db_path, oid)
+    if trusted != offer:
+        raise OffloadRejected("OFFER_CHANGED_SINCE_RESERVATION")
+    stage = Path(stage_root)
+    manifest = Path(candidate["manifest_path"])
+    if (not stage.is_absolute() or stage.is_symlink()
+            or not manifest.is_absolute() or manifest.is_symlink()
+            or manifest.parent.resolve() != stage.resolve()):
+        raise OffloadRejected("STAGING_ROOT_MISMATCH")
+    with closing(coordination._connect(db_path, read_only=True)) as db:
+        claim = db.execute("SELECT claimer FROM offload_claims WHERE offer_id=?",
+                           (oid,)).fetchone()
+        receipt = db.execute(
+            "SELECT patch_sha256,manifest_sha256,artifact_ref "
+            "FROM offload_candidates WHERE offer_id=?", (oid,)
+        ).fetchone()
+    if claim is None or claim["claimer"] != "chatgpt" or receipt is None:
+        raise OffloadRejected("REGISTERED_CHATGPT_ARTIFACT_REQUIRED")
+    if tuple(receipt[key] for key in (
+            "patch_sha256", "manifest_sha256", "artifact_ref")) != (
+            candidate["patch_sha256"], candidate["manifest_sha256"],
+            candidate["manifest_path"]):
+        raise OffloadRejected("REGISTERED_CANDIDATE_MISMATCH")
 
 
 def verify_candidate(offer: dict[str, Any], candidate: dict[str, Any]) -> bytes:
@@ -348,7 +385,7 @@ def _git(path: Path, *args: str, input_data: bytes | None = None) -> subprocess.
 
 def prepare_isolated_import(
     offer: dict[str, Any], candidate: dict[str, Any], *,
-    clone: Path, destination: Path,
+    db_path: Path, stage_root: Path, clone: Path, destination: Path,
     authority_check: Callable[[], bool] | None = None,
     ownership_check: Callable[[], bool] | None = None,
 ) -> dict[str, Any]:
@@ -358,6 +395,7 @@ def prepare_isolated_import(
     The owner-controlled product lane must invoke its own native preflight and
     normal exact-head publication after inspecting the resulting worktree.
     """
+    require_registered_candidate(db_path, offer, candidate, stage_root)
     patch = verify_candidate(offer, candidate)
     if authority_check is None or ownership_check is None:
         raise OffloadRejected("INDEPENDENT_OWNER_AND_LEASE_GATES_REQUIRED")
