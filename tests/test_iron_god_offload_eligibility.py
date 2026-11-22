@@ -187,3 +187,36 @@ def test_malformed_backlog_ledger_fails_closed_before_helpers(source, tamper):
     state["items"][item["id"]] = tamper
     path.write_text(json.dumps(state), encoding="utf-8")
     assert inspect(source)["reason"] == "BACKLOG_STATE_INVALID"
+
+
+@pytest.mark.parametrize("failure_class", [
+    "TEST_NOT_DISCRIMINATING", "NEEDS_REVALIDATION", "ENVIRONMENT",
+    "COMPLETED_EXTERNALLY", "BLOCKED_CONFLICT", "PASSED", "OTHER",
+])
+def test_nonimplementation_failures_never_count_as_local_capability_failures(source, failure_class):
+    _, lane, _, _ = source
+    # The canonical backlog still says FAIL and its directed attempts are
+    # exhausted, but these records do not prove the model failed at coding.
+    with sqlite3.connect(memory.db_path(lane)) as db:
+        db.execute(
+            "UPDATE attempts SET failure_class=? WHERE packet_id=?",
+            (failure_class, "P-1"),
+        )
+    result = inspect(source)
+    assert result["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"
+    assert result["reason"] == "NO_EXACT_HEAD_CAPABILITY_FAILURE"
+
+
+@pytest.mark.parametrize("failure_class", [
+    "SLICE_TESTS_FAILED", "REPLY_NO_CODE", "STATIC_MYPY",
+])
+def test_recorded_implementation_failures_are_still_eligible(source, failure_class):
+    _, lane, _, _ = source
+    with sqlite3.connect(memory.db_path(lane)) as db:
+        db.execute(
+            "UPDATE attempts SET failure_class=? WHERE packet_id=?",
+            (failure_class, "P-1"),
+        )
+    result = inspect(source)
+    assert result["status"] == "CANDIDATE_UNVERIFIED"
+    assert result["execution_authorized"] is False
