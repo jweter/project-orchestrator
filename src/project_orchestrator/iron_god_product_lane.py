@@ -1375,15 +1375,17 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
     if lane.active() is not None:
         return
     report: dict[str, Any] | None = None
+    cleanup_error: str | None = None
     try:
         report = worktree_cleanup.auto_clean(lane.state_root)
     except Exception as exc:
+        cleanup_error = f"{type(exc).__name__}: {str(exc)[:200]}"
         working_memory.record(lane.state_root, "<portfolio>", "WORKTREE_CLEANUP_FAILED", outcome="SKIPPED",
-                              blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
+                              blocker=cleanup_error)
     # Disk accounting is evidence-only. It runs even if cleanup is not due or fails,
     # and can never grant deletion authority or interrupt product development.
     try:
-        storage_receipt.record_storage_receipt(lane.state_root, report)
+        storage_receipt.record_storage_receipt(lane.state_root, report, cleanup_error=cleanup_error)
     except Exception as exc:
         working_memory.record(lane.state_root, "<portfolio>", "STORAGE_RECEIPT_FAILED", outcome="SKIPPED",
                               blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
