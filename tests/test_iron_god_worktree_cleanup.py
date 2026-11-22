@@ -273,6 +273,19 @@ def _shell(root, clone, name, *, handback=None, publication=None, evidence=False
     return shell
 
 
+def _write_lossless_shell_archive(root, shell):
+    """Simulate a completed standard remove_one archive for orphan retry tests."""
+    archive = root / "reports" / "worktree-archive" / f"{shell.name}.json"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "packet_id": shell.name, "path": str(shell), "head_sha": "a" * 40,
+        "status": "", "diff_against_head": "", "commits": "",
+        "untracked": {}, "unreadable": [],
+    }
+    archive.write_text(json.dumps(payload), encoding="utf-8")
+    return archive
+
+
 def test_a_leftover_folder_git_no_longer_tracks_is_removable_only_when_the_lane_says_its_turn_is_over(
         tmp_path, monkeypatch):
     state, root, clone, base = lane(tmp_path)
@@ -294,6 +307,7 @@ def test_a_leftover_folder_git_no_longer_tracks_is_removable_only_when_the_lane_
 def test_a_leftover_folder_is_archived_then_removed_even_with_paths_past_the_windows_limit(tmp_path, monkeypatch):
     state, root, clone, base = lane(tmp_path)
     shell = _shell(root, clone, "P-DONE", handback="FAIL", evidence=True, deep=True)
+    _write_lossless_shell_archive(root, shell)
     keep = _shell(root, clone, "P-KEEP")
     monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
 
@@ -309,6 +323,7 @@ def test_a_leftover_folder_is_archived_then_removed_even_with_paths_past_the_win
 def test_a_leftover_folder_is_kept_while_memory_is_short_and_removed_once_it_recovers(tmp_path, monkeypatch):
     state, root, clone, base = lane(tmp_path)
     shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    _write_lossless_shell_archive(root, shell)
     monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 0.4)
     first = cleanup.auto_clean(state, now=1.0, interval=0)
     assert first["results"] == {"P-DONE": "KEPT_LOW_MEMORY"} and shell.exists()
@@ -346,7 +361,10 @@ def test_orphan_cleanup_preserves_existing_lossless_archive(tmp_path, monkeypatc
     archives = root / "reports" / "worktree-archive"
     archives.mkdir(parents=True, exist_ok=True)
     original = archives / "P-DONE.json"
-    saved = json.dumps({"diff_against_head": "+important fix", "untracked": {"secret-work.txt": "recover me"}}).encode()
+    saved = json.dumps({"packet_id": "P-DONE", "path": str(shell), "head_sha": "a" * 40,
+                        "status": " M src/a.py", "commits": "", "unreadable": [],
+                        "diff_against_head": "+important fix",
+                        "untracked": {"secret-work.txt": "recover me"}}).encode()
     original.write_bytes(saved)
     monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
 
@@ -366,6 +384,7 @@ def test_orphan_cleanup_keeps_shell_if_preexisting_sidecar_is_corrupted(tmp_path
     """Do not delete the remaining bytes when archived shell evidence fails verification."""
     state, root, clone, base = lane(tmp_path)
     shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    _write_lossless_shell_archive(root, shell)
     monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
     monkeypatch.setattr(cleanup, "_delete_tree", lambda path: None)  # interrupted deletion
 
@@ -376,3 +395,46 @@ def test_orphan_cleanup_keeps_shell_if_preexisting_sidecar_is_corrupted(tmp_path
 
     assert cleanup.remove_orphan_shell(state, row)["result"] == "KEPT_ARCHIVE_VERIFICATION_FAILED"
     assert shell.exists()
+
+
+def test_orphan_without_lossless_archive_keeps_residual_tracked_and_untracked_work(tmp_path, monkeypatch):
+    """P1 follow-up: direct runner removal never archived edits; never delete its shell."""
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    (shell / "src" / "pkg" / "mod.py").write_text("unsaved change", encoding="utf-8")
+    (shell / "new-untracked.bin").write_bytes(b"important bytes")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    result = cleanup.auto_clean(state, now=1.0, interval=0)
+
+    assert result["results"] == {"P-DONE": "KEPT_NO_VERIFIED_LOSSLESS_ARCHIVE"}
+    assert (shell / "src" / "pkg" / "mod.py").read_text() == "unsaved change"
+    assert (shell / "new-untracked.bin").read_bytes() == b"important bytes"
+
+
+def test_orphan_rejects_corrupt_archive_before_deleting(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    archive = _write_lossless_shell_archive(root, shell)
+    archive.write_text("{not JSON", encoding="utf-8")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+    outcome = cleanup.auto_clean(state, now=1.0, interval=0)
+    assert outcome["results"] == {"P-DONE": "KEPT_NO_VERIFIED_LOSSLESS_ARCHIVE"}
+    assert shell.exists()
+
+
+def test_capable_direct_runner_orphan_without_archive_is_not_deleted(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = clone.parent / "worktrees" / "capable-abc"
+    shell.mkdir(parents=True)
+    (shell / "work.txt").write_text("lost work if deleted", encoding="utf-8")
+    (root / "capable-dispatches").mkdir(exist_ok=True)
+    (root / "capable-dispatches" / "abc.json").write_text(
+        json.dumps({"status": "INTERRUPTED", "dispatch_id": "abc", "pid": 123}), encoding="utf-8",
+    )
+    from project_orchestrator import iron_god_capable_builder as capable
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: None)
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+    outcome = cleanup.auto_clean(state, now=1.0, interval=0)
+    assert outcome["results"] == {"capable-abc": "KEPT_NO_VERIFIED_LOSSLESS_ARCHIVE"}
+    assert (shell / "work.txt").read_text() == "lost work if deleted"
