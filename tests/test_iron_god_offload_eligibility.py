@@ -154,3 +154,36 @@ def test_rejected_backlog_duplicate_id_fails_closed(source):
         json.dumps({"items": [item, item]}), encoding="utf-8",
     )
     assert inspect(source)["reason"] == "BACKLOG_REJECTED_ITEMS_PRESENT"
+
+
+def test_rewritten_build_and_interface_cannot_inherit_old_failure(source):
+    release, _, item, _ = source
+    item["interfaces"] = ["src/unrelated.py"]
+    item["build"]["module_path"] = "src/unrelated.py"
+    (release / backlog.BACKLOG_PATH).write_text(
+        json.dumps({"items": [item]}), encoding="utf-8",
+    )
+    assert inspect(source)["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"
+
+
+def test_unrecorded_interface_cannot_be_silently_added_to_failure_scope(source):
+    release, _, item, _ = source
+    item["interfaces"].append("src/extra.py")
+    (release / backlog.BACKLOG_PATH).write_text(
+        json.dumps({"items": [item]}), encoding="utf-8",
+    )
+    assert inspect(source)["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"
+
+
+@pytest.mark.parametrize("tamper", [
+    None, {"attempts": "three", "packets": ["P-1"], "outcome": "FAIL: SLICE_TESTS_FAILED"},
+    {"attempts": -1, "packets": ["P-1"], "outcome": "FAIL: SLICE_TESTS_FAILED"},
+    {"attempts": 3, "packets": "P-1", "outcome": "FAIL: SLICE_TESTS_FAILED"},
+])
+def test_malformed_backlog_ledger_fails_closed_before_helpers(source, tamper):
+    _, lane, item, _ = source
+    path = lane / "backlog-state.json"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    state["items"][item["id"]] = tamper
+    path.write_text(json.dumps(state), encoding="utf-8")
+    assert inspect(source)["reason"] == "BACKLOG_STATE_INVALID"
