@@ -12,6 +12,7 @@ from pathlib import Path
 from . import mcp_coordination as coord
 from . import iron_god_observability as observability
 from . import iron_god_engineering_evidence as engineering_evidence
+from . import iron_god_offload as offload
 from . import iron_god_mcp_housekeeping as housekeeping
 
 
@@ -48,6 +49,11 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
         return engineering_evidence.engineering_bundle(
             state_root, repository=repository, limit=limit,
         )
+
+    @server.tool()
+    def get_offload_proposals(limit: int = 12) -> dict:
+        """Read untrusted, durable proposed slices; never dispatch or authorize them."""
+        return offload.list_offload_proposals(database, limit=limit)
 
     @server.tool()
     def get_storage_housekeeping() -> dict:
