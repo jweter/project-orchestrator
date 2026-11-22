@@ -128,14 +128,16 @@ def test_path_fence_protected_paths_binary_and_rename_are_rejected(case):
 
 def test_authority_and_owner_claim_required_before_git_mutation(case):
     tmp, db, repo, _, offer = case
+    offload.claim_slice(db, offer["offer_id"])
     candidate = offload.seal_candidate(offer, patch_for(repo), tmp / "staging")
+    offload.register_candidate(db, candidate)
     destination = tmp / "isolated"
     with pytest.raises(offload.OffloadRejected, match="INDEPENDENT_OWNER_AND_LEASE"):
         offload.prepare_isolated_import(offer, candidate, clone=repo, destination=destination)
     assert not destination.exists()
     with pytest.raises(offload.OffloadRejected, match="OWNER_OR_WORKER"):
         offload.prepare_isolated_import(
-            offer, candidate, clone=repo, destination=destination,
+            offer, candidate, db_path=db, stage_root=tmp / "staging", clone=repo, destination=destination,
             authority_check=lambda: False, ownership_check=lambda: True,
         )
     assert not destination.exists()
@@ -157,7 +159,7 @@ def test_real_git_canary_import_then_local_targeted_verification(case):
         return True
 
     result = offload.prepare_isolated_import(
-        offer, candidate, clone=repo, destination=tmp / "isolated",
+        offer, candidate, db_path=db, stage_root=tmp / "staging", clone=repo, destination=tmp / "isolated",
         authority_check=owner, ownership_check=ownership,
     )
     assert result["status"] == "PREFLIGHT_UNVERIFIED"
@@ -180,13 +182,15 @@ def test_real_git_canary_import_then_local_targeted_verification(case):
 
 def test_mismatched_base_and_modified_patch_are_refused(case):
     tmp, db, repo, _, offer = case
+    offload.claim_slice(db, offer["offer_id"])
     patch = patch_for(repo)
     candidate = offload.seal_candidate(offer, patch, tmp / "staging")
+    offload.register_candidate(db, candidate)
     path = tmp / "staging" / (offer["offer_id"] + "-" + candidate["patch_sha256"] + ".patch")
     path.write_bytes(patch + b"\n# modified")
     with pytest.raises(offload.OffloadRejected, match="PATCH_HASH_MISMATCH"):
         offload.prepare_isolated_import(
-            offer, candidate, clone=repo, destination=tmp / "isolated",
+            offer, candidate, db_path=db, stage_root=tmp / "staging", clone=repo, destination=tmp / "isolated",
             authority_check=lambda: True, ownership_check=lambda: True,
         )
     assert not (tmp / "isolated").exists()
@@ -203,3 +207,38 @@ def test_offer_malformed_identity_fails_before_database_creation(tmp_path):
                 failure_ref="evidence:canary-1",
             )
     assert not db.exists()
+
+
+def test_unregistered_artifact_and_untrusted_stage_are_refused(case):
+    tmp, db, repo, base, offer = case
+    candidate = offload.seal_candidate(offer, patch_for(repo), tmp / "staging")
+    with pytest.raises(offload.OffloadRejected, match="REGISTERED_CHATGPT_ARTIFACT_REQUIRED"):
+        offload.prepare_isolated_import(
+            offer, candidate, db_path=db, stage_root=tmp / "staging",
+            clone=repo, destination=tmp / "isolated",
+            authority_check=lambda: True, ownership_check=lambda: True,
+        )
+    assert not (tmp / "isolated").exists()
+
+    offload.claim_slice(db, offer["offer_id"])
+    offload.register_candidate(db, candidate)
+    with pytest.raises(offload.OffloadRejected, match="STAGING_ROOT_MISMATCH"):
+        offload.prepare_isolated_import(
+            offer, candidate, db_path=db, stage_root=tmp / "elsewhere",
+            clone=repo, destination=tmp / "isolated",
+            authority_check=lambda: True, ownership_check=lambda: True,
+        )
+    assert not (tmp / "isolated").exists()
+
+
+def test_mcp_offload_proposal_view_exposes_no_authority_or_code(case):
+    _, db, _, _, offer = case
+    first = offload.list_offload_proposals(db, limit=1)
+    assert first["execution_authorized"] is False
+    assert first["items"][0]["status"] == "PROPOSED"
+    offload.claim_slice(db, offer["offer_id"])
+    second = offload.list_offload_proposals(db)
+    assert second["items"][0]["status"] == "RESERVED"
+    assert "allowed_paths" not in second["items"][0]
+    with pytest.raises(offload.OffloadRejected, match="INVALID_OFFLOAD_PAGE_SIZE"):
+        offload.list_offload_proposals(db, limit=500)
