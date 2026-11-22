@@ -133,7 +133,10 @@ def test_authority_and_owner_claim_required_before_git_mutation(case):
     offload.register_candidate(db, candidate)
     destination = tmp / "isolated"
     with pytest.raises(offload.OffloadRejected, match="INDEPENDENT_OWNER_AND_LEASE"):
-        offload.prepare_isolated_import(offer, candidate, clone=repo, destination=destination)
+        offload.prepare_isolated_import(
+            offer, candidate, db_path=db, stage_root=tmp / "staging",
+            clone=repo, destination=destination,
+        )
     assert not destination.exists()
     with pytest.raises(offload.OffloadRejected, match="OWNER_OR_WORKER"):
         offload.prepare_isolated_import(
