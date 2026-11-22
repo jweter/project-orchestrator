@@ -219,8 +219,10 @@ def changed_paths(patch: bytes) -> list[str]:
             raise OffloadRejected("UNSUPPORTED_DESTRUCTIVE_OR_BINARY_PATCH")
         elif line.startswith("index "):
             parts = line.split()
-            if (len(parts) not in (2, 3)
-                    or re.fullmatch(r"[0-9a-f]{7,64}\\.\\.[0-9a-f]{7,64}", parts[1]) is None
+            object_pair = parts[1].split("..") if len(parts) > 1 else []
+            if (len(parts) not in (2, 3) or len(object_pair) != 2
+                    or any(re.fullmatch(r"[0-9a-f]{7,64}", item) is None
+                           for item in object_pair)
                     or (len(parts) == 3 and parts[2] != "100644")):
                 raise OffloadRejected("UNSAFE_INDEX_OBJECT_MODE")
         elif line == "+++ /dev/null":
