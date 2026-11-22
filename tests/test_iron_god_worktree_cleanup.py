@@ -301,7 +301,7 @@ def test_a_leftover_folder_is_archived_then_removed_even_with_paths_past_the_win
 
     assert report["results"] == {"P-DONE": "REMOVED"} and report["kept"] == {"P-KEEP": "UNKNOWN"}
     assert not shell.exists() and keep.exists()
-    archived = json.loads((root / "reports" / "worktree-archive" / "P-DONE.json").read_text(encoding="utf-8"))
+    archived = json.loads(next((root / "reports" / "worktree-archive").glob("P-DONE.orphan-shell-*.json")).read_text(encoding="utf-8"))
     assert archived["kind"] == "ORPHAN_SHELL" and archived["top_level_entries"] == ["preflight-evidence.json", "src"]
     assert json.loads(archived["preflight_evidence"]) == {"verdict": "GREEN"}
 
