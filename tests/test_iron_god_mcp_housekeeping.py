@@ -97,3 +97,19 @@ def test_maintenance_failure_does_not_look_like_a_success(tmp_path):
     assert result["maintenance"]["status"] == "FAILED"
     assert "private filesystem exception" not in json.dumps(result)
     assert result["maintenance"]["reported_removed"] is None
+
+
+def test_unhashable_enum_fields_cannot_break_mailbox_status(tmp_path):
+    now = datetime.now(UTC)
+    for invalid in ([], {}, ["ORANGE"], {"name": "ORANGE"}):
+        payload = _valid(now)
+        payload["disk"]["band"] = invalid
+        payload["counts"]["product_worktrees"]["status"] = invalid
+        payload["last_cleanup"]["status"] = invalid
+        _receipt(tmp_path, payload)
+        result = view.housekeeping_snapshot(tmp_path, now=now)
+        assert result["status"] == "OK"
+        assert result["disk"]["band"] == "UNKNOWN"
+        assert result["counts"]["product_worktrees"]["status"] == "UNVERIFIED"
+        assert result["maintenance"]["status"] == "UNVERIFIED"
+        assert result["can_execute"] is False
