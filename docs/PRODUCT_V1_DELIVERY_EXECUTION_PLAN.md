@@ -130,6 +130,18 @@ record remains INCOMPLETE and names the next product blocker. No fabricated perc
 - Stop when the specified version 1.0 target is proven or an explicit owner decision
   is needed; do not expand the 1.0 scope silently.
 
+## Delivery accelerator: qualified multi-agent code offload and remote-cost cutover
+
+This product-first D0–D5 sequence remains authoritative. The concrete engineering cross-client program is specified in [Iron God integrated delivery plan](IRON_GOD_INTEGRATED_DELIVERY_PLAN.md) (milestones M0–M6) and tracked in [Iron Continuum issue #747](https://github.com/jweter/project-orchestrator/issues/747). It is a means to advance real product journeys, not a new v1.0 product or an alternative release authority.
+
+- **DoWork existing hourly Chat task:** take a single verified unowned source-code slice when the canonical local builder cannot complete it; write executable code plus regression tests; publish an exact-base GitHub proposal with SHA-256-verified patch/manifest. Without a valid offer, continue ordinary authorized seven-repository development. Preserve task identity, Chat mode, hourly cadence and enabled state; do not create a new task.
+- **Resident Azathoth:** independently authenticate owner consent, live file/worktree/worker leases, resource budgets and exact source commit before isolated artifact import. Run real repository-native tests, full preflight, GitHub exact-head PR CI/review, safe merger, controlled install and Product Reality. No MCP message, authored test report or GitHub issue confers permission.
+- **SQLite/MCP:** share status, work offers, evidence, narrow advisory claim/ack/receipt writes and independently verified learning across authenticated principals. Read/write collaboration does not mean arbitrary SQL, shell, controller, lease or release writes. Prove the hosted ChatGPT, actual scheduled task, local Codex host and future Claude separately; use GitHub as the no-new-subscription artifact transport when custom hosted MCP writes are unsupported.
+- **Claude later:** introduce a second distinct, non-overlapping qualified implementation worker only after the scheduled DoWork end-to-end canary, cost/entitlement review and separate authentication; no automatic new timer or token spending.
+- **BLACKICE last:** prove signed/provenance-verified safe Windows installation, actual compatible ChatGPT remote tool permissions, auth, bound ports, file/command parity, crash/reboot recovery, owner veto and rollback in parallel. Keep Norton, existing Tailscale 443/8443 and current Remote Desktop Commander until proven; aim to eliminate about $20/month in additional remote-access subscription fees without asserting a successful cutover prematurely.
+
+The full scheduler-to-native-product demonstration remains D2–D5. Offload adapter unit tests or a documentation PR do not satisfy it; keep product capability, independent user-journey acceptance and verified end-to-end throughput as the completion criterion.
+
 ## Operating policy and review cadence
 
 At every turn select the **highest-value dependency-ready, qualified product slice**

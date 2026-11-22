@@ -1,6 +1,6 @@
 # ChatGPT-to-Iron God difficult-slice offload — guarded pilot
 
-**Status:** source implementation and isolated local Git canary only. **NOT ENABLED in the hourly task, not installed in the resident engine, not a merge or owner-control authority.** Follow [Iron Continuum #747](https://github.com/jweter/project-orchestrator/issues/747), existing [microtask #710](https://github.com/jweter/project-orchestrator/issues/710), and [MCP contract](IRON_GOD_MCP_COORDINATION.md).
+**Status (2026-11-22):** guarded patch/import source is merged in GitHub via PR #766, but **the resident engine has not been verified as updated and no real scheduled offload handoff has passed**. The existing hourly DoWork prompt now contains guarded stronger-builder guidance; configuring instructions does **not** enable a production importer, establish a worker lease, or constitute the canary. This document remains a pilot protocol, not merge or owner-control authority. Follow [Iron Continuum #747](https://github.com/jweter/project-orchestrator/issues/747), existing [microtask #710](https://github.com/jweter/project-orchestrator/issues/710), and [MCP contract](IRON_GOD_MCP_COORDINATION.md).
 
 ## Why and what is reused
 
@@ -53,7 +53,7 @@ Take the Wheel authorization. Nothing in this test enables an hourly offload.
 
 ## Safety and operating limits
 
-- **No routine rollout now:** The live hourly DoWork schedule, Chat mode, owner controls, runtime grants, Claude billing and pinned release remain unchanged. The current laptop mailbox is read-only for ChatGPT, so it cannot silently write offload proposals/reservations.
+- **No routine rollout now:** The existing hourly DoWork task's **instructions** have been extended for safe offload when real offers exist; schedule, Chat mode, enabled state, owner controls, runtime grants, Claude billing and pinned release remain unchanged. Its last observed hourly execution on 2026-11-22 produced zero code and had no validated mailbox offload offer. The laptop mailbox remains read-only to hosted ChatGPT; task text cannot silently write offload proposals/reservations.
 - **No automatic PR:** This component stops before commit/push/PR because it does not authenticate GitHub review/CI or native acceptance. Use existing product-lane facilities after independent local validation.
 - **No duplicate work:** Before any reservation/real import, the caller must reconcile current GitHub branch/PR/file claims, exact owner session, active worker leases, source head, and actual failure evidence. Since the local advisory label is not an authenticated security principal, an offload reservation alone cannot establish exclusive execution ownership.
 - **No reset/cleanup:** An import that fails after creating an isolated worktree preserves it for controlled recovery; neither code nor test ever resets the user's current checkout, cleans active worktrees, changes system directories or deletes evidence.
@@ -68,6 +68,6 @@ To enable production offload:
 2. In a separate guarded PR, wire **real** eligible stalled slices from the existing canonical backlog/failure history into the advisory offer producer. The mailbox does not originate tasks. Add an authenticated claimant adapter and exact-owner/lease callbacks; prove no duplicate work or unauthorized owner transition.
 3. Build a protected staging transport reachable in the **scheduled ChatGPT execution environment** and the laptop, with bounded content and independent digest checks. Do not assume the scheduled job has the same connector availability as the current interactive conversation.
 4. Run a controlled end-to-end canary: owner-approved slice -> ChatGPT actual code + tests -> immutable artifact -> Azathoth import -> real native preflight -> existing GitHub PR -> exact-head CI/review -> authorized merge -> Product Reality -> evidence-based learning. Test power loss/replay halfway through without duplicate PRs.
-5. **Only after this real canary succeeds**, modify the prompt of the *existing* DoWork task to use this path; preserve its task ID, hourly cadence, enabled status and Chat mode. Do not create another automation.
+5. The existing DoWork prompt has already been extended with **fail-closed, advisory-only builder instructions** while preserving task ID, hourly cadence, enabled status and Chat mode. **Only after the real scheduled canary succeeds** may the owner-controlled resident pipeline enable routine offer intake/import. Do not create another automation or treat changed prompt text as evidence of execution.
 
 **Definition of current PR:** a usable guarded transport/import primitive with focused isolated tests, *not* completed S1–S6 Iron Continuum or working unattended cloud-to-laptop offload.
