@@ -98,6 +98,42 @@ def test_live_sha_drift_and_active_worker_do_not_yield_candidate(source):
     assert inspect(source, observed_remote_head="not-a-sha")["reason"] == "EXACT_LIVE_GIT_HEAD_REQUIRED"
 
 
+@pytest.mark.parametrize("in_flight", sorted(backlog.IN_FLIGHT))
+def test_canonical_same_agent_file_reservation_blocks_offload(source, in_flight):
+    release, lane, item, _ = source
+    other = json.loads(json.dumps(item))
+    other["id"] = "VS-ACTIVE-2"
+    other["build"]["module_path"] = "src/second.py"
+    other["build"]["test_path"] = "tests/test_second.py"
+    # Different build paths, but an existing interface reserves the exact
+    # candidate module. The caller falsely reports no active packet.
+    other["interfaces"] = ["src/unit.py"]
+    assert backlog.item_problems(other) == []
+    (release / backlog.BACKLOG_PATH).write_text(
+        json.dumps({"items": [item, other]}), encoding="utf-8",
+    )
+    state_path = lane / "backlog-state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["items"][other["id"]] = {
+        "outcome": in_flight, "packets": ["P-2"], "attempts": 1,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    reservations = backlog.ownership([item, other], state, repository=REPO)
+    assert any(entry["id"] == other["id"] and entry["reservation"]
+               for entry in reservations)
+    result = inspect(source, active_packet_id=None, open_pr_paths=[])
+    assert result["status"] == "NO_VERIFIED_OFFLOAD_CANDIDATE"
+    assert result["execution_authorized"] is False
+
+    # A reservation of genuinely unrelated paths must not suppress a
+    # documented failure on different source/test files.
+    other["interfaces"] = ["src/second.py"]
+    (release / backlog.BACKLOG_PATH).write_text(
+        json.dumps({"items": [item, other]}), encoding="utf-8",
+    )
+    assert inspect(source)["status"] == "CANDIDATE_UNVERIFIED"
+
+
 def test_corrupted_memory_cannot_mint_candidate(source):
     _, lane, _, _ = source
     with sqlite3.connect(memory.db_path(lane)) as db:

@@ -130,6 +130,15 @@ def inspect_difficult_slice(
         ):
             return _blocked("BACKLOG_STATE_INVALID")
     done = {item["id"] for item in items if backlog.is_done(item, state)}
+    # Canonical in-flight rows reserve files even when the other item is
+    # assigned to Iron God. backlog.exclusion() detects different-developer
+    # conflicts, but not concurrent reservations from the same agent.
+    in_flight_paths = {
+        other["id"]: backlog.edit_files(other)
+        for other in items
+        if other["repository"] == repository
+        and state["items"].get(other["id"], {}).get("outcome") in backlog.IN_FLIGHT
+    }
     for item in items:
         if item["repository"] != repository:
             continue
@@ -154,6 +163,12 @@ def inspect_difficult_slice(
         try:
             allowed = [offload._allowed_path(path) for path in allowed]
         except offload.OffloadRejected:
+            continue
+        # Caller-supplied active_packet_id and GitHub occupancy can be stale.
+        # Consult every other canonical in-flight reservation before offering
+        # any overlapping files, including reservations owned by this agent.
+        if any(set(allowed).intersection(paths) for owner, paths in in_flight_paths.items()
+               if owner != item["id"]):
             continue
         if set(allowed).intersection(open_pr_paths):
             continue
