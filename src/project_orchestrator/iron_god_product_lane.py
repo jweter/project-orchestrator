@@ -66,6 +66,7 @@ from . import iron_god_roadmap_refill as roadmap_refill
 from . import iron_god_temp as engine_temp
 from . import iron_god_working_memory as working_memory
 from . import iron_god_worktree_cleanup as worktree_cleanup
+from . import iron_god_storage_receipt as storage_receipt
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
 from .iron_god_calibration import capability_gate, load_profile, load_profiles, remove_tree
 from .iron_god_local_model import available_gib, default_ollama_model, recent_pressure
@@ -1373,12 +1374,19 @@ def clean_finished_worktrees(lane: ProductLane) -> None:
     """
     if lane.active() is not None:
         return
+    report: dict[str, Any] | None = None
     try:
         report = worktree_cleanup.auto_clean(lane.state_root)
     except Exception as exc:
         working_memory.record(lane.state_root, "<portfolio>", "WORKTREE_CLEANUP_FAILED", outcome="SKIPPED",
                               blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
-        return
+    # Disk accounting is evidence-only. It runs even if cleanup is not due or fails,
+    # and can never grant deletion authority or interrupt product development.
+    try:
+        storage_receipt.record_storage_receipt(lane.state_root, report)
+    except Exception as exc:
+        working_memory.record(lane.state_root, "<portfolio>", "STORAGE_RECEIPT_FAILED", outcome="SKIPPED",
+                              blocker=f"{type(exc).__name__}: {str(exc)[:200]}")
     if report and (report["removed"] or report["left_for_next_run"]):
         roadmap_refill.log_event(lane.root, "WORKTREES_CLEANED", "<portfolio>", "", {
             key: report[key] for key in ("worktrees", "eligible", "removed", "left_for_next_run")})
