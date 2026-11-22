@@ -210,7 +210,9 @@ def changed_paths(patch: bytes) -> list[str]:
     if not isinstance(patch, bytes) or not 1 <= len(patch) <= MAX_PATCH_BYTES or b"\x00" in patch:
         raise OffloadRejected("PATCH_SIZE_OR_ENCODING_REFUSED")
     try:
-        # Git patch records are separated by LF only; splitlines() also\n        # breaks on valid source form-feeds, corrupting the hunk counts.\n        lines = patch.decode("utf-8").split("\\n")
+        # Git patch records are separated by LF only; splitlines() also
+        # breaks on valid source form-feeds, corrupting the hunk counts.
+        lines = patch.decode("utf-8").split("\n")
     except UnicodeError as exc:
         raise OffloadRejected("PATCH_SIZE_OR_ENCODING_REFUSED") from exc
     paths: list[str] = []
