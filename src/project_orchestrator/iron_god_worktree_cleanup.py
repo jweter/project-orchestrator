@@ -204,11 +204,26 @@ def remove_orphan_shell(state_root: Path, row: dict[str, Any]) -> dict[str, Any]
         evidence = None
     payload = json.dumps({**row, "kind": "ORPHAN_SHELL", "top_level_entries": top,
                           "preflight_evidence": evidence}, indent=2, sort_keys=True).encode("utf-8")
-    archive = Path(state_root) / "iron-god-products" / "reports" / "worktree-archive" / f"{row['packet_id']}.json"
-    archive.parent.mkdir(parents=True, exist_ok=True)
-    archive.write_bytes(payload)
+    # The original <packet>.json holds the complete tracked diff and untracked file data.
+    # Git removal may fail after creating it. Never overwrite that recovery evidence
+    # when a subsequent pass encounters only the shell left by the interrupted removal.
+    archive_dir = Path(state_root) / "iron-god-products" / "reports" / "worktree-archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256(payload).hexdigest()
-    if hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
+    archive = archive_dir / f"{row['packet_id']}.orphan-shell-{digest[:16]}.json"
+    try:
+        # Exclusive creation preserves both the original archive and earlier shell
+        # snapshots. A retry with identical evidence reuses the existing sidecar.
+        with archive.open("xb") as out:
+            out.write(payload)
+    except FileExistsError:
+        pass
+    except OSError:
+        return {**row, "result": "KEPT_ARCHIVE_WRITE_FAILED"}
+    try:
+        if hashlib.sha256(archive.read_bytes()).hexdigest() != digest:
+            return {**row, "result": "KEPT_ARCHIVE_VERIFICATION_FAILED"}
+    except OSError:
         return {**row, "result": "KEPT_ARCHIVE_VERIFICATION_FAILED"}
     _delete_tree(shell)
     if shell.exists():
