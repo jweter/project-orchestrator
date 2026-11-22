@@ -217,6 +217,14 @@ def changed_paths(patch: bytes) -> list[str]:
         elif line.startswith(_BAD_DIFF_LINES) or (line.startswith("new file mode ")
                                                    and line != "new file mode 100644"):
             raise OffloadRejected("UNSUPPORTED_DESTRUCTIVE_OR_BINARY_PATCH")
+        elif line.startswith("index "):
+            parts = line.split()
+            if (len(parts) not in (2, 3)
+                    or re.fullmatch(r"[0-9a-f]{7,64}\\.\\.[0-9a-f]{7,64}", parts[1]) is None
+                    or (len(parts) == 3 and parts[2] != "100644")):
+                raise OffloadRejected("UNSAFE_INDEX_OBJECT_MODE")
+        elif line == "+++ /dev/null":
+            raise OffloadRejected("DELETION_PATCH_FORBIDDEN")
         elif line.startswith("--- ") and line != "--- /dev/null":
             if not line.startswith("--- a/") or _allowed_path(line[6:]) not in paths:
                 raise OffloadRejected("UNSAFE_PATCH_HEADER")
@@ -388,6 +396,24 @@ def _git(path: Path, *args: str, input_data: bytes | None = None) -> subprocess.
                           capture_output=True, check=False, timeout=90)
 
 
+def _reject_special_git_modes(clone: Path, base_sha: str, paths: list[str]) -> None:
+    """Check real base-tree path modes, not only untrusted diff header claims."""
+    checked: set[str] = set()
+    for rel in paths:
+        parts = _allowed_path(rel).split("/")
+        for index in range(1, len(parts) + 1):
+            prefix = "/".join(parts[:index])
+            if prefix in checked:
+                continue
+            checked.add(prefix)
+            mode = _git(clone, "ls-tree", base_sha, "--", prefix)
+            if mode.returncode:
+                raise OffloadRejected("BASE_TREE_PATH_MODE_UNAVAILABLE")
+            for line in mode.stdout.splitlines():
+                if line.split(None, 1)[0] in (b"120000", b"160000"):
+                    raise OffloadRejected("BASE_TREE_SYMLINK_OR_SUBMODULE_REFUSED")
+
+
 def prepare_isolated_import(
     offer: dict[str, Any], candidate: dict[str, Any], *,
     db_path: Path, stage_root: Path, clone: Path, destination: Path,
@@ -414,6 +440,7 @@ def prepare_isolated_import(
     base = _git(repo, "cat-file", "-t", base_sha)
     if base.returncode or base.stdout.strip() != b"commit":
         raise OffloadRejected("BASE_COMMIT_NOT_PRESENT")
+    _reject_special_git_modes(repo, base_sha, changed_paths(patch))
     if authority_check() is not True or ownership_check() is not True:
         raise OffloadRejected("OWNER_OR_WORKER_OWNERSHIP_DENIED")
     add = _git(repo, "worktree", "add", "--detach", "--", str(tree), base_sha)
