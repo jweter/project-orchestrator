@@ -102,7 +102,7 @@ def inspect_difficult_slice(
     items, rejected = backlog.load_backlog(release_repo)
     if rejected:
         return _blocked("BACKLOG_REJECTED_ITEMS_PRESENT")
-    if not 0 < len(items) <= MAX_SCAN:
+    if len(items) > MAX_SCAN:
         return _blocked("BACKLOG_UNAVAILABLE_OR_UNBOUNDED")
     try:
         state = backlog.load_state(lane_root)
@@ -130,11 +130,9 @@ def inspect_difficult_slice(
             for k, v in fingerprints.items()
         ):
             return _blocked("BACKLOG_STATE_INVALID")
-    done = {item["id"] for item in items if backlog.is_done(item, state)}
-    # The resident product lane considers both release backlog and admitted
-    # runtime roadmap items. A static-only read misses the latter's canonical
-    # in-flight reservations. Do not select new candidates from runtime items;
-    # only include them to veto occupied paths.
+    # The resident product lane uses both release backlog and runtime-admitted
+    # roadmap items. Include both in ownership and candidate evaluation, but
+    # still require the identical exact-head packet and SQLite failure proof.
     runtime_path = roadmap_refill.store_path(lane_root)
     if runtime_path.is_symlink():
         return _blocked("RUNTIME_BACKLOG_STORE_INVALID")
@@ -146,18 +144,29 @@ def inspect_difficult_slice(
         if not isinstance(runtime_data, dict) or not isinstance(runtime_data.get("items"), list):
             return _blocked("RUNTIME_BACKLOG_STORE_INVALID")
     runtime_items = roadmap_refill.admitted_items(lane_root, items)
-    if len(items) + len(runtime_items) > MAX_SCAN:
+    all_items = [*items, *runtime_items]
+    if not 0 < len(all_items) <= MAX_SCAN:
         return _blocked("BACKLOG_UNAVAILABLE_OR_UNBOUNDED")
+    done = {item["id"] for item in all_items if backlog.is_done(item, state)}
+    runtime_ids = {item["id"] for item in runtime_items}
+    # A canonical in-flight row without a currently known item has unknown
+    # file ownership. It cannot safely be treated as free merely because the
+    # static or admitted roadmap view has moved since it was dispatched.
+    unknown_in_flight = [key for key, row in state["items"].items()
+                         if key not in {item["id"] for item in all_items}
+                         and row.get("outcome") in backlog.IN_FLIGHT]
+    if unknown_in_flight:
+        return _blocked("UNKNOWN_CANONICAL_IN_FLIGHT_OWNER")
     # Canonical in-flight rows reserve files even when the other item is
     # assigned to Iron God. backlog.exclusion() detects different-developer
     # conflicts, but not concurrent reservations from the same agent.
     in_flight_paths = {
         other["id"]: backlog.edit_files(other)
-        for other in [*items, *runtime_items]
+        for other in all_items
         if other["repository"] == repository
         and state["items"].get(other["id"], {}).get("outcome") in backlog.IN_FLIGHT
     }
-    for item in items:
+    for item in all_items:
         if item["repository"] != repository:
             continue
         if item["status"] != "approved" or item.get("assignee") != backlog.AGENT_ID:
@@ -171,7 +180,7 @@ def inspect_difficult_slice(
         if not failed_packet_id or not offload._TOKEN.fullmatch(failed_packet_id):
             continue
         excluded = backlog.exclusion(
-            item, state, items=items, done=done, max_level=measured_local_level,
+            item, state, items=all_items, done=done, max_level=measured_local_level,
         )
         if excluded is None or excluded[0] not in _CAPABILITY_BLOCKERS:
             continue
@@ -215,6 +224,15 @@ def inspect_difficult_slice(
         )
         if any(original.get(key) != item.get(key) for key in snapshot_fields):
             continue
+        # Runtime-admitted work carries extra provenance. Do not inherit a
+        # failure from a stale packet whose declared admission changed.
+        if item["id"] in runtime_ids and (
+            original.get("origin") != roadmap_refill.ORIGIN
+            or original.get("authorization") != item.get("authorization")
+            or original.get("status") != item.get("status")
+            or original.get("assignee") != item.get("assignee")
+        ):
+            continue
         packet_scope = original.get("build") or original.get("direct")
         if not isinstance(packet_scope, dict):
             continue
@@ -242,7 +260,9 @@ def inspect_difficult_slice(
         return {
             "status": "CANDIDATE_UNVERIFIED",
             "candidate": identity,
-            "source": "APPROVED_BACKLOG_AND_EXISTING_FAILED_PACKET_SQLITE",
+            "source": ("RUNTIME_ADMITTED_ROADMAP_AND_FAILED_PACKET_SQLITE"
+                       if item["id"] in runtime_ids else
+                       "APPROVED_BACKLOG_AND_EXISTING_FAILED_PACKET_SQLITE"),
             "reason": excluded[0],
             "authority": "ADVISORY_ONLY",
             "execution_authorized": False,
