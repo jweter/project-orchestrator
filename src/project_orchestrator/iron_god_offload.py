@@ -214,7 +214,8 @@ def changed_paths(patch: bytes) -> list[str]:
             if match is None or match.group(1) != match.group(2):
                 raise OffloadRejected("UNSAFE_PATCH_HEADER")
             paths.append(_allowed_path(match.group(1)))
-        elif line.startswith(_BAD_DIFF_LINES):
+        elif line.startswith(_BAD_DIFF_LINES) or (line.startswith("new file mode ")
+                                                   and line != "new file mode 100644"):
             raise OffloadRejected("UNSUPPORTED_DESTRUCTIVE_OR_BINARY_PATCH")
         elif line.startswith("--- ") and line != "--- /dev/null":
             if not line.startswith("--- a/") or _allowed_path(line[6:]) not in paths:
@@ -349,6 +350,8 @@ def verify_candidate(offer: dict[str, Any], candidate: dict[str, Any]) -> bytes:
     manifest_path = Path(candidate["manifest_path"])
     if not manifest_path.is_absolute() or manifest_path.is_symlink():
         raise OffloadRejected("UNSAFE_MANIFEST_PATH")
+    if not manifest_path.is_file() or manifest_path.stat().st_size > 64_000:
+        raise OffloadRejected("MANIFEST_SIZE_OR_TYPE_REFUSED")
     data = manifest_path.read_bytes()
     if hashlib.sha256(data).hexdigest() != candidate["manifest_sha256"]:
         raise OffloadRejected("MANIFEST_HASH_MISMATCH")
@@ -369,6 +372,8 @@ def verify_candidate(offer: dict[str, Any], candidate: dict[str, Any]) -> bytes:
     patch_file = manifest_path.parent / name
     if patch_file.is_symlink() or not patch_file.is_file():
         raise OffloadRejected("PATCH_MISSING_OR_LINKED")
+    if patch_file.stat().st_size > MAX_PATCH_BYTES:
+        raise OffloadRejected("PATCH_SIZE_OR_ENCODING_REFUSED")
     patch = patch_file.read_bytes()
     if hashlib.sha256(patch).hexdigest() != candidate["patch_sha256"]:
         raise OffloadRejected("PATCH_HASH_MISMATCH")
@@ -422,6 +427,8 @@ def prepare_isolated_import(
     checked = _git(tree, "apply", "--check", "--index", "-", input_data=patch)
     if checked.returncode:
         raise OffloadRejected("GIT_APPLY_CHECK_FAILED")
+    if authority_check() is not True or ownership_check() is not True:
+        raise OffloadRejected("OWNER_OR_WORKER_OWNERSHIP_DENIED")
     applied = _git(tree, "apply", "--index", "-", input_data=patch)
     if applied.returncode:
         raise OffloadRejected("GIT_APPLY_FAILED")
