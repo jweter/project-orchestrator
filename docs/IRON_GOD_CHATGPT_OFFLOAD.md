@@ -21,6 +21,36 @@ An authorized local worker may exhaust calibrated capability on a substantive sl
 6. **Verify:** The result is *only* `PREFLIGHT_UNVERIFIED`, never `PASS`. The resident product's native targeted tests, canonical full preflight and exact-head CI/review are still mandatory, using the **existing** publication lane. Tests and verification receipts must not be asserted from ChatGPT-generated prose.
 7. **Publish/learn:** Once native checks pass, the normal governed PR/CI/review/merge and native Product Reality pipeline applies. Only independently corroborated outcomes can be promoted to `development-memory.sqlite3` learning rules. This pilot deliberately does not add a self-reported accepted outcome.
 
+## Local CLI for existing hourly task (not activated)
+
+The existing local Python CLI wraps the same advisory SQLite store; no new
+service, scheduler, network listener or worker is created:
+
+```powershell
+# Values are supplied by the protected installed environment, never by a message.
+$env:IRON_GOD_MCP_COORDINATION_DB = "<absolute private coordination.sqlite>"
+python -m project_orchestrator.iron_god_offload_cli list
+python -m project_orchestrator.iron_god_offload_cli show --id <64-hex-offer-id>
+
+# These remain disabled unless the local advisory write switch is explicitly
+# enabled by existing owner-controlled installation policy:
+# python -m project_orchestrator.iron_god_offload_cli claim --id <offer-id>
+# python -m project_orchestrator.iron_god_offload_cli seal --id <offer-id> < candidate.patch
+```
+
+The `seal` command requires both `IRON_GOD_MCP_ALLOW_ADVISORY_WRITES=1`
+and a protected absolute `IRON_GOD_OFFLOAD_STAGE_ROOT`. It reads at most
+256 KiB plus one byte from standard input, creates immutable digests and
+registers an unverified candidate. The output carries hashes and bounded IDs
+only, not patch data. It does not import or run code. The separate isolated
+import API is **not exposed in CLI or MCP** and still requires independent
+current owner/worker-lease checks from the resident controller.
+
+A two-process Windows test now proves CLI claim and seal in separate
+Python sessions, a durable SQLite receipt, and independent import into a
+disposable Git worktree. Its test-only true callbacks **do not verify** live
+Take the Wheel authorization. Nothing in this test enables an hourly offload.
+
 ## Safety and operating limits
 
 - **No routine rollout now:** The live hourly DoWork schedule, Chat mode, owner controls, runtime grants, Claude billing and pinned release remain unchanged. The current laptop mailbox is read-only for ChatGPT, so it cannot silently write offload proposals/reservations.
