@@ -33,7 +33,8 @@ def _timestamp(value: Any) -> datetime | None:
 
 
 def _count(entry: Any) -> dict[str, Any]:
-    if not isinstance(entry, dict) or entry.get("status") not in _ALLOWED_COUNTS:
+    if not isinstance(entry, dict) or not isinstance(entry.get("status"), str) \
+            or entry["status"] not in _ALLOWED_COUNTS:
         return {"status": "UNVERIFIED", "count": None}
     status = entry["status"]
     value = _integer(entry.get("count"))
@@ -79,7 +80,7 @@ def housekeeping_snapshot(state_root: Path, *, now: datetime | None = None) -> d
     free = _integer(disk.get("free_bytes"))
     measured = total is not None and total > 0 and free is not None and free <= total
     band = disk.get("band")
-    band = band if band in _ALLOWED_BANDS else "UNKNOWN"
+    band = band if isinstance(band, str) and band in _ALLOWED_BANDS else "UNKNOWN"
     if not measured or disk.get("status") != "OBSERVED":
         band = "UNKNOWN"
     counts = raw.get("counts")
@@ -87,7 +88,8 @@ def housekeeping_snapshot(state_root: Path, *, now: datetime | None = None) -> d
     maintenance = raw.get("last_cleanup")
     maintenance = maintenance if isinstance(maintenance, dict) else {}
     outcome = maintenance.get("status")
-    outcome = outcome if outcome in _ALLOWED_OUTCOMES else "UNVERIFIED"
+    outcome = (outcome if isinstance(outcome, str) and outcome in _ALLOWED_OUTCOMES
+               else "UNVERIFIED")
     return {
         "schema_version": 1,
         "source": "ENGINE_STORAGE_RECEIPT",
