@@ -85,3 +85,21 @@ def test_storage_receipt_does_not_follow_links(tmp_path):
         "status": "LINK_PROTECTED", "count": None,
     }
     assert (real / "sensitive.txt").read_text(encoding="utf-8") == "preserved"
+
+
+def test_cleanup_failure_is_distinct_from_not_due(tmp_path, monkeypatch):
+    state = tmp_path / "flow-state"
+    state.mkdir()
+    gib = 2 ** 30
+    monkeypatch.setattr(storage.shutil, "disk_usage", lambda _: SimpleNamespace(
+        free=35 * gib, total=500 * gib,
+    ))
+
+    failed = storage.record_storage_receipt(
+        state, None, cleanup_error="OSError: worktree removal interrupted",
+    )
+    assert failed["last_cleanup"] == {
+        "status": "FAILED", "reason": "OSError: worktree removal interrupted",
+    }
+    skipped = storage.record_storage_receipt(state, None)
+    assert skipped["last_cleanup"] == {"status": "NOT_DUE"}
