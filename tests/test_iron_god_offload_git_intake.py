@@ -202,6 +202,32 @@ def test_local_diff_ignore_submodules_cannot_hide_unauthorized_gitlink(tmp_path)
     assert not (tmp_path / "stage").exists()
 
 
+def test_configured_submodule_log_cannot_hide_unauthorized_gitlink(tmp_path):
+    data = world(tmp_path, submodule_change=True)
+    repo, db, _, base, candidate, _ = data
+    git(repo, "config", "diff.submodule", "log")
+
+    # --ignore-submodules=none alone still inherits diff.submodule=log,
+    # replacing a raw gitlink patch with an unparseable summary.
+    inherited = git(repo, "diff", "--ignore-submodules=none", base, candidate)
+    assert "Submodule vendor/hidden" in inherited
+    assert "diff --git a/vendor/hidden" not in inherited
+    strict = git(
+        repo, "diff", "--ignore-submodules=none", "--submodule=short",
+        base, candidate,
+    )
+    assert "diff --git a/vendor/hidden b/vendor/hidden" in strict
+    assert "160000" in strict
+
+    with pytest.raises(
+        offload.OffloadRejected,
+        match="GITHUB_BRANCH_PATH_FENCE_VIOLATION|UNSAFE_INDEX_OBJECT_MODE",
+    ):
+        stage(tmp_path, data)
+    assert not (tmp_path / "stage").exists()
+    assert offload.list_offload_proposals(db)["items"][0]["status"] == "RESERVED"
+
+
 def test_legacy_git_grafts_cannot_forge_raw_candidate_parent(tmp_path):
     data = world(tmp_path)
     repo, _, _, base, candidate, ref = data

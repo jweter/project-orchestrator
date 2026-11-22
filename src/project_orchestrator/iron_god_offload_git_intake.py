@@ -97,7 +97,11 @@ def stage_fetched_github_candidate(
     # renames, symlinks, submodules and unsafe metadata.
     patch = _git(
         repo, "diff", "--no-ext-diff", "--no-textconv", "--no-renames",
-        "--ignore-submodules=none", observed_base_head, candidate_head, "--",
+        # Local/system diff.submodule=log (or diff) can replace raw gitlink
+        # patch headers with a summary that changed_paths() silently ignores.
+        # Force gitlink object metadata into the existing rejecting parser.
+        "--ignore-submodules=none", "--submodule=short",
+        observed_base_head, candidate_head, "--",
     )
     paths = offload.changed_paths(patch)
     if not set(paths).issubset(offer["allowed_paths"]):
