@@ -336,13 +336,13 @@ def test_valid_git_hunk_with_sql_comment_like_file_header_is_accepted(case):
     """Review regression: --- old comment inside counted hunk is source, not metadata."""
     tmp, db, repo, _, offer = case
     file = repo / "src" / "feature.py"
-    file.write_text("def score():\\n    return 1\\n-- old comment\\n", encoding="utf-8")
+    file.write_text("def score():\n    return 1\n-- old comment\n", encoding="utf-8")
     git(repo, "add", "-A")
     git(repo, "-c", "user.name=Canary", "-c", "user.email=canary@localhost",
         "commit", "-q", "-m", "add sql-like comment")
-    file.write_text("def score():\\n    return 1\\n-- new comment\\n", encoding="utf-8")
+    file.write_text("def score():\n    return 1\n-- new comment\n", encoding="utf-8")
     patch = git(repo, "diff", "HEAD").stdout
-    assert b"\\n--- old comment\\n" in patch
+    assert b"\n--- old comment\n" in patch
     assert offload.changed_paths(patch) == ["src/feature.py"]
     candidate = offload.seal_candidate(offer, patch, tmp / "staging")
     assert offload.verify_candidate(offer, candidate) == patch
