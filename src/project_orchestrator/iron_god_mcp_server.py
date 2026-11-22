@@ -13,6 +13,7 @@ from . import mcp_coordination as coord
 from . import iron_god_observability as observability
 from . import iron_god_engineering_evidence as engineering_evidence
 from . import iron_god_offload as offload
+from . import iron_god_mcp_housekeeping as housekeeping
 
 
 def create_server(*, database: Path, state_root: Path, repo_root: Path,
@@ -53,6 +54,11 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
     def get_offload_proposals(limit: int = 12) -> dict:
         """Read untrusted, durable proposed slices; never dispatch or authorize them."""
         return offload.list_offload_proposals(database, limit=limit)
+
+    @server.tool()
+    def get_storage_housekeeping() -> dict:
+        """Read bounded Steward/worktree cleanup telemetry; not a deletion command."""
+        return housekeeping.housekeeping_snapshot(state_root)
 
     @server.tool()
     def list_messages(after_seq: int = 0, limit: int = 30) -> dict:

@@ -251,3 +251,190 @@ def test_a_capable_worktree_is_kept_while_its_runner_exists_whatever_its_row_say
 
     monkeypatch.setattr(capable, "process_command_line", lambda pid: None)       # the runner is gone
     assert cleanup.auto_clean(state, now=3.0, interval=0)["results"] == {"capable-abc": "REMOVED"} and not tree.exists()
+
+
+def _shell(root, clone, name, *, handback=None, publication=None, evidence=False, deep=False):
+    """A folder git no longer tracks: what is left of a checkout whose removal could not finish."""
+    shell = clone.parent / "worktrees" / name
+    (shell / "src" / "pkg").mkdir(parents=True)
+    (shell / "src" / "pkg" / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    if deep:
+        (shell / "src" / ("d" * 120) / ("e" * 120)).mkdir(parents=True)
+        (shell / "src" / ("d" * 120) / ("e" * 120) / "deep.txt").write_text("deep", encoding="utf-8")
+    if evidence:
+        (shell / "preflight-evidence.json").write_text(json.dumps({"verdict": "GREEN"}), encoding="utf-8")
+    if handback:
+        (root / "handbacks" / f"{name}.json").write_text(json.dumps({"status": handback}), encoding="utf-8")
+    if publication:
+        path = root / "publications.json"
+        items = json.loads(path.read_text(encoding="utf-8"))["items"] if path.exists() else {}
+        items[name] = {"state": publication}
+        path.write_text(json.dumps({"items": items}), encoding="utf-8")
+    return shell
+
+
+def _write_lossless_shell_archive(root, shell):
+    """Simulate a completed standard remove_one archive for orphan retry tests."""
+    archive = root / "reports" / "worktree-archive" / f"{shell.name}.json"
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "packet_id": shell.name, "path": str(shell), "head_sha": "a" * 40,
+        "status": "", "diff_against_head": "", "commits": "",
+        "untracked": {}, "unreadable": [],
+    }
+    archive.write_text(json.dumps(payload), encoding="utf-8")
+    return archive
+
+
+def test_a_leftover_folder_git_no_longer_tracks_is_removable_only_when_the_lane_says_its_turn_is_over(
+        tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    for name, kwargs in {"P-DONE": {"handback": "FAIL"}, "P-REVIEW": {"handback": "REVIEW_REQUIRED"},
+                         "P-OPEN": {"handback": "FAIL", "publication": "AWAITING_CI"}, "P-NORECORD": {},
+                         "P-ACTIVE": {"handback": "FAIL"}}.items():
+        _shell(root, clone, name, **kwargs)
+    (root / "active.json").write_text(json.dumps({"packet_id": "P-ACTIVE"}), encoding="utf-8")
+    # No ".git" entry: git must not be asked at all (run inside some enclosing repository it would answer for that).
+    monkeypatch.setattr(cleanup, "_git", lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked git")))
+
+    classes = {row["packet_id"]: row["class"] for row in cleanup.plan(state)}
+
+    assert classes == {"P-DONE": "ORPHAN_SHELL", "P-REVIEW": "REVIEW_REQUIRED", "P-OPEN": "PUBLICATION_OPEN",
+                       "P-NORECORD": "UNKNOWN", "P-ACTIVE": "ACTIVE"}
+    assert {k for k, v in classes.items() if v in cleanup.REMOVABLE} == {"P-DONE"}
+
+
+def test_a_leftover_folder_is_archived_then_removed_even_with_paths_past_the_windows_limit(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL", evidence=True, deep=True)
+    _write_lossless_shell_archive(root, shell)
+    keep = _shell(root, clone, "P-KEEP")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    report = cleanup.auto_clean(state, now=1.0, interval=0)
+
+    assert report["results"] == {"P-DONE": "REMOVED"} and report["kept"] == {"P-KEEP": "UNKNOWN"}
+    assert not shell.exists() and keep.exists()
+    archived = json.loads(next((root / "reports" / "worktree-archive").glob("P-DONE.orphan-shell-*.json")).read_text(encoding="utf-8"))
+    assert archived["kind"] == "ORPHAN_SHELL" and archived["top_level_entries"] == ["preflight-evidence.json", "src"]
+    assert json.loads(archived["preflight_evidence"]) == {"verdict": "GREEN"}
+
+
+def test_a_leftover_folder_is_kept_while_memory_is_short_and_removed_once_it_recovers(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    _write_lossless_shell_archive(root, shell)
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 0.4)
+    first = cleanup.auto_clean(state, now=1.0, interval=0)
+    assert first["results"] == {"P-DONE": "KEPT_LOW_MEMORY"} and shell.exists()
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 3.0)
+    second = cleanup.auto_clean(state, now=2.0, interval=0)
+    assert second["results"] == {"P-DONE": "REMOVED"} and not shell.exists()
+
+
+def test_a_capable_builds_leftover_folder_follows_its_dispatch_row_and_runner(tmp_path, monkeypatch):
+    from project_orchestrator import iron_god_capable_builder as capable
+
+    state, root, clone, base = lane(tmp_path)
+    worktrees = clone.parent / "worktrees"
+    (root / "capable-dispatches").mkdir()
+    for ident, status in {"aaa": "DISPATCHED", "bbb": "INTERRUPTED", "ccc": None}.items():
+        (worktrees / f"capable-{ident}" / "src").mkdir(parents=True)
+        if status:
+            (root / "capable-dispatches" / f"{ident}.json").write_text(
+                json.dumps({"status": status, "dispatch_id": ident, "pid": 1}), encoding="utf-8")
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: None)      # no runner exists
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    classes = {row["packet_id"]: row["class"] for row in cleanup.plan(state)}
+    assert classes == {"capable-aaa": "ACTIVE", "capable-bbb": "ORPHAN_SHELL", "capable-ccc": "UNKNOWN"}
+
+    monkeypatch.setattr(capable, "process_command_line",
+                        lambda pid: f"python {capable.RUNNER_SCRIPT} --job bbb.job.json")
+    assert {r["packet_id"]: r["class"] for r in cleanup.plan(state)}["capable-bbb"] == "ACTIVE"
+
+
+def test_orphan_cleanup_preserves_existing_lossless_archive(tmp_path, monkeypatch):
+    """P1 review #762: a failed git removal must never lose its saved diff/untracked bytes."""
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL", evidence=True)
+    archives = root / "reports" / "worktree-archive"
+    archives.mkdir(parents=True, exist_ok=True)
+    original = archives / "P-DONE.json"
+    saved = json.dumps({"packet_id": "P-DONE", "path": str(shell), "head_sha": "a" * 40,
+                        "status": " M src/a.py", "commits": "", "unreadable": [],
+                        "diff_against_head": "+important fix",
+                        "untracked": {"secret-work.txt": "recover me"}}).encode()
+    original.write_bytes(saved)
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    outcome = cleanup.auto_clean(state, now=1.0, interval=0)
+
+    assert outcome["results"] == {"P-DONE": "REMOVED"} and not shell.exists()
+    assert original.read_bytes() == saved
+    sidecars = list(archives.glob("P-DONE.orphan-shell-*.json"))
+    assert len(sidecars) == 1
+    evidence = json.loads(sidecars[0].read_text(encoding="utf-8"))
+    assert evidence["kind"] == "ORPHAN_SHELL"
+    assert evidence["top_level_entries"] == ["preflight-evidence.json", "src"]
+    assert json.loads(evidence["preflight_evidence"]) == {"verdict": "GREEN"}
+
+
+def test_orphan_cleanup_keeps_shell_if_preexisting_sidecar_is_corrupted(tmp_path, monkeypatch):
+    """Do not delete the remaining bytes when archived shell evidence fails verification."""
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    _write_lossless_shell_archive(root, shell)
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+    monkeypatch.setattr(cleanup, "_delete_tree", lambda path: None)  # interrupted deletion
+
+    row = next(r for r in cleanup.plan(state) if r["packet_id"] == "P-DONE")
+    assert cleanup.remove_orphan_shell(state, row)["result"] == "KEPT_REMOVE_FAILED"
+    sidecar = next((root / "reports" / "worktree-archive").glob("P-DONE.orphan-shell-*.json"))
+    sidecar.write_bytes(b"corrupt")
+
+    assert cleanup.remove_orphan_shell(state, row)["result"] == "KEPT_ARCHIVE_VERIFICATION_FAILED"
+    assert shell.exists()
+
+
+def test_orphan_without_lossless_archive_keeps_residual_tracked_and_untracked_work(tmp_path, monkeypatch):
+    """P1 follow-up: direct runner removal never archived edits; never delete its shell."""
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    (shell / "src" / "pkg" / "mod.py").write_text("unsaved change", encoding="utf-8")
+    (shell / "new-untracked.bin").write_bytes(b"important bytes")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    result = cleanup.auto_clean(state, now=1.0, interval=0)
+
+    assert result["results"] == {"P-DONE": "KEPT_NO_VERIFIED_LOSSLESS_ARCHIVE"}
+    assert (shell / "src" / "pkg" / "mod.py").read_text() == "unsaved change"
+    assert (shell / "new-untracked.bin").read_bytes() == b"important bytes"
+
+
+def test_orphan_rejects_corrupt_archive_before_deleting(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    archive = _write_lossless_shell_archive(root, shell)
+    archive.write_text("{not JSON", encoding="utf-8")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+    outcome = cleanup.auto_clean(state, now=1.0, interval=0)
+    assert outcome["results"] == {"P-DONE": "KEPT_NO_VERIFIED_LOSSLESS_ARCHIVE"}
+    assert shell.exists()
+
+
+def test_capable_direct_runner_orphan_without_archive_is_not_deleted(tmp_path, monkeypatch):
+    state, root, clone, base = lane(tmp_path)
+    shell = clone.parent / "worktrees" / "capable-abc"
+    shell.mkdir(parents=True)
+    (shell / "work.txt").write_text("lost work if deleted", encoding="utf-8")
+    (root / "capable-dispatches").mkdir(exist_ok=True)
+    (root / "capable-dispatches" / "abc.json").write_text(
+        json.dumps({"status": "INTERRUPTED", "dispatch_id": "abc", "pid": 123}), encoding="utf-8",
+    )
+    from project_orchestrator import iron_god_capable_builder as capable
+    monkeypatch.setattr(capable, "process_command_line", lambda pid: None)
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+    outcome = cleanup.auto_clean(state, now=1.0, interval=0)
+    assert outcome["results"] == {"capable-abc": "KEPT_NO_VERIFIED_LOSSLESS_ARCHIVE"}
+    assert (shell / "work.txt").read_text() == "lost work if deleted"

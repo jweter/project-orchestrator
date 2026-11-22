@@ -43,9 +43,14 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
             tools = await client.list_tools()
             assert {t.name for t in tools.tools} == {
                 "get_targets", "get_engine_snapshot", "get_development_diagnostics",
-                "get_engineering_evidence", "get_offload_proposals", "list_messages",
+                "get_engineering_evidence", "get_offload_proposals",
+                "get_storage_housekeeping", "list_messages",
                 "post_message", "ack_message",
             }
+            snapshot = _payload(await client.call_tool("get_storage_housekeeping", {}))
+            assert snapshot["status"] == "UNAVAILABLE"
+            assert snapshot["can_execute"] is False
+
             result = await client.call_tool("post_message", {
                 "recipient": "chatgpt", "kind": "handoff",
                 "body": "Knowledge Engine native test needs review at exact head.",
