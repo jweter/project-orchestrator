@@ -207,7 +207,7 @@ def changed_paths(patch: bytes) -> list[str]:
     source changes. Count both sides of each hunk and interpret metadata
     only *outside* those counted lines.
     """
-    if not isinstance(patch, bytes) or not 1 <= len(patch) <= MAX_PATCH_BYTES or b"\\x00" in patch:
+    if not isinstance(patch, bytes) or not 1 <= len(patch) <= MAX_PATCH_BYTES or b"\x00" in patch:
         raise OffloadRejected("PATCH_SIZE_OR_ENCODING_REFUSED")
     try:
         lines = patch.decode("utf-8").splitlines()
@@ -219,7 +219,7 @@ def changed_paths(patch: bytes) -> list[str]:
     for line in lines:
         # Git's optional newline marker may occur within or immediately after
         # a hunk and never consumes a line on either side.
-        if line == "\\\\ No newline at end of file":
+        if line == "\\ No newline at end of file":
             continue
         if old_left or new_left:
             if not line or line[0] not in (" ", "-", "+"):
@@ -234,7 +234,7 @@ def changed_paths(patch: bytes) -> list[str]:
             continue
         if line.startswith("@@ "):
             match = re.fullmatch(
-                r"@@ -[0-9]+(?:,([0-9]+))? \\+[0-9]+(?:,([0-9]+))? @@(?:.*)?",
+                r"@@ -[0-9]+(?:,([0-9]+))? \+[0-9]+(?:,([0-9]+))? @@(?:.*)?",
                 line,
             )
             if match is None or not paths:
