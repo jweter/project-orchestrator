@@ -245,3 +245,39 @@ def test_mcp_offload_proposal_view_exposes_no_authority_or_code(case):
     assert "allowed_paths" not in second["items"][0]
     with pytest.raises(offload.OffloadRejected, match="INVALID_OFFLOAD_PAGE_SIZE"):
         offload.list_offload_proposals(db, limit=500)
+
+
+def test_owner_revocation_between_check_and_apply_keeps_tree_unmodified(case):
+    tmp, db, repo, _, offer = case
+    offload.claim_slice(db, offer["offer_id"])
+    candidate = offload.seal_candidate(offer, patch_for(repo), tmp / "staging")
+    offload.register_candidate(db, candidate)
+    calls = {"count": 0}
+
+    def owner():
+        calls["count"] += 1
+        return calls["count"] < 4
+
+    destination = tmp / "isolated"
+    with pytest.raises(offload.OffloadRejected, match="OWNER_OR_WORKER"):
+        offload.prepare_isolated_import(
+            offer, candidate, db_path=db, stage_root=tmp / "staging",
+            clone=repo, destination=destination,
+            authority_check=owner, ownership_check=lambda: True,
+        )
+    assert calls["count"] == 4
+    assert (destination / "src" / "feature.py").read_text() == "def score():\n    return 1\n"
+    assert git(destination, "status", "--porcelain").stdout.strip() == b""
+
+
+def test_candidate_refuses_executable_mode_and_oversized_patch(case):
+    _, _, repo, _, _ = case
+    patch = patch_for(repo)
+    with pytest.raises(offload.OffloadRejected, match="UNSUPPORTED_DESTRUCTIVE"):
+        offload.changed_paths(patch.replace(
+            b"diff --git a/src/feature.py b/src/feature.py",
+            b"diff --git a/src/feature.py b/src/feature.py\nnew file mode 100755",
+            1,
+        ))
+    with pytest.raises(offload.OffloadRejected, match="PATCH_SIZE"):
+        offload.changed_paths(patch + b"\n" * offload.MAX_PATCH_BYTES)
