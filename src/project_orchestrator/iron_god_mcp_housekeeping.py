@@ -98,8 +98,8 @@ def housekeeping_snapshot(state_root: Path, *, now: datetime | None = None) -> d
         "observed_at_utc": observed.isoformat(),
         "disk": {
             "band": band,
-            "free_gib": round(free / 2**30, 2) if measured else None,
-            "total_gib": round(total / 2**30, 2) if measured else None,
+            "free_gib": round(free / 2**30, 2) if measured and free is not None else None,
+            "total_gib": round(total / 2**30, 2) if measured and total is not None else None,
         },
         "counts": {
             "product_worktrees": _count(counts.get("product_worktrees")),
