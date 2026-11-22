@@ -78,10 +78,10 @@ def snapshot(lane_root: Path, *, repository: str = "") -> dict[str, Any]:
             if not table:
                 return _empty("LEGACY_LEDGER_NO_EXPOSURES", observed=count)
             rows = db.execute(
-                "SELECT a.packet_id,a.item_id,a.repository,a.failure_class,a.outcome,"
-                "a.recorded_at_utc,s.strategy,s.revision,s.evidence_packet "
+                "SELECT a.rowid AS attempt_order,a.packet_id,a.item_id,a.repository,"
+                "a.failure_class,a.outcome,a.recorded_at_utc,s.strategy,s.revision,s.evidence_packet "
                 "FROM attempts a LEFT JOIN strategy_exposures s ON s.packet_id=a.packet_id "
-                + where + " ORDER BY a.recorded_at_utc,a.packet_id LIMIT ?",
+                + where + " ORDER BY a.rowid LIMIT ?",
                 values,
             ).fetchall()
         if len(rows) > MAX_ROWS:
@@ -107,7 +107,10 @@ def snapshot(lane_root: Path, *, repository: str = "") -> dict[str, Any]:
                     or source["repository"] != row["repository"]
                     or source["failure_class"] != name
                     or not str(source["outcome"]).startswith("FAIL")
-                    or source["recorded_at_utc"] >= row["recorded_at_utc"]):
+                    # Windows may assign identical UTC timestamps to adjacent
+                    # immutable SQLite attempts. The actual append order, not
+                    # the coarse system clock, establishes prior evidence.
+                    or source["attempt_order"] >= row["attempt_order"]):
                 continue
             # The latest observed strategy wins within this lineage; retries
             # must never appear as multiple independent learning samples.
