@@ -113,3 +113,62 @@ def test_unhashable_enum_fields_cannot_break_mailbox_status(tmp_path):
         assert result["counts"]["product_worktrees"]["status"] == "UNVERIFIED"
         assert result["maintenance"]["status"] == "UNVERIFIED"
         assert result["can_execute"] is False
+
+
+
+def test_existing_product_idle_hook_emits_readable_housekeeping_receipt(tmp_path, monkeypatch):
+    """Actual product hook -> storage receipt -> MCP projection, not fixture JSON."""
+    from types import SimpleNamespace
+
+    from project_orchestrator import iron_god_product_lane as lane_module
+    from project_orchestrator import iron_god_storage_receipt as producer
+
+    state_root = tmp_path / "flow-state"
+    state_root.mkdir()
+    lane = SimpleNamespace(state_root=state_root, root=tmp_path, active=lambda: None)
+    monkeypatch.setattr(lane_module.worktree_cleanup, "auto_clean", lambda _: None)
+
+    receipt_file = (state_root / "iron-god-products" / "reports"
+                    / producer.RECEIPT_FILENAME)
+    assert not receipt_file.exists()
+    lane_module.clean_finished_worktrees(lane)
+
+    assert receipt_file.is_file()
+    source = json.loads(receipt_file.read_text(encoding="utf-8"))
+    assert source["mode"] == "READ_ONLY_ACCOUNTING_NO_DELETION"
+    assert source["last_cleanup"] == {"status": "NOT_DUE"}
+    projection = view.housekeeping_snapshot(state_root)
+    assert projection["status"] == "OK"
+    assert projection["freshness"] == "FRESH"
+    assert projection["maintenance"]["status"] == "NOT_DUE"
+    assert projection["disk"]["free_gib"] is not None
+    assert projection["can_execute"] is False
+
+
+def test_existing_product_idle_hook_failure_is_not_misreported(tmp_path, monkeypatch):
+    """Real hook records cleanup failure as FAILED, not NOT_DUE."""
+    from types import SimpleNamespace
+
+    from project_orchestrator import iron_god_product_lane as lane_module
+
+    state_root = tmp_path / "flow-state"
+    state_root.mkdir()
+    lane = SimpleNamespace(state_root=state_root, root=tmp_path, active=lambda: None)
+
+    def fail(_):
+        raise OSError("test cleanup error")
+
+    incidents = []
+    monkeypatch.setattr(lane_module.worktree_cleanup, "auto_clean", fail)
+    monkeypatch.setattr(
+        lane_module.working_memory, "record",
+        lambda *args, **kwargs: incidents.append((args, kwargs)),
+    )
+    lane_module.clean_finished_worktrees(lane)
+
+    projection = view.housekeeping_snapshot(state_root)
+    assert projection["status"] == "OK"
+    assert projection["maintenance"]["status"] == "FAILED"
+    assert projection["maintenance"]["reported_removed"] is None
+    assert projection["can_execute"] is False
+    assert incidents
