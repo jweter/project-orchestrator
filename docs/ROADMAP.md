@@ -116,6 +116,18 @@ Authoritative design: [HANDS_OFF_EVOLUTION.md](HANDS_OFF_EVOLUTION.md).
 
 Related work: [guarded offload architecture](IRON_GOD_MCP_COORDINATION.md), [offload pilot #766](https://github.com/jweter/project-orchestrator/pull/766), [verified eligibility selector #768](https://github.com/jweter/project-orchestrator/pull/768), [Iron Continuum #747](https://github.com/jweter/project-orchestrator/issues/747), [storage receipts #764](https://github.com/jweter/project-orchestrator/pull/764), and [orphan recovery #762](https://github.com/jweter/project-orchestrator/pull/762). Their actual merge and release states must be checked independently; a link to a PR is not proof of deployment.
 
+### Zero-recurring-cost remote execution requirement (owner clarification 2026-11-22)
+
+The paid remote-desktop transport is **not** a viable long-term dependency: its complimentary tool-call allowance was exhausted by actual Iron God usage in approximately three days, and the owner prefers zero recurring remote-access charges over a roughly $20/month subscription. Implement and validate a **$0 recurring-fee remote execution path** before proposing paid scaling; no new subscriptions, metered network services, paid model calls, or hidden costs are authorized by this roadmap. **BLACKICE** ([MoonlightClarity/BLACKICE](https://github.com/MoonlightClarity/BLACKICE)) is the first open-source replacement candidate, not yet approved as an execution authority or proven for the unattended scheduler.
+
+- [ ] Verify its license, signed/pinned Windows release provenance, permissions, authentication, remote exposure, security update posture, and locally observable installation behavior before adoption; reject a free but insecure replacement.
+- [ ] Compare with other local-first/free approaches if BLACKICE cannot support the real workload without a payment, API quota, persistent public exposure, or loss of required operations.
+- [ ] Demonstrate command execution, bounded file transfer, error propagation, independent logs/receipts, reconnect after Windows restart, owner revocation, and a safe end-to-end test through **the actual ChatGPT connection**, then test scheduled Chat-mode connector access separately.
+- [ ] Preserve independent owner Take the Wheel / Give Me Control authentication, exclusive worker leases, exact Git SHA and branch review gates. A successful BLACKICE tool call or message is **not** an Iron God development grant.
+- [ ] Retain the currently working remote channel during parallel testing; cut over only after a successful production-equivalent canary. Do not cancel any existing subscription or install a new service as a consequence of roadmap text alone.
+
+The no-subscription target concerns the **remote-access layer**; optional paid coding-model/cloud capacity is separately prohibited until the owner explicitly authorizes its cost. A future Claude worker must run within a proven no-new-charge entitlement or remain disabled. Count actual service fees and quotas, not marketing claims.
+
 ### Immediate parallel delivery tracks
 
 - [ ] **A. Unblock normal production throughput.** Complete open cleanup/storage, review, offload, and portfolio PRs only after their current exact-head CI/review gates. Repair new findings instead of repeatedly reporting the same blocked state. Refresh branch/PR/lease ownership before changes; never use the resident dirty worktree as disposable staging.
