@@ -400,3 +400,45 @@ def prepare_isolated_import(
         "next_gate": "REPOSITORY_NATIVE_PREFLIGHT_THEN_EXISTING_PUBLICATION_LANE",
         "merge_authorized": False, "product_reality_verified": False,
     }
+
+
+def list_offload_proposals(db_path: Path, *, limit: int = 12) -> dict[str, Any]:
+    """Read-only, bounded MCP view; proposals are NOT eligible worker commands."""
+    if type(limit) is not int or not 1 <= limit <= 20:
+        raise OffloadRejected("INVALID_OFFLOAD_PAGE_SIZE")
+    path = coordination._path(db_path)
+    if not path.is_file() or path.is_symlink():
+        return {"status": "UNAVAILABLE", "items": [], "execution_authorized": False}
+    with closing(coordination._connect(path, read_only=True)) as db:
+        required = {"offload_offers", "offload_claims", "offload_candidates"}
+        found = {row[0] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+        if not required <= found:
+            return {"status": "UNAVAILABLE", "items": [], "execution_authorized": False}
+        rows = db.execute(
+            "SELECT o.offer_id,o.body, c.claimer, a.patch_sha256 "
+            "FROM offload_offers o LEFT JOIN offload_claims c ON c.offer_id=o.offer_id "
+            "LEFT JOIN offload_candidates a ON a.offer_id=o.offer_id "
+            "ORDER BY o.created_at DESC,o.offer_id LIMIT ?", (limit,)
+        ).fetchall()
+    result = []
+    for row in rows:
+        try:
+            value = json.loads(row["body"])
+            checked = _offer_fields(
+                value["repository"], value["slice_id"], value["base_sha"],
+                value["allowed_paths"], value["authority_ref"], value["failure_ref"]
+            )
+        except (KeyError, ValueError, TypeError):
+            continue
+        if checked != value or checked["offer_id"] != row["offer_id"]:
+            continue
+        state = ("STAGED_UNVERIFIED" if row["patch_sha256"] is not None
+                 else "RESERVED" if row["claimer"] is not None else "PROPOSED")
+        result.append({
+            "offer_id": row["offer_id"], "repository": checked["repository"],
+            "slice_id": checked["slice_id"], "base_sha": checked["base_sha"],
+            "status": state, "execution_authorized": False,
+        })
+    return {"status": "OK", "items": result, "execution_authorized": False}
