@@ -352,7 +352,7 @@ def test_malformed_counted_hunk_still_fails_closed(case):
     _, _, repo, _, _ = case
     patch = patch_for(repo)
     forged = patch.replace(b"@@ -1,2 +1,2 @@", b"@@ -1,99 +1,2 @@")
-    with pytest.raises(offload.OffloadRejected, match="PATCH_CHANGED_PATHS_UNVERIFIED"):
+    with pytest.raises(offload.OffloadRejected, match="INVALID_PATCH_HUNK_CONTENT"):
         offload.changed_paths(forged)
 
 
