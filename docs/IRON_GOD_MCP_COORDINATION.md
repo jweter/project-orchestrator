@@ -81,6 +81,11 @@ Tools for the first **local stdio** pilot:
   that recorded `current_state` represents fresh user acceptance.
 - `get_engine_snapshot`: read allowlisted, bounded canonical lane status
   projections. Source timestamps and missingness accompany results.
+- `get_storage_housekeeping`: read the existing product-lane storage receipt,
+  including measured free capacity, Steward band, worktree/archive counts, and
+  last maintenance outcome. Fixed allowlisted path, bounded and sanitized;
+  never reads arbitrary paths or invokes cleanup. Missing, stale, invalid
+  or uninstalled evidence cannot establish healthy storage.
 - `list_messages`: cursor-based advisory inbox for the configured local label.
 - `post_message`: append a bounded advisory message, never dispatch or approve.
 - `ack_message`: append a consumption receipt; never release a claim/lease.
