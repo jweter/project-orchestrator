@@ -281,3 +281,41 @@ def test_candidate_refuses_executable_mode_and_oversized_patch(case):
         ))
     with pytest.raises(offload.OffloadRejected, match="PATCH_SIZE"):
         offload.changed_paths(patch + b"\n" * offload.MAX_PATCH_BYTES)
+
+
+def test_codex_review_malformed_deletion_patch_is_rejected_before_apply(case):
+    """A producer cannot omit 'deleted file mode' and smuggle +++ /dev/null."""
+    _, _, repo, _, _ = case
+    patch = patch_for(repo)
+    assert b"+++ b/src/feature.py" in patch
+    malicious = patch.replace(b"+++ b/src/feature.py", b"+++ /dev/null")
+    with pytest.raises(offload.OffloadRejected, match="DELETION_PATCH_FORBIDDEN"):
+        offload.changed_paths(malicious)
+
+
+def test_codex_review_symlink_index_mode_is_rejected(case):
+    """Symlink target modifications encode mode 120000 on the index line."""
+    _, _, repo, _, _ = case
+    patch = patch_for(repo)
+    assert b" 100644" in patch
+    malicious = patch.replace(b" 100644", b" 120000", 1)
+    with pytest.raises(offload.OffloadRejected, match="UNSAFE_INDEX_OBJECT_MODE"):
+        offload.changed_paths(malicious)
+
+
+def test_real_git_base_tree_symlink_is_rejected_without_worktree_mutation(tmp_path):
+    """Check the actual Git tree mode even if untrusted patch text lies about it."""
+    repo = tmp_path / "symlink-base"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    sha = subprocess.run(
+        ["git", "-C", str(repo), "hash-object", "-w", "--stdin"],
+        input=b"../../outside", capture_output=True, check=True,
+    ).stdout.decode().strip()
+    git(repo, "update-index", "--add", "--cacheinfo", f"120000,{sha},src/link")
+    git(repo, "-c", "user.name=Canary", "-c", "user.email=canary@localhost",
+        "commit", "-q", "-m", "symlink base")
+    base = git(repo, "rev-parse", "HEAD").stdout.decode().strip()
+    assert b"120000" in git(repo, "ls-tree", base, "--", "src/link").stdout
+    with pytest.raises(offload.OffloadRejected, match="BASE_TREE_SYMLINK"):
+        offload._reject_special_git_modes(repo, base, ["src/link"])
