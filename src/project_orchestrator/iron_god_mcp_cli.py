@@ -36,6 +36,7 @@ from typing import Any, Mapping, TextIO
 
 from . import mcp_coordination as coord
 from . import mcp_coordination_accountability as accountability
+from . import iron_god_mcp_housekeeping as housekeeping
 
 KEYS = ("IRON_GOD_MCP_COORDINATION_DB", "IRON_GOD_MCP_STATE_ROOT", "IRON_GOD_MCP_REPO_ROOT", "IRON_GOD_MCP_CLIENT_LABEL")
 WRITES = "IRON_GOD_MCP_ALLOW_ADVISORY_WRITES"
@@ -105,7 +106,8 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
             _emit(out, {"status": "OK", "participant": label, "writes_enabled": writes, "unacknowledged": unacked,
                         "database_initialized": exists, "delivery": delivery,
                         "handoffs": accountability.requests_snapshot(database, participant=label),
-                        "engine": coord.engine_snapshot(state_root)})
+                        "engine": coord.engine_snapshot(state_root),
+                        "storage": housekeeping.housekeeping_snapshot(state_root)})
         elif args.command == "targets":
             _emit(out, {"status": "OK", "targets": coord.targets_snapshot(repo_root)})
         elif args.command == "read":
