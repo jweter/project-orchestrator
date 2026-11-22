@@ -337,3 +337,42 @@ def test_a_capable_builds_leftover_folder_follows_its_dispatch_row_and_runner(tm
     monkeypatch.setattr(capable, "process_command_line",
                         lambda pid: f"python {capable.RUNNER_SCRIPT} --job bbb.job.json")
     assert {r["packet_id"]: r["class"] for r in cleanup.plan(state)}["capable-bbb"] == "ACTIVE"
+
+
+def test_orphan_cleanup_preserves_existing_lossless_archive(tmp_path, monkeypatch):
+    """P1 review #762: a failed git removal must never lose its saved diff/untracked bytes."""
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL", evidence=True)
+    archives = root / "reports" / "worktree-archive"
+    archives.mkdir(parents=True, exist_ok=True)
+    original = archives / "P-DONE.json"
+    saved = json.dumps({"diff_against_head": "+important fix", "untracked": {"secret-work.txt": "recover me"}}).encode()
+    original.write_bytes(saved)
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+
+    outcome = cleanup.auto_clean(state, now=1.0, interval=0)
+
+    assert outcome["results"] == {"P-DONE": "REMOVED"} and not shell.exists()
+    assert original.read_bytes() == saved
+    sidecars = list(archives.glob("P-DONE.orphan-shell-*.json"))
+    assert len(sidecars) == 1
+    evidence = json.loads(sidecars[0].read_text(encoding="utf-8"))
+    assert evidence["kind"] == "ORPHAN_SHELL"
+    assert evidence["top_level_entries"] == ["preflight-evidence.json", "src"]
+    assert json.loads(evidence["preflight_evidence"]) == {"verdict": "GREEN"}
+
+
+def test_orphan_cleanup_keeps_shell_if_preexisting_sidecar_is_corrupted(tmp_path, monkeypatch):
+    """Do not delete the remaining bytes when archived shell evidence fails verification."""
+    state, root, clone, base = lane(tmp_path)
+    shell = _shell(root, clone, "P-DONE", handback="FAIL")
+    monkeypatch.setattr(cleanup, "_free_ram_gib", lambda: 8.0)
+    monkeypatch.setattr(cleanup, "_delete_tree", lambda path: None)  # interrupted deletion
+
+    row = next(r for r in cleanup.plan(state) if r["packet_id"] == "P-DONE")
+    assert cleanup.remove_orphan_shell(state, row)["result"] == "KEPT_REMOVE_FAILED"
+    sidecar = next((root / "reports" / "worktree-archive").glob("P-DONE.orphan-shell-*.json"))
+    sidecar.write_bytes(b"corrupt")
+
+    assert cleanup.remove_orphan_shell(state, row)["result"] == "KEPT_ARCHIVE_VERIFICATION_FAILED"
+    assert shell.exists()
