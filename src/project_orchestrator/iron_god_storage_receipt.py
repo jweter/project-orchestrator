@@ -92,7 +92,8 @@ def record_storage_receipt(
             "band": "UNKNOWN",
         }
 
-    old_disk = prior.get("disk") if isinstance(prior.get("disk"), dict) else {}
+    prior_disk = prior.get("disk")
+    old_disk: dict[str, Any] = prior_disk if isinstance(prior_disk, dict) else {}
     before = old_disk.get("free_bytes")
     now_free = disk.get("free_bytes")
     delta = (
