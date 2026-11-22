@@ -46,7 +46,8 @@ def _count_owned_entries(path: Path, *, directories: bool) -> dict[str, Any]:
 
 
 def record_storage_receipt(
-    state_root: Path, cleanup_report: dict[str, Any] | None
+    state_root: Path, cleanup_report: dict[str, Any] | None,
+    *, cleanup_error: str | None = None,
 ) -> dict[str, Any]:
     """Record bounded disk history, not an unverifiable 'bytes reclaimed' claim.
 
@@ -108,12 +109,17 @@ def record_storage_receipt(
             root / "iron-god-products" / "reports" / "worktree-archive", directories=False
         ),
     }
-    summary = {"status": "NOT_DUE"} if cleanup_report is None else {
-        "status": "REPORTED",
-        **{key: cleanup_report[key] for key in (
-            "worktrees", "eligible", "removed", "left_for_next_run", "results"
-        ) if key in cleanup_report},
-    }
+    if cleanup_error is not None:
+        summary = {"status": "FAILED", "reason": cleanup_error[:200]}
+    elif cleanup_report is None:
+        summary = {"status": "NOT_DUE"}
+    else:
+        summary = {
+            "status": "REPORTED",
+            **{key: cleanup_report[key] for key in (
+                "worktrees", "eligible", "removed", "left_for_next_run", "results"
+            ) if key in cleanup_report},
+        }
     previous_samples = prior.get("samples")
     samples = (
         [sample for sample in previous_samples if isinstance(sample, dict)]
