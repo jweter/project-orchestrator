@@ -200,15 +200,51 @@ def claim_slice(db_path: Path, offer_id: str, *, claimer: str = "chatgpt") -> di
 
 
 def changed_paths(patch: bytes) -> list[str]:
-    """Accept text-only, non-renaming Git diffs and exact fenced paths."""
-    if not isinstance(patch, bytes) or not 1 <= len(patch) <= MAX_PATCH_BYTES or b"\x00" in patch:
+    """Check top-level diff metadata separately from source-code hunk contents.
+
+    A deleted line that begins with '-- ' is encoded as '--- ...' inside
+    a hunk, so testing every line for file-header prefixes rejects valid
+    source changes. Count both sides of each hunk and interpret metadata
+    only *outside* those counted lines.
+    """
+    if not isinstance(patch, bytes) or not 1 <= len(patch) <= MAX_PATCH_BYTES or b"\\x00" in patch:
         raise OffloadRejected("PATCH_SIZE_OR_ENCODING_REFUSED")
     try:
         lines = patch.decode("utf-8").splitlines()
     except UnicodeError as exc:
         raise OffloadRejected("PATCH_SIZE_OR_ENCODING_REFUSED") from exc
     paths: list[str] = []
+    old_left = new_left = 0
+    saw_hunk = False
     for line in lines:
+        # Git's optional newline marker may occur within or immediately after
+        # a hunk and never consumes a line on either side.
+        if line == "\\\\ No newline at end of file":
+            continue
+        if old_left or new_left:
+            if not line or line[0] not in (" ", "-", "+"):
+                raise OffloadRejected("INVALID_PATCH_HUNK_CONTENT")
+            prefix = line[0]
+            if prefix != "+":
+                old_left -= 1
+            if prefix != "-":
+                new_left -= 1
+            if old_left < 0 or new_left < 0:
+                raise OffloadRejected("INVALID_PATCH_HUNK_COUNTS")
+            continue
+        if line.startswith("@@ "):
+            match = re.fullmatch(
+                r"@@ -[0-9]+(?:,([0-9]+))? \\+[0-9]+(?:,([0-9]+))? @@(?:.*)?",
+                line,
+            )
+            if match is None or not paths:
+                raise OffloadRejected("INVALID_PATCH_HUNK_HEADER")
+            old_left = int(match.group(1)) if match.group(1) is not None else 1
+            new_left = int(match.group(2)) if match.group(2) is not None else 1
+            if old_left == 0 and new_left == 0:
+                raise OffloadRejected("INVALID_PATCH_HUNK_COUNTS")
+            saw_hunk = True
+            continue
         if line.startswith("diff --git "):
             match = _DIFF.fullmatch(line)
             if match is None or match.group(1) != match.group(2):
@@ -233,7 +269,8 @@ def changed_paths(patch: bytes) -> list[str]:
         elif line.startswith("+++ ") and line != "+++ /dev/null":
             if not line.startswith("+++ b/") or _allowed_path(line[6:]) not in paths:
                 raise OffloadRejected("UNSAFE_PATCH_HEADER")
-    if not paths or len(paths) != len(set(paths)) or len(paths) > MAX_PATHS:
+    if (not saw_hunk or old_left != 0 or new_left != 0
+            or not paths or len(paths) != len(set(paths)) or len(paths) > MAX_PATHS):
         raise OffloadRejected("PATCH_CHANGED_PATHS_UNVERIFIED")
     return sorted(paths)
 
