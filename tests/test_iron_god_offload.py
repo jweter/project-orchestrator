@@ -354,3 +354,17 @@ def test_malformed_counted_hunk_still_fails_closed(case):
     forged = patch.replace(b"@@ -1,2 +1,2 @@", b"@@ -1,99 +1,2 @@")
     with pytest.raises(offload.OffloadRejected, match="PATCH_CHANGED_PATHS_UNVERIFIED"):
         offload.changed_paths(forged)
+
+
+def test_valid_git_hunk_with_formfeed_context_is_accepted(case):
+    """Review regression: form-feed is source content, not a Git line separator."""
+    _, _, repo, _, _ = case
+    file = repo / "src" / "feature.py"
+    file.write_text("def score():\n    return 1\n\f\n", encoding="utf-8")
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=Canary", "-c", "user.email=canary@localhost",
+        "commit", "-q", "-m", "add formfeed context")
+    file.write_text("def score():\n    return 2\n\f\n", encoding="utf-8")
+    patch = git(repo, "diff", "HEAD").stdout
+    assert b"\x0c" in patch
+    assert offload.changed_paths(patch) == ["src/feature.py"]
