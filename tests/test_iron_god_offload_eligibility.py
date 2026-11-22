@@ -9,6 +9,7 @@ import pytest
 from project_orchestrator import iron_god_backlog as backlog
 from project_orchestrator import iron_god_development_memory as memory
 from project_orchestrator import iron_god_offload_eligibility as eligibility
+from project_orchestrator import iron_god_roadmap_refill as roadmap_refill
 
 REPO = "jweter/VoiceStudio"
 BASE = "a" * 40
@@ -132,6 +133,40 @@ def test_canonical_same_agent_file_reservation_blocks_offload(source, in_flight)
         json.dumps({"items": [item, other]}), encoding="utf-8",
     )
     assert inspect(source)["status"] == "CANDIDATE_UNVERIFIED"
+
+
+@pytest.mark.parametrize("in_flight", sorted(backlog.IN_FLIGHT))
+def test_runtime_admitted_file_reservation_blocks_static_offload(source, in_flight):
+    release, lane, item, _ = source
+    runtime = json.loads(json.dumps(item))
+    runtime["id"] = "RM-VS-ADMITTED-1"
+    runtime["origin"] = roadmap_refill.ORIGIN
+    runtime["authorization"] = {"declared_capability_level": 1}
+    runtime["build"]["module_path"] = "src/runtime.py"
+    runtime["build"]["test_path"] = "tests/test_runtime.py"
+    runtime["interfaces"] = ["src/unit.py"]
+    assert backlog.item_problems(runtime) == []
+    (lane / roadmap_refill.STORE).write_text(json.dumps({"items": [runtime]}), encoding="utf-8")
+    assert [x["id"] for x in roadmap_refill.admitted_items(lane, [item])] == [runtime["id"]]
+    state_file = lane / "backlog-state.json"
+    state = json.loads(state_file.read_text(encoding="utf-8"))
+    state["items"][runtime["id"]] = {
+        "outcome": in_flight, "packets": ["RUNTIME-P-2"], "attempts": 1,
+    }
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+    assert backlog.ownership([item, runtime], state, repository=REPO)[1]["reservation"]
+    assert inspect(source, active_packet_id=None, open_pr_paths=[])["status"] == (
+        "NO_VERIFIED_OFFLOAD_CANDIDATE"
+    )
+    runtime["interfaces"] = ["src/runtime.py"]
+    (lane / roadmap_refill.STORE).write_text(json.dumps({"items": [runtime]}), encoding="utf-8")
+    assert inspect(source)["status"] == "CANDIDATE_UNVERIFIED"
+
+
+def test_corrupted_runtime_store_fails_closed(source):
+    _, lane, _, _ = source
+    (lane / roadmap_refill.STORE).write_text("invalid json", encoding="utf-8")
+    assert inspect(source)["reason"] == "RUNTIME_BACKLOG_STORE_INVALID"
 
 
 def test_corrupted_memory_cannot_mint_candidate(source):

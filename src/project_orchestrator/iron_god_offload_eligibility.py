@@ -17,6 +17,7 @@ from typing import Any
 from . import iron_god_backlog as backlog
 from . import iron_god_development_memory as memory
 from . import iron_god_offload as offload
+from . import iron_god_roadmap_refill as roadmap_refill
 
 _CAPABILITY_BLOCKERS = frozenset({
     "ATTEMPTS_EXHAUSTED",
@@ -130,12 +131,29 @@ def inspect_difficult_slice(
         ):
             return _blocked("BACKLOG_STATE_INVALID")
     done = {item["id"] for item in items if backlog.is_done(item, state)}
+    # The resident product lane considers both release backlog and admitted
+    # runtime roadmap items. A static-only read misses the latter's canonical
+    # in-flight reservations. Do not select new candidates from runtime items;
+    # only include them to veto occupied paths.
+    runtime_path = roadmap_refill.store_path(lane_root)
+    if runtime_path.is_symlink():
+        return _blocked("RUNTIME_BACKLOG_STORE_INVALID")
+    if runtime_path.is_file():
+        try:
+            runtime_data = json.loads(runtime_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return _blocked("RUNTIME_BACKLOG_STORE_INVALID")
+        if not isinstance(runtime_data, dict) or not isinstance(runtime_data.get("items"), list):
+            return _blocked("RUNTIME_BACKLOG_STORE_INVALID")
+    runtime_items = roadmap_refill.admitted_items(lane_root, items)
+    if len(items) + len(runtime_items) > MAX_SCAN:
+        return _blocked("BACKLOG_UNAVAILABLE_OR_UNBOUNDED")
     # Canonical in-flight rows reserve files even when the other item is
     # assigned to Iron God. backlog.exclusion() detects different-developer
     # conflicts, but not concurrent reservations from the same agent.
     in_flight_paths = {
         other["id"]: backlog.edit_files(other)
-        for other in items
+        for other in [*items, *runtime_items]
         if other["repository"] == repository
         and state["items"].get(other["id"], {}).get("outcome") in backlog.IN_FLIGHT
     }
