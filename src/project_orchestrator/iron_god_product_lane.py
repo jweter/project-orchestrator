@@ -718,7 +718,7 @@ def merge_readiness(lane: ProductLane, github: Any, packet_id: str, item: dict[s
     current = str(pr.get("headRefOid") or "")
     settled = current == head and github.review_settled(repo, number, current, str(pr.get("createdAt")))
     return readiness.assess(
-        pr, github.review_threads(repo, number), verified_head=head,
+        pr, github.review_threads(repo, number), repository=repo, verified_head=head,
         verification_ok=_verified(lane, str(item.get("verified_by") or packet_id), head), settled=settled,
         age_seconds=github.age_seconds(str(pr.get("createdAt"))),
         repaired_thread_ids={str(t) for t in item.get("repaired_threads", [])}, merger=github.merger)
