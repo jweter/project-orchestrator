@@ -94,6 +94,13 @@ def continue_preflight(worktree: Path, base: Path, run: Runner, *, clean: Callab
         results = list(evidence["results"])
     except (OSError, ValueError, KeyError, TypeError):
         return {"ok": False, "verdict": "BASELINE_INPUTS_UNREADABLE", "checks": []}
+    # A result file that omitted a preceding native gate must never let the
+    # baseline exception substitute for a full repository preflight.
+    if (not results or len(results) > len(checks)
+            or any(not isinstance(check, dict) for check in checks)
+            or any(not isinstance(row, dict) or row.get("id") != checks[i].get("id")
+                   for i, row in enumerate(results))):
+        return {"ok": False, "verdict": "PRIOR_GATES_UNVERIFIED", "checks": []}
     failed = [r for r in results if r.get("returncode") != 0]
     if len(failed) != 1 or failed[0].get("id") in UNEXCUSABLE_IDS:
         return {"ok": False, "verdict": "UNEXCUSABLE_FAILURE", "checks": [], "failed": [r.get("id") for r in failed]}

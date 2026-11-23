@@ -103,3 +103,29 @@ def test_cleanup_failure_is_distinct_from_not_due(tmp_path, monkeypatch):
     }
     skipped = storage.record_storage_receipt(state, None)
     assert skipped["last_cleanup"] == {"status": "NOT_DUE"}
+
+
+def test_oversized_previous_receipt_is_not_read_or_reused(tmp_path, monkeypatch):
+    state = tmp_path / "flow-state"
+    path = state / "iron-god-products" / "reports" / storage.RECEIPT_FILENAME
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"x" * (storage.MAX_PRIOR_RECEIPT_BYTES + 1))
+    gib = 1024 ** 3
+    monkeypatch.setattr(storage.shutil, "disk_usage", lambda _: SimpleNamespace(
+        free=26 * gib, total=500 * gib,
+    ))
+    receipt = storage.record_storage_receipt(state, None)
+    assert receipt["observed_free_delta_bytes"] is None
+    assert len(receipt["samples"]) == 1
+    assert json.loads(path.read_text(encoding="utf-8"))["schema_version"] == 1
+
+
+def test_owned_entry_count_bounded_before_untrusted_large_directory(tmp_path, monkeypatch):
+    root = tmp_path / "owned"
+    root.mkdir()
+    for i in range(5):
+        (root / f"{i}.json").write_text("retained", encoding="utf-8")
+    monkeypatch.setattr(storage, "MAX_OWNED_ENTRIES", 3)
+    result = storage._count_owned_entries(root, directories=False)
+    assert result == {"status": "SCAN_LIMIT_REACHED", "count": None}
+    assert len(list(root.iterdir())) == 5
