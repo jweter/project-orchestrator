@@ -1467,7 +1467,8 @@ def test_incomplete_required_ci_never_merges(env):
     merger = readiness.load_merger(ROOT)
     pr = {"headRefOid": "h", "baseRefName": "main", "state": "OPEN", "mergeStateStatus": "CLEAN",
           "author": {"login": "jweter"}, "statusCheckRollup": [{"status": "IN_PROGRESS", "conclusion": ""}]}
-    gate = readiness.assess(pr, [], verified_head="h", verification_ok=True, settled=True, age_seconds=9999,
+    gate = readiness.assess(pr, [], repository=REPOS[0], verified_head="h",
+                            verification_ok=True, settled=True, age_seconds=9999,
                             repaired_thread_ids=set(), merger=merger)
     assert (gate.status, gate.reason) == (readiness.WAIT, "CHECKS_PENDING")
 

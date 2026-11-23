@@ -33,7 +33,8 @@ BLOCKED = "BLOCKED"
 
 # green_pr_merger.decide reasons that clear up on their own (checks still running, GitHub still
 # computing mergeability, a young PR); anything else is a real blocker.
-_WAIT_REASONS = {"PR_AGE_WINDOW", "REVIEW_SETTLE_WINDOW", "CHECKS_PENDING", "MERGE_STATE_UNKNOWN",
+_WAIT_REASONS = {"PR_AGE_WINDOW", "REVIEW_SETTLE_WINDOW", "CHECKS_PENDING",
+                 "FULL_PREFLIGHT_CHECK_PENDING", "MERGE_STATE_UNKNOWN",
                  "MERGE_STATE_BEHIND", "MERGE_STATE_BLOCKED"}
 
 
@@ -81,7 +82,8 @@ def finding(thread: dict[str, Any], head_sha: str, merger: ModuleType) -> dict[s
                               for i, r in enumerate(rows))}
 
 
-def assess(pr: dict[str, Any], threads: list[dict[str, Any]], *, verified_head: str, verification_ok: bool,
+def assess(pr: dict[str, Any], threads: list[dict[str, Any]], *, repository: str,
+           verified_head: str, verification_ok: bool,
            settled: bool, age_seconds: float, repaired_thread_ids: set[str], merger: ModuleType) -> Readiness:
     """Decide MERGE / WAIT / REPAIR / RESOLVE / BLOCKED for one pull request at one instant."""
     head = str(pr.get("headRefOid") or "")
@@ -105,7 +107,10 @@ def assess(pr: dict[str, Any], threads: list[dict[str, Any]], *, verified_head: 
         return Readiness(REPAIR, "UNRESOLVED_REVIEW_FINDINGS", [finding(t, head, merger) for t in unrepaired])
     if unresolved:  # every remaining thread was repaired by a verified, settled, finding-free head
         return Readiness(RESOLVE, "REPAIRED_FINDINGS_READY_TO_RESOLVE", [finding(t, head, merger) for t in unresolved])
-    decision = merger.decide(pr, blocking_findings=False, age_seconds=age_seconds, review_settled=True)
+    # The shared merger's native-preflight policy is repository scoped.
+    # Omitting the repository silently skips that check for orchestrator PRs.
+    decision = merger.decide(pr, blocking_findings=False, age_seconds=age_seconds,
+                             review_settled=True, repository=repository)
     if decision.eligible:
         return Readiness(MERGE, decision.reason)
     if decision.reason in _WAIT_REASONS:
