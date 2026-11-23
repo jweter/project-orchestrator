@@ -452,3 +452,27 @@ def test_event_ledger_cannot_accept_bogus_immutability_trigger(tmp_path):
         obs.record_supervisor_pass(tmp_path, now=now)
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT * FROM development_events").fetchall() == before
+
+
+@pytest.mark.parametrize("trigger_name,verb", [
+    ("development_events_no_update", "UPDATE"),
+    ("development_events_no_delete", "DELETE"),
+])
+def test_conditional_trigger_cannot_fake_immutable_event_history(
+        tmp_path, trigger_name, verb):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        before = db.execute("SELECT * FROM development_events").fetchall()
+        db.execute(f"DROP TRIGGER {trigger_name}")
+        db.execute(
+            f"CREATE TRIGGER {trigger_name} BEFORE {verb} ON development_events "
+            "WHEN 0 BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END"
+        )
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT * FROM development_events").fetchall() == before
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 1

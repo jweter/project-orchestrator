@@ -387,7 +387,17 @@ def _ensure_event_schema(db: sqlite3.Connection) -> None:
             ("development_events_no_delete", "BEFORE DELETE ON DEVELOPMENT_EVENTS"),
         ):
             trigger = triggers.get(name, "")
-            if action not in trigger or "RAISE(ABORT, 'IMMUTABLE_EVENT')" not in trigger:
+            # A matching substring is unsafe: WHEN 0 or an extra statement
+            # can make a nominally immutable trigger ineffective. Accept only
+            # the original deployed trigger, or its equivalent new DDL.
+            canonical = trigger.replace(
+                "CREATE TRIGGER IF NOT EXISTS ", "CREATE TRIGGER ", 1
+            )
+            expected = (
+                f"CREATE TRIGGER {name.upper()} {action} "
+                "BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END"
+            )
+            if canonical != expected:
                 raise RuntimeError("SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED")
     db.execute(
         "CREATE INDEX IF NOT EXISTS idx_development_events_recent "
