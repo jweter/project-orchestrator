@@ -55,33 +55,114 @@ def db_path(lane_root: Path) -> Path:
     return Path(lane_root) / DB_NAME
 
 
+_TABLE_COLUMNS = {
+    "meta": ("key", "value"),
+    "attempts": (
+        "packet_id", "item_id", "repository", "base_sha", "module_path",
+        "targets", "method", "model", "instructions", "prompt", "reply",
+        "tests", "static", "failure_class", "outcome", "recorded_at_utc",
+    ),
+    "rules": ("failure_class", "rule", "evidence", "slices", "kind", "derived_at_utc"),
+    "strategy_exposures": ("packet_id", "strategy", "revision", "evidence_packet"),
+}
+
+
 def _connect(lane_root: Path) -> sqlite3.Connection:
+    """Open the original memory store with a single transactional schema writer.
+
+    The installed v2 database historically recorded its version only in meta,
+    leaving PRAGMA user_version=0. Accept that known form, never silently
+    overwrite future or contradictory schema markers or repair broken tables.
+    """
     path = db_path(lane_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path)
-    connection.row_factory = sqlite3.Row
-    connection.executescript("""
-        CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS attempts (
-            packet_id TEXT PRIMARY KEY, item_id TEXT, repository TEXT NOT NULL, base_sha TEXT NOT NULL,
-            module_path TEXT, targets TEXT NOT NULL, method TEXT NOT NULL, model TEXT, instructions TEXT,
-            prompt TEXT, reply TEXT, tests TEXT, static TEXT, failure_class TEXT NOT NULL,
-            outcome TEXT NOT NULL, recorded_at_utc TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS rules (
-            failure_class TEXT PRIMARY KEY, rule TEXT NOT NULL, evidence TEXT NOT NULL,
-            slices INTEGER NOT NULL, kind TEXT NOT NULL, derived_at_utc TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS strategy_exposures (
-            packet_id TEXT PRIMARY KEY REFERENCES attempts(packet_id),
-            strategy TEXT NOT NULL,
-            revision INTEGER NOT NULL CHECK (revision IN (1, 2)),
-            evidence_packet TEXT NOT NULL REFERENCES attempts(packet_id));
-    """)
-    # Additive migration: existing attempt and rule rows remain byte-for-byte
-    # unchanged. No parallel controller, memory store or new execution authority.
-    connection.execute("INSERT INTO meta VALUES ('schema_version', ?) "
-                       "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                       (str(SCHEMA_VERSION),))
-    return connection
+    # Preserve implicit transactions for record_attempt() and derive_rules().
+    # The schema migration below uses an explicit BEGIN IMMEDIATE independently.
+    connection = sqlite3.connect(path, timeout=15, isolation_level="DEFERRED")
+    try:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA busy_timeout=15000")
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        connection.execute("PRAGMA foreign_keys=ON")
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            user_version = connection.execute("PRAGMA user_version").fetchone()[0]
+            tables = {
+                row[0] for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ) if not row[0].startswith("sqlite_")
+            }
+            if tables - _TABLE_COLUMNS.keys():
+                raise RuntimeError("DEVELOPMENT_MEMORY_UNKNOWN_SCHEMA")
+            if user_version not in (0, 1, SCHEMA_VERSION):
+                raise RuntimeError("DEVELOPMENT_MEMORY_UNSUPPORTED_SCHEMA")
+            if (tables and not {"attempts", "rules"}.issubset(tables)
+                    or not tables and user_version != 0):
+                raise RuntimeError("DEVELOPMENT_MEMORY_PARTIAL_SCHEMA")
+            marker = None
+            if "meta" in tables:
+                record = connection.execute(
+                    "SELECT value FROM meta WHERE key='schema_version'"
+                ).fetchone()
+                marker = record[0] if record is not None else None
+                if marker not in (None, "1", str(SCHEMA_VERSION)):
+                    raise RuntimeError("DEVELOPMENT_MEMORY_UNSUPPORTED_SCHEMA")
+            if (user_version and marker is not None and str(user_version) != marker
+                    or user_version == SCHEMA_VERSION and marker is None
+                    or marker == str(SCHEMA_VERSION) and "strategy_exposures" not in tables
+                    or "strategy_exposures" in tables and marker != str(SCHEMA_VERSION)):
+                raise RuntimeError("DEVELOPMENT_MEMORY_SCHEMA_VERSION_CONFLICT")
+            for name in tables:
+                columns = tuple(
+                    row["name"] for row in connection.execute(f"PRAGMA table_info({name})")
+                )
+                if columns != _TABLE_COLUMNS[name]:
+                    raise RuntimeError("DEVELOPMENT_MEMORY_SCHEMA_DRIFT")
+            if not tables:
+                connection.execute(
+                    "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                )
+                connection.execute("""
+                    CREATE TABLE attempts (
+                        packet_id TEXT PRIMARY KEY, item_id TEXT,
+                        repository TEXT NOT NULL, base_sha TEXT NOT NULL,
+                        module_path TEXT, targets TEXT NOT NULL, method TEXT NOT NULL,
+                        model TEXT, instructions TEXT, prompt TEXT, reply TEXT,
+                        tests TEXT, static TEXT, failure_class TEXT NOT NULL,
+                        outcome TEXT NOT NULL, recorded_at_utc TEXT NOT NULL)
+                """)
+                connection.execute("""
+                    CREATE TABLE rules (
+                        failure_class TEXT PRIMARY KEY, rule TEXT NOT NULL,
+                        evidence TEXT NOT NULL, slices INTEGER NOT NULL,
+                        kind TEXT NOT NULL, derived_at_utc TEXT NOT NULL)
+                """)
+            elif "meta" not in tables:
+                connection.execute(
+                    "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                )
+            if "strategy_exposures" not in tables:
+                connection.execute("""
+                    CREATE TABLE strategy_exposures (
+                        packet_id TEXT PRIMARY KEY REFERENCES attempts(packet_id),
+                        strategy TEXT NOT NULL,
+                        revision INTEGER NOT NULL CHECK (revision IN (1, 2)),
+                        evidence_packet TEXT NOT NULL REFERENCES attempts(packet_id))
+                """)
+            connection.execute(
+                "INSERT INTO meta VALUES ('schema_version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(SCHEMA_VERSION),),
+            )
+            connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        result = connection.execute("PRAGMA quick_check").fetchone()[0]
+        if result != "ok" or connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+            raise RuntimeError("DEVELOPMENT_MEMORY_INTEGRITY_FAILED")
+        return connection
+    except BaseException:
+        connection.close()
+        raise
 
 
 def classify(status: str, summary: str, directed: dict[str, Any]) -> str:
