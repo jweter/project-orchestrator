@@ -19,7 +19,7 @@ _COMMANDS = frozenset({"engine_status", "owner_status", "repository_head"})
 _SHA = re.compile(r"[0-9a-f]{40}\Z")
 
 
-def _git_read(repo_root: Path, *args: str, changed_exit: bool = False) -> str:
+def _git_read(repo_root: Path, *args: str) -> str:
     """Run one fixed, bounded Git read; no shell, prompts, hooks or index locks."""
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     env.update({
@@ -33,8 +33,6 @@ def _git_read(repo_root: Path, *args: str, changed_exit: bool = False) -> str:
         capture_output=True, text=True, check=False, timeout=8,
         shell=False, env=env,
     )
-    if changed_exit and result.returncode == 1:
-        return "CHANGED"
     if result.returncode != 0:
         raise ValueError("GIT_READ_UNAVAILABLE")
     if len(result.stdout) > 4096:
@@ -51,15 +49,13 @@ def _repository_head(repo_root: Path) -> dict[str, Any]:
         sha = _git_read(repo_root, "rev-parse", "--verify", "HEAD^{commit}")
         if not _SHA.fullmatch(sha):
             raise ValueError("HEAD_INVALID")
-        dirty = _git_read(repo_root, "diff", "--quiet", "--no-ext-diff",
-                          "--no-textconv", "--ignore-submodules=all", "HEAD", "--",
-                          changed_exit=True) == "CHANGED"
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {"status": "UNAVAILABLE", "reason": "GIT_READ_UNAVAILABLE"}
     return {
         "status": "OK",
         "head_sha": sha,
-        "tracked_worktree_dirty": dirty,
+        "tracked_worktree_dirty": None,
+        "tracked_change_detection": "NOT_EVALUATED_FILTER_EXECUTION_RISK",
         "scope": "CONFIGURED_REPOSITORY_ONLY",
         "git_checks": "LOCAL_ONLY_NOT_CI_OR_MERGE_PROOF",
     }
@@ -104,15 +100,27 @@ def run_readonly_command(
                 "can_execute": False}
     if command == "engine_status":
         data = coordination.engine_snapshot(state_root)
+        sources = data.get("sources") if isinstance(data, dict) else None
+        observed = (
+            isinstance(sources, dict)
+            and any(
+                isinstance(item, dict)
+                and item.get("status") not in (None, "", "UNAVAILABLE")
+                for item in sources.values()
+            )
+        )
+        overall_status = "OBSERVED" if observed else "UNAVAILABLE"
         source = "REPORTED_STATUS_NOT_OWNER_AUTHORITY"
     elif command == "owner_status":
         data = _owner_status(state_root, release_sha)
+        overall_status = data["status"]
         source = "EXISTING_SIGNED_OWNER_ORACLE_READ_ONLY"
     else:
         data = _repository_head(repo_root)
+        overall_status = data["status"]
         source = "FIXED_LOCAL_GIT_READ"
     return {
-        "status": data.get("status", "UNAVAILABLE"),
+        "status": overall_status,
         "command": command,
         "data": data,
         "source": source,

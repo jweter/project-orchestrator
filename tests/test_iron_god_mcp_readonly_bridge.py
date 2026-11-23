@@ -94,13 +94,30 @@ def test_unknown_owner_state_denies_without_creating_database(tmp_path):
 def test_engine_snapshot_is_reported_advisory_not_grant(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bridge.coordination, "engine_snapshot",
-        lambda _: {"status": "RUNNING_CURRENT", "permitted": True},
+        lambda _: {"sources": {"supervisor": {"status": "RUNNING_CURRENT",
+                                              "evidence": "REPORTED_NOT_INDEPENDENTLY_VERIFIED"}},
+                   "note": "advisory only"},
     )
     result = bridge.run_readonly_command(
         "engine_status", state_root=tmp_path, repo_root=tmp_path,
     )
-    assert result["data"]["status"] == "RUNNING_CURRENT"
+    assert result["status"] == "OBSERVED"
+    assert result["data"]["sources"]["supervisor"]["status"] == "RUNNING_CURRENT"
     assert result["source"] == "REPORTED_STATUS_NOT_OWNER_AUTHORITY"
+    assert result["can_execute"] is False
+
+
+def test_engine_snapshot_absent_sources_do_not_claim_health(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        bridge.coordination, "engine_snapshot",
+        lambda _: {"sources": {"supervisor": {"status": "UNAVAILABLE"}},
+                   "note": "reported state only"},
+    )
+    result = bridge.run_readonly_command(
+        "engine_status", state_root=tmp_path, repo_root=tmp_path,
+    )
+    assert result["status"] == "UNAVAILABLE"
+    assert result["data"]["sources"]["supervisor"]["status"] == "UNAVAILABLE"
     assert result["can_execute"] is False
 
 
@@ -111,7 +128,7 @@ def _git(cwd, *args):
     ).stdout.strip()
 
 
-def test_git_head_is_fixed_bounded_read_and_tracks_dirty_status(tmp_path):
+def test_git_head_is_fixed_bounded_read_without_filter_execution(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -126,13 +143,27 @@ def test_git_head_is_fixed_bounded_read_and_tracks_dirty_status(tmp_path):
     )
     assert clean["status"] == "OK"
     assert clean["data"]["head_sha"] == expected
-    assert clean["data"]["tracked_worktree_dirty"] is False
+    assert clean["data"]["tracked_worktree_dirty"] is None
+    assert clean["data"]["tracked_change_detection"] == "NOT_EVALUATED_FILTER_EXECUTION_RISK"
     assert clean["can_execute"] is False
     (repo / "sample.txt").write_text("two\n", encoding="utf-8")
     dirty = bridge.run_readonly_command(
         "repository_head", state_root=tmp_path, repo_root=repo,
     )
-    assert dirty["data"]["tracked_worktree_dirty"] is True
+    assert dirty["data"]["tracked_worktree_dirty"] is None
+    # A malicious clean/process filter would execute on git diff/status. This
+    # probe never invokes either operation, so even a modified tracked file
+    # with a configured filter must not execute the injected command.
+    (repo / ".gitattributes").write_text("sample.txt filter=probe\n", encoding="utf-8")
+    _git(repo, "config", "filter.probe.clean", "echo EXECUTED > FILTER_EXECUTED")
+    marker = repo / "FILTER_EXECUTED"
+    assert not marker.exists()
+    with_filter = bridge.run_readonly_command(
+        "repository_head", state_root=tmp_path, repo_root=repo,
+    )
+    assert with_filter["status"] == "OK"
+    assert with_filter["data"]["tracked_worktree_dirty"] is None
+    assert not marker.exists()
     assert _git(repo, "rev-parse", "HEAD") == expected
     nested = repo / "nested"
     nested.mkdir()

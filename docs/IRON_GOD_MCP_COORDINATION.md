@@ -92,12 +92,14 @@ service, credential, task, daemon, supervisor, lease, or database is created.
   Command IDs, signed payloads, owner keys, and supervisor identifiers are not
   returned. Even a signed active grant is **observation**, not authorization
   to dispatch work through MCP.
-- `repository_head` executes only fixed, bounded `git rev-parse` and
-  `git diff --name-only` reads, without a shell, prompts, optional index
-  locks, filesystem monitor, external diff, or text conversion. It refuses
-  roots resolving to a parent repository. It reports the configured checkout
-  HEAD and conservative tracked-file dirtiness; it is **not** remote GitHub
-  main, exact-head CI, branch preflight, or Product Reality proof.
+- `repository_head` executes only fixed, bounded `git rev-parse`
+  revision reads without a shell, prompts, or optional index locks. It
+  refuses roots resolving to a parent repository. It intentionally **does
+  not inspect worktree dirtiness**: Git diff/status can invoke attribute-based
+  clean/process filters and violate the no-execution guarantee. Dirtiness is
+  returned as `null` with reason `NOT_EVALUATED_FILTER_EXECUTION_RISK`,
+  never fabricated clean. This is **not** remote GitHub main, exact-head CI,
+  branch preflight, or Product Reality proof.
 
 The transport guard remains `IRON_GOD_MCP_TRANSPORT=stdio` only; all host
 read roots are explicit absolute paths. Advisory write tools remain absent
@@ -107,11 +109,12 @@ or cancel Remote Desktop Commander on the strength of unit tests.
 
 **Acceptance boundary:** The source branch can be promoted only through
 repository-native full exact-head preflight, PR CI/review, controlled merge
-and independent owner-authorized install. The current signed local owner
-state was observed `GIVE_ME_CONTROL`; a live scheduled DoWork-to-native
-product acceptance canary cannot run until independently authorized owner
-control, current worker lease, suitable native builder, and product-specific
-acceptance prerequisites are all present. Prior GitHub source merges alone
+and independent owner-authorized install. Current signed owner state
+must be queried fresh using the existing controller, not copied from a
+historical document or inferred from a heartbeat. A live scheduled
+DoWork-to-native product acceptance canary requires independently validated
+owner control, current worker lease, suitable native builder, and native
+product-specific acceptance prerequisites. Prior GitHub source merges alone
 do not satisfy this canary.
 
 ## First implementation and tools
