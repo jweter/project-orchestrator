@@ -59,6 +59,41 @@ Take the Wheel authorization. Nothing in this test enables an hourly offload.
 - **No reset/cleanup:** An import that fails after creating an isolated worktree preserves it for controlled recovery; neither code nor test ever resets the user's current checkout, cleans active worktrees, changes system directories or deletes evidence.
 - **No unconditional authority callbacks in production:** The canary deliberately injects boolean callbacks to test allowed/denied/revoked paths. The real product lane must wire callbacks to its authenticated controller and worker lease; returning `True` unconditionally would violate this design.
 
+## Guarded offer producer (source-only; no runtime activation)
+
+The additive `iron_god_offload_producer.offer_verified_difficult_slice`
+connects the preexisting exact-head failure selector to the preexisting
+immutable SQLite advisory `offer_slice` primitive. It is **not** registered
+as an MCP/CLI tool, scheduled job, execution controller, native worker, or
+release feature. Its default is disabled (`advisory_writes_enabled=False`).
+
+Only a protected resident caller may supply the three independently verified
+witness callbacks:
+
+- `read_live(repository)`: fresh GitHub main HEAD, measured local model
+  capability, all conflicting open PR paths, and canonical active packet ID;
+  required fields must be complete. This is not trusted from the MCP mailbox.
+- `authenticated_owner_check()`: existing live authenticated owner veto,
+  not an advisory owner-status projection.
+- `no_conflicting_lease_check(repository, allowed_paths)`: a protected
+  canonical worker/file-claim check. A clean lane is **not** a worker lease.
+
+Before publication it verifies current-head failed-worker packet, exact
+SQLite development-memory failure class, owner-approved slice and unchanged
+specification/paths. The independent owner, live source and lease checks
+are rerun immediately before writing the immutable offer; the same gates
+are checked once more afterwards. Changed/revoked gates fail closed, and a
+row that was already written is still advisory only. No automatic reservation,
+staging, import, build, PR, merge, or learned skill follows from the offer.
+
+This source adapter does **not** automatically revalidate stale failed packets.
+The resident worker must obtain genuine fresh exact-head failure evidence
+through the existing governed development loop; it must not rewrite a prior
+packet's base SHA, reset attempt counters, invent test failure evidence,
+or use callback lambdas that always return True in production. The guarded
+producer can only be connected to installed runtime after independent
+preflight, review, release promotion and native owner/worker integration.
+
 ## Evidence and next gates
 
 Focused deterministic tests in `tests/test_iron_god_offload.py` cover SQLite concurrent replay, immutable candidate registration, wrong base, altered bytes, path fencing, owner veto, revocation between `git apply --check` and `git apply`, and isolated Git worktree import. The canary checks an independently compiled Python edit; that is **not** any product's full canonical native acceptance.
