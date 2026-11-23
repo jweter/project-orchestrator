@@ -82,12 +82,23 @@ def default_resources() -> dict[str, Any]:
         admission = memory_admission(0)
     except Exception as exc:
         return {"admitted": False, "reason": f"MEMORY_PROBE_FAILED: {type(exc).__name__}"}
-    free_gib = shutil.disk_usage(Path.home().anchor or "C:\\").free / 1024**3
+    # A failed disk probe is NOT permission to launch another large local worker.
+    try:
+        usage = shutil.disk_usage(Path.home().anchor or "C:\\")
+        free_bytes, total_bytes = int(usage.free), int(usage.total)
+        if free_bytes < 0 or total_bytes <= 0 or free_bytes > total_bytes:
+            raise ValueError("Invalid volume capacity")
+    except (OSError, ValueError, TypeError, OverflowError):
+        return {"admitted": False, "reason": "DISK_PROBE_FAILED",
+                "min_free_disk_gib": MIN_FREE_DISK_GIB}
+    free_gib = free_bytes / 1024**3
+    disk = {"free_disk_gib": round(free_gib, 2), "min_free_disk_gib": MIN_FREE_DISK_GIB,
+            "disk_shortfall_gib": round(max(0.0, MIN_FREE_DISK_GIB - free_gib), 2)}
     if free_gib < MIN_FREE_DISK_GIB:
-        return {"admitted": False, "reason": "LOW_DISK", "free_disk_gib": round(free_gib, 1)}
-    return {"admitted": int(admission.get("new_worker_budget", 0)) >= 1,
-            "reason": admission.get("status"), "available_mib": admission.get("available_mib"),
-            "free_disk_gib": round(free_gib, 1)}
+        return {"admitted": False, "reason": "LOW_DISK", **disk}
+    budget = admission.get("new_worker_budget")
+    return {"admitted": type(budget) is int and budget >= 1,
+            "reason": admission.get("status"), "available_mib": admission.get("available_mib"), **disk}
 
 
 def _now() -> str:

@@ -17,10 +17,16 @@ from .steward import assess_machine_health
 
 RECEIPT_FILENAME = "storage-housekeeping.json"
 MAX_SAMPLES = 24
+MAX_PRIOR_RECEIPT_BYTES = 128 * 1024
+MAX_OWNED_ENTRIES = 2048
 
 
 def _previous(path: Path) -> dict[str, Any]:
     try:
+        # Prior telemetry is untrusted input; never read an arbitrary-size
+        # blob or follow a link into unrelated owner-controlled data.
+        if path.is_symlink() or path.stat().st_size > MAX_PRIOR_RECEIPT_BYTES:
+            return {}
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
@@ -30,16 +36,20 @@ def _previous(path: Path) -> dict[str, Any]:
 def _count_owned_entries(path: Path, *, directories: bool) -> dict[str, Any]:
     """Count only direct, non-link children; never traverse unclassified data."""
     try:
-        if path.is_symlink():
+        if path.is_symlink() or getattr(path, "is_junction", lambda: False)():
             return {"status": "LINK_PROTECTED", "count": None}
         if not path.exists():
             return {"status": "ABSENT", "count": 0}
         if not path.is_dir():
             return {"status": "UNEXPECTED_PATH_TYPE", "count": None}
-        count = sum(
-            1 for entry in path.iterdir()
-            if not entry.is_symlink() and (entry.is_dir() if directories else entry.is_file())
-        )
+        count = 0
+        for scanned, entry in enumerate(path.iterdir(), start=1):
+            if scanned > MAX_OWNED_ENTRIES:
+                return {"status": "SCAN_LIMIT_REACHED", "count": None}
+            if entry.is_symlink() or getattr(entry, "is_junction", lambda: False)():
+                continue
+            if entry.is_dir() if directories else entry.is_file():
+                count += 1
         return {"status": "OBSERVED", "count": count}
     except OSError:
         return {"status": "UNREADABLE", "count": None}

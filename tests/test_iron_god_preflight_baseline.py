@@ -141,3 +141,21 @@ def test_an_interrupted_pytest_run_never_matches_the_base(tmp_path: Path) -> Non
 
     result = run(repo, Interrupted(tmp_path, ("tests/a.py::known",), ("tests/a.py::known",)))
     assert not result["ok"] and result["checks"][0]["baseline"] == "PYTEST_DID_NOT_COMPLETE"
+
+
+def test_missing_or_reordered_prior_native_gate_cannot_be_excused(tmp_path: Path) -> None:
+    # Missing control_plane evidence is not evidence that control_plane ran.
+    repo = make_repo(tmp_path, ran=("backend_tests",))
+    fake = Fake(tmp_path, post=("tests/a.py::t1",), base=("tests/a.py::t1",))
+    result = run(repo, fake)
+    assert result["ok"] is False
+    assert result["verdict"] == "PRIOR_GATES_UNVERIFIED"
+    assert fake.calls == []  # no expensive baseline comparisons on malformed evidence
+
+    (repo / "preflight-evidence.json").write_text(json.dumps({
+        "results": [
+            {"id": "backend_tests", "returncode": 0},
+            {"id": "control_plane", "returncode": 1},
+        ],
+    }), encoding="utf-8")
+    assert run(repo, fake)["verdict"] == "PRIOR_GATES_UNVERIFIED"

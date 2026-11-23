@@ -365,3 +365,20 @@ def test_dispatched_to_merged_transition_and_merged_replay_are_idempotent(tmp_pa
     assert replay["attempts"] == 1
     assert replay["outcome"] == "MERGED"
     assert "terminal_outcome_conflict" not in replay
+
+
+def test_empty_or_corrupt_fingerprint_never_proves_repeated_failed_source():
+    from project_orchestrator import iron_god_backlog as backlog
+
+    assert not backlog.repeated_failed_source({
+        "failed_source_by_packet": {"p1": "", "p2": ""},
+    })
+    assert not backlog.repeated_failed_source({
+        "failed_source_by_packet": {"p1": [], "p2": []},
+    })
+    assert not backlog.repeated_failed_source({
+        "failed_source_by_packet": {"p1": "abc", "p2": "   "},
+    })
+    assert backlog.repeated_failed_source({
+        "failed_source_by_packet": {"p1": "abc", "p2": "abc"},
+    })

@@ -258,7 +258,7 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
             and failed_source_fingerprint not in unique
         ):
             unique.append(failed_source_fingerprint)
-        row["repeated_failed_source"] = len(set(by_packet.values())) < len(by_packet)
+        row["repeated_failed_source"] = repeated_failed_source(row)
     if outcome.startswith(LINEAGE_FAILURE_OUTCOME):
         failed = row.setdefault("test_failed_packets", [])
         if packet_id not in failed:  # replaying one packet is not a second failure
@@ -424,7 +424,11 @@ def lineage_capped(state: dict[str, Any], item_id: str) -> bool:
 def repeated_failed_source(row: dict[str, Any]) -> bool:
     """Two distinct packets failed on byte-identical source. Derived from the packet evidence, never the cached flag."""
     packet_fingerprints = row.get("failed_source_by_packet", {})
-    fingerprints = ([f for f in packet_fingerprints.values() if isinstance(f, str)]
+    # Empty/corrupt evidence is not proof of byte-identical failed source.
+    # Two different, nonempty packet identities are required.
+    fingerprints = ([fingerprint for packet, fingerprint in packet_fingerprints.items()
+                     if isinstance(packet, str) and packet
+                     and isinstance(fingerprint, str) and fingerprint.strip()]
                     if isinstance(packet_fingerprints, dict) else [])
     return len(fingerprints) != len(set(fingerprints))
 
