@@ -140,6 +140,44 @@ def test_a_request_older_than_the_checked_head_is_flagged_stale(tmp_path: Path) 
     assert rows["RM-OLD"]["head_is_current"] is False and rows["RM-NEW"]["head_is_current"] is True
 
 
+def test_historical_missing_module_failure_is_not_an_actionable_current_blocker(tmp_path: Path) -> None:
+    """Production reproduction: VoiceStudio's old S5 module-import failures persisted after main advanced."""
+    from types import SimpleNamespace
+
+    from project_orchestrator import iron_god_product_lane as product_lane
+
+    old_head, now_head = "a" * 40, "b" * 40
+    write_request(tmp_path, "S5-DURATION-OLD", old_head, builder="LOCAL")
+    write_request(tmp_path, "S5-PROGRESS-OLD", old_head, builder="LOCAL")
+    write_request(tmp_path, "S5-ACTIVE", now_head, builder="LOCAL")
+    refill.log_event(tmp_path, "LOCAL_DRAFT_FAILED", REPO, "S5-DURATION-OLD", {
+        "reason": "APPROVED_TEST_DOES_NOT_RUN_AT_BASE: ModuleNotFoundError"})
+    refill.log_event(tmp_path, "LOCAL_DRAFT_FAILED", REPO, "S5-PROGRESS-OLD", {
+        "reason": "APPROVED_TEST_DOES_NOT_RUN_AT_BASE: ModuleNotFoundError"})
+    refill.log_event(tmp_path, "CAPABLE_NOT_DISPATCHED", REPO, "S5-ACTIVE", {
+        "reason": "CURRENT_HEAD_CAPABILITY_BLOCKER"})
+    refill._mutate(tmp_path, lambda store: store["checked"].update({
+        REPO: {"at": "2026-11-23T10:19:00+00:00", "head": now_head},
+    }))
+    rows = {row["id"]: row for row in refill.request_status(tmp_path)}
+    for ident in ("S5-DURATION-OLD", "S5-PROGRESS-OLD"):
+        row = rows[ident]
+        assert row["head_is_current"] is False
+        assert row["historical_request"] is True
+        assert row["last_event"] == "LOCAL_DRAFT_FAILED"  # evidence preserved
+        assert row["blocked_by"] is None  # never schedule on that old head
+        assert row["next_action"] == "USE_CURRENT_REFILL_HEAD"
+    assert rows["S5-ACTIVE"]["head_is_current"] is True
+    assert rows["S5-ACTIVE"]["historical_request"] is False
+    assert rows["S5-ACTIVE"]["blocked_by"] == "CURRENT_HEAD_CAPABILITY_BLOCKER"
+
+    summary = product_lane.idle_diagnostics(SimpleNamespace(root=tmp_path), [], {})
+    assert summary["historical_request_count"] == 2
+    assert [row["id"] for row in summary["requests_waiting"]] == ["S5-ACTIVE"]
+    persisted = json.loads((tmp_path / "eligibility.json").read_text(encoding="utf-8"))
+    assert len(persisted["requests"]) == 3  # no deletion of history
+
+
 def test_admission_drops_a_revision_that_does_not_prove_its_authorized_level(tmp_path: Path) -> None:
     """A re-authored slice (-r1) only becomes eligible through the refill's stamped authorization, never by assertion."""
     good = item("RM-X-r1", origin=refill.ORIGIN, authorization={"declared_capability_level": 1})

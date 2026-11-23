@@ -979,18 +979,27 @@ def request_status(lane_root: Path) -> list[dict[str, Any]]:
             continue
         if not isinstance(request, dict):
             continue
-        route = request.get("route") if isinstance(request.get("route"), dict) else {}
+        raw_route = request.get("route")
+        route: dict[str, Any] = raw_route if isinstance(raw_route, dict) else {}
         event = latest.get(str(request.get("id")), {})
-        detail = event.get("detail") if isinstance(event.get("detail"), dict) else {}
+        raw_detail = event.get("detail")
+        detail: dict[str, Any] = raw_detail if isinstance(raw_detail, dict) else {}
         checked = store["checked"].get(str(request.get("repository")))
         checked_head = checked.get("head") if isinstance(checked, dict) else None
+        # Compare against the latest *recorded refill* head, not an unqueried
+        # GitHub source. Old request files are retained for diagnostics; their
+        # historical failures MUST NOT appear as blockers of current work.
+        head_is_current = None if checked_head is None else checked_head == request.get("exact_head")
+        historic = head_is_current is False
+        blocked = detail.get("reason") if event.get("kind") in BLOCKING_EVENTS else None
         rows.append({"id": request.get("id"), "repository": request.get("repository"),
                      "exact_head": str(request.get("exact_head", ""))[:12],
-                     # False: the repository has moved on since this request was authorized; it is re-derived, not built
-                     "head_is_current": None if checked_head is None else checked_head == request.get("exact_head"),
+                     "head_is_current": head_is_current,
                      "builder": route.get("builder"),
                      "route_reason": route.get("reason"), "last_event": event.get("kind"),
-                     "blocked_by": detail.get("reason") if event.get("kind") in BLOCKING_EVENTS else None})
+                     "blocked_by": None if historic else blocked,
+                     "historical_request": historic,
+                     "next_action": "USE_CURRENT_REFILL_HEAD" if historic else None})
     return rows
 
 
