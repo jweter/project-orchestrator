@@ -1343,8 +1343,13 @@ def idle_diagnostics(lane: ProductLane, explained: list[dict[str, Any]], rejecte
             "schema_version": 1, "observed_at_utc": _now(), "items": explained, "requests": requests,
             "malformed_backlog_items": rejected})
         return {"eligibility_file": "eligibility.json", "exclusions": backlog.summarize_exclusions(explained),
+                # Historical request files are preserved, not treated as live
+                # missing-work blockers. An old missing-module error must not
+                # send the scheduler back to work already merged in GitHub.
+                "historical_request_count": sum(row.get("historical_request") is True for row in requests),
                 "requests_waiting": [{key: row[key] for key in ("id", "repository", "builder", "blocked_by")}
-                                     for row in requests if row.get("blocked_by")][:12],
+                                     for row in requests if row.get("blocked_by")
+                                     and row.get("head_is_current") is not False][:12],
                 "malformed_backlog_items": sorted(rejected)[:12]}
     except Exception as exc:  # diagnostics are best effort
         return {"diagnostics_error": f"{type(exc).__name__}: {str(exc)[:160]}"}
