@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -319,6 +320,136 @@ def _database(state_root: Path) -> Path:
     return Path(state_root) / "observability" / "development-events.sqlite"
 
 
+_EVENT_COLUMNS = (
+    "seq", "event_key", "supervisor_instance", "continuation_sequence",
+    "observed_at_utc", "status", "reason", "evidence_json",
+)
+_EVENT_VERSION = 1
+_EVENT_TABLE_DDL = """CREATE TABLE development_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT NOT NULL UNIQUE,
+    supervisor_instance TEXT NOT NULL,
+    continuation_sequence INTEGER NOT NULL,
+    observed_at_utc TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    evidence_json TEXT NOT NULL
+)"""
+
+
+def _ensure_event_schema(db: sqlite3.Connection) -> None:
+    """Validate and migrate the original event ledger under one SQLite writer.
+
+    Legacy released DBs used user_version=0. Their event rows remain intact;
+    unfamiliar schemas, missing immutability protection and future versions
+    never become writable just because CREATE IF NOT EXISTS would succeed.
+    """
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version not in (0, _EVENT_VERSION):
+        raise RuntimeError("SUPERVISOR_EVENTS_UNSUPPORTED_SCHEMA")
+    tables = {
+        row[0] for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ) if not row[0].startswith("sqlite_")
+    }
+    if tables - {"development_events"}:
+        raise RuntimeError("SUPERVISOR_EVENTS_UNRECOGNIZED_DATABASE")
+    fresh = not tables
+    if fresh:
+        if version != 0:
+            raise RuntimeError("SUPERVISOR_EVENTS_PARTIAL_SCHEMA")
+        db.execute(_EVENT_TABLE_DDL)
+        db.execute("""CREATE TRIGGER development_events_no_update
+            BEFORE UPDATE ON development_events BEGIN
+            SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END""")
+        db.execute("""CREATE TRIGGER development_events_no_delete
+            BEFORE DELETE ON development_events BEGIN
+            SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END""")
+    else:
+        columns = tuple(
+            row[1] for row in db.execute("PRAGMA table_info(development_events)")
+        )
+        if columns != _EVENT_COLUMNS:
+            raise RuntimeError("SUPERVISOR_EVENTS_SCHEMA_DRIFT")
+        ddl = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='development_events'"
+        ).fetchone()
+        sql = " ".join(str(ddl[0]).upper().split()) if ddl is not None else ""
+        # Column names and partial identity checks do not detect added UNIQUE
+        # constraints such as STATUS UNIQUE that silently drop valid events
+        # under INSERT OR IGNORE. Require the complete known-safe table DDL.
+        canonical = sql.replace("CREATE TABLE IF NOT EXISTS ", "CREATE TABLE ", 1)
+        expected = " ".join(_EVENT_TABLE_DDL.upper().split())
+        if canonical != expected:
+            raise RuntimeError("SUPERVISOR_EVENTS_SCHEMA_DRIFT")
+        triggers = {
+            row[0]: " ".join(str(row[1]).upper().split())
+            for row in db.execute(
+                "SELECT name,sql FROM sqlite_master WHERE type='trigger'"
+            )
+        }
+        required = {"development_events_no_update", "development_events_no_delete"}
+        if not required.issubset(triggers):
+            raise RuntimeError("SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED")
+        if set(triggers) != required:
+            raise RuntimeError("SUPERVISOR_EVENTS_UNEXPECTED_TRIGGER")
+        for name, action in (
+            ("development_events_no_update", "BEFORE UPDATE ON DEVELOPMENT_EVENTS"),
+            ("development_events_no_delete", "BEFORE DELETE ON DEVELOPMENT_EVENTS"),
+        ):
+            trigger = triggers.get(name, "")
+            # A matching substring is unsafe: WHEN 0 or an extra statement
+            # can make a nominally immutable trigger ineffective. Accept only
+            # the original deployed trigger, or its equivalent new DDL.
+            canonical = trigger.replace(
+                "CREATE TRIGGER IF NOT EXISTS ", "CREATE TRIGGER ", 1
+            )
+            expected = (
+                f"CREATE TRIGGER {name.upper()} {action} "
+                "BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END"
+            )
+            if canonical != expected:
+                raise RuntimeError("SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED")
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_development_events_recent "
+        "ON development_events(seq DESC)"
+    )
+    # Unknown UNIQUE indices are especially dangerous: INSERT OR IGNORE could
+    # suppress a *different* continuation event without reporting an error.
+    indexes = {
+        row[1]: (row[2], row[3], row[4])
+        for row in db.execute("PRAGMA index_list(development_events)")
+    }
+    if indexes != {
+        "sqlite_autoindex_development_events_1": (1, "u", 0),
+        "idx_development_events_recent": (0, "c", 0),
+    }:
+        raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
+    if tuple(row[2] for row in db.execute(
+        "PRAGMA index_info(sqlite_autoindex_development_events_1)"
+    )) != ("event_key",):
+        raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
+    if tuple(row[2] for row in db.execute(
+        "PRAGMA index_info(idx_development_events_recent)"
+    )) != ("seq",):
+        raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
+    index_ddl = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' "
+        "AND name='idx_development_events_recent'"
+    ).fetchone()
+    canonical_index = " ".join(str(index_ddl[0]).upper().split()) if index_ddl else ""
+    canonical_index = canonical_index.replace(
+        "CREATE INDEX IF NOT EXISTS ", "CREATE INDEX ", 1
+    )
+    if canonical_index != (
+        "CREATE INDEX IDX_DEVELOPMENT_EVENTS_RECENT "
+        "ON DEVELOPMENT_EVENTS(SEQ DESC)"
+    ):
+        raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
+    if version == 0:
+        db.execute(f"PRAGMA user_version={_EVENT_VERSION}")
+
+
 def record_supervisor_pass(state_root: Path, *, now: datetime | None = None) -> bool:
     """Append one immutable observation per supervisor continuation sequence.
 
@@ -342,24 +473,24 @@ def record_supervisor_pass(state_root: Path, *, now: datetime | None = None) -> 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(db_path, timeout=5) as db:
         db.execute("PRAGMA busy_timeout=5000")
-        db.execute("PRAGMA journal_mode=WAL")
+        # Refuse future databases before journal negotiation can mutate them.
+        if db.execute("PRAGMA user_version").fetchone()[0] not in (0, _EVENT_VERSION):
+            raise RuntimeError("SUPERVISOR_EVENTS_UNSUPPORTED_SCHEMA")
+        # Initial WAL negotiation can race another process even with
+        # busy_timeout configured. Serialize the schema transaction below,
+        # but first retry boundedly at the independent journal-mode boundary.
+        for attempt in range(10):
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
         db.execute("PRAGMA synchronous=FULL")
         with db:
-            db.execute("""CREATE TABLE IF NOT EXISTS development_events (
-                seq INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_key TEXT NOT NULL UNIQUE,
-                supervisor_instance TEXT NOT NULL,
-                continuation_sequence INTEGER NOT NULL,
-                observed_at_utc TEXT NOT NULL,
-                status TEXT NOT NULL,
-                reason TEXT NOT NULL,
-                evidence_json TEXT NOT NULL
-            )""")
-            db.execute("""CREATE TRIGGER IF NOT EXISTS development_events_no_update
-                BEFORE UPDATE ON development_events BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END""")
-            db.execute("""CREATE TRIGGER IF NOT EXISTS development_events_no_delete
-                BEFORE DELETE ON development_events BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END""")
-            db.execute("CREATE INDEX IF NOT EXISTS idx_development_events_recent ON development_events(seq DESC)")
+            db.execute("BEGIN IMMEDIATE")
+            _ensure_event_schema(db)
             before = db.total_changes
             db.execute("""INSERT OR IGNORE INTO development_events
                 (event_key,supervisor_instance,continuation_sequence,observed_at_utc,status,reason,evidence_json)

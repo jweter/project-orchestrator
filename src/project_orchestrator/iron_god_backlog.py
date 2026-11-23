@@ -204,6 +204,8 @@ def load_state(lane_root: Path) -> dict[str, Any]:
         raise ValueError("BACKLOG_STATE_INVALID: malformed JSON") from exc
     if not isinstance(state, dict) or not isinstance(state.get("items"), dict):
         raise ValueError("BACKLOG_STATE_INVALID: expected an items mapping")
+    if type(state.get("schema_version")) is not int or state["schema_version"] != 1:
+        raise ValueError("BACKLOG_STATE_INVALID: unsupported schema version")
     return state
 
 
