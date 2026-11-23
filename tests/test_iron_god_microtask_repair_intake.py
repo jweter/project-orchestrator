@@ -68,6 +68,7 @@ def ready(tmp_path: Path):
         }
     )
     state = {
+        "schema_version": 1,
         "items": {
             t1: {"outcome": "FAIL: SLICE_TESTS_FAILED", "attempts": 3},
             r1: {
