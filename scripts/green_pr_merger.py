@@ -16,13 +16,14 @@ ALLOWED_AUTHORS={"jweter","dependabot[bot]","app/dependabot"}
 BLOCKING_RE=re.compile(r"(?i)(?:\bP[0-3]\b|blocking|must fix|security|incorrect|regression|data loss|usage limits?|review unavailable|unable to review|could not review)")
 MIN_PR_AGE_SECONDS=120
 REVIEW_SETTLE_SECONDS=300
+ORCHESTRATOR_REPO="jweter/project-orchestrator"
 
 @dataclass(frozen=True)
 class MergeDecision:
     eligible: bool
     reason: str
 
-def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=9999, review_settled:bool=True, allow_draft:bool=False)->MergeDecision:
+def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=9999, review_settled:bool=True, allow_draft:bool=False, repository:str="")->MergeDecision:
     if pr.get("isDraft") and not allow_draft: return MergeDecision(False,"DRAFT")
     if pr.get("author",{}).get("login") not in ALLOWED_AUTHORS: return MergeDecision(False,"AUTHOR_NOT_ALLOWED")
     if age_seconds < MIN_PR_AGE_SECONDS: return MergeDecision(False,"PR_AGE_WINDOW")
@@ -32,6 +33,20 @@ def decide(pr:dict[str,Any], *, blocking_findings:bool=False, age_seconds:float=
     if blocking_findings: return MergeDecision(False,"BLOCKING_REVIEW_FINDING")
     checks=pr.get("statusCheckRollup")
     if not isinstance(checks,list) or not checks: return MergeDecision(False,"CHECKS_MISSING")
+    # The orchestrator's GitHub ruleset currently requires only "test".
+    # Auto-merge may therefore fire while FULL native preflight is still
+    # running. Our own merger must never mistake ruleset-clean for
+    # repository-policy-green. Check the exact PR-head workflow rollup.
+    if repository == ORCHESTRATOR_REPO:
+        native = [check for check in checks if isinstance(check, dict)
+                  and check.get("name") == "full-preflight"
+                  and check.get("workflowName") == "Preflight"]
+        if len(native) != 1:
+            return MergeDecision(False, "FULL_PREFLIGHT_CHECK_MISSING")
+        if str(native[0].get("status", "")).upper() != "COMPLETED":
+            return MergeDecision(False, "FULL_PREFLIGHT_CHECK_PENDING")
+        if str(native[0].get("conclusion", "")).upper() != "SUCCESS":
+            return MergeDecision(False, "FULL_PREFLIGHT_NOT_GREEN")
     for check in checks:
         status=str(check.get("status","")).upper()
         conclusion=str(check.get("conclusion","")).upper()
@@ -210,7 +225,7 @@ def blocking_review_findings(repo:str, number:int, head_sha:str)->bool:
 def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     head=str(pr.get("headRefOid") or "")
     findings=blocking_review_findings(repo,int(pr["number"]),head)
-    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),review_settled=review_settled(repo,int(pr["number"]),head,str(pr["createdAt"])),allow_draft=True)
+    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),review_settled=review_settled(repo,int(pr["number"]),head,str(pr["createdAt"])),allow_draft=True,repository=repo)
     result={"repository":repo,"pr":pr["number"],"head":head,"decision":decision.reason,"promoted":False}
     if not pr.get("isDraft"):
         result["decision"]="ALREADY_READY"
@@ -225,7 +240,7 @@ def promote(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
 def merge(repo:str,pr:dict[str,Any],dry_run:bool=False)->dict[str,Any]:
     head=str(pr.get("headRefOid") or "")
     findings=blocking_review_findings(repo,int(pr["number"]),head)
-    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),review_settled=review_settled(repo,int(pr["number"]),head,str(pr["createdAt"])))
+    decision=decide(pr,blocking_findings=findings,age_seconds=_age_seconds(str(pr["createdAt"])),review_settled=review_settled(repo,int(pr["number"]),head,str(pr["createdAt"])),repository=repo)
     result={"repository":repo,"pr":pr["number"],"head":head,"decision":decision.reason,"merged":False}
     if not decision.eligible or dry_run:return result
     cmd=["gh","pr","merge",str(pr["number"]),"--repo",repo,"--squash","--delete-branch","--match-head-commit",head]
