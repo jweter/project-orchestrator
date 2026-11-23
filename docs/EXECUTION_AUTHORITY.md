@@ -80,6 +80,26 @@ Architecture, roadmap, project status, engineering JSON contracts, and historica
 
 New always-on policy belongs here only when it applies broadly to portfolio execution. Feature-specific policy belongs with that feature and is loaded only when invoked.
 
+## External GitHub auto-merge and full-preflight enforcement
+
+GitHub auto-merge is an independent publication path: it does **not** invoke
+`scripts/green_pr_merger.py` or honor this document merely because the
+repository's internal merge code is conservative. The current
+`jweter/project-orchestrator` release policy additionally requires a
+successful full Windows `Preflight/full-preflight` check at the **exact PR
+head**, as well as independent `CI/test` and review. No auto-merge should be
+enabled for an orchestrator PR until its current-head full preflight is green.
+
+The orchestrator merger must refuse missing, pending, skipped, failed or
+duplicate `full-preflight` checks, even when GitHub reports mergeable and
+the ruleset's `test` check is green. For durable **GitHub-side enforcement**
+across other actors, the owner-controlled default-branch ruleset also needs
+to require the `full-preflight` status check. That ruleset change is a
+separate owner-governed security action, not implied by a source PR or an
+advisory MCP message. In the November 22, 2026 #774 incident, GitHub
+auto-merge completed with `CI/test` green while `Preflight/full-preflight`
+was still running. The merge is not installed release proof.
+
 ## Owner-signed scope exceptions: what the signature does and does not protect
 
 A scope exception (`portfolio-merger/owner-approved-exceptions.json`) is honored only if its HMAC verifies with the DPAPI-protected
