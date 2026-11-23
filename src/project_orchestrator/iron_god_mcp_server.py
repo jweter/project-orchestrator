@@ -14,10 +14,12 @@ from . import iron_god_observability as observability
 from . import iron_god_engineering_evidence as engineering_evidence
 from . import iron_god_offload as offload
 from . import iron_god_mcp_housekeeping as housekeeping
+from . import iron_god_mcp_readonly_bridge as readonly_bridge
 
 
 def create_server(*, database: Path, state_root: Path, repo_root: Path,
-                  client_label: str, allow_advisory_writes: bool = False):
+                  client_label: str, allow_advisory_writes: bool = False,
+                  release_sha: str = ""):
     """Create a stdio-facing MCP server without starting a listener."""
     # Import lazily: normal project-orchestrator preflight needs no network SDK.
     from mcp.server import MCPServer
@@ -27,6 +29,19 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
     if not state_root.is_absolute() or not repo_root.is_absolute():
         raise ValueError("EXPLICIT_ABSOLUTE_READ_ROOTS_REQUIRED")
     server = MCPServer("Iron God Advisory Coordination")
+
+    @server.tool()
+    def get_readonly_capabilities() -> dict:
+        """Enumerate the fixed read-only local operations; never a shell."""
+        return readonly_bridge.readonly_capabilities()
+
+    @server.tool()
+    def get_readonly_command(command: str) -> dict:
+        """Run only a fixed status/Git read, no arguments, writes or grants."""
+        return readonly_bridge.run_readonly_command(
+            command, state_root=state_root, repo_root=repo_root,
+            release_sha=release_sha,
+        )
 
     @server.tool()
     def get_targets() -> dict:
@@ -99,6 +114,7 @@ def main() -> int:
         repo_root=Path(os.environ[keys[2]]),
         client_label=os.environ[keys[3]],
         allow_advisory_writes=os.environ.get("IRON_GOD_MCP_ALLOW_ADVISORY_WRITES") == "1",
+        release_sha=os.environ.get("IRON_GOD_MCP_RELEASE_SHA", ""),
     )
     server.run(transport="stdio")
     return 0

@@ -45,11 +45,21 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
                 "get_targets", "get_engine_snapshot", "get_development_diagnostics",
                 "get_engineering_evidence", "get_offload_proposals",
                 "get_storage_housekeeping", "list_messages",
+                "get_readonly_capabilities", "get_readonly_command",
                 "post_message", "ack_message",
             }
             snapshot = _payload(await client.call_tool("get_storage_housekeeping", {}))
             assert snapshot["status"] == "UNAVAILABLE"
             assert snapshot["can_execute"] is False
+            capabilities = _payload(await client.call_tool("get_readonly_capabilities", {}))
+            assert capabilities["transport"] == "LOCAL_STDIO_ONLY"
+            assert capabilities["generic_shell"] is False
+            assert capabilities["can_execute"] is False
+            rejected = _payload(await client.call_tool("get_readonly_command", {
+                "command": "shell",
+            }))
+            assert rejected["status"] == "REFUSED"
+            assert rejected["can_execute"] is False
 
             result = await client.call_tool("post_message", {
                 "recipient": "chatgpt", "kind": "handoff",
@@ -76,6 +86,15 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
         fresh = create_server(database=database, repo_root=tmp_path,
                               state_root=tmp_path, client_label="chatgpt")
         async with Client(fresh) as client:
+            read_only_tools = {tool.name for tool in (await client.list_tools()).tools}
+            assert "get_readonly_command" in read_only_tools
+            assert "get_readonly_capabilities" in read_only_tools
+            assert "post_message" not in read_only_tools
+            assert "ack_message" not in read_only_tools
+            rejected = _payload(await client.call_tool("get_readonly_command", {
+                "command": "take_the_wheel",
+            }))
+            assert rejected["status"] == "REFUSED"
             result = await client.call_tool("list_messages", {"after_seq": 0})
             assert not result.is_error
             body = _payload(result)

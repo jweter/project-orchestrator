@@ -70,6 +70,50 @@ acceptance of a PR or authorization to run code.
 - **No hard delete** in v1. Any retention/backup/purge policy is a separate
   reviewed change, with no loss of unresolved handoffs.
 
+## Restricted read-only local command/status bridge (pending source promotion)
+
+The existing local stdio MCP server now has a narrowly-scoped **source-only**
+bridge. It is not an HTTP service, a Tailscale route, a cloud/iOS connector,
+a workstation shell, or a substitute for Desktop Commander. No new network
+service, credential, task, daemon, supervisor, lease, or database is created.
+
+- `get_readonly_capabilities()` returns the static allowlist and disabled
+  network/shell/write capabilities.
+- `get_readonly_command(command)` accepts only `engine_status`,
+  `owner_status`, and `repository_head`. No paths, flags, code, arguments,
+  environment changes, arbitrary filenames, or additional commands come from
+  the MCP caller. Unknown strings fail closed.
+- `engine_status` reads the existing bounded coordination snapshot and labels
+  it **reported**, never authenticated owner permission.
+- `owner_status` calls the existing HMAC/DPAPI-protected owner controller's
+  `evaluate` read-only API at the locally configured state root. It requires
+  `IRON_GOD_MCP_RELEASE_SHA` set by the trusted host to the actual pinned
+  40-hex release SHA; missing/invalid pin or unreadable state is unverified.
+  Command IDs, signed payloads, owner keys, and supervisor identifiers are not
+  returned. Even a signed active grant is **observation**, not authorization
+  to dispatch work through MCP.
+- `repository_head` executes only fixed, bounded `git rev-parse` and
+  `git diff --name-only` reads, without a shell, prompts, optional index
+  locks, filesystem monitor, external diff, or text conversion. It refuses
+  roots resolving to a parent repository. It reports the configured checkout
+  HEAD and conservative tracked-file dirtiness; it is **not** remote GitHub
+  main, exact-head CI, branch preflight, or Product Reality proof.
+
+The transport guard remains `IRON_GOD_MCP_TRANSPORT=stdio` only; all host
+read roots are explicit absolute paths. Advisory write tools remain absent
+unless the pre-existing opt-in flag is separately enabled. Do not expose
+this stdio service through a public proxy, install BLACKICE, change Tailscale,
+or cancel Remote Desktop Commander on the strength of unit tests.
+
+**Acceptance boundary:** The source branch can be promoted only through
+repository-native full exact-head preflight, PR CI/review, controlled merge
+and independent owner-authorized install. The current signed local owner
+state was observed `GIVE_ME_CONTROL`; a live scheduled DoWork-to-native
+product acceptance canary cannot run until independently authorized owner
+control, current worker lease, suitable native builder, and product-specific
+acceptance prerequisites are all present. Prior GitHub source merges alone
+do not satisfy this canary.
+
 ## First implementation and tools
 
 Foundation module `project_orchestrator.mcp_coordination` provides bounded
