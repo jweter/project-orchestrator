@@ -212,6 +212,27 @@ def test_missing_or_faulted_witness_callbacks_fail_closed(source):
     assert not db.exists()
 
 
+def test_only_explicit_absolute_host_paths_can_write(source):
+    release, lane, db = source
+    for supplied_db, supplied_release, supplied_lane in (
+        (db.relative_to(db.parent), release, lane),
+        (db, release.relative_to(release.parent), lane),
+        (db, release, lane.relative_to(lane.parent)),
+        (db.parent / "not-a-folder" / "advisory.sqlite", release, lane),
+    ):
+        result = producer.offer_verified_difficult_slice(
+            db_path=supplied_db, release_repo=supplied_release,
+            lane_root=supplied_lane, repository=REPO,
+            read_live=lambda _: live(),
+            authenticated_owner_check=lambda: True,
+            no_conflicting_lease_check=lambda _repo, _files: True,
+            advisory_writes_enabled=True,
+        )
+        assert result["reason"] == "CONFIGURED_HOST_ROOTS_INVALID"
+        assert result["execution_authorized"] is False
+    assert not db.exists()
+
+
 def test_failed_packet_stale_at_current_git_head_never_becomes_offer(source):
     _, lane, db = source
     packet = lane / "packets" / "P-1.json"

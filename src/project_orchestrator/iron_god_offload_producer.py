@@ -75,6 +75,19 @@ def offer_verified_difficult_slice(
         return _blocked("ADVISORY_WRITES_NOT_AUTHORIZED")
     if repository not in offload._REPO:
         return _blocked("REPOSITORY_UNREGISTERED")
+    # These paths belong to the protected resident host; never let an
+    # untrusted caller redirect an opt-in SQLite write to an arbitrary path.
+    try:
+        roots = (db_path, release_repo, lane_root)
+        if (any(not isinstance(path, Path) or not path.is_absolute()
+                or path.is_symlink() for path in roots)
+                or not db_path.parent.is_dir()
+                or db_path.parent.is_symlink()
+                or not release_repo.is_dir()
+                or not lane_root.is_dir()):
+            return _blocked("CONFIGURED_HOST_ROOTS_INVALID")
+    except OSError:
+        return _blocked("CONFIGURED_HOST_ROOTS_INVALID")
     if (not callable(read_live) or not callable(authenticated_owner_check)
             or not callable(no_conflicting_lease_check)):
         return _blocked("INDEPENDENT_LIVE_WITNESSES_REQUIRED")
