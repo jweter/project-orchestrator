@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .grant_lifecycle import acquire_lifecycle_lock, release_lifecycle_lock
 from .state_io import atomic_json
 
 PROGRESS_DIR = "microtask-progress"
@@ -294,7 +295,7 @@ def repair_candidates(
     return candidates
 
 
-def record_checkpoints(
+def _record_checkpoints_unlocked(
     lane_root: Path,
     repository: str,
     head: str,
@@ -378,3 +379,31 @@ def record_checkpoints(
         atomic_json(path, {**snapshot, "checkpointed_at_utc": _now()})
         changed.append(plan["parent_id"])
     return changed
+
+
+def record_checkpoints(
+    lane_root: Path,
+    repository: str,
+    head: str,
+    items: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> list[str]:
+    """Serialize checkpoint read/merge/write across independent supervisor processes.
+
+    The canonical backlog and owner controller retain all execution authority.
+    A repository-scoped OS lock prevents a late snapshot from losing already
+    recorded receipts when two projections run concurrently. The lock is
+    kernel-released on process death, so restart never grants work or replays
+    a previously accepted child.
+    """
+    key = hashlib.sha256(repository.encode("utf-8")).hexdigest()[:20]
+    directory = Path(lane_root) / PROGRESS_DIR
+    if directory.is_symlink() or getattr(directory, "is_junction", lambda: False)():
+        raise ValueError("CHECKPOINT_DIRECTORY_LINK_PROTECTED")
+    directory.mkdir(parents=True, exist_ok=True)
+    sentinel = directory / f"repository-{key}.checkpoint"
+    lock = acquire_lifecycle_lock(sentinel)
+    try:
+        return _record_checkpoints_unlocked(lane_root, repository, head, items, state)
+    finally:
+        release_lifecycle_lock(lock)
