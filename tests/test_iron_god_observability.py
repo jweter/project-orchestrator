@@ -330,3 +330,125 @@ def test_stale_product_lease_wait_does_not_override_fresh_canon(tmp_path):
     assert report["reason"] == "CANON_NO_READY_SLICE"
     assert report["status"] == "IDLE"
     assert report["recovery_advice"]["automatic_execution"] is False
+
+
+def test_legacy_unversioned_event_ledger_migrates_without_rewriting_history(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    db_path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(db_path) as db:
+        original = db.execute("SELECT * FROM development_events").fetchall()
+        db.execute("PRAGMA user_version=0")  # historical installed schema
+    _put(tmp_path, "continuation-current-burst.json", {
+        "updated_at_utc": now.isoformat(),
+        "process_instance_id": INSTANCE,
+        "last_sequence": 43,
+    })
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute("SELECT * FROM development_events WHERE seq=1").fetchall() == original
+        assert db.execute("SELECT COUNT(*) FROM development_events").fetchone()[0] == 2
+        assert db.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+
+
+def test_future_event_ledger_version_blocks_without_append(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        before = db.execute("SELECT * FROM development_events").fetchall()
+        db.execute("PRAGMA user_version=98")
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_UNSUPPORTED_SCHEMA"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 98
+        assert db.execute("SELECT * FROM development_events").fetchall() == before
+
+
+def test_missing_immutable_trigger_refuses_further_event_writes(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        old = db.execute("SELECT * FROM development_events").fetchall()
+        db.execute("DROP TRIGGER development_events_no_delete")
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT * FROM development_events").fetchall() == old
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+
+
+def test_event_schema_drift_does_not_append_or_overwrite(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("ALTER TABLE development_events ADD COLUMN surprise TEXT")
+        before = db.execute("SELECT * FROM development_events").fetchall()
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_SCHEMA_DRIFT"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT * FROM development_events").fetchall() == before
+
+
+def test_event_creation_and_first_insert_are_one_crash_consistent_transaction(
+        tmp_path, monkeypatch):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    original = obs._ensure_event_schema
+
+    def fail_after_create(db):
+        original(db)
+        raise RuntimeError("SIMULATED_EVENT_LEDGER_PROCESS_DEATH")
+
+    monkeypatch.setattr(obs, "_ensure_event_schema", fail_after_create)
+    with pytest.raises(RuntimeError, match="SIMULATED_EVENT_LEDGER_PROCESS_DEATH"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='development_events'"
+        ).fetchone() is None
+    monkeypatch.setattr(obs, "_ensure_event_schema", original)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    assert len(obs.recent_events(tmp_path)["events"]) == 1
+
+
+def test_event_first_open_concurrent_writers_commit_exactly_one(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(
+            lambda _i: obs.record_supervisor_pass(tmp_path, now=now), range(16),
+        ))
+    assert results.count(True) == 1
+    assert results.count(False) == 15
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute("SELECT COUNT(*) FROM development_events").fetchone()[0] == 1
+
+
+def test_event_ledger_cannot_accept_bogus_immutability_trigger(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER development_events_no_update")
+        db.execute("""CREATE TRIGGER development_events_no_update
+                     BEFORE UPDATE ON development_events BEGIN SELECT 1; END""")
+        before = db.execute("SELECT * FROM development_events").fetchall()
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT * FROM development_events").fetchall() == before

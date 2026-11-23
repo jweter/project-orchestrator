@@ -36,3 +36,20 @@ def test_existing_valid_dispatch_state_is_preserved(tmp_path):
     }
     (tmp_path / "backlog-state.json").write_text(json.dumps(state), encoding="utf-8")
     assert backlog.load_state(tmp_path) == state
+
+
+@pytest.mark.parametrize("version", [None, 0, 2, 999, "1", True])
+def test_existing_unsupported_state_version_blocks_all_writers(tmp_path, version):
+    path = tmp_path / "backlog-state.json"
+    state = {"items": {"S1": {"outcome": "DISPATCHED", "packets": ["P1"]}}}
+    if version is not None:
+        state["schema_version"] = version
+    before = json.dumps(state)
+    path.write_text(before, encoding="utf-8")
+    with pytest.raises(ValueError, match="BACKLOG_STATE_INVALID: unsupported schema"):
+        backlog.load_state(tmp_path)
+    with pytest.raises(ValueError, match="BACKLOG_STATE_INVALID: unsupported schema"):
+        backlog.record_item(tmp_path, "S1", packet_id="P2", outcome="FAIL")
+    with pytest.raises(ValueError, match="BACKLOG_STATE_INVALID: unsupported schema"):
+        backlog.record_block(tmp_path, "S1", outcome="BLOCKED_CONFLICT")
+    assert path.read_text(encoding="utf-8") == before

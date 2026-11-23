@@ -73,3 +73,30 @@ preflight → owner-controlled installation → live restart/revocation proof.
 Until the last step, S1 is **not** marked end-to-end proven; do not claim an
 offline multi-product canary, installed release, verified GitHub outcome or
 autonomous owner grant based on a fixture.
+
+
+## S1 follow-up: explicit version fences for other canonical writers
+
+- **Backlog dispatch JSON** stays canonical under its existing kernel lock.
+  Readers accept only the installed v1 root schema and a real `items`
+  mapping; future, absent, textual, boolean or otherwise incompatible
+  `schema_version` values block both worker-outcome and conflict writers.
+  No checkpoint projection may reinitialize the malformed existing ledger.
+- **Supervisor event SQLite** stays in the existing `observability/` database.
+  Its historical unversioned (`user_version=0`) table, immutable triggers
+  and unique event identity are checked inside `BEGIN IMMEDIATE`, then
+  migrated transactionally to `user_version=1` before any new event is
+  accepted. A future schema, column drift, invalid/absent immutable trigger,
+  duplicate-identity protection loss or unrelated database refuses further
+  writes rather than silently creating a compatible-looking table.
+  New ledgers initialize table, triggers and first event in one transaction.
+  The supervised telemetry call remains advisory and cannot affect
+  authenticated owner decisions, dispatch or product acceptance.
+- **Live compatibility smoke**: using SQLite's online backup API, snapshot
+  Azathoth's existing unversioned supervisor event database in a temporary
+  location, migrate the copy, reopen twice, and verify the identical
+  event-row digest, schema v1 and SQLite integrity. The original event
+  database and owner-controlled supervisor remain untouched.
+
+Neither source repair changes runtime admission, grants, schedule, model
+selection, publication authority, GitHub merge requirements or install state.
