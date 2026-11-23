@@ -5,6 +5,94 @@ def pr(**kw):
        "reviewDecision":"","statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]}
     x.update(kw); return x
 
+def test_actual_merge_and_promotion_paths_pass_repository_policy(monkeypatch):
+    import scripts.green_pr_merger as merger
+
+    # Simulates PR #774: only the ruleset-required "test" is green, while
+    # the policy-required FULL preflight is still in progress.
+    checks = [{"name": "test", "workflowName": "CI",
+               "status": "COMPLETED", "conclusion": "SUCCESS"},
+              {"name": "full-preflight", "workflowName": "Preflight",
+               "status": "IN_PROGRESS", "conclusion": ""}]
+    candidate = pr(
+        number=774, headRefOid="a" * 40,
+        createdAt="2020-01-01T00:00:00Z",
+        statusCheckRollup=checks,
+    )
+    monkeypatch.setattr(merger, "blocking_review_findings", lambda *args: False)
+    monkeypatch.setattr(merger, "review_settled", lambda *args: True)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("MUST_NOT_INVOKE_GITHUB_MUTATION")
+
+    monkeypatch.setattr(merger.subprocess, "run", forbidden)
+    result = merger.merge("jweter/project-orchestrator", candidate)
+    assert result["decision"] == "FULL_PREFLIGHT_CHECK_PENDING"
+    assert result["merged"] is False
+    candidate["isDraft"] = True
+    result = merger.promote("jweter/project-orchestrator", candidate)
+    assert result["decision"] == "FULL_PREFLIGHT_CHECK_PENDING"
+    assert result["promoted"] is False
+
+
+def test_orchestrator_merger_rejects_ci_only_rule_with_preflight_missing():
+    checks = [{"name": "test", "workflowName": "CI",
+               "status": "COMPLETED", "conclusion": "SUCCESS"}]
+    result = decide(pr(statusCheckRollup=checks),
+                    repository="jweter/project-orchestrator", age_seconds=121)
+    assert not result.eligible
+    assert result.reason == "FULL_PREFLIGHT_CHECK_MISSING"
+
+
+def test_orchestrator_merger_waits_for_exact_head_full_preflight():
+    checks = [{"name": "test", "workflowName": "CI",
+               "status": "COMPLETED", "conclusion": "SUCCESS"},
+              {"name": "full-preflight", "workflowName": "Preflight",
+               "status": "IN_PROGRESS", "conclusion": ""}]
+    result = decide(pr(statusCheckRollup=checks),
+                    repository="jweter/project-orchestrator", age_seconds=121)
+    assert not result.eligible
+    assert result.reason == "FULL_PREFLIGHT_CHECK_PENDING"
+    # This is the GitHub state that existed when PR #774 auto-merged.
+
+
+def test_orchestrator_merger_requires_full_native_preflight_success():
+    checks = [{"name": "test", "workflowName": "CI",
+               "status": "COMPLETED", "conclusion": "SUCCESS"},
+              {"name": "full-preflight", "workflowName": "Preflight",
+               "status": "COMPLETED", "conclusion": "FAILURE"}]
+    blocked = decide(pr(statusCheckRollup=checks),
+                     repository="jweter/project-orchestrator", age_seconds=121)
+    assert blocked.reason == "FULL_PREFLIGHT_NOT_GREEN"
+    checks[1]["conclusion"] = "SKIPPED"
+    assert decide(pr(statusCheckRollup=checks),
+                  repository="jweter/project-orchestrator",
+                  age_seconds=121).reason == "FULL_PREFLIGHT_NOT_GREEN"
+    checks[1]["conclusion"] = "SUCCESS"
+    assert decide(pr(statusCheckRollup=checks),
+                  repository="jweter/project-orchestrator", age_seconds=121).eligible
+
+
+def test_orchestrator_merge_check_rejects_duplicate_or_wrong_workflow_provenance():
+    checks = [{"name": "test", "workflowName": "CI",
+               "status": "COMPLETED", "conclusion": "SUCCESS"},
+              {"name": "full-preflight", "workflowName": "Misleading",
+               "status": "COMPLETED", "conclusion": "SUCCESS"}]
+    assert decide(pr(statusCheckRollup=checks), repository="jweter/project-orchestrator",
+                  age_seconds=121).reason == "FULL_PREFLIGHT_CHECK_MISSING"
+    checks[1]["workflowName"] = "Preflight"
+    checks.append(checks[1].copy())
+    assert decide(pr(statusCheckRollup=checks), repository="jweter/project-orchestrator",
+                  age_seconds=121).reason == "FULL_PREFLIGHT_CHECK_MISSING"
+
+
+def test_non_orchestrator_merge_rules_are_not_mistakenly_restricted():
+    checks = [{"name": "test", "workflowName": "CI",
+               "status": "COMPLETED", "conclusion": "SUCCESS"}]
+    assert decide(pr(statusCheckRollup=checks),
+                  repository="jweter/VoiceStudio", age_seconds=121).eligible
+
+
 def test_green_pr_is_eligible(): assert decide(pr(),age_seconds=121).eligible
 def test_draft_blocked(): assert decide(pr(isDraft=True),age_seconds=121).reason=="DRAFT"
 def test_unknown_author_blocked(): assert decide(pr(author={"login":"other"}),age_seconds=121).reason=="AUTHOR_NOT_ALLOWED"
