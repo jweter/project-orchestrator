@@ -81,9 +81,12 @@ witness callbacks:
 Before publication it verifies current-head failed-worker packet, exact
 SQLite development-memory failure class, owner-approved slice and unchanged
 specification/paths. The independent owner, live source and lease checks
-are rerun immediately before writing the immutable offer; the same gates
-are checked once more afterwards. Changed/revoked gates fail closed, and a
-row that was already written is still advisory only. No automatic reservation,
+are rerun immediately before writing the immutable offer; critically, the
+**entire canonical candidate is independently selected again** from the
+backlog, failed worker packet and SQLite failure history both before and
+after publication. A changed or revoked source specification/state fails
+closed: no stale advisory ID can be treated as an authorized offer, including
+if an immutable row was already inserted. No automatic reservation,
 staging, import, build, PR, merge, or learned skill follows from the offer.
 
 This source adapter does **not** automatically revalidate stale failed packets.

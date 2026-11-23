@@ -233,6 +233,68 @@ def test_only_explicit_absolute_host_paths_can_write(source):
     assert not db.exists()
 
 
+def test_canonical_spec_changed_during_first_lease_check_refuses_stale_offer(source):
+    release, _, db = source
+    backlog_path = release / backlog.BACKLOG_PATH
+    calls = 0
+
+    def mutate_during_claim(_repository, _files):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            record = json.loads(backlog_path.read_text(encoding="utf-8"))
+            record["items"][0]["build"]["objective"] = "New owner-approved specification"
+            backlog_path.write_text(json.dumps(record), encoding="utf-8")
+        return True
+
+    result = publish(source, conflict=mutate_during_claim)
+    assert result["reason"] == "CANDIDATE_EVIDENCE_CHANGED_BEFORE_OFFER"
+    assert result["status"] == "OFFER_REFUSED"
+    assert not db.exists()
+
+
+def test_canonical_failure_state_changed_before_offer_refuses(source):
+    _, lane, db = source
+    state_path = lane / "backlog-state.json"
+    calls = 0
+
+    def mutate_during_claim(_repository, _files):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["items"]["VS-FAILED-1"]["outcome"] = "MERGED"
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+        return True
+
+    result = publish(source, conflict=mutate_during_claim)
+    assert result["reason"] == "CANDIDATE_EVIDENCE_CHANGED_BEFORE_OFFER"
+    assert not db.exists()
+
+
+def test_post_publication_canonical_failure_revocation_cannot_approve_offer(source, monkeypatch):
+    _, lane, db = source
+    state_path = lane / "backlog-state.json"
+    publish_original = offload.offer_slice
+
+    def publish_then_revoke(*args, **kwargs):
+        offer = publish_original(*args, **kwargs)
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["items"]["VS-FAILED-1"]["outcome"] = "MERGED"
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        return offer
+
+    monkeypatch.setattr(offload, "offer_slice", publish_then_revoke)
+    result = publish(source)
+    assert result["status"] == "OFFER_REFUSED"
+    assert result["reason"] == "OFFER_REQUIRES_REVALIDATION_AFTER_GATE_CHANGE"
+    assert result["worker_lease_granted"] is False
+    assert db.exists()
+    with sqlite3.connect(db) as connection:
+        assert connection.execute("SELECT count(*) FROM offload_offers").fetchone()[0] == 1
+        assert connection.execute("SELECT count(*) FROM offload_claims").fetchone()[0] == 0
+
+
 def test_failed_packet_stale_at_current_git_head_never_becomes_offer(source):
     _, lane, db = source
     packet = lane / "packets" / "P-1.json"

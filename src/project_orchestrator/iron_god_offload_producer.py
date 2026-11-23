@@ -120,6 +120,18 @@ def offer_verified_difficult_slice(
                 or authenticated_owner_check() is not True
                 or no_conflicting_lease_check(repository, paths) is not True):
             return _blocked("LIVE_GATES_CHANGED_BEFORE_OFFER")
+        # The backlog, worker packet and development-memory SQLite row are
+        # independent mutable evidence, not covered by the owner/HEAD/lease
+        # callback. Re-read the full canonical selector immediately before
+        # consuming an immutable offer identity: a changed specification can
+        # otherwise permanently poison that identity with a stale offer.
+        fresh = eligibility.inspect_difficult_slice(
+            release_repo, lane_root, repository,
+            observed_remote_head=head, measured_local_level=level,
+            open_pr_paths=list(open_prs), active_packet_id=active_packet,
+        )
+        if fresh != candidate:
+            return _blocked("CANDIDATE_EVIDENCE_CHANGED_BEFORE_OFFER")
         offer = offload.offer_slice(
             db_path,
             repository=repository, slice_id=fields["slice_id"],
@@ -132,6 +144,15 @@ def offer_verified_difficult_slice(
         if (_view(read_live, repository) != before
                 or authenticated_owner_check() is not True
                 or no_conflicting_lease_check(repository, paths) is not True):
+            return _blocked("OFFER_REQUIRES_REVALIDATION_AFTER_GATE_CHANGE")
+        # Even after publication, a retracted/edited canonical failure
+        # invalidates the receipt. The stored row is advisory only and MUST
+        # NOT grant any claim or prevent a fresh release revalidation.
+        if eligibility.inspect_difficult_slice(
+            release_repo, lane_root, repository,
+            observed_remote_head=head, measured_local_level=level,
+            open_pr_paths=list(open_prs), active_packet_id=active_packet,
+        ) != candidate:
             return _blocked("OFFER_REQUIRES_REVALIDATION_AFTER_GATE_CHANGE")
     except (offload.OffloadRejected, OSError, ValueError, KeyError, TypeError):
         return _blocked("LIVE_EVIDENCE_OR_OFFER_UNAVAILABLE")
