@@ -210,3 +210,70 @@ def test_orphaned_strategy_exposure_is_not_trusted_as_learning(tmp_path):
         memory.stats(tmp_path)
     # The source of the diagnostic stays intact for manual recovery.
     assert len(_rows(path)) == 1
+
+
+def test_unrelated_sqlite_database_is_not_claimed_as_new_development_memory(tmp_path):
+    path = memory.db_path(tmp_path)
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE unrelated_data (important TEXT)")
+        db.execute("INSERT INTO unrelated_data VALUES ('keep this')")
+    with pytest.raises(RuntimeError, match="DEVELOPMENT_MEMORY_UNKNOWN_SCHEMA"):
+        memory.stats(tmp_path)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT important FROM unrelated_data").fetchone() == (
+            "keep this",
+        )
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='attempts'"
+        ).fetchone() is None
+
+
+def test_versioned_database_without_its_tables_is_not_treated_as_empty(tmp_path):
+    path = memory.db_path(tmp_path)
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA user_version=1")
+    with pytest.raises(RuntimeError, match="DEVELOPMENT_MEMORY_PARTIAL_SCHEMA"):
+        memory.stats(tmp_path)
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert db.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='attempts'"
+        ).fetchone() is None
+
+
+def test_guided_attempt_and_strategy_exposure_roll_back_together(tmp_path):
+    """A worker death between correlated writes cannot poison replay."""
+    memory.record_attempt(tmp_path, _attempt_packet("P1"), _attempt_result(), "FAIL")
+    packet = {
+        **_attempt_packet("P2"),
+        "slice": {"id": "RM-web-s1", "build": {"function_name": "f"}},
+        "recovery_strategy": {
+            "schema_version": 1, "strategy": "SLICE_TESTS_FAILED",
+            "revision": 1, "evidence_packet": "P1",
+        },
+    }
+    result = {"status": "PASS", "summary": "ok"}
+    path = memory.db_path(tmp_path)
+    with sqlite3.connect(path) as db:
+        db.execute("""CREATE TRIGGER fail_exposure BEFORE INSERT ON strategy_exposures
+                      BEGIN SELECT RAISE(ABORT, 'simulated crash after attempt insert'); END""")
+    with pytest.raises(sqlite3.DatabaseError, match="simulated crash"):
+        memory.record_attempt(tmp_path, packet, result, "ACCEPTED_LOCAL")
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM attempts WHERE packet_id='P2'"
+        ).fetchone()[0] == 0
+        assert db.execute(
+            "SELECT COUNT(*) FROM strategy_exposures WHERE packet_id='P2'"
+        ).fetchone()[0] == 0
+        db.execute("DROP TRIGGER fail_exposure")
+
+    assert memory.record_attempt(tmp_path, packet, result, "ACCEPTED_LOCAL") == "PASSED"
+    assert memory.record_attempt(tmp_path, packet, result, "ACCEPTED_LOCAL") == "PASSED"
+    with sqlite3.connect(path) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM attempts WHERE packet_id='P2'"
+        ).fetchone()[0] == 1
+        assert db.execute(
+            "SELECT strategy,evidence_packet FROM strategy_exposures WHERE packet_id='P2'"
+        ).fetchone() == ("SLICE_TESTS_FAILED", "P1")

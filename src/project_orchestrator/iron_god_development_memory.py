@@ -76,7 +76,9 @@ def _connect(lane_root: Path) -> sqlite3.Connection:
     """
     path = db_path(lane_root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path, timeout=15, isolation_level=None)
+    # Preserve implicit transactions for record_attempt() and derive_rules().
+    # The schema migration below uses an explicit BEGIN IMMEDIATE independently.
+    connection = sqlite3.connect(path, timeout=15, isolation_level="DEFERRED")
     try:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout=15000")
@@ -89,11 +91,14 @@ def _connect(lane_root: Path) -> sqlite3.Connection:
             tables = {
                 row[0] for row in connection.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
-                ) if row[0] in _TABLE_COLUMNS
+                ) if not row[0].startswith("sqlite_")
             }
+            if tables - _TABLE_COLUMNS.keys():
+                raise RuntimeError("DEVELOPMENT_MEMORY_UNKNOWN_SCHEMA")
             if user_version not in (0, 1, SCHEMA_VERSION):
                 raise RuntimeError("DEVELOPMENT_MEMORY_UNSUPPORTED_SCHEMA")
-            if tables and not {"attempts", "rules"}.issubset(tables):
+            if (tables and not {"attempts", "rules"}.issubset(tables)
+                    or not tables and user_version != 0):
                 raise RuntimeError("DEVELOPMENT_MEMORY_PARTIAL_SCHEMA")
             marker = None
             if "meta" in tables:
