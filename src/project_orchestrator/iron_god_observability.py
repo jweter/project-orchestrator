@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -324,6 +325,16 @@ _EVENT_COLUMNS = (
     "observed_at_utc", "status", "reason", "evidence_json",
 )
 _EVENT_VERSION = 1
+_EVENT_TABLE_DDL = """CREATE TABLE development_events (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT NOT NULL UNIQUE,
+    supervisor_instance TEXT NOT NULL,
+    continuation_sequence INTEGER NOT NULL,
+    observed_at_utc TEXT NOT NULL,
+    status TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    evidence_json TEXT NOT NULL
+)"""
 
 
 def _ensure_event_schema(db: sqlite3.Connection) -> None:
@@ -347,16 +358,7 @@ def _ensure_event_schema(db: sqlite3.Connection) -> None:
     if fresh:
         if version != 0:
             raise RuntimeError("SUPERVISOR_EVENTS_PARTIAL_SCHEMA")
-        db.execute("""CREATE TABLE development_events (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_key TEXT NOT NULL UNIQUE,
-            supervisor_instance TEXT NOT NULL,
-            continuation_sequence INTEGER NOT NULL,
-            observed_at_utc TEXT NOT NULL,
-            status TEXT NOT NULL,
-            reason TEXT NOT NULL,
-            evidence_json TEXT NOT NULL
-        )""")
+        db.execute(_EVENT_TABLE_DDL)
         db.execute("""CREATE TRIGGER development_events_no_update
             BEFORE UPDATE ON development_events BEGIN
             SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END""")
@@ -373,15 +375,24 @@ def _ensure_event_schema(db: sqlite3.Connection) -> None:
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='development_events'"
         ).fetchone()
         sql = " ".join(str(ddl[0]).upper().split()) if ddl is not None else ""
-        if ("EVENT_KEY TEXT NOT NULL UNIQUE" not in sql
-                or "SEQ INTEGER PRIMARY KEY AUTOINCREMENT" not in sql):
-            raise RuntimeError("SUPERVISOR_EVENTS_IDENTITY_NOT_UNIQUE")
+        # Column names and partial identity checks do not detect added UNIQUE
+        # constraints such as STATUS UNIQUE that silently drop valid events
+        # under INSERT OR IGNORE. Require the complete known-safe table DDL.
+        canonical = sql.replace("CREATE TABLE IF NOT EXISTS ", "CREATE TABLE ", 1)
+        expected = " ".join(_EVENT_TABLE_DDL.upper().split())
+        if canonical != expected:
+            raise RuntimeError("SUPERVISOR_EVENTS_SCHEMA_DRIFT")
         triggers = {
             row[0]: " ".join(str(row[1]).upper().split())
             for row in db.execute(
                 "SELECT name,sql FROM sqlite_master WHERE type='trigger'"
             )
         }
+        required = {"development_events_no_update", "development_events_no_delete"}
+        if not required.issubset(triggers):
+            raise RuntimeError("SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED")
+        if set(triggers) != required:
+            raise RuntimeError("SUPERVISOR_EVENTS_UNEXPECTED_TRIGGER")
         for name, action in (
             ("development_events_no_update", "BEFORE UPDATE ON DEVELOPMENT_EVENTS"),
             ("development_events_no_delete", "BEFORE DELETE ON DEVELOPMENT_EVENTS"),
@@ -403,12 +414,37 @@ def _ensure_event_schema(db: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_development_events_recent "
         "ON development_events(seq DESC)"
     )
-    indexed = tuple(
-        row[2] for row in db.execute(
-            "PRAGMA index_info(idx_development_events_recent)"
-        )
+    # Unknown UNIQUE indices are especially dangerous: INSERT OR IGNORE could
+    # suppress a *different* continuation event without reporting an error.
+    indexes = {
+        row[1]: (row[2], row[3], row[4])
+        for row in db.execute("PRAGMA index_list(development_events)")
+    }
+    if indexes != {
+        "sqlite_autoindex_development_events_1": (1, "u", 0),
+        "idx_development_events_recent": (0, "c", 0),
+    }:
+        raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
+    if tuple(row[2] for row in db.execute(
+        "PRAGMA index_info(sqlite_autoindex_development_events_1)"
+    )) != ("event_key",):
+        raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
+    if tuple(row[2] for row in db.execute(
+        "PRAGMA index_info(idx_development_events_recent)"
+    )) != ("seq",):
+        raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
+    index_ddl = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type='index' "
+        "AND name='idx_development_events_recent'"
+    ).fetchone()
+    canonical_index = " ".join(str(index_ddl[0]).upper().split()) if index_ddl else ""
+    canonical_index = canonical_index.replace(
+        "CREATE INDEX IF NOT EXISTS ", "CREATE INDEX ", 1
     )
-    if indexed != ("seq",):
+    if canonical_index != (
+        "CREATE INDEX IDX_DEVELOPMENT_EVENTS_RECENT "
+        "ON DEVELOPMENT_EVENTS(SEQ DESC)"
+    ):
         raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
     if version == 0:
         db.execute(f"PRAGMA user_version={_EVENT_VERSION}")
@@ -440,7 +476,17 @@ def record_supervisor_pass(state_root: Path, *, now: datetime | None = None) -> 
         # Refuse future databases before journal negotiation can mutate them.
         if db.execute("PRAGMA user_version").fetchone()[0] not in (0, _EVENT_VERSION):
             raise RuntimeError("SUPERVISOR_EVENTS_UNSUPPORTED_SCHEMA")
-        db.execute("PRAGMA journal_mode=WAL")
+        # Initial WAL negotiation can race another process even with
+        # busy_timeout configured. Serialize the schema transaction below,
+        # but first retry boundedly at the independent journal-mode boundary.
+        for attempt in range(10):
+            try:
+                db.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
         db.execute("PRAGMA synchronous=FULL")
         with db:
             db.execute("BEGIN IMMEDIATE")

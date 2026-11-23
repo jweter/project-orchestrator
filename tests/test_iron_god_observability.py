@@ -476,3 +476,79 @@ def test_conditional_trigger_cannot_fake_immutable_event_history(
     with sqlite3.connect(path) as db:
         assert db.execute("SELECT * FROM development_events").fetchall() == before
         assert db.execute("PRAGMA user_version").fetchone()[0] == 1
+
+
+def test_extra_unique_constraint_cannot_silently_drop_later_supervisor_event(tmp_path):
+    """Full table DDL prevents incompatible legacy constraints during v0->v1."""
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        original = db.execute("SELECT * FROM development_events").fetchone()
+        db.execute("DROP TRIGGER development_events_no_update")
+        db.execute("DROP TRIGGER development_events_no_delete")
+        db.execute("DROP TABLE development_events")
+        db.execute(obs._EVENT_TABLE_DDL.replace(
+            "status TEXT NOT NULL", "status TEXT NOT NULL UNIQUE",
+        ))
+        db.execute("INSERT INTO development_events VALUES (?,?,?,?,?,?,?,?)", original)
+        for name, verb in (
+            ("development_events_no_update", "UPDATE"),
+            ("development_events_no_delete", "DELETE"),
+        ):
+            db.execute(
+                f"CREATE TRIGGER {name} BEFORE {verb} ON development_events "
+                "BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_EVENT'); END"
+            )
+        db.execute("PRAGMA user_version=0")
+    _put(tmp_path, "continuation-current-burst.json", {
+        "updated_at_utc": now.isoformat(),
+        "process_instance_id": INSTANCE, "last_sequence": 43,
+    })
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_SCHEMA_DRIFT"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert db.execute("SELECT COUNT(*) FROM development_events").fetchone()[0] == 1
+        assert db.execute("SELECT status FROM development_events").fetchone()[0] == original[5]
+
+
+def test_extra_unique_index_cannot_suppress_valid_next_event(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        original = db.execute("SELECT * FROM development_events").fetchall()
+        db.execute(
+            "CREATE UNIQUE INDEX untrusted_unique_status ON development_events(status)"
+        )
+    _put(tmp_path, "continuation-current-burst.json", {
+        "updated_at_utc": now.isoformat(),
+        "process_instance_id": INSTANCE, "last_sequence": 43,
+    })
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_INDEX_DRIFT"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT * FROM development_events").fetchall() == original
+
+
+def test_unrecognized_insert_suppressor_trigger_is_rejected(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        original = db.execute("SELECT * FROM development_events").fetchall()
+        db.execute("""CREATE TRIGGER unknown_before_insert
+                      BEFORE INSERT ON development_events
+                      BEGIN SELECT RAISE(IGNORE); END""")
+    _put(tmp_path, "continuation-current-burst.json", {
+        "updated_at_utc": now.isoformat(),
+        "process_instance_id": INSTANCE, "last_sequence": 43,
+    })
+    with pytest.raises(RuntimeError, match="SUPERVISOR_EVENTS_UNEXPECTED_TRIGGER"):
+        obs.record_supervisor_pass(tmp_path, now=now)
+    with sqlite3.connect(path) as db:
+        assert db.execute("SELECT * FROM development_events").fetchall() == original
