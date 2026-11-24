@@ -551,3 +551,84 @@ def test_existing_idempotent_status_reply_is_read_only_lookup(world):
     )
     assert previous["message_id"] == result["handled_status_requests"][0]["response_id"]
     assert json.loads(previous["body"])["response_to"] == request["message_id"]
+
+def test_exact_status_queries_bypass_large_unhandled_advisory_backlog(world):
+    for index in range(95):
+        post(world, key=f"ordinary-{index}")
+    request = status_question(world, key="urgent-status")
+    outcome = cycle(world)
+    assert outcome["status"] == "OBSERVED"
+    assert [row["request_id"] for row in outcome["handled_status_requests"]] == [request["message_id"]]
+    assert outcome["pending_unacknowledged"] == 95
+    assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 95
+
+
+def test_status_query_bypass_keeps_reply_budget_and_rejects_broadcast(world):
+    requests = [status_question(world, key=f"query-{i}") for i in range(8)]
+    status_question(world, key="broadcast", recipient="all")
+    first = cycle(world)
+    assert len(first["handled_status_requests"]) == 5
+    second = cycle(world)
+    assert len(second["handled_status_requests"]) == 3
+    handled = first["handled_status_requests"] + second["handled_status_requests"]
+    assert {r["request_id"] for r in handled} == {r["message_id"] for r in requests}
+    assert second["pending_unacknowledged"] == 1
+
+def test_conflicting_reply_does_not_block_later_valid_request(world):
+    poison = status_question(world, key="poison")
+    good = status_question(world, key="good")
+    mailbox.post_message(
+        world["db"], sender_label="iron-god", recipient="claude-code",
+        kind="status", body="invalid correlation",
+        reference="protocol:engine-status-v1",
+        idempotency_key="engine-status-response:" + poison["message_id"],
+    )
+    outcome = cycle(world)
+    assert outcome["status"] == "OBSERVED"
+    assert [r["request_id"] for r in outcome["handled_status_requests"]] == [good["message_id"]]
+    assert outcome["status_request_conflicts"] == [
+        {"request_id": poison["message_id"], "reason": "STATUS_REPLY_REPLAY_INVALID"}
+    ]
+    pending = mailbox.list_pending_messages(world["db"], recipient_label="iron-god")
+    assert [r["message_id"] for r in pending["messages"]] == [poison["message_id"]]
+    saved = json.loads((world["state"] / "iron-god-mailbox-observation.json").read_text())
+    assert saved["status_request_conflicts"] == outcome["status_request_conflicts"]
+
+def test_diagnostic_conflict_survives_observation_loss_without_ack(world):
+    poison = status_question(world, key="durable-poison")
+    mailbox.post_message(
+        world["db"], sender_label="iron-god", recipient="claude-code",
+        kind="status", body="invalid correlation",
+        reference="protocol:engine-status-v1",
+        idempotency_key="engine-status-response:" + poison["message_id"],
+    )
+    cycle(world)
+    (world["state"] / "iron-god-mailbox-observation.json").unlink()
+    good = status_question(world, key="after-restart")
+    outcome = cycle(world)
+    assert [r["request_id"] for r in outcome["handled_status_requests"]] == [good["message_id"]]
+    assert outcome["status_request_conflicts"] == []
+    assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 1
+    with sqlite3.connect(world["db"]) as db:
+        assert db.execute("SELECT message_id FROM diagnostic_conflicts").fetchall() == [(poison["message_id"],)]
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("DELETE FROM diagnostic_conflicts")
+
+def test_delivery_snapshot_reports_persistent_conflicts_without_disclosing_messages(world):
+    poison = status_question(world, key="conflict-metrics")
+    before = mailbox.delivery_snapshot(world["db"])
+    assert before["diagnostic_conflicts"] == {"status": "NOT_CONFIGURED", "unresolved": None}
+    mailbox.post_message(
+        world["db"], sender_label="iron-god", recipient="claude-code",
+        kind="status", body="invalid correlation",
+        reference="protocol:engine-status-v1",
+        idempotency_key="engine-status-response:" + poison["message_id"],
+    )
+    cycle(world)
+    report = mailbox.delivery_snapshot(world["db"])
+    assert report["diagnostic_conflicts"] == {"status": "OBSERVED", "unresolved": 1}
+    assert report["participants"]["iron-god"]["unacknowledged"] == 1
+    assert poison["message_id"] not in json.dumps(report)
+    assert "invalid correlation" not in json.dumps(report)
+    mailbox.ack_message(world["db"], recipient_label="iron-god", message_id=poison["message_id"])
+    assert mailbox.delivery_snapshot(world["db"])["diagnostic_conflicts"]["unresolved"] == 0

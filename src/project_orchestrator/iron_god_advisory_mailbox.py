@@ -276,7 +276,8 @@ def _verified_replay_body(previous: Mapping[str, Any],
     return previous["body"]
 
 
-def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> list[dict[str, str]]:
+def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int,
+                           failures: list[dict[str, str]] | None = None) -> list[dict[str, str]]:
     """Only exact read-only protocol queries receive a response and consumption ack.
 
     Handoffs, owner-like instructions, mismatched references and broadcasts stay
@@ -285,6 +286,7 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> lis
     """
     page = mcp_coordination.list_pending_messages(
         db, recipient_label="iron-god", after_seq=after_seq, limit=_MAX_INBOX,
+        status_queries_only=True,
     )
     results: list[dict[str, str]] = []
     for message in page["messages"]:
@@ -305,9 +307,20 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> lis
         previous = mcp_coordination.lookup_posted_message(
             db, sender_label="iron-god", idempotency_key=reply_key,
         )
-        text = (_verified_replay_body(previous, message, protocol_ref=protocol_ref) if previous
-                else (_reported_status_snapshot(state_root, response_to=message["message_id"])
-                      if v1 else _reported_status_v2(state_root, response_to=message["message_id"])))
+        try:
+            text = (_verified_replay_body(previous, message, protocol_ref=protocol_ref) if previous
+                    else (_reported_status_snapshot(state_root, response_to=message["message_id"])
+                          if v1 else _reported_status_v2(state_root, response_to=message["message_id"])))
+        except ValueError as exc:
+            if str(exc) not in {"STATUS_REPLY_REPLAY_MISMATCH", "STATUS_REPLY_REPLAY_INVALID"}:
+                raise
+            if failures is None:
+                raise
+            mcp_coordination.record_diagnostic_conflict(
+                db, message_id=message["message_id"], reason=str(exc),
+            )
+            failures.append({"request_id": message["message_id"], "reason": str(exc)})
+            continue
         try:
             response = mcp_coordination.post_message(
                 db, sender_label="iron-god", recipient=message["sender_label"],
@@ -388,7 +401,8 @@ def advisory_supervisor_pass(
         return {"status": "MAILBOX_NOT_INITIALIZED"}
     try:
         cursor = _inbox_cursor(state_root)
-        handled = _answer_status_queries(db, state_root, after_seq=cursor) if publish else []
+        failures: list[dict[str, str]] = []
+        handled = _answer_status_queries(db, state_root, after_seq=cursor, failures=failures) if publish else []
         inbox = _read_inbox(db, after_seq=cursor)
         publication_cursor = _publication_cursor(state_root)
         if publish:
@@ -406,11 +420,14 @@ def advisory_supervisor_pass(
             "last_publication_packet": publication_cursor,
             "inbox": inbox, "published": posted,
             "handled_status_requests": handled,
+            "status_request_conflicts": failures,
             "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
         }
         # Recording observations is not an acknowledgement. The engine should
         # explicitly process a message before calling ack_message with its ID.
         atomic_json(state_root / "iron-god-mailbox-observation.json", result)
+        if failures and not handled:
+            return {**result, "status": "MAILBOX_UNAVAILABLE", "error_type": "ValueError"}
         return result
     except Exception as exc:
         # Do not write the exception text: external paths or secrets may appear.
