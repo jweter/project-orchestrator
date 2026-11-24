@@ -44,9 +44,9 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
             assert {t.name for t in tools.tools} == {
                 "get_targets", "get_engine_snapshot", "get_development_diagnostics",
                 "get_engineering_evidence", "get_offload_proposals",
-                "get_storage_housekeeping", "list_messages",
+                "get_storage_housekeeping", "list_messages", "get_engineering_handoff",
                 "get_readonly_capabilities", "get_readonly_command",
-                "post_message", "ack_message",
+                "post_message", "ack_message", "post_engineering_handoff",
             }
             snapshot = _payload(await client.call_tool("get_storage_housekeeping", {}))
             assert snapshot["status"] == "UNAVAILABLE"
@@ -89,6 +89,7 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
             read_only_tools = {tool.name for tool in (await client.list_tools()).tools}
             assert "get_readonly_command" in read_only_tools
             assert "get_readonly_capabilities" in read_only_tools
+            assert "post_engineering_handoff" not in read_only_tools
             assert "post_message" not in read_only_tools
             assert "ack_message" not in read_only_tools
             rejected = _payload(await client.call_tool("get_readonly_command", {

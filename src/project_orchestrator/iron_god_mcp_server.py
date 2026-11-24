@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from . import mcp_coordination as coord
+from . import iron_god_structured_handoff as handoff
 from . import iron_god_observability as observability
 from . import iron_god_engineering_evidence as engineering_evidence
 from . import iron_god_offload as offload
@@ -81,8 +82,24 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
         return coord.list_messages(database, recipient_label=client_label,
                                    after_seq=after_seq, limit=limit)
 
+    @server.tool()
+    def get_engineering_handoff(request_id: str) -> dict:
+        """Read a tracked handoff scoped to this local participant; claims remain unverified."""
+        return handoff.read_engineering_handoff(
+            database, participant=client_label, request_id=request_id,
+        )
+
     # Local write tools are opt-in. They do not exist in read-only tool lists.
     if allow_advisory_writes:
+        @server.tool()
+        def post_engineering_handoff(recipient: str, payload: dict, idempotency_key: str,
+                                     deadline_at_utc: str | None = None) -> dict:
+            """Queue structured advisory work only; never grant permission or dispatch."""
+            return handoff.open_engineering_handoff(
+                database, sender_label=client_label, recipient=recipient, payload=payload,
+                idempotency_key=idempotency_key, deadline_at_utc=deadline_at_utc,
+            )
+
         @server.tool()
         def post_message(recipient: str, kind: str, body: str,
                          idempotency_key: str, reference: str = "") -> dict:

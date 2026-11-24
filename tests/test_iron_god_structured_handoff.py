@@ -141,3 +141,35 @@ def test_freshness_is_advisory_and_does_not_ack(tmp_path, payload, monkeypatch, 
     assert not any(result[key] for key in ("can_execute", "remote_head_verified",
                                            "test_evidence_verified", "dependencies_verified"))
     assert mail.list_pending_messages(db, recipient_label="iron-god")["pending_total"] == 1
+
+def test_structured_handoff_mcp_scopes_reader_and_writer(tmp_path, payload, monkeypatch):
+    import sys
+    import types
+    from project_orchestrator import iron_god_mcp_server as gateway
+
+    class Server:
+        def __init__(self, name):
+            self.tools = {}
+
+        def tool(self):
+            def register(fn):
+                self.tools[fn.__name__] = fn
+                return fn
+            return register
+
+    module = types.ModuleType("mcp.server")
+    module.MCPServer = Server
+    monkeypatch.setitem(sys.modules, "mcp", types.ModuleType("mcp"))
+    monkeypatch.setitem(sys.modules, "mcp.server", module)
+    db = tmp_path / "mailbox.sqlite"
+    args = dict(database=db, repo_root=tmp_path, state_root=tmp_path)
+    sender = gateway.create_server(**args, client_label="chatgpt", allow_advisory_writes=True)
+    reader = gateway.create_server(**args, client_label="iron-god")
+    other = gateway.create_server(**args, client_label="claude-code")
+    assert "post_engineering_handoff" not in reader.tools
+    result = sender.tools["post_engineering_handoff"]("iron-god", payload, "mcp-structured")
+    ident = result["request_id"]
+    assert reader.tools["get_engineering_handoff"](ident)["payload"] == payload
+    with pytest.raises(ValueError, match="TRACKED_REQUEST_NOT_FOUND"):
+        other.tools["get_engineering_handoff"](ident)
+    assert mail.list_pending_messages(db, recipient_label="iron-god")["pending_total"] == 1
