@@ -610,3 +610,33 @@ def test_scoped_bundle_omits_unscoped_frontier_and_delivery(tmp_path):
     portfolio = evidence.engineering_bundle(tmp_path, now=now)
     assert portfolio["frontier_and_recovery"]["eligibility"] is not None
     assert portfolio["delivery"]["runtime_projection"] is not None
+
+@pytest.mark.parametrize("tamper", [
+    "DROP TRIGGER development_events_no_delete",
+    "DROP INDEX idx_development_events_recent",
+    "CREATE TABLE unexpected (value TEXT)",
+])
+def test_event_reader_rejects_schema_tampering_without_repair(tmp_path, tamper):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute(tamper)
+    before = path.read_bytes()
+    assert evidence.event_history(tmp_path)["status"] == "UNVERIFIED"
+    assert path.read_bytes() == before
+
+
+def test_legacy_event_reader_never_migrates_schema(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA user_version=0")
+    before = path.read_bytes()
+    assert evidence.event_history(tmp_path)["status"] == "OK"
+    assert path.read_bytes() == before
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 0

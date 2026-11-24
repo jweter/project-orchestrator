@@ -89,16 +89,17 @@ def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> 
     events: list[dict[str, Any]] = []
     try:
         with closing(_connect_existing(path, supported_versions=(0, 1))) as db:
+            observability._ensure_event_schema(db, read_only=True)
             rows = db.execute("""SELECT seq,event_key,supervisor_instance,continuation_sequence,
                 observed_at_utc,status,reason,evidence_json
                 FROM development_events ORDER BY seq DESC LIMIT ?""", (MAX_SCAN,)).fetchall()
         for row in rows:
             raw = row["evidence_json"]
             if not isinstance(raw, str) or len(raw) > MAX_JSON_LEN:
-                continue
+                raise ValueError("INVALID_EVENT_PAYLOAD")
             payload = json.loads(raw)
             if not isinstance(payload, dict):
-                continue
+                raise ValueError("INVALID_EVENT_PAYLOAD")
             lanes = payload.get("lanes", {})
             supervisor = payload.get("supervisor", {})
             if not isinstance(lanes, dict) or not isinstance(supervisor, dict):
@@ -130,7 +131,7 @@ def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> 
                 "historical_only": True, "events": events,
                 "scan_limit": MAX_SCAN,
                 "scan_exhaustive": len(rows) < MAX_SCAN}
-    except (sqlite3.Error, OSError, ValueError, TypeError, json.JSONDecodeError):
+    except (sqlite3.Error, OSError, ValueError, TypeError, RuntimeError, json.JSONDecodeError):
         return {"source": "development-events.sqlite", "status": "UNVERIFIED",
                 "historical_only": True, "events": [], "scan_limit": MAX_SCAN}
 
