@@ -478,7 +478,7 @@ def test_reply_post_failure_never_acknowledges_request(world, monkeypatch):
 
 def test_crash_between_reply_and_ack_replays_idempotent_reply(world, monkeypatch):
     request = status_question(world)
-    original_ack = mailbox.ack_message
+    original_ack = mailbox.record_processing_disposition
     called = {"count": 0}
 
     def fail_once(*args, **kwargs):
@@ -488,7 +488,7 @@ def test_crash_between_reply_and_ack_replays_idempotent_reply(world, monkeypatch
         return original_ack(*args, **kwargs)
 
     with monkeypatch.context() as patch:
-        patch.setattr(mailbox, "ack_message", fail_once)
+        patch.setattr(mailbox, "record_processing_disposition", fail_once)
         assert cycle(world)["status"] == "MAILBOX_UNAVAILABLE"
     assert mailbox.list_pending_messages(
         world["db"], recipient_label="iron-god")["pending_total"] == 1
@@ -632,3 +632,19 @@ def test_delivery_snapshot_reports_persistent_conflicts_without_disclosing_messa
     assert "invalid correlation" not in json.dumps(report)
     mailbox.ack_message(world["db"], recipient_label="iron-god", message_id=poison["message_id"])
     assert mailbox.delivery_snapshot(world["db"])["diagnostic_conflicts"]["unresolved"] == 0
+
+def test_diagnostic_consumer_persists_correlated_handling_and_receipt(world):
+    request = status_question(world, key="atomic-diagnostic")
+    result = cycle(world)
+    handled = result["handled_status_requests"][0]
+    with sqlite3.connect(world["db"]) as db:
+        row = db.execute(
+            "SELECT state,evidence_reference,recorded_at_utc FROM processing_dispositions WHERE message_id=?",
+            (request["message_id"],),
+        ).fetchone()
+        receipt = db.execute(
+            "SELECT acknowledged_at_utc FROM receipts WHERE message_id=? AND recipient_label='iron-god'",
+            (request["message_id"],),
+        ).fetchone()
+    assert row == ("HANDLED", "message:" + handled["response_id"], receipt[0])
+    assert cycle(world)["handled_status_requests"] == []

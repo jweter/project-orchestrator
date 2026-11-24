@@ -339,14 +339,16 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int,
                 raise
             _verified_replay_body(prior, message, protocol_ref=protocol_ref)
             response = prior
-        receipt = mcp_coordination.ack_message(
+        receipt = mcp_coordination.record_processing_disposition(
             db, recipient_label="iron-god", message_id=message["message_id"],
+            event_key="diagnostic-handled", state="HANDLED",
+            evidence_reference="message:" + response["message_id"],
         )
         results.append({
             "request_id": message["message_id"],
             "response_id": response["message_id"],
             "recipient": message["sender_label"],
-            "acknowledged_at_utc": receipt["acknowledged_at_utc"],
+            "acknowledged_at_utc": receipt["recorded_at_utc"],
         })
     return results
 
