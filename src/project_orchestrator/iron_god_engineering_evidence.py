@@ -56,6 +56,29 @@ def _connect_existing(path: Path, *, supported_versions: tuple[int, ...]) -> sql
         raise
 
 
+def _validate_memory_schema(db: sqlite3.Connection) -> None:
+    """Check canonical memory metadata without invoking the migrating writer."""
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    tables = {row[0] for row in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ) if not row[0].startswith("sqlite_")}
+    if tables - memory._TABLE_COLUMNS.keys() or not {"attempts", "rules"} <= tables:
+        raise ValueError("UNRECOGNIZED_MEMORY_SCHEMA")
+    for name in tables:
+        columns = tuple(row[1] for row in db.execute(f"PRAGMA table_info({name})"))
+        if columns != memory._TABLE_COLUMNS[name]:
+            raise ValueError("MEMORY_SCHEMA_DRIFT")
+    marker = None
+    if "meta" in tables:
+        row = db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
+        marker = row[0] if row else None
+    if (marker not in (None, "1", str(memory.SCHEMA_VERSION))
+            or version and marker is not None and str(version) != marker
+            or version == memory.SCHEMA_VERSION and marker is None
+            or (marker == str(memory.SCHEMA_VERSION)) != ("strategy_exposures" in tables)):
+        raise ValueError("MEMORY_SCHEMA_VERSION_CONFLICT")
+
+
 def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> dict[str, Any]:
     """Small, provenance-bound historical projection. Never use as live authority."""
     _validate(repository, limit)
@@ -66,16 +89,17 @@ def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> 
     events: list[dict[str, Any]] = []
     try:
         with closing(_connect_existing(path, supported_versions=(0, 1))) as db:
+            observability._ensure_event_schema(db, read_only=True)
             rows = db.execute("""SELECT seq,event_key,supervisor_instance,continuation_sequence,
                 observed_at_utc,status,reason,evidence_json
                 FROM development_events ORDER BY seq DESC LIMIT ?""", (MAX_SCAN,)).fetchall()
         for row in rows:
             raw = row["evidence_json"]
             if not isinstance(raw, str) or len(raw) > MAX_JSON_LEN:
-                continue
+                raise ValueError("INVALID_EVENT_PAYLOAD")
             payload = json.loads(raw)
             if not isinstance(payload, dict):
-                continue
+                raise ValueError("INVALID_EVENT_PAYLOAD")
             lanes = payload.get("lanes", {})
             supervisor = payload.get("supervisor", {})
             if not isinstance(lanes, dict) or not isinstance(supervisor, dict):
@@ -107,7 +131,7 @@ def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> 
                 "historical_only": True, "events": events,
                 "scan_limit": MAX_SCAN,
                 "scan_exhaustive": len(rows) < MAX_SCAN}
-    except (sqlite3.Error, OSError, ValueError, TypeError, json.JSONDecodeError):
+    except (sqlite3.Error, OSError, ValueError, TypeError, RuntimeError, json.JSONDecodeError):
         return {"source": "development-events.sqlite", "status": "UNVERIFIED",
                 "historical_only": True, "events": [], "scan_limit": MAX_SCAN}
 
@@ -121,6 +145,7 @@ def attempt_memory(state_root: Path, *, repository: str = "", limit: int = 8) ->
                 "attempts": [], "rules": []}
     try:
         with closing(_connect_existing(path, supported_versions=(0, 1, memory.SCHEMA_VERSION))) as db:
+            _validate_memory_schema(db)
             if repository:
                 rows = db.execute("""SELECT packet_id,item_id,repository,base_sha,model,
                     failure_class,outcome,recorded_at_utc FROM attempts WHERE repository=?
@@ -153,7 +178,7 @@ def attempt_memory(state_root: Path, *, repository: str = "", limit: int = 8) ->
             "rules": [{"failure_class": _token(row["failure_class"]),
                        "kind": _token(row["kind"]), "independent_slices": row["slices"],
                        "derived_at_utc": row["derived_at_utc"],
-                       "authority": "ADVISORY_ONLY"} for row in rules],
+                       "authority": "ADVISORY_ONLY", "scope": "PORTFOLIO"} for row in rules],
         }
     except (sqlite3.Error, OSError, ValueError, TypeError):
         return {"source": "development-memory.sqlite3", "status": "UNVERIFIED",
@@ -632,7 +657,8 @@ def engineering_bundle(state_root: Path, *, repository: str = "", limit: int = 8
             "live_status": lane_status,
             "reason": live["reason"] if lane_status != "UNVERIFIED_FOR_REPOSITORY" else "NO_LIVE_REPO_EVIDENCE",
             "advice": advice if lane_status != "UNVERIFIED_FOR_REPOSITORY" else None,
-            "eligibility": live["frontier"],
+            "eligibility": live["frontier"] if not repository else None,
+            "eligibility_scope": "PORTFOLIO" if not repository else "USE_SCOPED_CANDIDATES",
             "observed_candidate_ids": frontier,
             "execution_authorized_by_bundle": False,
         },
@@ -641,7 +667,8 @@ def engineering_bundle(state_root: Path, *, repository: str = "", limit: int = 8
         )},
         "evidence_graph": _graph(history["events"], learned["attempts"]),
         "delivery": {
-            "runtime_projection": live["delivery"],
+            "runtime_projection": live["delivery"] if not repository else None,
+            "runtime_projection_scope": "PORTFOLIO" if not repository else "NOT_REPOSITORY_SCOPED",
             "daily_verified_update": daily_release_update_evidence(
                 state_root, now=observed,
             ),

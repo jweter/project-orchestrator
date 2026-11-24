@@ -337,7 +337,7 @@ _EVENT_TABLE_DDL = """CREATE TABLE development_events (
 )"""
 
 
-def _ensure_event_schema(db: sqlite3.Connection) -> None:
+def _ensure_event_schema(db: sqlite3.Connection, *, read_only: bool = False) -> None:
     """Validate and migrate the original event ledger under one SQLite writer.
 
     Legacy released DBs used user_version=0. Their event rows remain intact;
@@ -356,7 +356,7 @@ def _ensure_event_schema(db: sqlite3.Connection) -> None:
         raise RuntimeError("SUPERVISOR_EVENTS_UNRECOGNIZED_DATABASE")
     fresh = not tables
     if fresh:
-        if version != 0:
+        if read_only or version != 0:
             raise RuntimeError("SUPERVISOR_EVENTS_PARTIAL_SCHEMA")
         db.execute(_EVENT_TABLE_DDL)
         db.execute("""CREATE TRIGGER development_events_no_update
@@ -410,10 +410,11 @@ def _ensure_event_schema(db: sqlite3.Connection) -> None:
             )
             if canonical != expected:
                 raise RuntimeError("SUPERVISOR_EVENTS_IMMUTABILITY_UNVERIFIED")
-    db.execute(
-        "CREATE INDEX IF NOT EXISTS idx_development_events_recent "
-        "ON development_events(seq DESC)"
-    )
+    if not read_only:
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_development_events_recent "
+            "ON development_events(seq DESC)"
+        )
     # Unknown UNIQUE indices are especially dangerous: INSERT OR IGNORE could
     # suppress a *different* continuation event without reporting an error.
     indexes = {
@@ -446,7 +447,7 @@ def _ensure_event_schema(db: sqlite3.Connection) -> None:
         "ON DEVELOPMENT_EVENTS(SEQ DESC)"
     ):
         raise RuntimeError("SUPERVISOR_EVENTS_INDEX_DRIFT")
-    if version == 0:
+    if version == 0 and not read_only:
         db.execute(f"PRAGMA user_version={_EVENT_VERSION}")
 
 
