@@ -192,7 +192,8 @@ def list_messages(path: Path, *, recipient_label: str, after_seq: int = 0,
 
 
 def list_pending_messages(path: Path, *, recipient_label: str,
-                          after_seq: int = 0, limit: int = 30) -> dict:
+                          after_seq: int = 0, limit: int = 30,
+                          status_queries_only: bool = False) -> dict:
     """Read only unacknowledged advisories, independent of historical acks.
 
     A bounded cursor advances across pending rows and wraps when it reaches
@@ -204,6 +205,10 @@ def list_pending_messages(path: Path, *, recipient_label: str,
         raise ValueError("INVALID_CURSOR")
     if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= MAX_PAGE:
         raise ValueError("INVALID_PAGE_SIZE")
+    if type(status_queries_only) is not bool:
+        raise ValueError("INVALID_PENDING_FILTER")
+    if status_queries_only and recipient_label != "iron-god":
+        raise ValueError("STATUS_QUERY_FILTER_REQUIRES_ENGINE")
     db_path = _path(path)
     if not db_path.exists():
         return {"status": "UNINITIALIZED", "pending_total": 0, "messages": [],
@@ -212,7 +217,17 @@ def list_pending_messages(path: Path, *, recipient_label: str,
                  "AND NOT EXISTS (SELECT 1 FROM receipts AS r "
                  "WHERE r.message_id=m.message_id AND r.recipient_label=?)")
     args = (recipient_label, recipient_label)
+    if status_queries_only:
+        # Only exact supported read-only questions bypass ordinary advisory
+        # backlog. The consumer still independently checks each envelope.
+        condition += (
+            " AND m.recipient='iron-god' AND m.sender_label IN ('chatgpt','claude-code')"
+            " AND m.kind='question' AND ((m.body='engine_status_v1'"
+            " AND m.reference='protocol:engine-status-v1') OR (m.body='engine_status_v2'"
+            " AND m.reference='protocol:engine-status-v2'))"
+        )
     with closing(_connect(db_path, read_only=True)) as db:
+        db.execute("BEGIN")
         total = db.execute(
             "SELECT COUNT(*) FROM messages AS m WHERE " + condition, args
         ).fetchone()[0]

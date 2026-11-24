@@ -285,6 +285,7 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int) -> lis
     """
     page = mcp_coordination.list_pending_messages(
         db, recipient_label="iron-god", after_seq=after_seq, limit=_MAX_INBOX,
+        status_queries_only=True,
     )
     results: list[dict[str, str]] = []
     for message in page["messages"]:

@@ -551,3 +551,25 @@ def test_existing_idempotent_status_reply_is_read_only_lookup(world):
     )
     assert previous["message_id"] == result["handled_status_requests"][0]["response_id"]
     assert json.loads(previous["body"])["response_to"] == request["message_id"]
+
+def test_exact_status_queries_bypass_large_unhandled_advisory_backlog(world):
+    for index in range(95):
+        post(world, key=f"ordinary-{index}")
+    request = status_question(world, key="urgent-status")
+    outcome = cycle(world)
+    assert outcome["status"] == "OBSERVED"
+    assert [row["request_id"] for row in outcome["handled_status_requests"]] == [request["message_id"]]
+    assert outcome["pending_unacknowledged"] == 95
+    assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 95
+
+
+def test_status_query_bypass_keeps_reply_budget_and_rejects_broadcast(world):
+    requests = [status_question(world, key=f"query-{i}") for i in range(8)]
+    status_question(world, key="broadcast", recipient="all")
+    first = cycle(world)
+    assert len(first["handled_status_requests"]) == 5
+    second = cycle(world)
+    assert len(second["handled_status_requests"]) == 3
+    handled = first["handled_status_requests"] + second["handled_status_requests"]
+    assert {r["request_id"] for r in handled} == {r["message_id"] for r in requests}
+    assert second["pending_unacknowledged"] == 1
