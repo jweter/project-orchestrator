@@ -422,6 +422,7 @@ def advisory_supervisor_pass(
             "last_publication_packet": publication_cursor,
             "inbox": inbox, "published": posted,
             "handled_status_requests": handled,
+            "backlog": mcp_coordination.backlog_reconciliation(db, recipient_label="iron-god"),
             "status_request_conflicts": failures,
             "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
         }

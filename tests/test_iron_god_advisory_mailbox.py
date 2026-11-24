@@ -648,3 +648,15 @@ def test_diagnostic_consumer_persists_correlated_handling_and_receipt(world):
         ).fetchone()
     assert row == ("HANDLED", "message:" + handled["response_id"], receipt[0])
     assert cycle(world)["handled_status_requests"] == []
+
+def test_supervisor_reconciles_backlog_without_receiving_ordinary_advisory(world):
+    ordinary = mailbox.post_message(
+        world["db"], sender_label="claude-code", recipient="iron-god",
+        kind="handoff", body="Review existing engineering evidence", idempotency_key="backlog-handoff",
+    )
+    status_question(world, key="backlog-diagnostic")
+    result = cycle(world)
+    assert result["backlog"]["classes"] == {"HANDOFF_REVIEW": 1}
+    assert result["backlog"]["pending_total"] == 1
+    pending = mailbox.list_pending_messages(world["db"], recipient_label="iron-god")
+    assert [item["message_id"] for item in pending["messages"]] == [ordinary["message_id"]]

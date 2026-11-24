@@ -502,6 +502,12 @@ def backlog_reconciliation(path: Path, *, recipient_label: str) -> dict:
             )
         if "processing_dispositions" in tables:
             clauses.append(
+                "WHEN ?='iron-god' AND m.recipient='iron-god' AND EXISTS "
+                "(SELECT 1 FROM processing_dispositions p WHERE p.message_id=m.message_id "
+                "AND p.recipient_label='iron-god' AND p.state='ESCALATED' "
+                "AND p.event_key='diagnostic-retry-exhausted') THEN 'ESCALATED'"
+            )
+            clauses.append(
                 "WHEN (SELECT p.state FROM processing_dispositions p WHERE p.message_id=m.message_id "
                 "AND p.recipient_label=? ORDER BY p.seq DESC LIMIT 1)='ESCALATED' THEN 'ESCALATED'"
             )
