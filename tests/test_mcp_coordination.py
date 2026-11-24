@@ -199,7 +199,7 @@ def test_mcp_adapter_is_read_only_by_default_and_writes_are_opt_in(database, tmp
     assert set(read_only.tools) == {
         "get_targets", "get_engine_snapshot", "get_development_diagnostics",
         "get_engineering_evidence", "get_offload_proposals",
-        "get_storage_housekeeping", "list_messages",
+        "get_storage_housekeeping", "list_messages", "get_message_processing",
         "get_readonly_capabilities", "get_readonly_command",
     }
     assert read_only.tools["get_readonly_capabilities"]()["generic_shell"] is False
@@ -216,6 +216,14 @@ def test_mcp_adapter_is_read_only_by_default_and_writes_are_opt_in(database, tmp
     assert {"post_message", "ack_message"} <= set(writer.tools)
     receipt = writer.tools["post_message"]("chatgpt", "question", "Which gate next?", "question-1")
     assert read_only.tools["list_messages"]()["messages"][0]["message_id"] == receipt["message_id"]
+    co.record_processing_disposition(
+        database, recipient_label="chatgpt", message_id=receipt["message_id"],
+        event_key="failed-once", state="RETRYABLE_FAILURE",
+    )
+    snapshot = read_only.tools["get_message_processing"](receipt["message_id"])
+    assert snapshot["retryable_failures"] == 1 and not snapshot["acknowledged"]
+    with pytest.raises(ValueError, match="RECIPIENT_MISMATCH"):
+        writer.tools["get_message_processing"](receipt["message_id"])
     with pytest.raises(ValueError, match="RECIPIENT_MISMATCH"):
         writer.tools["ack_message"](receipt["message_id"])
 

@@ -81,6 +81,13 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
         return coord.list_messages(database, recipient_label=client_label,
                                    after_seq=after_seq, limit=limit)
 
+    @server.tool()
+    def get_message_processing(message_id: str) -> dict:
+        """Read the caller's durable retry and disposition summary; no execution grants."""
+        return coord.processing_retry_snapshot(
+            database, recipient_label=client_label, message_id=message_id,
+        )
+
     # Local write tools are opt-in. They do not exist in read-only tool lists.
     if allow_advisory_writes:
         @server.tool()
