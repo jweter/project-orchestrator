@@ -593,3 +593,23 @@ def test_conflicting_reply_does_not_block_later_valid_request(world):
     assert [r["message_id"] for r in pending["messages"]] == [poison["message_id"]]
     saved = json.loads((world["state"] / "iron-god-mailbox-observation.json").read_text())
     assert saved["status_request_conflicts"] == outcome["status_request_conflicts"]
+
+def test_diagnostic_conflict_survives_observation_loss_without_ack(world):
+    poison = status_question(world, key="durable-poison")
+    mailbox.post_message(
+        world["db"], sender_label="iron-god", recipient="claude-code",
+        kind="status", body="invalid correlation",
+        reference="protocol:engine-status-v1",
+        idempotency_key="engine-status-response:" + poison["message_id"],
+    )
+    cycle(world)
+    (world["state"] / "iron-god-mailbox-observation.json").unlink()
+    good = status_question(world, key="after-restart")
+    outcome = cycle(world)
+    assert [r["request_id"] for r in outcome["handled_status_requests"]] == [good["message_id"]]
+    assert outcome["status_request_conflicts"] == []
+    assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 1
+    with sqlite3.connect(world["db"]) as db:
+        assert db.execute("SELECT message_id FROM diagnostic_conflicts").fetchall() == [(poison["message_id"],)]
+        with pytest.raises(sqlite3.IntegrityError):
+            db.execute("DELETE FROM diagnostic_conflicts")

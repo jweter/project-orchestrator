@@ -228,6 +228,10 @@ def list_pending_messages(path: Path, *, recipient_label: str,
         )
     with closing(_connect(db_path, read_only=True)) as db:
         db.execute("BEGIN")
+        if status_queries_only and db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='diagnostic_conflicts'"
+        ).fetchone():
+            condition += " AND NOT EXISTS (SELECT 1 FROM diagnostic_conflicts d WHERE d.message_id=m.message_id)"
         total = db.execute(
             "SELECT COUNT(*) FROM messages AS m WHERE " + condition, args
         ).fetchone()[0]
@@ -247,6 +251,47 @@ def list_pending_messages(path: Path, *, recipient_label: str,
     return {"status": "OK", "pending_total": total, "messages": messages,
             "next_seq": messages[-1]["seq"] if messages else after_seq,
             "wrapped": wrapped}
+
+
+def record_diagnostic_conflict(path: Path, *, message_id: str, reason: str) -> None:
+    """Persist a deterministic replay conflict, not a consumption receipt.
+
+    Additive v1 extension: older clients still see the unresolved message.
+    Only the resident diagnostic consumer uses this quarantine.
+    """
+    if not isinstance(message_id, str) or not re.fullmatch(r"[a-f0-9]{32}", message_id):
+        raise ValueError("INVALID_MESSAGE_ID")
+    if reason not in {"STATUS_REPLY_REPLAY_MISMATCH", "STATUS_REPLY_REPLAY_INVALID"}:
+        raise ValueError("INVALID_DIAGNOSTIC_CONFLICT")
+    with closing(_connect(path)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+                raise ValueError("UNSUPPORTED_COORDINATION_SCHEMA")
+            row = db.execute("SELECT * FROM messages WHERE message_id=?", (message_id,)).fetchone()
+            if (row is None or row["recipient"] != "iron-god"
+                    or row["sender_label"] not in {"chatgpt", "claude-code"}
+                    or row["kind"] != "question"
+                    or (row["body"], row["reference"]) not in {
+                        ("engine_status_v1", "protocol:engine-status-v1"),
+                        ("engine_status_v2", "protocol:engine-status-v2"),
+                    }):
+                raise ValueError("NOT_ENGINE_DIAGNOSTIC")
+            db.execute("""CREATE TABLE IF NOT EXISTS diagnostic_conflicts (
+                message_id TEXT PRIMARY KEY REFERENCES messages(message_id),
+                reason TEXT NOT NULL, recorded_at_utc TEXT NOT NULL)""")
+            db.execute("""CREATE TRIGGER IF NOT EXISTS diagnostic_conflicts_no_update
+                BEFORE UPDATE ON diagnostic_conflicts
+                BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_DIAGNOSTIC_CONFLICT'); END""")
+            db.execute("""CREATE TRIGGER IF NOT EXISTS diagnostic_conflicts_no_delete
+                BEFORE DELETE ON diagnostic_conflicts
+                BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_DIAGNOSTIC_CONFLICT'); END""")
+            db.execute("INSERT OR IGNORE INTO diagnostic_conflicts VALUES (?,?,?)",
+                       (message_id, reason, _utc()))
+            db.execute("COMMIT")
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
 
 
 def lookup_posted_message(path: Path, *, sender_label: str,

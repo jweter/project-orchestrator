@@ -316,6 +316,9 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int,
                 raise
             if failures is None:
                 raise
+            mcp_coordination.record_diagnostic_conflict(
+                db, message_id=message["message_id"], reason=str(exc),
+            )
             failures.append({"request_id": message["message_id"], "reason": str(exc)})
             continue
         try:
