@@ -306,3 +306,29 @@ def test_processing_disposition_recipient_isolation(database):
             database, recipient_label="chatgpt", message_id=row["message_id"],
             event_key="wrong", state="OBSERVED",
         )
+
+def test_retry_snapshot_counts_unique_failures_and_isolates_broadcast_recipients(database):
+    row = post(database, recipient="all")
+    key = {"recipient_label": "iron-god", "message_id": row["message_id"]}
+    assert co.processing_retry_snapshot(database, **key)["retryable_failures"] == 0
+    for event in ("failure-1", "failure-1", "failure-2"):
+        co.record_processing_disposition(database, **key, event_key=event, state="RETRYABLE_FAILURE")
+    snapshot = co.processing_retry_snapshot(database, **key)
+    assert snapshot["retryable_failures"] == 2
+    assert not snapshot["acknowledged"]
+    assert co.processing_retry_snapshot(
+        database, recipient_label="chatgpt", message_id=row["message_id"],
+    )["retryable_failures"] == 0
+    co.record_processing_disposition(database, **key, event_key="escalation", state="ESCALATED")
+    assert co.processing_retry_snapshot(database, **key)["latest_disposition"] == "ESCALATED"
+    co.record_processing_disposition(
+        database, **key, event_key="done", state="HANDLED", evidence_reference="PR#785",
+    )
+    final = co.processing_retry_snapshot(database, **key)
+    assert final["acknowledged"] and final["retryable_failures"] == 2
+
+
+def test_retry_snapshot_rejects_unaddressed_reader(database):
+    row = post(database)
+    with pytest.raises(ValueError, match="RECIPIENT_MISMATCH"):
+        co.processing_retry_snapshot(database, recipient_label="chatgpt", message_id=row["message_id"])
