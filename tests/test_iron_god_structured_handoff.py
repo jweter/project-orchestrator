@@ -68,3 +68,32 @@ def test_existing_tracked_request_lifecycle_and_idempotency(tmp_path, payload):
     with sqlite3.connect(db) as connection:
         assert connection.execute("SELECT COUNT(*) FROM tracked_requests").fetchone()[0] == 1
         assert connection.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == 1
+
+def test_scoped_read_validates_tracking_and_does_not_ack(tmp_path, payload):
+    db = tmp_path / "mailbox.sqlite"
+    request = handoff.open_engineering_handoff(
+        db, sender_label="chatgpt", recipient="iron-god", payload=payload, idempotency_key="scoped",
+    )
+    for participant in ("chatgpt", "iron-god"):
+        result = handoff.read_engineering_handoff(db, participant=participant, request_id=request["request_id"])
+        assert result["payload"] == payload and result["can_execute"] is False
+    with pytest.raises(ValueError, match="TRACKED_REQUEST_NOT_FOUND"):
+        handoff.read_engineering_handoff(db, participant="claude-code", request_id=request["request_id"])
+    raw = mail.post_message(
+        db, sender_label="chatgpt", recipient="iron-god", kind="decision_request",
+        body=handoff.encode_handoff(payload), reference=payload["repository"] + "@" + payload["commit_sha"],
+        idempotency_key="raw",
+    )
+    with pytest.raises(ValueError, match="TRACKED_REQUEST_NOT_FOUND"):
+        handoff.read_engineering_handoff(db, participant="iron-god", request_id=raw["message_id"])
+    assert mail.list_pending_messages(db, recipient_label="iron-god")["pending_total"] == 2
+
+
+def test_tracked_reference_mismatch_is_rejected(tmp_path, payload):
+    db = tmp_path / "mailbox.sqlite"
+    request = account.open_request(
+        db, sender_label="chatgpt", recipient="iron-god", body=handoff.encode_handoff(payload),
+        reference="PR#123", idempotency_key="mismatch",
+    )
+    with pytest.raises(ValueError, match="HANDOFF_REFERENCE_MISMATCH"):
+        handoff.read_engineering_handoff(db, participant="iron-god", request_id=request["request_id"])

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from contextlib import closing
 
 from . import iron_god_observability as observability
 from . import mcp_coordination as mail
@@ -100,3 +101,46 @@ def open_engineering_handoff(path: Path, *, sender_label: str, recipient: str,
         reference=reference, idempotency_key=idempotency_key,
         deadline_at_utc=deadline_at_utc,
     )
+
+def read_engineering_handoff(path: Path, *, participant: str, request_id: str) -> dict:
+    """Read only an explicitly tracked, participant-scoped engineering envelope.
+
+    The immutable message and tracking record must agree. A raw mailbox post
+    resembling the protocol is not a tracked engineering handoff.
+    """
+    mail._check_principal(participant)
+    if not isinstance(request_id, str) or not accountability._REQUEST_ID.fullmatch(request_id):
+        raise ValueError("INVALID_REQUEST_ID")
+    db_path = mail._path(path)
+    if not db_path.is_file():
+        raise ValueError("TRACKED_REQUEST_NOT_FOUND")
+    with closing(mail._connect(db_path, read_only=True)) as db:
+        db.execute("BEGIN")
+        if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+            raise ValueError("UNSUPPORTED_COORDINATION_SCHEMA")
+        if not db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tracked_requests'"
+        ).fetchone():
+            raise ValueError("TRACKED_REQUEST_NOT_FOUND")
+        row = db.execute(
+            "SELECT t.sender_label,t.recipient,t.reference,t.deadline_at_utc,"
+            "m.sender_label AS message_sender,m.recipient AS message_recipient,"
+            "m.reference AS message_reference,m.kind,m.body "
+            "FROM tracked_requests t JOIN messages m ON m.message_id=t.request_id "
+            "WHERE t.request_id=? AND (t.sender_label=? OR t.recipient=?)",
+            (request_id, participant, participant),
+        ).fetchone()
+        if row is None:
+            raise ValueError("TRACKED_REQUEST_NOT_FOUND")
+        if (row["sender_label"], row["recipient"], row["reference"], row["kind"]) != (
+            row["message_sender"], row["message_recipient"], row["message_reference"], "decision_request",
+        ):
+            raise ValueError("HANDOFF_ENVELOPE_MISMATCH")
+        payload = decode_handoff(row["body"])
+        if row["reference"] != payload["repository"] + "@" + payload["commit_sha"]:
+            raise ValueError("HANDOFF_REFERENCE_MISMATCH")
+        return {
+            "request_id": request_id, "sender": row["sender_label"], "recipient": row["recipient"],
+            "deadline_at_utc": row["deadline_at_utc"], "payload": payload,
+            "verification": "STRUCTURAL_ONLY", "can_execute": False,
+        }
