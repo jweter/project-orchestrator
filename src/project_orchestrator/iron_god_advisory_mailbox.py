@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 import os
 import re
 from datetime import UTC, datetime
@@ -328,6 +329,14 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int,
                 reference=protocol_ref,
             )
         except ValueError as exc:
+            if str(exc) in {"INVALID_MESSAGE_BODY", "LIKELY_SECRET_IN_MESSAGE"} and failures is not None:
+                mcp_coordination.record_processing_disposition(
+                    db, recipient_label="iron-god", message_id=message["message_id"],
+                    event_key="diagnostic-failure:" + uuid.uuid4().hex, state="RETRYABLE_FAILURE",
+                    evidence_reference="error:" + str(exc),
+                )
+                failures.append({"request_id": message["message_id"], "reason": str(exc)})
+                continue
             if str(exc) != "IDEMPOTENCY_CONFLICT":
                 raise
             # A second actor may have posted the same response concurrently.
