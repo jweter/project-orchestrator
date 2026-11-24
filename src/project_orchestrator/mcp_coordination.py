@@ -20,6 +20,7 @@ KINDS = frozenset({"status", "handoff", "question", "evidence", "notification", 
 MAX_MESSAGE_CHARS = 3000
 MAX_REFERENCE_CHARS = 200
 MAX_PAGE = 100
+MAX_DIAGNOSTIC_FAILURES = 3
 _KEY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _REFERENCE = re.compile(r"^[A-Za-z0-9._:/#@+-]{0,200}$")
 _SENSITIVE = re.compile(r"(?i)(?:bearer\s+\S+|-----BEGIN\s+[^-]+PRIVATE KEY-----|\b(?:sk-|ghp_|gho_|github_pat_)[a-zA-Z0-9_\-]{8,})")
@@ -232,6 +233,14 @@ def list_pending_messages(path: Path, *, recipient_label: str,
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='diagnostic_conflicts'"
         ).fetchone():
             condition += " AND NOT EXISTS (SELECT 1 FROM diagnostic_conflicts d WHERE d.message_id=m.message_id)"
+        if status_queries_only and db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='processing_dispositions'"
+        ).fetchone():
+            condition += (
+                " AND NOT EXISTS (SELECT 1 FROM processing_dispositions p"
+                " WHERE p.message_id=m.message_id AND p.recipient_label='iron-god'"
+                " AND p.state='ESCALATED' AND p.event_key='diagnostic-retry-exhausted')"
+            )
         total = db.execute(
             "SELECT COUNT(*) FROM messages AS m WHERE " + condition, args
         ).fetchone()[0]
@@ -416,6 +425,20 @@ def record_processing_disposition(
                     "(message_id,recipient_label,event_key,state,evidence_reference,recorded_at_utc) "
                     "VALUES (?,?,?,?,?,?)", (*key, event_key, state, evidence_reference, at),
                 )
+                if (state == "RETRYABLE_FAILURE" and recipient_label == "iron-god"
+                        and event_key.startswith("diagnostic-failure:")):
+                    count = db.execute(
+                        "SELECT COUNT(*) FROM processing_dispositions WHERE message_id=?"
+                        " AND recipient_label=? AND state='RETRYABLE_FAILURE'"
+                        " AND event_key LIKE 'diagnostic-failure:%'", key,
+                    ).fetchone()[0]
+                    if count >= MAX_DIAGNOSTIC_FAILURES:
+                        db.execute(
+                            "INSERT OR IGNORE INTO processing_dispositions "
+                            "(message_id,recipient_label,event_key,state,evidence_reference,recorded_at_utc) "
+                            "VALUES (?,?,?,?,?,?)",
+                            (*key, "diagnostic-retry-exhausted", "ESCALATED", "policy:diagnostic-retries", at),
+                        )
                 if state == "HANDLED":
                     db.execute(
                         "INSERT INTO receipts (message_id,recipient_label,acknowledged_at_utc) VALUES (?,?,?)",
