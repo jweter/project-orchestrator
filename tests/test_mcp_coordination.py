@@ -332,3 +332,34 @@ def test_retry_snapshot_rejects_unaddressed_reader(database):
     row = post(database)
     with pytest.raises(ValueError, match="RECIPIENT_MISMATCH"):
         co.processing_retry_snapshot(database, recipient_label="chatgpt", message_id=row["message_id"])
+
+def test_backlog_reconciliation_partitions_pending_without_receipts(database):
+    diagnostic = post(database, kind="question", body="engine_status_v1",
+                      reference="protocol:engine-status-v1", idempotency_key="diagnostic")
+    handoff = post(database, idempotency_key="handoff")
+    post(database, kind="evidence", idempotency_key="evidence")
+    post(database, kind="decision_request", idempotency_key="decision")
+    post(database, kind="question", recipient="all", idempotency_key="broadcast")
+    post(database, recipient="chatgpt", idempotency_key="other")
+    co.record_processing_disposition(
+        database, recipient_label="iron-god", message_id=handoff["message_id"],
+        event_key="deferred", state="DEFERRED",
+    )
+    before = co.backlog_reconciliation(database, recipient_label="iron-god")
+    assert before["classes"] == {"SUPPORTED_DIAGNOSTIC": 1, "DEFERRED": 1,
+                                 "INFORMATIONAL_REVIEW": 1, "DECISION_REVIEW": 1, "QUESTION_REVIEW": 1}
+    assert before["pending_total"] == 5
+    co.record_diagnostic_conflict(database, message_id=diagnostic["message_id"],
+                                  reason="STATUS_REPLY_REPLAY_INVALID")
+    after = co.backlog_reconciliation(database, recipient_label="iron-god")
+    assert after["classes"]["DIAGNOSTIC_CONFLICT"] == 1
+    assert "SUPPORTED_DIAGNOSTIC" not in after["classes"]
+    assert after["pending_total"] == co.list_pending_messages(database, recipient_label="iron-god")["pending_total"]
+    assert co.backlog_reconciliation(database, recipient_label="chatgpt")["pending_total"] == 2
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == 0
+
+
+def test_backlog_reconciliation_does_not_initialize_database(database):
+    assert co.backlog_reconciliation(database, recipient_label="iron-god")["status"] == "UNINITIALIZED"
+    assert not database.exists()
