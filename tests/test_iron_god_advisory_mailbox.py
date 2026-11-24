@@ -613,3 +613,22 @@ def test_diagnostic_conflict_survives_observation_loss_without_ack(world):
         assert db.execute("SELECT message_id FROM diagnostic_conflicts").fetchall() == [(poison["message_id"],)]
         with pytest.raises(sqlite3.IntegrityError):
             db.execute("DELETE FROM diagnostic_conflicts")
+
+def test_delivery_snapshot_reports_persistent_conflicts_without_disclosing_messages(world):
+    poison = status_question(world, key="conflict-metrics")
+    before = mailbox.delivery_snapshot(world["db"])
+    assert before["diagnostic_conflicts"] == {"status": "NOT_CONFIGURED", "unresolved": None}
+    mailbox.post_message(
+        world["db"], sender_label="iron-god", recipient="claude-code",
+        kind="status", body="invalid correlation",
+        reference="protocol:engine-status-v1",
+        idempotency_key="engine-status-response:" + poison["message_id"],
+    )
+    cycle(world)
+    report = mailbox.delivery_snapshot(world["db"])
+    assert report["diagnostic_conflicts"] == {"status": "OBSERVED", "unresolved": 1}
+    assert report["participants"]["iron-god"]["unacknowledged"] == 1
+    assert poison["message_id"] not in json.dumps(report)
+    assert "invalid correlation" not in json.dumps(report)
+    mailbox.ack_message(world["db"], recipient_label="iron-god", message_id=poison["message_id"])
+    assert mailbox.delivery_snapshot(world["db"])["diagnostic_conflicts"]["unresolved"] == 0

@@ -360,7 +360,20 @@ def delivery_snapshot(path: Path) -> dict:
     if not db_path.exists():
         return {"status": "UNINITIALIZED", "participants": {}}
     participants = {}
+    diagnostic_conflicts = {"status": "NOT_CONFIGURED", "unresolved": None}
     with closing(_connect(db_path, read_only=True)) as db:
+        db.execute("BEGIN")
+        if db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='diagnostic_conflicts'"
+        ).fetchone():
+            count = db.execute(
+                "SELECT COUNT(*) FROM diagnostic_conflicts d "
+                "JOIN messages m ON m.message_id=d.message_id "
+                "WHERE m.recipient='iron-god' AND NOT EXISTS "
+                "(SELECT 1 FROM receipts r WHERE r.message_id=d.message_id "
+                "AND r.recipient_label='iron-god')"
+            ).fetchone()[0]
+            diagnostic_conflicts = {"status": "OBSERVED", "unresolved": count}
         for label in ("chatgpt", "claude-code", "iron-god", "operator"):
             row = db.execute(
                 "SELECT COUNT(*) AS addressed, "
@@ -386,6 +399,7 @@ def delivery_snapshot(path: Path) -> dict:
     return {
         "status": "OK",
         "participants": participants,
+        "diagnostic_conflicts": diagnostic_conflicts,
         "note": "Advisory receipt metrics only; acknowledgment is not completion or execution authority",
     }
 
