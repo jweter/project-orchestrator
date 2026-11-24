@@ -270,3 +270,39 @@ def test_delivery_snapshot_tracks_each_receipt_without_claiming_completion(datab
     assert "PRIVATE_BROADCAST_BODY" not in str(summary)
     assert direct["message_id"] not in str(summary)
     assert broadcast["message_id"] not in str(summary)
+
+def test_processing_dispositions_atomic_receipt_and_replay(database):
+    row = post(database)
+    key = {"recipient_label": "iron-god", "message_id": row["message_id"]}
+    first = co.record_processing_disposition(database, **key, event_key="retry-1", state="RETRYABLE_FAILURE")
+    assert first["state"] == "RETRYABLE_FAILURE"
+    assert co.list_pending_messages(database, recipient_label="iron-god")["pending_total"] == 1
+    assert co.record_processing_disposition(
+        database, **key, event_key="retry-1", state="RETRYABLE_FAILURE",
+    )["replayed"]
+    with pytest.raises(ValueError, match="PROCESSING_REPLAY_CONFLICT"):
+        co.record_processing_disposition(database, **key, event_key="retry-1", state="DEFERRED")
+    with pytest.raises(ValueError, match="HANDLING_REQUIRES_EVIDENCE"):
+        co.record_processing_disposition(database, **key, event_key="done", state="HANDLED")
+    done = co.record_processing_disposition(
+        database, **key, event_key="done", state="HANDLED", evidence_reference="PR#784",
+    )
+    assert done["authority"] == "ADVISORY_ONLY"
+    assert co.list_pending_messages(database, recipient_label="iron-god")["pending_total"] == 0
+    assert co.record_processing_disposition(
+        database, **key, event_key="done", state="HANDLED", evidence_reference="PR#784",
+    )["replayed"]
+    with pytest.raises(ValueError, match="MESSAGE_ALREADY_ACKNOWLEDGED"):
+        co.record_processing_disposition(database, **key, event_key="late", state="DEFERRED")
+    with sqlite3.connect(database) as db:
+        assert db.execute("SELECT COUNT(*) FROM processing_dispositions").fetchone()[0] == 2
+        assert db.execute("SELECT COUNT(*) FROM receipts").fetchone()[0] == 1
+
+
+def test_processing_disposition_recipient_isolation(database):
+    row = post(database)
+    with pytest.raises(ValueError, match="RECIPIENT_MISMATCH"):
+        co.record_processing_disposition(
+            database, recipient_label="chatgpt", message_id=row["message_id"],
+            event_key="wrong", state="OBSERVED",
+        )
