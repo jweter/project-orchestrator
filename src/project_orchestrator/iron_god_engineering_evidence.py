@@ -39,13 +39,21 @@ def _source(path: Path) -> dict[str, Any]:
     return {"path": path.name, "status": "AVAILABLE" if path.is_file() else "UNAVAILABLE"}
 
 
-def _connect_existing(path: Path) -> sqlite3.Connection:
+def _connect_existing(path: Path, *, supported_versions: tuple[int, ...]) -> sqlite3.Connection:
     if not path.is_file():
         raise FileNotFoundError(path.name)
     db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=3)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA query_only=ON")
-    return db
+    try:
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA query_only=ON")
+        db.execute("BEGIN")
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+        if version not in supported_versions:
+            raise ValueError("UNSUPPORTED_EVIDENCE_SCHEMA")
+        return db
+    except BaseException:
+        db.close()
+        raise
 
 
 def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> dict[str, Any]:
@@ -57,7 +65,7 @@ def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> 
                 "historical_only": True, "events": [], "scan_limit": MAX_SCAN}
     events: list[dict[str, Any]] = []
     try:
-        with closing(_connect_existing(path)) as db:
+        with closing(_connect_existing(path, supported_versions=(0, 1))) as db:
             rows = db.execute("""SELECT seq,event_key,supervisor_instance,continuation_sequence,
                 observed_at_utc,status,reason,evidence_json
                 FROM development_events ORDER BY seq DESC LIMIT ?""", (MAX_SCAN,)).fetchall()
@@ -68,9 +76,13 @@ def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> 
             payload = json.loads(raw)
             if not isinstance(payload, dict):
                 continue
-            lane = (payload.get("lanes") or {}).get("product") or {}
+            lanes = payload.get("lanes", {})
+            supervisor = payload.get("supervisor", {})
+            if not isinstance(lanes, dict) or not isinstance(supervisor, dict):
+                raise ValueError("MALFORMED_EVENT_EVIDENCE")
+            lane = lanes.get("product") or {}
             if not isinstance(lane, dict):
-                lane = {}
+                raise ValueError("MALFORMED_PRODUCT_EVIDENCE")
             repo = lane.get("repository")
             if repo not in observability.REPOSITORIES:
                 repo = None
@@ -86,7 +98,7 @@ def event_history(state_root: Path, *, repository: str = "", limit: int = 8) -> 
                 "repository": repo, "packet_id": packet,
                 "status": _token(row["status"]), "reason": _token(row["reason"]),
                 "product_lane_status": _token(lane.get("status")),
-                "source_revision": _token((payload.get("supervisor") or {}).get("release_sha")),
+                "source_revision": _token(supervisor.get("release_sha")),
                 "evidence_state": "OBSERVED_NOT_PRODUCT_ACCEPTED",
             })
             if len(events) >= limit:
@@ -108,7 +120,7 @@ def attempt_memory(state_root: Path, *, repository: str = "", limit: int = 8) ->
         return {"source": "development-memory.sqlite3", "status": "UNAVAILABLE",
                 "attempts": [], "rules": []}
     try:
-        with closing(_connect_existing(path)) as db:
+        with closing(_connect_existing(path, supported_versions=(0, 1, memory.SCHEMA_VERSION))) as db:
             if repository:
                 rows = db.execute("""SELECT packet_id,item_id,repository,base_sha,model,
                     failure_class,outcome,recorded_at_utc FROM attempts WHERE repository=?

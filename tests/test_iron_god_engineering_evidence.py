@@ -559,3 +559,31 @@ def test_all_malformed_checkpoint_shapes_do_not_claim_empty_approved_work(tmp_pa
     assert result["corrupt_records"] == 1
     assert result["plans"] == []
     assert result["resume_authorized"] is False
+
+@pytest.mark.parametrize("source", ["events", "attempts"])
+def test_future_schema_is_unverified_without_mutation(tmp_path, source):
+    if source == "events":
+        now = datetime.now(UTC)
+        _state(tmp_path, now)
+        assert obs.record_supervisor_pass(tmp_path, now=now)
+        path = tmp_path / "observability" / "development-events.sqlite"
+        read = evidence.event_history
+    else:
+        path = _attempt_db(tmp_path)
+        read = evidence.attempt_memory
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA user_version=999")
+    before = path.read_bytes()
+    assert read(tmp_path)["status"] == "UNVERIFIED"
+    assert path.read_bytes() == before
+
+
+def test_malformed_nested_event_fails_closed(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    assert obs.record_supervisor_pass(tmp_path, now=now)
+    path = tmp_path / "observability" / "development-events.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("DROP TRIGGER development_events_no_update")
+        db.execute("UPDATE development_events SET evidence_json=?", (json.dumps({"lanes": ["invalid"]}),))
+    assert evidence.event_history(tmp_path)["status"] == "UNVERIFIED"
