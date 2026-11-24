@@ -349,6 +349,89 @@ def ack_message(path: Path, *, recipient_label: str, message_id: str) -> dict:
 
 
 
+def record_processing_disposition(
+    path: Path, *, recipient_label: str, message_id: str,
+    event_key: str, state: str, evidence_reference: str = "",
+) -> dict:
+    """Append a recipient's advisory disposition, never an execution grant.
+
+    HANDLED requires an evidence reference and atomically creates a receipt.
+    Other dispositions deliberately leave the original message pending.
+    """
+    _check_principal(recipient_label)
+    if not isinstance(message_id, str) or not re.fullmatch(r"[a-f0-9]{32}", message_id):
+        raise ValueError("INVALID_MESSAGE_ID")
+    if not isinstance(event_key, str) or not _KEY.fullmatch(event_key):
+        raise ValueError("INVALID_EVENT_KEY")
+    if state not in {"OBSERVED", "DEFERRED", "RETRYABLE_FAILURE", "ESCALATED", "HANDLED"}:
+        raise ValueError("INVALID_PROCESSING_STATE")
+    if not isinstance(evidence_reference, str) or not _REFERENCE.fullmatch(evidence_reference):
+        raise ValueError("INVALID_MESSAGE_REFERENCE")
+    if state == "HANDLED" and not evidence_reference:
+        raise ValueError("HANDLING_REQUIRES_EVIDENCE")
+    db_path = _path(path)
+    if not db_path.is_file():
+        raise ValueError("MESSAGE_NOT_FOUND")
+    with closing(_connect(db_path)) as db:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+                raise ValueError("UNSUPPORTED_COORDINATION_SCHEMA")
+            message = db.execute("SELECT recipient FROM messages WHERE message_id=?", (message_id,)).fetchone()
+            if message is None:
+                raise ValueError("MESSAGE_NOT_FOUND")
+            if message["recipient"] not in {recipient_label, "all"}:
+                raise ValueError("RECIPIENT_MISMATCH")
+            db.execute("""CREATE TABLE IF NOT EXISTS processing_dispositions (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id TEXT NOT NULL REFERENCES messages(message_id),
+                recipient_label TEXT NOT NULL, event_key TEXT NOT NULL,
+                state TEXT NOT NULL, evidence_reference TEXT NOT NULL,
+                recorded_at_utc TEXT NOT NULL,
+                UNIQUE(message_id, recipient_label, event_key))""")
+            db.execute("""CREATE TRIGGER IF NOT EXISTS processing_dispositions_no_update
+                BEFORE UPDATE ON processing_dispositions
+                BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_PROCESSING_DISPOSITION'); END""")
+            db.execute("""CREATE TRIGGER IF NOT EXISTS processing_dispositions_no_delete
+                BEFORE DELETE ON processing_dispositions
+                BEGIN SELECT RAISE(ABORT, 'IMMUTABLE_PROCESSING_DISPOSITION'); END""")
+            key = (message_id, recipient_label)
+            old = db.execute(
+                "SELECT * FROM processing_dispositions WHERE message_id=? AND recipient_label=? AND event_key=?",
+                (*key, event_key),
+            ).fetchone()
+            if old is not None:
+                if (old["state"], old["evidence_reference"]) != (state, evidence_reference):
+                    raise ValueError("PROCESSING_REPLAY_CONFLICT")
+                result = dict(old)
+            else:
+                receipt = db.execute(
+                    "SELECT 1 FROM receipts WHERE message_id=? AND recipient_label=?", key,
+                ).fetchone()
+                if receipt is not None:
+                    raise ValueError("MESSAGE_ALREADY_ACKNOWLEDGED")
+                at = _utc()
+                db.execute(
+                    "INSERT INTO processing_dispositions "
+                    "(message_id,recipient_label,event_key,state,evidence_reference,recorded_at_utc) "
+                    "VALUES (?,?,?,?,?,?)", (*key, event_key, state, evidence_reference, at),
+                )
+                if state == "HANDLED":
+                    db.execute(
+                        "INSERT INTO receipts (message_id,recipient_label,acknowledged_at_utc) VALUES (?,?,?)",
+                        (*key, at),
+                    )
+                result = dict(db.execute(
+                    "SELECT * FROM processing_dispositions WHERE message_id=? AND recipient_label=? AND event_key=?",
+                    (*key, event_key),
+                ).fetchone())
+            db.execute("COMMIT")
+            return {**result, "replayed": old is not None, "authority": "ADVISORY_ONLY"}
+        except BaseException:
+            db.execute("ROLLBACK")
+            raise
+
+
 def delivery_snapshot(path: Path) -> dict:
     """Read-only per-recipient delivery and acknowledgment metrics.
 
