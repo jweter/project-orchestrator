@@ -432,6 +432,51 @@ def record_processing_disposition(
             raise
 
 
+def processing_retry_snapshot(path: Path, *, recipient_label: str, message_id: str) -> dict:
+    """Read durable retry counts; never infer handling from an attempt.
+
+    A receipt takes precedence over historical failures. Escalation is advisory.
+    """
+    _check_principal(recipient_label)
+    if not isinstance(message_id, str) or not re.fullmatch(r"[a-f0-9]{32}", message_id):
+        raise ValueError("INVALID_MESSAGE_ID")
+    db_path = _path(path)
+    if not db_path.is_file():
+        raise ValueError("MESSAGE_NOT_FOUND")
+    with closing(_connect(db_path, read_only=True)) as db:
+        db.execute("BEGIN")
+        if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+            raise ValueError("UNSUPPORTED_COORDINATION_SCHEMA")
+        row = db.execute("SELECT recipient FROM messages WHERE message_id=?", (message_id,)).fetchone()
+        if row is None:
+            raise ValueError("MESSAGE_NOT_FOUND")
+        if row["recipient"] not in {recipient_label, "all"}:
+            raise ValueError("RECIPIENT_MISMATCH")
+        key = (message_id, recipient_label)
+        receipt = db.execute(
+            "SELECT 1 FROM receipts WHERE message_id=? AND recipient_label=?", key,
+        ).fetchone()
+        failures = 0
+        latest = None
+        if db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='processing_dispositions'"
+        ).fetchone():
+            failures = db.execute(
+                "SELECT COUNT(*) FROM processing_dispositions "
+                "WHERE message_id=? AND recipient_label=? AND state='RETRYABLE_FAILURE'", key,
+            ).fetchone()[0]
+            latest = db.execute(
+                "SELECT state FROM processing_dispositions "
+                "WHERE message_id=? AND recipient_label=? ORDER BY seq DESC LIMIT 1", key,
+            ).fetchone()
+        return {
+            "retryable_failures": failures,
+            "acknowledged": receipt is not None,
+            "latest_disposition": latest["state"] if latest is not None else None,
+            "authority": "ADVISORY_ONLY",
+        }
+
+
 def delivery_snapshot(path: Path) -> dict:
     """Read-only per-recipient delivery and acknowledgment metrics.
 
