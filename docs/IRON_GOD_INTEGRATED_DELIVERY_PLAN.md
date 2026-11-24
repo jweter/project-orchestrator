@@ -6,6 +6,98 @@
 
 **Related authoritative plans:** [owner-approved roadmap](OWNER_APPROVED_ROADMAP_2026-10-25.md), [main roadmap](ROADMAP.md), [product-first delivery](PRODUCT_V1_DELIVERY_EXECUTION_PLAN.md), [MCP coordination](IRON_GOD_MCP_COORDINATION.md), [offload contract](IRON_GOD_CHATGPT_OFFLOAD.md), [MCP cost/compatibility evaluation](IRON_GOD_MCP_STACK_EVALUATION.md), [Iron Continuum issue #747](https://github.com/jweter/project-orchestrator/issues/747), [PR #768](https://github.com/jweter/project-orchestrator/pull/768). Product-specific native requirements and owner-control/lease authority always take precedence over advisory plans.
 
+## Owner-approved direction ? 2026-11-24: simplify before expanding
+
+Finish IRON CONTINUUM S2 and its existing acceptance contract before starting S3.
+Do not expand S2 into a new scheduler, additional services, or speculative MCP
+infrastructure. Necessary defect repair and existing authorized product work
+remain in scope. S3 begins with eligibility consolidation and productive recovery.
+The objective is maximum verified product development with minimum necessary
+orchestration, not more modules, dashboards, PRs or supervisor cycles.
+
+### S3.1 ? Eligibility consolidation and productive recovery
+
+Baseline observation on Azathoth (2026-11-24 23:37 UTC): installed actor
+`2ce8deac400c7ca8c970f188593c91c911629c0c` was running; Canon reported
+`IDLE_NO_READY_SLICE` and Product `IDLE_NO_APPROVED_BACKLOG_ITEM`. The
+eligibility projection contained 36 NEEDS_DIFFERENT_CAPABILITY, 16
+ATTEMPTS_EXHAUSTED, 16 LEVEL_ABOVE_MEASURED_CAPABILITY, 15
+REPEATED_FAILED_SOURCE, 3 DIRECTED_ATTEMPT_SPENT, 25 NOT_APPROVED,
+11 ALREADY_COMPLETE and 3 IN_FLIGHT entries. These are dated classification
+counts, not distinct root causes or a current status claim. The first five
+recoverability-related categories total 86 entries. Refresh the baseline
+before implementation; the observation does not establish safe deletions.
+
+Ordered work (reuse existing modules; no second dispatcher):
+
+1. Trace the active eligibility and recovery call graph, measure wall time,
+   CPU, disk I/O, inference context and repeated decisions. Audit
+   `iron_god_backlog`, `iron_god_failure_strategy`, `iron_god_task_decomposer`,
+   `iron_god_slice_decomposition`, `iron_god_stall_recovery`,
+   `iron_god_stalled_worker_recovery`, `iron_god_offload_eligibility` and
+   `iron_god_capable_builder` plus their real callers.
+2. Consolidate duplicated eligibility decisions into the existing canonical
+   selection path. Keep a single authoritative decision per relevant input
+   generation, revalidate volatile owner, lease, base and resource facts
+   immediately before execution. Do not cache away safety boundaries.
+3. Turn recoverable exclusions into bounded alternate work: capability
+   mismatch -> smaller qualified slice or different strategy; exhausted
+   attempts -> evidence-driven decomposition/recovery; repeated failed
+   source -> investigate and change approach; spent directed attempt ->
+   evaluate a genuinely different method. Preserve parent traceability,
+   bounded budgets, deduplication and failure evidence. A failed approach
+   must not permanently block an otherwise achievable authorized objective.
+   NOT_APPROVED means determine whether standing roadmap scope already
+   covers the work; if genuine authority is missing, defer it and continue
+   unrelated work. Never manufacture approval or reclaim a live lease.
+4. Tag canonical work items BUILD, FIX, TEST, REVIEW, DECOMPOSE, RECOVER,
+   RESEARCH or SIMPLIFY. Tags are prioritization metadata, not new approval
+   conditions or permanent worker processes. Use the existing scheduler and
+   resource budget; rotate fairly across ready repositories and work types.
+   Reuse existing action classifications where compatible; migrate
+   backward-compatibly and do not introduce a competing queue.
+5. Profile and simplify redundant sequential checks, state projections,
+   unchanged status reports and excessive prompt context. Prefer targeted
+   development tests and exact-head full verification at existing required
+   integration boundaries. Reuse evidence only when all relevant inputs and
+   required freshness remain valid. SQLite remains durable state; MCP
+   remains advisory communication, never a prerequisite for ordinary local
+   development.
+6. Inventory modules as KEEP, MERGE, SIMPLIFY or DELETE. Require dependency
+   analysis (including dynamic entry points), measured runtime evidence,
+   regression tests and a rollback path before deletion. Do not delete
+   code simply to reduce the file count.
+
+### S3.1 acceptance and throughput budget
+
+- One canonical eligibility decision path, existing recovery reused, bounded
+  alternatives actually executed for recoverable failures, no duplicate
+  logical work or unlimited retries, and blocked work cannot starve unrelated
+  authorized repositories.
+- Demonstrate recovery/decomposition, tagged fairness, restart/replay,
+  owner revocation, lease isolation, and local-only continuation through
+  focused regression and existing exact-head integration gates. No new
+  permanent services or increased cloud dependency.
+- Compare matched baseline and candidate runs on Azathoth with equivalent
+  hardware, model availability, owner mode and work mix. Record tested
+  commits/day, verified product advances, slice-selection-to-tested-commit
+  latency, recovery success, eligible idle time, orchestration/communication
+  time, CPU/RAM/disk and context/inference cost per successful slice.
+  Separate CI waiting and genuine external blockers from engine overhead;
+  report missing evidence as unknown. Proposed targets: >=85% productive
+  active time, <=10% orchestration, <=5% routine communication (mutually
+  exclusive categories), zero unexplained idle time when recoverable
+  authorized work exists, zero duplicate logical work and zero routine
+  cloud-model tokens. These are design targets, not achieved metrics.
+- Require measured improvement in tested commits/day and real product
+  progress without safety regressions. Unit tests, PR counts and reduced
+  source lines alone do not establish throughput improvement.
+- Preserve authenticated Give Me Control / Take the Wheel, roadmap scope,
+  worktree and lease isolation, resource limits, native tests, exact-head
+  CI/preflight, independent review, guarded publication and rollback.
+  S3.1 is approved development direction, not a runtime grant or deployment
+  approval. Keep S1/S2 operational acceptance distinct from source merge.
+
 ## 1. Target topology and responsibility
 
 ```text

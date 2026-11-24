@@ -19,6 +19,17 @@ The product-specific objectives, owner decisions, and acceptance criteria that f
 
 ## Iron God / universal portfolio
 
+**2026-11-24 sequencing and simplification decision:** Finish IRON CONTINUUM
+S2 and its acceptance criteria, then prioritize S3.1 eligibility consolidation
+and productive recovery. The owner approved the ordered audit, tagged work
+selection, bounded alternative slices, overhead reduction and evidence-based
+code deletion policy in the [integrated delivery plan](IRON_GOD_INTEGRATED_DELIVERY_PLAN.md#owner-approved-direction--2026-11-24-simplify-before-expanding).
+Use the existing backlog, scheduler, state owners and recovery mechanisms.
+Do not add permanent services or duplicate authority paths. Existing approved
+product development and required safety repairs continue. This decision does
+not authorize runtime control changes, installation or bypass of any gate.
+
+
 **2026-11-22 expansion:** The owner's integrated delivery objective, detailed gates and cost-control plan are recorded in [Iron God integrated delivery plan](IRON_GOD_INTEGRATED_DELIVERY_PLAN.md) and incorporated by [main roadmap](ROADMAP.md) and [product-first execution plan](PRODUCT_V1_DELIVERY_EXECUTION_PLAN.md). Reuse existing DoWork Hourly as a stronger code-and-tests builder for verified failed local slices, then have Azathoth independently test and publish. After a real scheduled canary, evaluate an independently authenticated Claude builder. Give each supported actor scoped two-way SQLite/MCP advisory collaboration while preserving separate owner/worker/merge authority. Pursue secure no-new-fee remote access with BLACKICE as a *conditional* replacement, retaining Norton, Tailscale routes and the existing remote tool until a production-equivalent canary/rollback proves compatibility. This is roadmap scope, **not** an automatic installed-release grant, paid-model authorization or remote shell exposure.
 - Treat Iron God engine as a first-class development workstream alongside product progress every hourly Chat-mode run. Preserve the existing task identity and cadence; no duplicates.
 - Permit isolated nonconflicting manual development while supervisor paused ONLY where independently authorized. Never infer supervisor execution authorization from this decision.

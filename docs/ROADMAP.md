@@ -11,6 +11,18 @@ journey toward its repository-authoritative v1.0 acceptance. The advisory-only
 Claude Code and the local engine may exchange messages without replacing the
 existing owner controller, claims, verification or publication gates.
 
+## IRON CONTINUUM ? S2 then S3 (owner direction 2026-11-24)
+
+Finish S2 interoperability within its existing scope before S3 expansion.
+The next architecture priority is **S3.1: eligibility consolidation and
+productive recovery**: one canonical selection path, bounded alternatives
+for recoverable exclusions, tagged work selection within the existing scheduler,
+and measured simplification of redundant orchestration. See the owner-approved
+[delivery vision, ordered work and acceptance criteria](IRON_GOD_INTEGRATED_DELIVERY_PLAN.md#owner-approved-direction--2026-11-24-simplify-before-expanding)
+and [program issue #747](https://github.com/jweter/project-orchestrator/issues/747).
+Simplification before expansion; verified product throughput before infrastructure
+volume. Preserve independent authorization and publication gates.
+
 ## Owner-approved portfolio direction (2026-10-25)
 
 Iron God is a first-class hourly development workstream alongside product repositories. Isolated manual development while the supervisor is paused is permitted only through independently authorized interfaces and nonconflicting workspaces; it does not grant autonomous execution. Investigate all recorded Canon S2 failures without weakening safety tests. Product objectives and bounded slices are recorded in `docs/OWNER_APPROVED_ROADMAP_2026-10-25.md`. Reconcile newer authoritative local work before accepting or merging.

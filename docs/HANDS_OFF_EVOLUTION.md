@@ -1,5 +1,21 @@
 # Project Hands-Off Evolution
 
+
+## Vision refinement ? owner direction 2026-11-24
+
+Maximum verified product development with minimum necessary orchestration.
+Simplify before expanding: reuse the canonical backlog, scheduler, SQLite state
+and existing recovery mechanisms. MCP communicates advisory evidence and must
+not become a global development gate. When one authorized slice is blocked,
+decompose it, change strategy or rotate to another ready repository or work
+type. Measure success in tested commits, resolved review findings and native
+product advancement, not status reports or infrastructure volume.
+
+Finish IRON CONTINUUM S2 before beginning S3.1 eligibility consolidation and
+productive recovery. Follow the [ordered implementation and acceptance contract](IRON_GOD_INTEGRATED_DELIVERY_PLAN.md#owner-approved-direction--2026-11-24-simplify-before-expanding).
+Preserve existing owner, lease, verification and release authority.
+
+
 ## North star
 
 Create a development environment in which Jeremy establishes product intent, authoritative guiding documents, roadmaps, acceptance criteria, and guardrails, then enables the Evolution Engine to carry ordinary engineering from unfinished roadmap work toward verified completion without Jeremy being a required participant in the routine loop.
