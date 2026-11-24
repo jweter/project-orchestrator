@@ -97,3 +97,47 @@ def test_tracked_reference_mismatch_is_rejected(tmp_path, payload):
     )
     with pytest.raises(ValueError, match="HANDOFF_REFERENCE_MISMATCH"):
         handoff.read_engineering_handoff(db, participant="iron-god", request_id=request["request_id"])
+
+def test_freshness_routes_without_expensive_checks_for_expired_or_other_repo(tmp_path, payload, monkeypatch):
+    from datetime import datetime, timezone
+
+    db = tmp_path / "mailbox.sqlite"
+    request = handoff.open_engineering_handoff(
+        db, sender_label="chatgpt", recipient="iron-god", payload=payload,
+        idempotency_key="expired", deadline_at_utc="2025-01-01T00:00:00Z",
+    )
+    def unexpected_git(_):
+        pytest.fail("unnecessary Git read")
+
+    monkeypatch.setattr(handoff.bridge, "_repository_head", unexpected_git)
+    args = dict(participant="iron-god", request_id=request["request_id"],
+                configured_repository=payload["repository"], repo_root=tmp_path)
+    expired = handoff.assess_handoff_freshness(db, **args, now=datetime(2025, 1, 1, tzinfo=timezone.utc))
+    assert expired["status"] == "EXPIRED" and not expired["can_execute"]
+    other = handoff.assess_handoff_freshness(
+        db, **{**args, "configured_repository": obs.REPOSITORIES[1]},
+        now=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+    assert other["reason"] == "CONFIGURED_REPOSITORY_MISMATCH"
+
+
+@pytest.mark.parametrize(("head", "expected"), [
+    ({"status": "UNAVAILABLE"}, "UNVERIFIED"),
+    ({"status": "OK", "head_sha": "bad"}, "UNVERIFIED"),
+    ({"status": "OK", "head_sha": "b" * 40}, "HEAD_MISMATCH"),
+    ({"status": "OK", "head_sha": "a" * 40}, "LOCAL_HEAD_MATCH"),
+])
+def test_freshness_is_advisory_and_does_not_ack(tmp_path, payload, monkeypatch, head, expected):
+    db = tmp_path / "mailbox.sqlite"
+    request = handoff.open_engineering_handoff(
+        db, sender_label="chatgpt", recipient="iron-god", payload=payload, idempotency_key="freshness",
+    )
+    monkeypatch.setattr(handoff.bridge, "_repository_head", lambda root: head)
+    result = handoff.assess_handoff_freshness(
+        db, participant="iron-god", request_id=request["request_id"],
+        configured_repository=payload["repository"], repo_root=tmp_path,
+    )
+    assert result["status"] == expected and result["work_type"] == "REVIEW"
+    assert not any(result[key] for key in ("can_execute", "remote_head_verified",
+                                           "test_evidence_verified", "dependencies_verified"))
+    assert mail.list_pending_messages(db, recipient_label="iron-god")["pending_total"] == 1

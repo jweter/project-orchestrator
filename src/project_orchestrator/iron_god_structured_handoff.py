@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from contextlib import closing
+from datetime import datetime, timezone
+from pathlib import Path
 
 from . import iron_god_observability as observability
+from . import iron_god_mcp_readonly_bridge as bridge
 from . import mcp_coordination as mail
 from . import mcp_coordination_accountability as accountability
 
@@ -144,3 +146,48 @@ def read_engineering_handoff(path: Path, *, participant: str, request_id: str) -
             "deadline_at_utc": row["deadline_at_utc"], "payload": payload,
             "verification": "STRUCTURAL_ONLY", "can_execute": False,
         }
+
+def assess_handoff_freshness(path: Path, *, participant: str, request_id: str,
+                             configured_repository: str, repo_root: Path,
+                             now: datetime | None = None) -> dict:
+    """Cheap, opt-in local freshness check. No network, writes or dispatch.
+
+    The repository identity and checkout root are host configuration, never
+    handoff fields or client-selected filesystem paths. Local HEAD equality
+    does not establish remote PR freshness, CI success or owner permission.
+    """
+    handoff = read_engineering_handoff(path, participant=participant, request_id=request_id)
+    payload = handoff["payload"]
+    result = {
+        "request_id": request_id,
+        "repository": payload["repository"],
+        "commit_sha": payload["commit_sha"],
+        "work_type": payload["next_action"],
+        "status": "UNVERIFIED",
+        "reason": "CONFIGURED_REPOSITORY_MISMATCH",
+        "remote_head_verified": False,
+        "test_evidence_verified": False,
+        "dependencies_verified": False,
+        "can_execute": False,
+    }
+    moment = now if now is not None else datetime.now(timezone.utc)
+    if not isinstance(moment, datetime) or moment.utcoffset() is None:
+        raise ValueError("INVALID_ASSESSMENT_TIME")
+    deadline = handoff["deadline_at_utc"]
+    if deadline is not None and accountability._time(deadline) <= moment:
+        return {**result, "status": "EXPIRED", "reason": "HANDOFF_DEADLINE_ELAPSED"}
+    if (configured_repository not in observability.REPOSITORIES
+            or configured_repository != payload["repository"]
+            or not repo_root.is_absolute()):
+        return result
+    head = bridge._repository_head(repo_root)
+    if head.get("status") != "OK":
+        return {**result, "reason": "LOCAL_HEAD_UNAVAILABLE"}
+    observed = head.get("head_sha")
+    if not isinstance(observed, str) or not _SHA.fullmatch(observed):
+        return {**result, "reason": "LOCAL_HEAD_INVALID"}
+    if observed != payload["commit_sha"]:
+        return {**result, "status": "HEAD_MISMATCH", "reason": "LOCAL_HEAD_DIFFERS",
+                "observed_local_head": observed}
+    return {**result, "status": "LOCAL_HEAD_MATCH", "reason": "LOCAL_ONLY_NOT_REMOTE_PROOF",
+            "observed_local_head": observed}
