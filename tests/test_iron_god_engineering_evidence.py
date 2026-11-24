@@ -587,3 +587,26 @@ def test_malformed_nested_event_fails_closed(tmp_path):
         db.execute("DROP TRIGGER development_events_no_update")
         db.execute("UPDATE development_events SET evidence_json=?", (json.dumps({"lanes": ["invalid"]}),))
     assert evidence.event_history(tmp_path)["status"] == "UNVERIFIED"
+
+def test_memory_schema_conflict_and_drift_are_unverified(tmp_path):
+    path = _attempt_db(tmp_path)
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA user_version=2")
+    assert evidence.attempt_memory(tmp_path)["status"] == "UNVERIFIED"
+    with sqlite3.connect(path) as db:
+        db.execute("PRAGMA user_version=0")
+        db.execute("ALTER TABLE attempts ADD COLUMN unexpected TEXT")
+    before = path.read_bytes()
+    assert evidence.attempt_memory(tmp_path)["status"] == "UNVERIFIED"
+    assert path.read_bytes() == before
+
+
+def test_scoped_bundle_omits_unscoped_frontier_and_delivery(tmp_path):
+    now = datetime.now(UTC)
+    _state(tmp_path, now)
+    scoped = evidence.engineering_bundle(tmp_path, repository=REPOSITORY, now=now)
+    assert scoped["frontier_and_recovery"]["eligibility"] is None
+    assert scoped["delivery"]["runtime_projection"] is None
+    portfolio = evidence.engineering_bundle(tmp_path, now=now)
+    assert portfolio["frontier_and_recovery"]["eligibility"] is not None
+    assert portfolio["delivery"]["runtime_projection"] is not None
