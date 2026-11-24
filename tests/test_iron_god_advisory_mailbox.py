@@ -573,3 +573,23 @@ def test_status_query_bypass_keeps_reply_budget_and_rejects_broadcast(world):
     handled = first["handled_status_requests"] + second["handled_status_requests"]
     assert {r["request_id"] for r in handled} == {r["message_id"] for r in requests}
     assert second["pending_unacknowledged"] == 1
+
+def test_conflicting_reply_does_not_block_later_valid_request(world):
+    poison = status_question(world, key="poison")
+    good = status_question(world, key="good")
+    mailbox.post_message(
+        world["db"], sender_label="iron-god", recipient="claude-code",
+        kind="status", body="invalid correlation",
+        reference="protocol:engine-status-v1",
+        idempotency_key="engine-status-response:" + poison["message_id"],
+    )
+    outcome = cycle(world)
+    assert outcome["status"] == "OBSERVED"
+    assert [r["request_id"] for r in outcome["handled_status_requests"]] == [good["message_id"]]
+    assert outcome["status_request_conflicts"] == [
+        {"request_id": poison["message_id"], "reason": "STATUS_REPLY_REPLAY_INVALID"}
+    ]
+    pending = mailbox.list_pending_messages(world["db"], recipient_label="iron-god")
+    assert [r["message_id"] for r in pending["messages"]] == [poison["message_id"]]
+    saved = json.loads((world["state"] / "iron-god-mailbox-observation.json").read_text())
+    assert saved["status_request_conflicts"] == outcome["status_request_conflicts"]
