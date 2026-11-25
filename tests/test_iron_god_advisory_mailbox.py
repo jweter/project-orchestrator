@@ -720,3 +720,31 @@ def test_resident_handoff_scan_rotates_and_isolates_legacy_requests(world):
     third = cycle(world, publish=False)["structured_handoffs"]
     assert third["items"] == first["items"]
     assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 7
+
+def test_resident_mailbox_write_lock_defers_without_long_supervisor_wait(world):
+    import time
+
+    mailbox.initialize(world["db"])
+    lane(world)
+    with sqlite3.connect(world["db"], isolation_level=None) as lock:
+        lock.execute("BEGIN IMMEDIATE")
+        start = time.monotonic()
+        try:
+            result = cycle(world)
+            assert result["status"] == "MAILBOX_UNAVAILABLE"
+            assert time.monotonic() - start < 3.0
+        finally:
+            lock.execute("ROLLBACK")
+    recovered = cycle(world)
+    assert recovered["status"] == "OBSERVED"
+    assert len(recovered["published"]) == 2
+    assert len(mailbox.list_messages(world["db"], recipient_label="chatgpt")["messages"]) == 1
+    assert mailbox._busy_seconds() == 10.0
+
+
+def test_resident_wait_budget_context_restores_after_failure():
+    with pytest.raises(RuntimeError):
+        with mailbox.resident_wait_budget():
+            assert 0 < mailbox._busy_seconds() <= 0.5
+            raise RuntimeError("simulated failure")
+    assert mailbox._busy_seconds() == 10.0

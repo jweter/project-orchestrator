@@ -424,39 +424,40 @@ def advisory_supervisor_pass(
     if not db.is_file():
         return {"status": "MAILBOX_NOT_INITIALIZED"}
     try:
-        cursor = _inbox_cursor(state_root)
-        failures: list[dict[str, str]] = []
-        handled = _answer_status_queries(db, state_root, after_seq=cursor, failures=failures) if publish else []
-        inbox = _read_inbox(db, after_seq=cursor)
-        publication_cursor = _publication_cursor(state_root)
-        if publish:
-            posted, publication_cursor = _publish_lane_events(
-                db, state_root, publication_after=publication_cursor,
-            )
-        else:
-            posted = []
-        result: dict[str, Any] = {
-            "schema_version": 1,
-            "status": "OBSERVED",
-            "observed_at_utc": datetime.now(UTC).isoformat(),
-            "pending_unacknowledged": inbox["unacknowledged"],
-            "last_message_seq": inbox["next_seq"],
-            "last_publication_packet": publication_cursor,
-            "inbox": inbox, "published": posted,
-            "handled_status_requests": handled,
-            "backlog": mcp_coordination.backlog_reconciliation(db, recipient_label="iron-god"),
-            "structured_handoffs": structured_handoff.pending_handoff_page(
-                db, participant="iron-god", after_seq=_handoff_cursor(state_root),
-            ),
-            "status_request_conflicts": failures,
-            "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
-        }
-        # Recording observations is not an acknowledgement. The engine should
-        # explicitly process a message before calling ack_message with its ID.
-        atomic_json(state_root / "iron-god-mailbox-observation.json", result)
-        if failures and not handled:
-            return {**result, "status": "MAILBOX_UNAVAILABLE", "error_type": "ValueError"}
-        return result
+        with mcp_coordination.resident_wait_budget():
+            cursor = _inbox_cursor(state_root)
+            failures: list[dict[str, str]] = []
+            handled = _answer_status_queries(db, state_root, after_seq=cursor, failures=failures) if publish else []
+            inbox = _read_inbox(db, after_seq=cursor)
+            publication_cursor = _publication_cursor(state_root)
+            if publish:
+                posted, publication_cursor = _publish_lane_events(
+                    db, state_root, publication_after=publication_cursor,
+                )
+            else:
+                posted = []
+            result: dict[str, Any] = {
+                "schema_version": 1,
+                "status": "OBSERVED",
+                "observed_at_utc": datetime.now(UTC).isoformat(),
+                "pending_unacknowledged": inbox["unacknowledged"],
+                "last_message_seq": inbox["next_seq"],
+                "last_publication_packet": publication_cursor,
+                "inbox": inbox, "published": posted,
+                "handled_status_requests": handled,
+                "backlog": mcp_coordination.backlog_reconciliation(db, recipient_label="iron-god"),
+                "structured_handoffs": structured_handoff.pending_handoff_page(
+                    db, participant="iron-god", after_seq=_handoff_cursor(state_root),
+                ),
+                "status_request_conflicts": failures,
+                "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
+            }
+            # Recording observations is not an acknowledgement. The engine should
+            # explicitly process a message before calling ack_message with its ID.
+            atomic_json(state_root / "iron-god-mailbox-observation.json", result)
+            if failures and not handled:
+                return {**result, "status": "MAILBOX_UNAVAILABLE", "error_type": "ValueError"}
+            return result
     except Exception as exc:
         # Do not write the exception text: external paths or secrets may appear.
         return {"status": "MAILBOX_UNAVAILABLE", "error_type": type(exc).__name__}
