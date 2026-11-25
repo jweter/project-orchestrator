@@ -358,3 +358,7 @@ not an operational common communication fabric.
 ### Structured handoff CLI (local bridge)
 
 The pinned-release CLI supports `engineering-handoff --id ID`, `pending-handoffs --after N --limit N`, and `message-processing --id ID` as read-only participant-scoped operations. A configured advisory writer may use `post-engineering-handoff --to LABEL --key KEY [--deadline-utc UTC]` with the versioned JSON envelope on standard input. The existing write opt-in is required; the CLI rejects duplicate JSON keys, oversized bodies and invalid envelopes before storage. A structured read is not an acknowledgment, and a structurally valid envelope is not independent GitHub evidence or execution authority. The external bridge must retain its own write policy; do not expand its permissions merely to enable the new command.
+
+### Independent handoff evidence
+
+The explicit CLI command `verify-handoff --id ID` uses the existing authenticated GitHub read transport, never the resident supervisor pass. It checks the scoped request, exact commit, same-repository open PR head and explicit `actions:RUN_ID` test claims against successful exact-head Actions runs, then rechecks the PR head. Other test labels remain unverified. A successful run observation is not proof of required workflow coverage, dependency completion, independent review, product acceptance or authority. Offline or unavailable remote evidence fails closed. No automatic GitHub polling or new credentials are required.
