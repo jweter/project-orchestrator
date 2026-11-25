@@ -84,6 +84,8 @@ def _parser() -> argparse.ArgumentParser:
     disposition.add_argument("--key", default="")
     structured_read = sub.add_parser("engineering-handoff", help="read a participant-scoped structured request")
     structured_read.add_argument("--id", required=True)
+    verify = sub.add_parser("verify-handoff", help="explicit read-only GitHub evidence lookup")
+    verify.add_argument("--id", required=True)
     pending = sub.add_parser("pending-handoffs", help="read a bounded incoming structured request page")
     pending.add_argument("--after", type=int, default=0)
     pending.add_argument("--limit", type=int, default=5)
@@ -137,6 +139,19 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
         elif args.command == "engineering-handoff":
             _emit(out, structured.read_engineering_handoff(
                 database, participant=label, request_id=args.id))
+        elif args.command == "verify-handoff":
+            from .github_evidence import GitHubError, UrllibGitHubTransport
+            from .iron_god_handoff_evidence import verify_handoff
+
+            # Scope validation precedes even credential discovery.
+            structured.read_engineering_handoff(database, participant=label, request_id=args.id)
+            try:
+                transport = UrllibGitHubTransport.from_environment()
+            except GitHubError:
+                _emit(out, {"status": "UNVERIFIED", "reason": "GITHUB_TRANSPORT_UNAVAILABLE",
+                            "can_execute": False})
+                return 1
+            _emit(out, verify_handoff(database, participant=label, request_id=args.id, transport=transport))
         elif args.command == "pending-handoffs":
             _emit(out, structured.pending_handoff_page(
                 database, participant=label, after_seq=args.after, limit=args.limit))
