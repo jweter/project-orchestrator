@@ -191,15 +191,24 @@ def test_structured_handoffs_all_seven_repositories_real_stdio(tmp_path):
             for ident, repository in zip(ids, REPOSITORIES, strict=True):
                 result = _payload(await receiver.call_tool("get_engineering_handoff", {"request_id": ident}))
                 assert result["payload"]["repository"] == repository and not result["can_execute"]
+                assessment = _payload(await receiver.call_tool("get_handoff_assessment", {"request_id": ident}))
+                assert assessment["repository"] == repository and assessment["request_id"] == ident
+                assert assessment["remote"]["status"] == "NOT_REQUESTED"
+                assert not assessment["can_execute"] and not assessment["dependencies_verified"]
+                assert "OWNER_AUTHORITY" in assessment["outstanding"]
             assert len(_payload(await receiver.call_tool("list_messages", {}))["messages"]) == 7
         async with Client(config("claude-code")) as unrelated:
             for ident in ids:
                 result = await unrelated.call_tool("get_engineering_handoff", {"request_id": ident})
                 assert result.is_error
+                assert (await unrelated.call_tool("get_handoff_assessment", {"request_id": ident})).is_error
         async with Client(config("iron-god")) as reopened:
             messages = _payload(await reopened.call_tool("list_messages", {}))["messages"]
             assert [message["message_id"] for message in messages] == ids
             assert not any(message["acknowledged"] for message in messages)
+            for ident, repository in zip(ids, REPOSITORIES, strict=True):
+                assessment = _payload(await reopened.call_tool("get_handoff_assessment", {"request_id": ident}))
+                assert assessment["repository"] == repository and not assessment["can_execute"]
 
     asyncio.run(exercise())
 

@@ -362,3 +362,30 @@ The pinned-release CLI supports `engineering-handoff --id ID`, `pending-handoffs
 ### Independent handoff evidence
 
 The explicit CLI command `verify-handoff --id ID` uses the existing authenticated GitHub read transport, never the resident supervisor pass. It checks the scoped request, exact commit, same-repository open PR head and explicit `actions:RUN_ID` test claims against successful exact-head Actions runs, then rechecks the PR head. Other test labels remain unverified. A successful run observation is not proof of required workflow coverage, dependency completion, independent review, product acceptance or authority. Offline or unavailable remote evidence fails closed. No automatic GitHub polling or new credentials are required.
+
+
+### S2.6 operational acceptance witness (#747)
+
+The seven-repository stdio regression now exercises consolidated assessments
+before and after an independent MCP process restart, with unauthorized
+participant calls rejected. Run the protocol tests from the exact candidate
+checkout with its MCP SDK installed:
+
+```powershell
+python -m pytest -q tests/test_iron_god_mcp_protocol.py
+```
+
+This is isolated protocol evidence, NOT an installed-release or 24-hour live
+canary. Do not inject synthetic handoffs into the resident mailbox to claim
+production acceptance.
+
+For the owner-controlled live acceptance window record the installed release
+SHA, UTC start/end, seven distinct repository observations, three distinct
+evidence-linked real handoffs spanning repositories, one independently verified
+authorized tested engineering change, and a controlled MCP process restart
+with cursor recovery. Retain source references and timestamps, distinguish
+advisory acknowledgments from execution, and check duplicate actions,
+unauthorized execution and unexplained committed-message loss. Record resource
+pressure, backlog evolution, and cloud-token use; exercise owner revocation
+only in an approved maintenance window. Missing evidence remains unverified.
+Do not mark S2 complete on the basis of passing synthetic tests or source merges.
