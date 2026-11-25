@@ -90,6 +90,14 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
         )
 
     @server.tool()
+    def get_handoff_assessment(request_id: str) -> dict:
+        """Observe consolidated local evidence only; remote lookups are explicit CLI-only."""
+        from .iron_god_handoff_assessment import assess_handoff
+
+        return assess_handoff(database, participant=client_label, request_id=request_id,
+                              release_repo=repo_root, state_root=state_root)
+
+    @server.tool()
     def get_message_processing(message_id: str) -> dict:
         """Read the caller's durable retry and disposition summary; no execution grants."""
         return coord.processing_retry_snapshot(
