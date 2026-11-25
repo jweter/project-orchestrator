@@ -1258,6 +1258,17 @@ def advance_product_lane(
                 repos, busy, items, measured or {}, (free_gib or available_gib)(),
                 after_pressure=bool(pressure), exclude=repo,
             )
+            # The first eligible item in a repository need not be routable.
+            # Search the remaining canonical candidates before declaring a wait.
+            alternative_item = None
+            if alternative is None and config.get("planning") == "backlog":
+                fallback = next_routable_backlog_item(
+                    repos, busy, approved, state, max_level=select_level,
+                    profiles=measured or {}, free_gib=(free_gib or available_gib)(),
+                    after_pressure=bool(pressure), exclude_item=chosen_item["id"],
+                )
+                if fallback is not None:
+                    alternative, alternative_item = fallback
             if alternative is not None:
                 recovery = stall_recovery.recovery_decision(
                     {"id": str(chosen_item.get("id")) if chosen_item else repo,
@@ -1268,6 +1279,8 @@ def advance_product_lane(
                 )
                 if recovery["action"] == "CONTINUE_OTHER_LOCAL":
                     repo = alternative
+                    if alternative_item is not None:
+                        items[repo] = alternative_item
                     chosen_item = items[repo]
                     decision = model_routing.route(
                         chosen_item.get("level"), measured or {}, (free_gib or available_gib)(),
@@ -1319,6 +1332,8 @@ def advance_product_lane(
         pool.release(WORKER_LEASE_ID, lease.lease_id)
     if recovery_context is not None and result["status"] == "DISPATCHED" and result.get("packet_id"):
         origin_repo, failed_id, failed_packet, alternative_id = recovery_context
+        if items[repo]["id"] != alternative_id:
+            return result  # a later routing fallback is not the recorded diversion
         if backlog.record_recovery_diversion(
             lane.root, failed_id, failed_packet_id=failed_packet,
             alternative_packet_id=result["packet_id"], alternative_item_id=alternative_id,
@@ -1460,6 +1475,27 @@ def choose_failed_worker_alternative(
         )
         if action["action"] == "CONTINUE_OTHER_LOCAL":
             return repository, alternative, failed_packet
+    return None
+
+
+def next_routable_backlog_item(
+    repos: list[str], busy: set[str], approved: list[dict[str, Any]], state: dict[str, Any],
+    *, max_level: int, profiles: dict[str, Any], free_gib: float,
+    after_pressure: bool, exclude_item: str,
+) -> tuple[str, dict[str, Any]] | None:
+    """Use the existing canonical eligibility rules, never reopen a spent slice."""
+    done = {item["id"] for item in approved if backlog.is_done(item, state)}
+    for repository in repos:
+        if repository in busy:
+            continue
+        for item in approved:
+            if item["repository"] != repository or item["id"] == exclude_item:
+                continue
+            if backlog.exclusion(item, state, items=approved, done=done, max_level=max_level) is not None:
+                continue
+            route = model_routing.route(item["level"], profiles, free_gib, after_pressure=after_pressure)
+            if route.model is not None:
+                return repository, item
     return None
 
 
