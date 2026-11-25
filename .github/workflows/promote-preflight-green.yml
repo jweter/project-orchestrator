@@ -14,6 +14,7 @@ jobs:
   verify-promotion-gate:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       (
         startsWith(github.event.workflow_run.head_branch, 'orchestrator/') ||
         startsWith(github.event.workflow_run.head_branch, 'agent/')
@@ -25,16 +26,33 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Confirm branch still points at the verified head
+        id: branch_gate
         env:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           CURRENT_HEAD="$(
             git ls-remote "https://github.com/$REPOSITORY.git" "refs/heads/$BRANCH" |
               awk '{print $1}'
           )"
+          if [ -z "$CURRENT_HEAD" ]; then
+            # A deleted branch is terminal only when GitHub independently confirms
+            # the exact same-repository head was merged. Never promote in this path.
+            MERGED="$(gh api --method GET "repos/$REPOSITORY/commits/$EXPECTED_HEAD_SHA/pulls" --paginate |
+              jq -s --arg repo "$REPOSITORY" --arg branch "$BRANCH" --arg sha "$EXPECTED_HEAD_SHA" '
+                [ .[][] | select(.merged_at != null and .state == "closed"
+                  and .head.repo.full_name == $repo and .base.repo.full_name == $repo
+                  and .head.ref == $branch and .head.sha == $sha
+                  and (.merge_commit_sha | type == "string" and test("^[0-9a-f]{40}$"))) ] | length')"
+            if [ "$MERGED" = "1" ]; then
+              echo "Exact head already merged; no draft promotion required."
+              echo "already_merged=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           if [ -z "$CURRENT_HEAD" ] || [ "$CURRENT_HEAD" != "$EXPECTED_HEAD_SHA" ]; then
             echo "Branch moved after preflight; refusing promotion."
             exit 1
@@ -77,15 +95,22 @@ jobs:
           PY
 
       - name: Promote an existing draft only
+        if: steps.branch_gate.outputs.already_merged != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EXPECTED_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
           PR_NUMBER="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
           if [ -z "$PR_NUMBER" ]; then
             echo "No PR exists yet. The portfolio orchestrator may open one after observing this verified gate."
             exit 0
+          fi
+          PR_HEAD="$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid')"
+          if [ "$PR_HEAD" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "PR head changed; refusing promotion."
+            exit 1
           fi
           IS_DRAFT="$(gh pr view "$PR_NUMBER" --json isDraft --jq '.isDraft')"
           if [ "$IS_DRAFT" = "true" ]; then

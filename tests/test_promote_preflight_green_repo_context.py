@@ -31,3 +31,14 @@ def test_repo_context_fix_preserves_exact_head_fail_closed_checks():
         'if evidence.get("status") != "GREEN":',
     ):
         assert required in workflow
+
+
+def test_deleted_branch_terminal_path_cannot_promote_draft():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert "github.event.workflow_run.head_repository.full_name == github.repository" in workflow
+    assert '.head.repo.full_name == $repo and .base.repo.full_name == $repo' in workflow
+    assert '.head.ref == $branch and .head.sha == $sha' in workflow
+    assert '.merged_at != null and .state == "closed"' in workflow
+    assert 'if [ "$MERGED" = "1" ]; then' in workflow
+    assert "if: steps.branch_gate.outputs.already_merged != 'true'" in workflow
+    assert 'if [ "$PR_HEAD" != "$EXPECTED_HEAD_SHA" ]; then' in workflow
