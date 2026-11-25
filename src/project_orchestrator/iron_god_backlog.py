@@ -228,6 +228,13 @@ def _record_item_unlocked(lane_root: Path, item_id: str, *, packet_id: str, outc
             row["terminal_outcome_conflict"] = True
             atomic_json(state_path(lane_root), state)
         return row
+    # Replayed endpoint-refusal handbacks must not extend the outage cooldown.
+    # A late receipt for an older packet must not overwrite a newer outcome.
+    if outcome == LOCAL_OLLAMA_REFUSAL and packet_id in row["packets"]:
+        if row["packets"][-1] != packet_id:
+            return row
+        if row.get("outcome") == outcome and packet_id in row.get("environment_packets", []):
+            return row
     if packet_id not in row["packets"]:
         row["packets"].append(packet_id)
     # An owner takeover revoking authority is not the slice's or the model's failure, so it does not spend the retry
