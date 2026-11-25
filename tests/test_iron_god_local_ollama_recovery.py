@@ -151,4 +151,4 @@ def test_endpoint_outage_refunds_remain_bounded_by_existing_attempt_budget(tmp_p
         )
     assert row["attempts"] == backlog.MAX_ITEM_ATTEMPTS
     assert len(row["packets"]) == total
-    assert rejection(item, backlog.load_state(tmp_path))[0] == "ATTEMPTS_EXHAUSTED"
+    assert rejection(item, backlog.load_state(tmp_path))[0] == "ENVIRONMENT_ATTEMPTS_EXHAUSTED"
