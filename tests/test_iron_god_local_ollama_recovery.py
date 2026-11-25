@@ -152,3 +152,27 @@ def test_endpoint_outage_refunds_remain_bounded_by_existing_attempt_budget(tmp_p
     assert row["attempts"] == backlog.MAX_ITEM_ATTEMPTS
     assert len(row["packets"]) == total
     assert rejection(item, backlog.load_state(tmp_path))[0] == "ENVIRONMENT_ATTEMPTS_EXHAUSTED"
+
+
+def test_replayed_refusal_preserves_original_cooldown_timestamp(tmp_path, monkeypatch):
+    item = approved_directed_item()
+    old = (datetime.now(UTC) - timedelta(
+        seconds=backlog.LOCAL_OLLAMA_RETRY_COOLDOWN_SECONDS + 2
+    )).isoformat()
+    monkeypatch.setattr(backlog, "_now", lambda: old)
+    backlog.record_item(tmp_path, item["id"], packet_id="P1", outcome=backlog.LOCAL_OLLAMA_REFUSAL)
+    monkeypatch.setattr(backlog, "_now", lambda: datetime.now(UTC).isoformat())
+    row = backlog.record_item(tmp_path, item["id"], packet_id="P1", outcome=backlog.LOCAL_OLLAMA_REFUSAL)
+    assert row["updated_at_utc"] == old
+    assert row["attempts"] == 0
+    assert rejection(item, backlog.load_state(tmp_path)) is None
+
+
+def test_late_refusal_cannot_overwrite_newer_worker_outcome(tmp_path):
+    item = approved_directed_item()
+    backlog.record_item(tmp_path, item["id"], packet_id="P1", outcome=backlog.LOCAL_OLLAMA_REFUSAL)
+    for newer in ("DISPATCHED", "FAIL: SLICE_TESTS_FAILED"):
+        before = backlog.record_item(tmp_path, item["id"], packet_id="P2", outcome=newer)
+        after = backlog.record_item(tmp_path, item["id"], packet_id="P1", outcome=backlog.LOCAL_OLLAMA_REFUSAL)
+        assert after == before
+        assert backlog.load_state(tmp_path)["items"][item["id"]] == before
