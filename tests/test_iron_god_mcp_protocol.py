@@ -153,3 +153,52 @@ def test_independent_stdio_processes_exchange_real_mcp_handoff(tmp_path):
             assert len(messages) == 1 and messages[0]["acknowledged"] is True
 
     asyncio.run(run_two_peers())
+
+def test_structured_handoffs_all_seven_repositories_real_stdio(tmp_path):
+    from mcp import Client, StdioServerParameters
+    from project_orchestrator.iron_god_observability import REPOSITORIES
+
+    repo_root = Path(__file__).resolve().parents[1]
+    database = tmp_path / "structured.sqlite"
+    env = {**os.environ, "PYTHONPATH": str(repo_root / "src"),
+           "IRON_GOD_MCP_COORDINATION_DB": str(database),
+           "IRON_GOD_MCP_REPO_ROOT": str(repo_root),
+           "IRON_GOD_MCP_STATE_ROOT": str(tmp_path)}
+
+    def config(label, writes=False):
+        return StdioServerParameters(
+            command=sys.executable, args=["-m", "project_orchestrator.iron_god_mcp_server"],
+            cwd=str(repo_root), env={**env, "IRON_GOD_MCP_CLIENT_LABEL": label,
+                                     "IRON_GOD_MCP_ALLOW_ADVISORY_WRITES": "1" if writes else "0"},
+        )
+
+    async def exercise():
+        ids = []
+        async with Client(config("chatgpt", True)) as sender:
+            for index, repository in enumerate(REPOSITORIES):
+                args = {"recipient": "iron-god", "idempotency_key": f"repo-{index}",
+                        "payload": {"protocol": "engineering_handoff_v1", "repository": repository,
+                                    "milestone": "S2", "slice_id": f"slice-{index}",
+                                    "commit_sha": "a" * 40, "status": "PROPOSED",
+                                    "tests": [], "pull_request": None, "dependencies": [],
+                                    "next_action": "IMPLEMENT", "failure": "NONE"}}
+                first = _payload(await sender.call_tool("post_engineering_handoff", args))
+                second = _payload(await sender.call_tool("post_engineering_handoff", args))
+                assert first["request_id"] == second["request_id"] and second["replayed"]
+                ids.append(first["request_id"])
+        async with Client(config("iron-god")) as receiver:
+            assert "post_engineering_handoff" not in {tool.name for tool in (await receiver.list_tools()).tools}
+            for ident, repository in zip(ids, REPOSITORIES, strict=True):
+                result = _payload(await receiver.call_tool("get_engineering_handoff", {"request_id": ident}))
+                assert result["payload"]["repository"] == repository and not result["can_execute"]
+            assert len(_payload(await receiver.call_tool("list_messages", {}))["messages"]) == 7
+        async with Client(config("claude-code")) as unrelated:
+            for ident in ids:
+                result = await unrelated.call_tool("get_engineering_handoff", {"request_id": ident})
+                assert result.is_error
+        async with Client(config("iron-god")) as reopened:
+            messages = _payload(await reopened.call_tool("list_messages", {}))["messages"]
+            assert [message["message_id"] for message in messages] == ids
+            assert not any(message["acknowledged"] for message in messages)
+
+    asyncio.run(exercise())
