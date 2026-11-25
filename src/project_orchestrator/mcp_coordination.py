@@ -6,6 +6,8 @@ is conveyed by this module. Not wired into the resident engine by default.
 from __future__ import annotations
 
 import json
+from contextvars import ContextVar
+from contextlib import contextmanager
 import re
 import sqlite3
 import time
@@ -21,6 +23,28 @@ MAX_MESSAGE_CHARS = 3000
 MAX_REFERENCE_CHARS = 200
 MAX_PAGE = 100
 MAX_DIAGNOSTIC_FAILURES = 3
+# The resident advisory pass has a short deadline for connection busy waits.
+# After expiry, uncontended operations can still proceed without waiting.
+# Interactive clients retain the ordinary timeout. No process-global mutation.
+_resident_deadline: ContextVar[float | None] = ContextVar("mailbox_deadline", default=None)
+
+
+@contextmanager
+def resident_wait_budget(seconds: float = 0.5):
+    token = _resident_deadline.set(time.monotonic() + seconds)
+    try:
+        yield
+    finally:
+        _resident_deadline.reset(token)
+
+
+def _busy_seconds() -> float:
+    deadline = _resident_deadline.get()
+    if deadline is None:
+        return 10.0
+    # Expiry removes permission to wait, not permission to use an unlocked DB.
+    return max(0.0, min(10.0, deadline - time.monotonic()))
+
 _KEY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _REFERENCE = re.compile(r"^[A-Za-z0-9._:/#@+-]{0,200}$")
 _SENSITIVE = re.compile(r"(?i)(?:bearer\s+\S+|-----BEGIN\s+[^-]+PRIVATE KEY-----|\b(?:sk-|ghp_|gho_|github_pat_)[a-zA-Z0-9_\-]{8,})")
@@ -52,16 +76,14 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
         # Read-only opens never create or modify a database or journal.
         # as_uri() percent-encodes the path (a "#" or "?" in it would otherwise end the filename and drop mode=ro)
         uri = f"{db_path.as_uri()}?mode=ro"
-        connection = sqlite3.connect(uri, uri=True, timeout=10, isolation_level=None)
-        connection.execute("PRAGMA busy_timeout=10000")
+        connection = sqlite3.connect(uri, uri=True, timeout=_busy_seconds(), isolation_level=None)
     else:
         # Two MCP clients can first-create one database at the same instant.
         # SQLite's busy_timeout does not serialize simultaneous changes to
         # journal_mode on a not-yet-initialized file. Retry that narrow race
         # with fresh connections, and fail closed after a bounded interval.
         for attempt in range(20):
-            connection = sqlite3.connect(str(db_path), timeout=10, isolation_level=None)
-            connection.execute("PRAGMA busy_timeout=10000")
+            connection = sqlite3.connect(str(db_path), timeout=_busy_seconds(), isolation_level=None)
             try:
                 if str(connection.execute("PRAGMA journal_mode").fetchone()[0]).lower() != "wal":
                     connection.execute("PRAGMA journal_mode=WAL")
@@ -69,7 +91,7 @@ def _connect(path: Path, *, read_only: bool = False) -> sqlite3.Connection:
                 break
             except sqlite3.OperationalError as exc:
                 connection.close()
-                if "locked" not in str(exc).lower() or attempt == 19:
+                if "locked" not in str(exc).lower() or attempt == 19 or _resident_deadline.get() is not None:
                     raise
                 time.sleep(0.03 * (attempt + 1))
     connection.execute("PRAGMA foreign_keys=ON")

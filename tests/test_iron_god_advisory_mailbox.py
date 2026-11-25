@@ -720,3 +720,72 @@ def test_resident_handoff_scan_rotates_and_isolates_legacy_requests(world):
     third = cycle(world, publish=False)["structured_handoffs"]
     assert third["items"] == first["items"]
     assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 7
+
+def test_resident_mailbox_write_lock_defers_without_long_supervisor_wait(world):
+    import time
+
+    mailbox.initialize(world["db"])
+    lane(world)
+    with sqlite3.connect(world["db"], isolation_level=None) as lock:
+        lock.execute("BEGIN IMMEDIATE")
+        start = time.monotonic()
+        try:
+            result = cycle(world)
+            assert result["status"] == "MAILBOX_UNAVAILABLE"
+            assert time.monotonic() - start < 3.0
+        finally:
+            lock.execute("ROLLBACK")
+    recovered = cycle(world)
+    assert recovered["status"] == "OBSERVED"
+    assert len(recovered["published"]) == 2
+    assert len(mailbox.list_messages(world["db"], recipient_label="chatgpt")["messages"]) == 1
+    assert mailbox._busy_seconds() == 10.0
+
+
+def test_resident_wait_budget_context_restores_after_failure():
+    with pytest.raises(RuntimeError):
+        with mailbox.resident_wait_budget():
+            assert 0 < mailbox._busy_seconds() <= 0.5
+            raise RuntimeError("simulated failure")
+    assert mailbox._busy_seconds() == 10.0
+
+def test_slow_uncontended_snapshot_still_answers_and_publishes(world, monkeypatch):
+    import time
+
+    lane(world, status="DISPATCHED")
+    request = status_question(world)
+    original = adapter._reported_status_snapshot
+
+    def slow_snapshot(*args, **kwargs):
+        time.sleep(0.55)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(adapter, "_reported_status_snapshot", slow_snapshot)
+    result = cycle(world)
+    assert result["status"] == "OBSERVED"
+    assert len(result["handled_status_requests"]) == 1
+    assert result["handled_status_requests"][0]["request_id"] == request["message_id"]
+    assert result["pending_unacknowledged"] == 0
+    assert len(result["published"]) == 2
+    assert cycle(world)["handled_status_requests"] == []
+    replies = mailbox.list_messages(world["db"], recipient_label="claude-code")["messages"]
+    assert sum(row["reference"] == "protocol:engine-status-v1" for row in replies) == 1
+
+
+def test_expired_resident_wait_allows_uncontended_reads_and_writes(world):
+    mailbox.initialize(world["db"])
+    with mailbox.resident_wait_budget(seconds=0):
+        assert mailbox._busy_seconds() == 0.0
+        request = status_question(world)
+        assert mailbox.list_pending_messages(
+            world["db"], recipient_label="iron-god",
+        )["pending_total"] == 1
+        assert request["message_id"]
+        with sqlite3.connect(world["db"], isolation_level=None) as lock:
+            lock.execute("BEGIN IMMEDIATE")
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="locked"):
+                    post(world, key="locked-at-expiry")
+            finally:
+                lock.execute("ROLLBACK")
+    assert mailbox._busy_seconds() == 10.0
