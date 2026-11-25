@@ -687,3 +687,36 @@ def test_diagnostic_retry_budget_escalates_without_ack_and_preserves_other_mail(
         world["db"], recipient_label="iron-god", message_id=bad["message_id"],
     )["retryable_failures"] == 3
     assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 1
+
+def test_resident_handoff_scan_rotates_and_isolates_legacy_requests(world):
+    from project_orchestrator import iron_god_structured_handoff as handoff
+    from project_orchestrator import mcp_coordination_accountability as account
+
+    for index in range(6):
+        account.open_request(world["db"], sender_label="chatgpt", recipient="iron-god",
+                             body="Legacy request", reference="PR#1", idempotency_key=f"legacy-{index}")
+    payload = {
+        "protocol": handoff.PROTOCOL, "repository": "jweter/knowledge-engine-core",
+        "milestone": "S2", "slice_id": "core-1", "commit_sha": "a" * 40,
+        "status": "PROPOSED", "tests": [], "pull_request": None,
+        "dependencies": [], "next_action": "IMPLEMENT", "failure": "NONE",
+    }
+    posted = handoff.open_engineering_handoff(
+        world["db"], sender_label="chatgpt", recipient="iron-god",
+        payload=payload, idempotency_key="structured",
+    )
+    handoff.open_engineering_handoff(
+        world["db"], sender_label="chatgpt", recipient="claude-code",
+        payload=payload, idempotency_key="private",
+    )
+    first = cycle(world, publish=False)["structured_handoffs"]
+    assert first["scanned"] == 5
+    assert all(item["status"] == "UNCLASSIFIED_REVIEW" for item in first["items"])
+    second = cycle(world, publish=False)["structured_handoffs"]
+    assert second["scanned"] == 2
+    assert second["items"][-1]["request_id"] == posted["request_id"]
+    assert second["items"][-1]["work_type"] == "IMPLEMENT"
+    assert not second["can_execute"]
+    third = cycle(world, publish=False)["structured_handoffs"]
+    assert third["items"] == first["items"]
+    assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 7
