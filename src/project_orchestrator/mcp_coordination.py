@@ -23,7 +23,8 @@ MAX_MESSAGE_CHARS = 3000
 MAX_REFERENCE_CHARS = 200
 MAX_PAGE = 100
 MAX_DIAGNOSTIC_FAILURES = 3
-# The resident advisory pass has a single short cumulative SQLite wait budget.
+# The resident advisory pass has a short deadline for connection busy waits.
+# After expiry, uncontended operations can still proceed without waiting.
 # Interactive clients retain the ordinary timeout. No process-global mutation.
 _resident_deadline: ContextVar[float | None] = ContextVar("mailbox_deadline", default=None)
 
@@ -41,10 +42,8 @@ def _busy_seconds() -> float:
     deadline = _resident_deadline.get()
     if deadline is None:
         return 10.0
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise sqlite3.OperationalError("RESIDENT_MAILBOX_WAIT_BUDGET_EXHAUSTED")
-    return min(10.0, remaining)
+    # Expiry removes permission to wait, not permission to use an unlocked DB.
+    return max(0.0, min(10.0, deadline - time.monotonic()))
 
 _KEY = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _REFERENCE = re.compile(r"^[A-Za-z0-9._:/#@+-]{0,200}$")
