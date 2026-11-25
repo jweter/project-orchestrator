@@ -169,6 +169,7 @@ def test_a_corrupt_database_is_reported_as_json_not_a_traceback(world):
 def test_status_includes_read_only_delivery_metrics_for_each_participant(world):
     code, empty = call(world, "chatgpt", "status")
     assert code == 0 and empty["delivery"]["status"] == "UNINITIALIZED"
+    assert empty["backlog"]["status"] == "UNINITIALIZED"
     assert not world["db"].exists()
     code, sent = call(world, "claude-code", "post", "--to", "chatgpt",
                       "--kind", "question", "--body", "Please review PR#675", writes=True)
@@ -176,6 +177,7 @@ def test_status_includes_read_only_delivery_metrics_for_each_participant(world):
     code, status = call(world, "chatgpt", "status")
     assert code == 0 and status["unacknowledged"] == 1
     assert status["delivery"]["participants"]["chatgpt"]["unacknowledged"] == 1
+    assert status["backlog"]["pending_total"] == 1
     assert status["delivery"]["participants"]["claude-code"]["unacknowledged"] == 0
     assert "Please review PR#675" not in json.dumps(status["delivery"])
     call(world, "chatgpt", "ack", "--id", sent["message_id"], writes=True)

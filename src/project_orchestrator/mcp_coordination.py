@@ -500,6 +500,64 @@ def processing_retry_snapshot(path: Path, *, recipient_label: str, message_id: s
         }
 
 
+def backlog_reconciliation(path: Path, *, recipient_label: str) -> dict:
+    """Classify the entire addressed pending backlog without mutating receipts.
+
+    Classification describes routing, never completion, authority or validity
+    of a handoff's contents. A single read transaction fixes the snapshot.
+    """
+    _check_principal(recipient_label)
+    db_path = _path(path)
+    if not db_path.is_file():
+        return {"status": "UNINITIALIZED", "pending_total": 0, "classes": {},
+                "authority": "ADVISORY_ONLY"}
+    with closing(_connect(db_path, read_only=True)) as db:
+        db.execute("BEGIN")
+        if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+            raise ValueError("UNSUPPORTED_COORDINATION_SCHEMA")
+        tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        clauses = []
+        if "diagnostic_conflicts" in tables:
+            clauses.append(
+                "WHEN m.recipient='iron-god' AND ?='iron-god' AND EXISTS "
+                "(SELECT 1 FROM diagnostic_conflicts d WHERE d.message_id=m.message_id) "
+                "THEN 'DIAGNOSTIC_CONFLICT'"
+            )
+        if "processing_dispositions" in tables:
+            clauses.append(
+                "WHEN ?='iron-god' AND m.recipient='iron-god' AND EXISTS "
+                "(SELECT 1 FROM processing_dispositions p WHERE p.message_id=m.message_id "
+                "AND p.recipient_label='iron-god' AND p.state='ESCALATED' "
+                "AND p.event_key='diagnostic-retry-exhausted') THEN 'ESCALATED'"
+            )
+            clauses.append(
+                "WHEN (SELECT p.state FROM processing_dispositions p WHERE p.message_id=m.message_id "
+                "AND p.recipient_label=? ORDER BY p.seq DESC LIMIT 1)='ESCALATED' THEN 'ESCALATED'"
+            )
+            clauses.append(
+                "WHEN (SELECT p.state FROM processing_dispositions p WHERE p.message_id=m.message_id "
+                "AND p.recipient_label=? ORDER BY p.seq DESC LIMIT 1)='DEFERRED' THEN 'DEFERRED'"
+            )
+        clauses.extend([
+            "WHEN ?='iron-god' AND m.recipient='iron-god' AND m.sender_label IN ('chatgpt','claude-code') "
+            "AND m.kind='question' AND ((m.body='engine_status_v1' AND m.reference='protocol:engine-status-v1') "
+            "OR (m.body='engine_status_v2' AND m.reference='protocol:engine-status-v2')) THEN 'SUPPORTED_DIAGNOSTIC'",
+            "WHEN m.kind='handoff' THEN 'HANDOFF_REVIEW'",
+            "WHEN m.kind IN ('status','evidence','notification') THEN 'INFORMATIONAL_REVIEW'",
+            "WHEN m.kind='decision_request' THEN 'DECISION_REVIEW'",
+            "WHEN m.kind='question' THEN 'QUESTION_REVIEW'",
+        ])
+        sql = (
+            "SELECT CASE " + " ".join(clauses) + " ELSE 'UNKNOWN_REVIEW' END AS category, COUNT(*) AS n "
+            "FROM messages m WHERE (m.recipient=? OR m.recipient='all') AND NOT EXISTS "
+            "(SELECT 1 FROM receipts r WHERE r.message_id=m.message_id AND r.recipient_label=?) "
+            "GROUP BY category"
+        )
+        classes = {row["category"]: row["n"] for row in db.execute(sql, (recipient_label,) * sql.count("?"))}
+        return {"status": "OBSERVED", "pending_total": sum(classes.values()), "classes": classes,
+                "authority": "ADVISORY_ONLY"}
+
+
 def delivery_snapshot(path: Path) -> dict:
     """Read-only per-recipient delivery and acknowledgment metrics.
 

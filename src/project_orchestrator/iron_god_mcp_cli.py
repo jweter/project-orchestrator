@@ -105,6 +105,7 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
             unacked = delivery["participants"].get(label, {}).get("unacknowledged", 0)
             _emit(out, {"status": "OK", "participant": label, "writes_enabled": writes, "unacknowledged": unacked,
                         "database_initialized": exists, "delivery": delivery,
+                        "backlog": coord.backlog_reconciliation(database, recipient_label=label),
                         "handoffs": accountability.requests_snapshot(database, participant=label),
                         "engine": coord.engine_snapshot(state_root),
                         "storage": housekeeping.housekeeping_snapshot(state_root)})
