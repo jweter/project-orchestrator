@@ -1299,14 +1299,22 @@ def advance_product_lane(
         # Final dispatch boundary: re-read the canonical outcome immediately
         # before worker admission; an approved item surviving a crash must not
         # replay if its previous accepted/merged receipt lost the state row.
+        current_state = backlog.load_state(lane.root)
         _safe, conflicts = microtask_progress.filter_replay_conflicted_items(
-            lane.root, approved, backlog.load_state(lane.root),
+            lane.root, approved, current_state,
         )
         if items[repo]["id"] in conflicts:
             return _report(lane, {
                 "status": "WAITING_FOR_MICROTASK_RECONCILIATION",
                 "repository": repo, "backlog_item": items[repo]["id"],
                 "next_action": "RECONCILE_CANONICAL_BACKLOG_AND_IMMUTABLE_CHECKPOINT_BEFORE_DISPATCH",
+            })
+        reason = final_backlog_exclusion(items[repo], approved, current_state, max_level=select_level)
+        if reason is not None:
+            return _report(lane, {
+                "status": "WAITING_FOR_BACKLOG_RECONCILIATION",
+                "repository": repo, "backlog_item": items[repo]["id"],
+                "reason": reason[0], "detail": reason[1],
             })
     admission = resources()
     if not admission.get("admitted"):
@@ -1476,6 +1484,15 @@ def choose_failed_worker_alternative(
         if action["action"] == "CONTINUE_OTHER_LOCAL":
             return repository, alternative, failed_packet
     return None
+
+
+def final_backlog_exclusion(
+    item: dict[str, Any], approved: list[dict[str, Any]], state: dict[str, Any],
+    *, max_level: int,
+) -> tuple[str, str] | None:
+    """Recheck canonical eligibility after selection, before acquiring a worker lease."""
+    done = {candidate["id"] for candidate in approved if backlog.is_done(candidate, state)}
+    return backlog.exclusion(item, state, items=approved, done=done, max_level=max_level)
 
 
 def next_routable_backlog_item(
