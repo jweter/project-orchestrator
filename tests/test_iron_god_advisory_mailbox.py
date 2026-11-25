@@ -648,3 +648,29 @@ def test_diagnostic_consumer_persists_correlated_handling_and_receipt(world):
         ).fetchone()
     assert row == ("HANDLED", "message:" + handled["response_id"], receipt[0])
     assert cycle(world)["handled_status_requests"] == []
+
+def test_diagnostic_retry_budget_escalates_without_ack_and_preserves_other_mail(world, monkeypatch):
+    bad = status_question(world, key="retry-budget-bad")
+    original = mailbox.post_message
+
+    def reject_bad(path, **kwargs):
+        if kwargs.get("idempotency_key") == "engine-status-response:" + bad["message_id"]:
+            raise ValueError("INVALID_MESSAGE_BODY")
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(mailbox, "post_message", reject_bad)
+    for _ in range(3):
+        cycle(world)
+    snapshot = mailbox.processing_retry_snapshot(
+        world["db"], recipient_label="iron-god", message_id=bad["message_id"],
+    )
+    assert snapshot["retryable_failures"] == 3
+    assert snapshot["latest_disposition"] == "ESCALATED"
+    assert not snapshot["acknowledged"]
+    good = status_question(world, key="retry-budget-good")
+    outcome = cycle(world)
+    assert [r["request_id"] for r in outcome["handled_status_requests"]] == [good["message_id"]]
+    assert mailbox.processing_retry_snapshot(
+        world["db"], recipient_label="iron-god", message_id=bad["message_id"],
+    )["retryable_failures"] == 3
+    assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 1

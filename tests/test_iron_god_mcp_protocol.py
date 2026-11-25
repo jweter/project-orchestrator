@@ -44,7 +44,7 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
             assert {t.name for t in tools.tools} == {
                 "get_targets", "get_engine_snapshot", "get_development_diagnostics",
                 "get_engineering_evidence", "get_offload_proposals",
-                "get_storage_housekeeping", "list_messages", "get_engineering_handoff",
+                "get_storage_housekeeping", "list_messages", "get_engineering_handoff", "get_message_processing",
                 "get_readonly_capabilities", "get_readonly_command",
                 "post_message", "ack_message", "post_engineering_handoff",
             }
@@ -77,6 +77,8 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
             assert not result.is_error
             body = _payload(result)
             assert isinstance(body, dict) and body["messages"][0]["message_id"] == message_id
+            processing = _payload(await client.call_tool("get_message_processing", {"message_id": message_id}))
+            assert processing["retryable_failures"] == 0 and not processing["acknowledged"]
             acknowledge = await client.call_tool("ack_message", {"message_id": message_id})
             assert not acknowledge.is_error
             assert _payload(acknowledge)["recipient_label"] == "chatgpt"
@@ -100,6 +102,8 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
             assert not result.is_error
             body = _payload(result)
             assert body["messages"][0]["acknowledged"] is True
+            processing = _payload(await client.call_tool("get_message_processing", {"message_id": message_id}))
+            assert processing["acknowledged"] and processing["latest_disposition"] is None
 
     asyncio.run(exercise())
 
