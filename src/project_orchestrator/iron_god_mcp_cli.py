@@ -95,6 +95,8 @@ def _parser() -> argparse.ArgumentParser:
     structured_post.add_argument("--deadline-utc")
     repair = sub.add_parser("repair-replies", help="retry prior recorded responses after a crash; no model use")
     repair.add_argument("--limit", type=int, default=10)
+    coverage = sub.add_parser("verify-handoff-coverage", help="observe required GitHub checks")
+    coverage.add_argument("--id", required=True)
     return parser
 
 
@@ -121,6 +123,28 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
                         "handoffs": accountability.requests_snapshot(database, participant=label),
                         "engine": coord.engine_snapshot(state_root),
                         "storage": housekeeping.housekeeping_snapshot(state_root)})
+        elif args.command == "verify-handoff-coverage":
+            from .github_evidence import GitHubError, UrllibGitHubTransport
+            from .iron_god_required_coverage import observe_required_coverage
+            from datetime import datetime, timezone
+
+            envelope = structured.read_engineering_handoff(database, participant=label, request_id=args.id)
+            payload = envelope["payload"]
+            deadline = envelope["deadline_at_utc"]
+            if deadline is not None and accountability._time(deadline) <= datetime.now(timezone.utc):
+                _emit(out, {"status": "EXPIRED", "can_execute": False})
+                return 1
+            if payload["pull_request"] is None:
+                _emit(out, {"status": "UNVERIFIED", "reason": "NO_PULL_REQUEST", "can_execute": False})
+                return 1
+            try:
+                transport = UrllibGitHubTransport.from_environment()
+            except GitHubError:
+                _emit(out, {"status": "UNVERIFIED", "reason": "GITHUB_TRANSPORT_UNAVAILABLE",
+                            "can_execute": False})
+                return 1
+            _emit(out, observe_required_coverage(payload["repository"], payload["commit_sha"],
+                                                 payload["pull_request"], transport))
         elif args.command == "targets":
             _emit(out, {"status": "OK", "targets": coord.targets_snapshot(repo_root)})
         elif args.command == "read":
