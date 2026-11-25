@@ -202,3 +202,61 @@ def test_structured_handoffs_all_seven_repositories_real_stdio(tmp_path):
             assert not any(message["acknowledged"] for message in messages)
 
     asyncio.run(exercise())
+
+
+def test_stdio_cli_interoperability_and_revoked_write_surface(tmp_path):
+    """Independent CLI and restarted MCP sessions share one durable mailbox."""
+    from mcp import Client, StdioServerParameters
+    from project_orchestrator.iron_god_mcp_cli import run
+    from project_orchestrator.iron_god_observability import REPOSITORIES
+    from io import StringIO
+
+    repo = Path(__file__).resolve().parents[1]
+    db = tmp_path / "interop.sqlite"
+    env = {**os.environ, "PYTHONPATH": str(repo / "src"),
+           "IRON_GOD_MCP_COORDINATION_DB": str(db),
+           "IRON_GOD_MCP_REPO_ROOT": str(repo),
+           "IRON_GOD_MCP_STATE_ROOT": str(tmp_path),
+           "IRON_GOD_MCP_CLIENT_LABEL": "chatgpt",
+           "IRON_GOD_MCP_ALLOW_ADVISORY_WRITES": "1"}
+    payload = {"protocol": "engineering_handoff_v1", "repository": REPOSITORIES[0],
+               "milestone": "S2", "slice_id": "interop", "commit_sha": "a" * 40,
+               "status": "PROPOSED", "tests": [], "pull_request": None,
+               "dependencies": [], "next_action": "REVIEW", "failure": "NONE"}
+    args = ["post-engineering-handoff", "--to", "iron-god", "--key", "interop-1"]
+    out = StringIO()
+    assert run(args, env=env, stdin=StringIO(json.dumps(payload)), out=out) == 0
+    ident = json.loads(out.getvalue())["request_id"]
+
+    def config(writes):
+        return StdioServerParameters(
+            command=sys.executable, args=["-m", "project_orchestrator.iron_god_mcp_server"],
+            cwd=str(repo), env={**env, "IRON_GOD_MCP_CLIENT_LABEL": "iron-god",
+                                "IRON_GOD_MCP_ALLOW_ADVISORY_WRITES": str(int(writes))})
+
+    async def exercise():
+        async with Client(config(True)) as client:
+            envelope = _payload(await client.call_tool("get_engineering_handoff", {"request_id": ident}))
+            assert envelope["payload"] == payload and not envelope["can_execute"]
+            messages = _payload(await client.call_tool("list_messages", {}))["messages"]
+            assert len(messages) == 1
+            cursor = messages[0]["seq"]
+        async with Client(config(False)) as client:
+            assert "ack_message" not in {tool.name for tool in (await client.list_tools()).tools}
+            rejected = await client.call_tool("ack_message", {"message_id": ident})
+            assert rejected.is_error
+            assert _payload(await client.call_tool("list_messages", {"after_seq": cursor}))["messages"] == []
+            messages = _payload(await client.call_tool("list_messages", {}))["messages"]
+            assert len(messages) == 1 and not messages[0]["acknowledged"]
+        out = StringIO()
+        assert run(args, env=env, stdin=StringIO(json.dumps(payload)), out=out) == 0
+        assert json.loads(out.getvalue())["request_id"] == ident
+        async with Client(config(True)) as client:
+            _payload(await client.call_tool("ack_message", {"message_id": ident}))
+        out = StringIO()
+        assert run(["message-processing", "--id", ident],
+                   env={**env, "IRON_GOD_MCP_CLIENT_LABEL": "iron-god",
+                        "IRON_GOD_MCP_ALLOW_ADVISORY_WRITES": "0"}, out=out) == 0
+        assert json.loads(out.getvalue())["acknowledged"]
+
+    asyncio.run(exercise())
