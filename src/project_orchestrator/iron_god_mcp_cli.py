@@ -34,6 +34,7 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, TextIO
 
+from . import iron_god_structured_handoff as structured
 from . import mcp_coordination as coord
 from . import mcp_coordination_accountability as accountability
 from . import iron_god_mcp_housekeeping as housekeeping
@@ -81,6 +82,17 @@ def _parser() -> argparse.ArgumentParser:
     disposition.add_argument("--state", required=True)
     disposition.add_argument("--evidence", default="")
     disposition.add_argument("--key", default="")
+    structured_read = sub.add_parser("engineering-handoff", help="read a participant-scoped structured request")
+    structured_read.add_argument("--id", required=True)
+    pending = sub.add_parser("pending-handoffs", help="read a bounded incoming structured request page")
+    pending.add_argument("--after", type=int, default=0)
+    pending.add_argument("--limit", type=int, default=5)
+    processing = sub.add_parser("message-processing", help="read recipient-scoped processing evidence")
+    processing.add_argument("--id", required=True)
+    structured_post = sub.add_parser("post-engineering-handoff", help="post a validated advisory envelope from stdin")
+    structured_post.add_argument("--to", required=True)
+    structured_post.add_argument("--key", required=True)
+    structured_post.add_argument("--deadline-utc")
     repair = sub.add_parser("repair-replies", help="retry prior recorded responses after a crash; no model use")
     repair.add_argument("--limit", type=int, default=10)
     return parser
@@ -122,11 +134,25 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
         elif args.command == "requests":
             _emit(out, accountability.requests_snapshot(database, participant=label,
                                                         role=args.role, limit=args.limit))
-        elif args.command in ("post", "ack", "handoff", "disposition", "repair-replies"):
+        elif args.command == "engineering-handoff":
+            _emit(out, structured.read_engineering_handoff(
+                database, participant=label, request_id=args.id))
+        elif args.command == "pending-handoffs":
+            _emit(out, structured.pending_handoff_page(
+                database, participant=label, after_seq=args.after, limit=args.limit))
+        elif args.command == "message-processing":
+            _emit(out, coord.processing_retry_snapshot(
+                database, recipient_label=label, message_id=args.id))
+        elif args.command in ("post", "ack", "handoff", "disposition", "repair-replies", "post-engineering-handoff"):
             if not writes:
                 _emit(out, {"status": "READ_ONLY", "detail": f"advisory writes are off; set {WRITES}=1 to post or acknowledge"})
                 return 1
-            if args.command == "handoff":
+            if args.command == "post-engineering-handoff":
+                payload = structured.decode_handoff((stdin or sys.stdin).read(coord.MAX_MESSAGE_CHARS + 1))
+                _emit(out, {"status": "OK", **structured.open_engineering_handoff(
+                    database, sender_label=label, recipient=args.to, payload=payload,
+                    idempotency_key=args.key, deadline_at_utc=args.deadline_utc)})
+            elif args.command == "handoff":
                 _emit(out, {"status": "OK", **accountability.open_request(
                     database, sender_label=label, recipient=args.to, body=args.body,
                     reference=args.reference, idempotency_key=args.key,

@@ -182,3 +182,47 @@ def test_status_includes_read_only_delivery_metrics_for_each_participant(world):
     assert "Please review PR#675" not in json.dumps(status["delivery"])
     call(world, "chatgpt", "ack", "--id", sent["message_id"], writes=True)
     assert call(world, "chatgpt", "status")[1]["delivery"]["participants"]["chatgpt"]["acknowledged"] == 1
+
+
+def test_structured_cli_round_trip_and_scope(world):
+    from project_orchestrator import iron_god_observability as obs
+    from project_orchestrator import iron_god_structured_handoff as structured
+
+    payload = {
+        "protocol": structured.PROTOCOL, "repository": obs.REPOSITORIES[0],
+        "milestone": "S2.3", "slice_id": "slice-1", "commit_sha": "a" * 40,
+        "status": "TESTED", "tests": ["pytest:run-1"], "pull_request": 795,
+        "dependencies": [], "next_action": "REVIEW", "failure": "NONE",
+    }
+    args = ("post-engineering-handoff", "--to", "iron-god", "--key", "structured-1")
+    body = structured.encode_handoff(payload)
+    assert call(world, "chatgpt", *args, stdin=body)[1]["status"] == "READ_ONLY"
+    assert not world["db"].exists()
+    code, first = call(world, "chatgpt", *args, writes=True, stdin=body)
+    assert code == 0
+    code, replay = call(world, "chatgpt", *args, writes=True, stdin=body)
+    assert code == 0 and replay["replayed"] and replay["request_id"] == first["request_id"]
+    ident = first["request_id"]
+    for label in ("chatgpt", "iron-god"):
+        code, result = call(world, label, "engineering-handoff", "--id", ident)
+        assert code == 0 and result["payload"] == payload and result["can_execute"] is False
+    assert call(world, "claude-code", "engineering-handoff", "--id", ident)[0] == 1
+    code, page = call(world, "iron-god", "pending-handoffs")
+    assert code == 0 and page["items"][0]["request_id"] == ident and page["can_execute"] is False
+    assert call(world, "claude-code", "pending-handoffs")[1]["items"] == []
+    assert call(world, "iron-god", "message-processing", "--id", ident)[0] == 0
+    assert call(world, "iron-god", "status")[1]["unacknowledged"] == 1
+
+
+@pytest.mark.parametrize("body", ["{}", '{"protocol":1,"protocol":2}', "x" * 4000])
+def test_invalid_structured_cli_input_does_not_create_database(world, body):
+    code, result = call(world, "chatgpt", "post-engineering-handoff", "--to", "iron-god",
+                        "--key", "invalid", writes=True, stdin=body)
+    assert code == 1 and result["status"] == "REFUSED"
+    assert not world["db"].exists()
+
+
+def test_structured_cli_empty_reads_do_not_create_database(world):
+    assert call(world, "iron-god", "pending-handoffs")[1]["status"] == "UNINITIALIZED"
+    assert call(world, "iron-god", "engineering-handoff", "--id", "a" * 32)[0] == 1
+    assert not world["db"].exists()
