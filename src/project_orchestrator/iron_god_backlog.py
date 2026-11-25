@@ -383,6 +383,10 @@ def slice_state(item: dict[str, Any], row: dict[str, Any], *, done: set[str], co
         return "IN_FLIGHT"
     if "NEEDS_REVALIDATION" in outcome:
         return "NEEDS_REVALIDATION"
+    if outcome.startswith("ENVIRONMENT_FAILURE"):
+        if row.get("attempts", 0) >= MAX_ITEM_ATTEMPTS:
+            return "ENVIRONMENT_ATTEMPTS_EXHAUSTED"
+        return "ENVIRONMENT_INTERRUPTED"
     if outcome.startswith(("FAIL", "REVIEW_REQUIRED", "SUPERVISOR_RECHECK_FAILED")):
         return "FAILED_IMPLEMENTATION"
     if not all(dep in done for dep in item["depends_on"]):
@@ -459,6 +463,10 @@ def exclusion(item: dict[str, Any], state: dict[str, Any], *, items: list[dict[s
     if item["level"] not in BUILDABLE_LEVELS:
         return "LEVEL_NOT_BUILDABLE_LOCALLY", f"level {item['level']}"
     if attempts >= MAX_ITEM_ATTEMPTS:
+        # Keep the same hard cap. Environmental exhaustion is not evidence
+        # that a stronger model would succeed, and must not feed offload.
+        if outcome.startswith("ENVIRONMENT_FAILURE"):
+            return "ENVIRONMENT_ATTEMPTS_EXHAUSTED", f"{attempts} of {MAX_ITEM_ATTEMPTS}: {outcome}"
         return "ATTEMPTS_EXHAUSTED", f"{attempts} of {MAX_ITEM_ATTEMPTS}: {outcome}"
     if outcome == LOCAL_OLLAMA_REFUSAL:
         # Do not repeatedly launch a local builder into a confirmed endpoint outage.
