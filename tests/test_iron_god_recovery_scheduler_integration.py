@@ -45,3 +45,36 @@ def test_same_repository_second_item_is_routable_without_resetting_failed_work(m
     assert lane.next_routable_backlog_item(["a"], {"a"}, items, state, **kwargs) is None
     assert lane.next_routable_backlog_item(["a"], set(), items[:-1], state, **kwargs) is None
     assert state["items"]["spent"]["attempts"] == backlog.MAX_ITEM_ATTEMPTS
+
+
+def test_final_eligibility_recheck_rejects_changed_canonical_state():
+    from project_orchestrator import iron_god_backlog as backlog
+
+    item = {"id": "candidate", "repository": "a", "status": "approved",
+            "assignee": backlog.AGENT_ID, "level": 1, "depends_on": []}
+    state = {"items": {}}
+    assert lane.final_backlog_exclusion(item, [item], state, max_level=1) is None
+    for outcome, attempts, reason in (
+        ("MERGED", 1, "ALREADY_COMPLETE"),
+        ("DISPATCHED", 1, "IN_FLIGHT"),
+        ("ENVIRONMENT_FAILURE: TIMEOUT", backlog.MAX_ITEM_ATTEMPTS,
+         "ENVIRONMENT_ATTEMPTS_EXHAUSTED"),
+        ("FAIL: SLICE_TESTS_FAILED", backlog.MAX_ITEM_ATTEMPTS, "ATTEMPTS_EXHAUSTED"),
+    ):
+        state = {"items": {"candidate": {"outcome": outcome, "attempts": attempts}}}
+        assert lane.final_backlog_exclusion(item, [item], state, max_level=1)[0] == reason
+
+
+def test_final_eligibility_rechecks_dependency_and_ownership():
+    from project_orchestrator import iron_god_backlog as backlog
+
+    dependency = {"id": "dep", "repository": "a", "status": "approved",
+                  "assignee": backlog.AGENT_ID, "level": 1, "depends_on": []}
+    item = {**dependency, "id": "candidate", "depends_on": ["dep"]}
+    state = {"items": {"dep": {"outcome": "MERGED"}}}
+    assert lane.final_backlog_exclusion(item, [dependency, item], state, max_level=1) is None
+    assert lane.final_backlog_exclusion(item, [dependency, item], {"items": {}}, max_level=1)[0] == (
+        "WAITING_ON_DEPENDENCY")
+    other = {**item, "assignee": "claude-code"}
+    assert lane.final_backlog_exclusion(other, [dependency, other], state, max_level=1)[0] == (
+        "ASSIGNED_ELSEWHERE")
