@@ -24,3 +24,24 @@ def test_only_backlog_selected_items_are_candidates(monkeypatch):
         ["blocked", "not-in-items", "approved"], {"blocked"},
         {"approved": {"level": 1}}, {}, 8.0,
         after_pressure=False, exclude="current") == "approved"
+
+
+def test_same_repository_second_item_is_routable_without_resetting_failed_work(monkeypatch):
+    from project_orchestrator import iron_god_backlog as backlog
+
+    monkeypatch.setattr(lane.model_routing, "route",
+                        lambda level, *a, **k: SimpleNamespace(model="ollama" if level == 1 else None))
+    first = {"id": "first", "repository": "a", "status": "approved",
+             "assignee": backlog.AGENT_ID, "level": 2, "depends_on": []}
+    spent = {**first, "id": "spent", "level": 1}
+    unapproved = {**first, "id": "unapproved", "level": 1, "status": "proposed"}
+    blocked = {**first, "id": "blocked", "level": 1, "depends_on": ["missing"]}
+    other = {**first, "id": "other", "level": 1}
+    state = {"items": {"spent": {"attempts": backlog.MAX_ITEM_ATTEMPTS,
+                                  "outcome": "ENVIRONMENT_FAILURE: TIMEOUT"}}}
+    items = [first, spent, unapproved, blocked, other]
+    kwargs = dict(max_level=2, profiles={}, free_gib=8.0, after_pressure=False, exclude_item="first")
+    assert lane.next_routable_backlog_item(["a"], set(), items, state, **kwargs) == ("a", other)
+    assert lane.next_routable_backlog_item(["a"], {"a"}, items, state, **kwargs) is None
+    assert lane.next_routable_backlog_item(["a"], set(), items[:-1], state, **kwargs) is None
+    assert state["items"]["spent"]["attempts"] == backlog.MAX_ITEM_ATTEMPTS
