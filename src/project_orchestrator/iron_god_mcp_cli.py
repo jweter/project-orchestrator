@@ -69,6 +69,8 @@ def _parser() -> argparse.ArgumentParser:
     ack = sub.add_parser("ack")
     ack.add_argument("--id", required=True)
     requests = sub.add_parser("requests", help="read-only tracked handoff states; no message bodies")
+    dependencies = sub.add_parser("handoff-dependencies", help="observe canonical local prerequisite state")
+    dependencies.add_argument("--id", required=True)
     requests.add_argument("--role", choices=("incoming", "outgoing", "all"), default="incoming")
     requests.add_argument("--limit", type=int, default=30)
     handoff = sub.add_parser("handoff", help="post an idempotent actionable request")
@@ -157,6 +159,11 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
                     break
                 sleep(POLL_S)
             _emit(out, result)
+        elif args.command == "handoff-dependencies":
+            from .iron_god_handoff_dependencies import reconcile_dependencies
+
+            _emit(out, reconcile_dependencies(database, participant=label, request_id=args.id,
+                                               release_repo=repo_root, state_root=state_root))
         elif args.command == "requests":
             _emit(out, accountability.requests_snapshot(database, participant=label,
                                                         role=args.role, limit=args.limit))
