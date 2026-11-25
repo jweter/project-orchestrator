@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from . import mcp_coordination
+from . import iron_god_structured_handoff as structured_handoff
 from .state_io import atomic_json
 
 _LANE_STATUSES = frozenset({
@@ -377,6 +378,18 @@ def _inbox_cursor(state_root: Path) -> int:
         return 0
 
 
+def _handoff_cursor(state_root: Path) -> int:
+    path = state_root / "iron-god-mailbox-observation.json"
+    try:
+        if not path.is_file() or path.stat().st_size > 128_000:
+            return 0
+        report = json.loads(path.read_text(encoding="utf-8"))
+        value = report.get("structured_handoffs", {}).get("next_seq", 0)
+        return value if type(value) is int and value >= 0 else 0
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0
+
+
 def _publication_cursor(state_root: Path) -> str:
     """Resume bounded publication-ledger scanning after restart."""
     path = state_root / "iron-god-mailbox-observation.json"
@@ -432,6 +445,9 @@ def advisory_supervisor_pass(
             "inbox": inbox, "published": posted,
             "handled_status_requests": handled,
             "backlog": mcp_coordination.backlog_reconciliation(db, recipient_label="iron-god"),
+            "structured_handoffs": structured_handoff.pending_handoff_page(
+                db, participant="iron-god", after_seq=_handoff_cursor(state_root),
+            ),
             "status_request_conflicts": failures,
             "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
         }

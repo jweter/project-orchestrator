@@ -191,3 +191,59 @@ def assess_handoff_freshness(path: Path, *, participant: str, request_id: str,
                 "observed_local_head": observed}
     return {**result, "status": "LOCAL_HEAD_MATCH", "reason": "LOCAL_ONLY_NOT_REMOTE_PROOF",
             "observed_local_head": observed}
+
+def pending_handoff_page(path: Path, *, participant: str, after_seq: int = 0,
+                         limit: int = 5, now: datetime | None = None) -> dict:
+    """Bounded, recipient-only routing view; never a second execution queue.
+
+    Only tracked, unacknowledged incoming requests are scanned. Legacy or
+    invalid envelopes consume a page slot but cannot strand later requests.
+    Cursor wrap makes interrupted scans replay-safe without claiming work.
+    """
+    mail._check_principal(participant)
+    if type(after_seq) is not int or after_seq < 0 or type(limit) is not int or not 1 <= limit <= 30:
+        raise ValueError("INVALID_HANDOFF_PAGE")
+    moment = now if now is not None else datetime.now(timezone.utc)
+    if not isinstance(moment, datetime) or moment.utcoffset() is None:
+        raise ValueError("INVALID_ASSESSMENT_TIME")
+    db_path = mail._path(path)
+    empty = {"status": "NOT_CONFIGURED", "next_seq": after_seq, "items": [],
+             "scanned": 0, "can_execute": False}
+    if not db_path.is_file():
+        return {**empty, "status": "UNINITIALIZED"}
+    with closing(mail._connect(db_path, read_only=True)) as db:
+        db.execute("BEGIN")
+        if db.execute("PRAGMA user_version").fetchone()[0] != 1:
+            raise ValueError("UNSUPPORTED_COORDINATION_SCHEMA")
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='tracked_requests' AND type='table'").fetchone():
+            return empty
+        query = (
+            "SELECT m.seq,m.message_id FROM tracked_requests t JOIN messages m ON m.message_id=t.request_id "
+            "WHERE t.recipient=? AND m.seq>? AND NOT EXISTS "
+            "(SELECT 1 FROM receipts r WHERE r.message_id=m.message_id AND r.recipient_label=t.recipient) "
+            "ORDER BY m.seq LIMIT ?"
+        )
+        rows = db.execute(query, (participant, after_seq, limit)).fetchall()
+        if not rows and after_seq:
+            rows = db.execute(query, (participant, 0, limit)).fetchall()
+    items = []
+    for row in rows:
+        ident = row["message_id"]
+        try:
+            envelope = read_engineering_handoff(db_path, participant=participant, request_id=ident)
+            payload = envelope["payload"]
+            deadline = envelope["deadline_at_utc"]
+            expired = deadline is not None and accountability._time(deadline) <= moment
+        except ValueError:
+            # A legacy or malformed request is not actionable structured work.
+            # Do not leak raw message contents or exception text.
+            items.append({"request_id": ident, "status": "UNCLASSIFIED_REVIEW"})
+            continue
+        items.append({
+            "request_id": ident, "repository": payload["repository"],
+            "slice_id": payload["slice_id"], "work_type": payload["next_action"],
+            "commit_sha": payload["commit_sha"],
+            "status": "EXPIRED" if expired else "STRUCTURED_REVIEW",
+        })
+    return {"status": "OBSERVED", "items": items, "scanned": len(rows),
+            "next_seq": rows[-1]["seq"] if rows else 0, "can_execute": False}
