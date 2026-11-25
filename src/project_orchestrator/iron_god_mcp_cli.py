@@ -101,6 +101,9 @@ def _parser() -> argparse.ArgumentParser:
     repair.add_argument("--limit", type=int, default=10)
     coverage = sub.add_parser("verify-handoff-coverage", help="observe required GitHub checks")
     coverage.add_argument("--id", required=True)
+    assessment = sub.add_parser("assess-handoff", help="consolidated advisory evidence")
+    assessment.add_argument("--id", required=True)
+    assessment.add_argument("--include-remote", action="store_true")
     return parser
 
 
@@ -159,6 +162,12 @@ def run(argv: list[str], env: Mapping[str, str] | None = None, stdin: TextIO | N
                     break
                 sleep(POLL_S)
             _emit(out, result)
+        elif args.command == "assess-handoff":
+            from .iron_god_handoff_assessment import assess_handoff
+
+            _emit(out, assess_handoff(database, participant=label, request_id=args.id,
+                                      release_repo=repo_root, state_root=state_root,
+                                      include_remote=args.include_remote))
         elif args.command == "handoff-dependencies":
             from .iron_god_handoff_dependencies import reconcile_dependencies
 

@@ -45,7 +45,7 @@ def test_official_mcp_client_can_exchange_and_ack_advisory_handoff(tmp_path):
                 "get_targets", "get_engine_snapshot", "get_development_diagnostics",
                 "get_engineering_evidence", "get_offload_proposals",
                 "get_storage_housekeeping", "list_messages", "get_engineering_handoff", "get_message_processing",
-                "get_readonly_capabilities", "get_readonly_command",
+                "get_readonly_capabilities", "get_readonly_command", "get_handoff_assessment",
                 "post_message", "ack_message", "post_engineering_handoff",
             }
             snapshot = _payload(await client.call_tool("get_storage_housekeeping", {}))
