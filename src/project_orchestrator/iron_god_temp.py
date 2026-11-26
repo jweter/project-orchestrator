@@ -14,6 +14,7 @@ executed from outside belongs in it; worktrees, clones, environments and the eng
 from __future__ import annotations
 
 import os
+import stat
 from pathlib import Path
 
 ENV = "IRON_GOD_TEMP_ROOT"
@@ -35,4 +36,21 @@ def temp_dir(beside: Path) -> Path:
     The directory keeps its own name, which already identifies the worktree or packet it belongs to.
     """
     root = os.environ.get(ENV, "").strip()
-    return Path(root) / beside.name if root else beside
+    if not root:
+        return beside
+    base = Path(root)
+    if not base.is_absolute() or ".." in base.parts or not beside.name or beside.name == "..":
+        raise ValueError("ENGINE_SCRATCH_PATH_INVALID")
+    target = base / beside.name
+    # Do not follow a pre-existing symlink, junction, or other reparse point
+    # into persistent data. The returned path may later be recursively cleaned.
+    for entry in (*reversed(target.parents), target):
+        try:
+            info = entry.lstat()
+        except FileNotFoundError:
+            continue
+        if (stat.S_ISLNK(info.st_mode)
+                or getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                or not stat.S_ISDIR(info.st_mode)):
+            raise ValueError("ENGINE_SCRATCH_PATH_UNSAFE")
+    return target

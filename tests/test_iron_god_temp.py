@@ -63,3 +63,36 @@ def test_no_other_test_can_point_temp_directories_at_the_live_engine_folder(monk
     assert iron_god_temp.ENV not in os.environ
     iron_god_temp.configure("C:/would/be/the/live/folder")           # what a lane test running the shipped policy does
     assert iron_god_temp.ENV not in os.environ
+
+
+def test_configured_scratch_rejects_relative_root(temp):
+    temp.configure("relative-scratch")
+    with pytest.raises(ValueError, match="ENGINE_SCRATCH_PATH_INVALID"):
+        temp.temp_dir(Path("P1.tmp"))
+
+
+def test_configured_scratch_rejects_existing_file(temp, tmp_path):
+    temp.configure(str(tmp_path))
+    marker = tmp_path / "P1.tmp"
+    marker.write_text("preserve", encoding="utf-8")
+    with pytest.raises(ValueError, match="ENGINE_SCRATCH_PATH_UNSAFE"):
+        temp.temp_dir(Path("P1.tmp"))
+    assert marker.read_text(encoding="utf-8") == "preserve"
+
+
+def test_configured_scratch_does_not_follow_link_to_persistent_data(temp, tmp_path):
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    persistent = tmp_path / "persistent"
+    persistent.mkdir()
+    marker = persistent / "keep.txt"
+    marker.write_text("preserve", encoding="utf-8")
+    link = scratch / "P1.tmp"
+    try:
+        link.symlink_to(persistent, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    temp.configure(str(scratch))
+    with pytest.raises(ValueError, match="ENGINE_SCRATCH_PATH_UNSAFE"):
+        temp.temp_dir(Path("P1.tmp"))
+    assert marker.read_text(encoding="utf-8") == "preserve"
