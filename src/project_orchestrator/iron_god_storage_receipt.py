@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .state_io import atomic_json
+from .iron_god_workspace import product_worktrees
 from .steward import assess_machine_health
 
 RECEIPT_FILENAME = "storage-housekeeping.json"
@@ -114,7 +115,7 @@ def record_storage_receipt(
     )
     counts = {
         "product_worktrees": _count_owned_entries(
-            root.parent / "canon-workspaces" / "products" / "worktrees", directories=True
+            product_worktrees(root), directories=True
         ),
         "recovery_archive_files": _count_owned_entries(
             root / "iron-god-products" / "reports" / "worktree-archive", directories=False
