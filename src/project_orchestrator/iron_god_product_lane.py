@@ -65,6 +65,7 @@ from . import iron_god_merge_readiness as readiness
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_roadmap_refill as roadmap_refill
 from . import iron_god_temp as engine_temp
+from .iron_god_workspace import product_workspace
 from . import iron_god_working_memory as working_memory
 from . import iron_god_worktree_cleanup as worktree_cleanup
 from . import iron_god_storage_receipt as storage_receipt
@@ -154,7 +155,7 @@ class ProductLane:
         self.packets = self.root / "packets"
         self.handbacks = self.root / "handbacks"
         self.reports = self.root / "reports"
-        self.workspaces = self.state_root.parent / "canon-workspaces" / "products"
+        self.workspaces = product_workspace(self.state_root)
         self.worktrees = self.workspaces / "worktrees"
 
     def clone(self, repo: str) -> Path:

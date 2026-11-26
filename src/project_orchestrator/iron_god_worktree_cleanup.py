@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from .state_io import atomic_json
+from .iron_god_workspace import product_worktrees
 
 KEEP_PUBLICATION_STATES = {"PUBLISH_PENDING", "AWAITING_CI", "AWAITING_OWNER_REVIEW", "REPAIR_PENDING",
                            "REPAIRING"}
@@ -324,7 +325,7 @@ def _evidence(worktree: Path, row: dict[str, Any], clone: Path) -> dict[str, Any
 
 def plan(state_root: Path) -> list[dict[str, Any]]:
     lane_root = Path(state_root) / "iron-god-products"
-    worktrees = Path(state_root).parent / "canon-workspaces" / "products" / "worktrees"
+    worktrees = product_worktrees(state_root)
     return [classify(lane_root, path) for path in sorted(worktrees.iterdir()) if path.is_dir()] \
         if worktrees.is_dir() else []
 

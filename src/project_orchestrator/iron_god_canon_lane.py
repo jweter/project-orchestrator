@@ -38,6 +38,7 @@ from typing import Any, Callable
 
 from . import iron_god_owner_control as owner_controller
 from . import iron_god_temp as engine_temp
+from .iron_god_workspace import canon_workspace
 from .canon_worker_memory import prepare_worker_memory_handoff, render_worker_memory_handoff
 from .iron_god_calibration import capability_gate, load_profile, remove_tree
 from .execution_authority import acknowledge_and_evaluate, supervisor_identity
@@ -131,7 +132,7 @@ class Lane:
         self.packets = self.root / "packets"
         self.handbacks = self.root / "handbacks"
         self.reports = self.root / "reports"
-        self.workspaces = self.state_root.parent / "canon-workspaces"
+        self.workspaces = canon_workspace(self.state_root)
         self.dev_repo = self.workspaces / "project-orchestrator"
         self.worktrees = self.workspaces / "worktrees"
 

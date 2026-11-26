@@ -43,6 +43,7 @@ from project_orchestrator import iron_god_owner_control as owner_controller  # n
 from project_orchestrator.iron_god_calibration import remove_tree  # noqa: E402
 from project_orchestrator.iron_god_canon_lane import WORKER_LEASE_RUNTIME, default_lease_pool  # noqa: E402
 from project_orchestrator.state_io import atomic_json  # noqa: E402
+from project_orchestrator.iron_god_workspace import product_workspace  # noqa: E402
 
 REPOSITORIES = ["knowledge-engine-core", "knowledge-engine-ai", "rocksmith-cdlc-generator"]
 MAX_SOURCE_LINES = 250  # measured: prompts far beyond a few thousand tokens never finish on this CPU
@@ -142,7 +143,7 @@ def put_back_pre_fix(worktree: Path, case: dict[str, Any]) -> None:
 
 def mine(state_root: Path, check) -> dict[str, Any]:
     worker = load_worker()
-    products = state_root.parent / "canon-workspaces" / "products"
+    products = product_workspace(state_root)
     cases, rejected = [], []
     for repo in REPOSITORIES:
         clone = products / repo
@@ -328,7 +329,7 @@ def run(state_root: Path, check, *, limit: int | None, edit_format: str, mode: s
     if only:
         ordered = [c for c in ordered if c["id"] in only or c["id"].split(":", 1)[-1] in only]
     selected = ordered[:limit] if limit else ordered
-    products = state_root.parent / "canon-workspaces" / "products"
+    products = product_workspace(state_root)
     label = "directed" if mode == "directed" else edit_format
     out_path = state_root / "iron-god-level2" / f"results-{label}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
     directions = json.loads(DIRECTIONS.read_text(encoding="utf-8"))["cases"] if mode == "directed" else {}
