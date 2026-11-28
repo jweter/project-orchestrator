@@ -9,9 +9,10 @@ change Notion permissions, publish memory, or write to Notion.
 Double-click scripts/iron_god_notion_connection_manager.cmd in a reviewed
 checkout (Python 3.12+ required). A Tkinter window presents a masked token
 input field (no PowerShell or command-line token); Test connection performs
-GET of the bot identity and one approved page; Save securely is available
-only after the exact token passes; Test saved credential explicitly decrypts
-and retests. The application never logs or displays the token or HTTP bodies.
+GET of the bot identity and one approved page. Save securely is available
+whenever the token passes local format validation, even when Notion page
+permission is missing. Saving is not evidence of authentication or page access.
+Test saved credential explicitly decrypts and retests. The application never logs or displays the token or HTTP bodies.
 
 The API host is fixed to https://api.notion.com; it uses TLS validation,
 GET only, no redirects, bounded responses, Notion-Version 2022-06-28,
@@ -41,7 +42,7 @@ the Windows user account and is not reliably portable across machines.
 
 Run tests without credentials:
 
-    python -m pytest -q tests/test_notion_n02_transport.py tests/test_notion_n02_secret_store.py
+    python -m pytest -q tests/test_notion_n02_transport.py tests/test_notion_n02_secret_store.py tests/test_notion_n02_connection_manager.py
     python -m ruff check src/project_orchestrator/notion_n02_*.py tests/test_notion_n02_*.py
     python engineering/preflight.py
 

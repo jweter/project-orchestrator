@@ -15,7 +15,9 @@ from .notion_n02_transport import (
     REPOSITORY,
     TEST_PAGE_ID,
     NotionReadOnlyClient,
+    NotionConnectionError,
     diagnostic,
+    validate_token,
 )
 
 
@@ -26,7 +28,7 @@ def _fingerprint(token: str) -> bytes:
 class ConnectionManager:
     def __init__(self, window: tk.Tk):
         self.window = window
-        window.title("Iron God — Notion Connection Manager (manual, read-only)")
+        window.title("Iron God — Notion Connection Manager v2 (manual, read-only)")
         window.geometry("640x425")
         window.minsize(560, 385)
         self.token_var = tk.StringVar()
@@ -58,7 +60,7 @@ class ConnectionManager:
         self.test_button = ttk.Button(controls, text="Test connection", command=self.test_current_token)
         self.test_button.pack(side="left", padx=(0, 8))
         self.save_button = ttk.Button(
-            controls, text="Save securely", command=self.save_verified_token, state="disabled",
+            controls, text="Save securely", command=self.save_current_token, state="disabled",
         )
         self.save_button.pack(side="left", padx=(0, 8))
         self.test_saved_button = ttk.Button(
@@ -76,11 +78,13 @@ class ConnectionManager:
             outer,
             text=(
                 "Your token is encrypted with Windows DPAPI for this Windows user only. "
-                "The app uses HTTPS GET to verify the approved page. It never writes "
-                "to Notion or starts Iron God."
+                "Saving is permitted before a successful page-access test. "
+                "The app uses HTTPS GET to verify the approved page. "
+                "It never writes to Notion or starts Iron God."
             ),
             wraplength=570,
         ).pack(anchor="w", pady=(5, 0))
+        self.token_var.trace_add("write", self._on_token_changed)
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self.window.after(100, self._poll_results)
 
@@ -88,10 +92,21 @@ class ConnectionManager:
         self._working = active
         self.test_button.config(state="disabled" if active else "normal")
         self.test_saved_button.config(state="disabled" if active else "normal")
-        self.save_button.config(
-            state="normal" if not active and self._verified_fingerprint is not None
-            else "disabled"
-        )
+        try:
+            validate_token(self.token_var.get())
+            token_valid = True
+        except NotionConnectionError:
+            token_valid = False
+        self.save_button.config(state="normal" if not active and token_valid else "disabled")
+
+    def _on_token_changed(self, *_: object) -> None:
+        self._verified_fingerprint = None
+        self._set_working(self._working)
+        if not self._working and self.token_var.get():
+            self.status_var.set(
+                "Token entered. Save securely stores it locally without requiring "
+                "Notion page access. Test connection separately to check permissions."
+            )
 
     def _start_test(self, token: str, *, saved: bool = False) -> None:
         if self._working:
@@ -105,6 +120,10 @@ class ConnectionManager:
         try:
             client = NotionReadOnlyClient(token)
             client.check_authentication()
+        except Exception as exc:
+            self._messages.put(("error", "Authentication failed: " + diagnostic(exc), None, saved))
+            return
+        try:
             record = client.read_approved_page(
                 TEST_PAGE_ID, repository=REPOSITORY, allowed_page_ids=[TEST_PAGE_ID],
             )
@@ -116,7 +135,10 @@ class ConnectionManager:
             )
             self._messages.put(("success", message, _fingerprint(token), saved))
         except Exception as exc:
-            self._messages.put(("error", diagnostic(exc), None, saved))
+            self._messages.put((
+                "page_error", "Authentication PASS. Page access / content validation failed: "
+                + diagnostic(exc), None, saved,
+            ))
 
     def _poll_results(self) -> None:
         try:
@@ -137,28 +159,31 @@ class ConnectionManager:
         try:
             token = load_token()
         except (CredentialStoreError, ValueError):
-            self.status_var.set("No valid Windows-protected Notion credential was found.")
+            self.status_var.set(
+                "NO SAVED CREDENTIAL: Enter your Notion token and click Save securely "
+                "before using Test saved credential."
+            )
             return
         self._start_test(token, saved=True)
 
-    def save_verified_token(self) -> None:
-        token = self.token_var.get()
-        if self._verified_fingerprint is None or _fingerprint(token) != self._verified_fingerprint:
-            self.status_var.set("Test this exact token successfully before saving.")
-            self._verified_fingerprint = None
-            self._set_working(False)
+    def save_current_token(self) -> None:
+        """User may save a well-formed token even if page permission is not granted."""
+        if self._working:
             return
+        token = self.token_var.get()
         try:
+            validate_token(token)
             destination = save_token(token)
-            self.status_var.set(
-                "Encrypted credential stored under your Windows profile: "
-                + str(destination) + ". Production integration remains OFF."
-            )
             self.token_var.set("")
             self._verified_fingerprint = None
             self._set_working(False)
+            self.status_var.set(
+                "SAVED: Encrypted credential stored in your Windows user profile: "
+                + str(destination) + ". Click Test saved credential to check "
+                "authentication and page access. Production integration is OFF."
+            )
         except (CredentialStoreError, ValueError):
-            self.status_var.set("Could not encrypt/save the credential. Nothing was activated.")
+            self.status_var.set("SAVE FAILED: Unable to encrypt/store the credential.")
 
     def close(self) -> None:
         self.token_var.set("")
