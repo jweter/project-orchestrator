@@ -882,7 +882,9 @@ def test_crash_after_structured_reply_retries_without_duplicate(world, monkeypat
     )["pending_total"] == 1
     first_reply = mailbox.list_messages(world["db"], recipient_label="chatgpt")["messages"]
     assert len(first_reply) == 1
-    assert cycle(world)["structured_handoff_receipts"][0]["request_id"] == request["request_id"]
+    resumed = cycle(world)
+    assert resumed["structured_handoff_receipts"] == []
+    assert resumed["recovered_previously_recorded_replies"][0]["request_id"] == request["request_id"]
     assert mailbox.list_messages(
         world["db"], recipient_label="chatgpt",
     )["messages"] == first_reply
@@ -945,3 +947,73 @@ def test_forged_prior_receipt_cannot_ack_and_does_not_block_later_work(world):
     assert mailbox.list_pending_messages(
         world["db"], recipient_label="iron-god",
     )["messages"][0]["message_id"] == poisoned["request_id"]
+
+
+def test_interrupted_structured_reply_recovers_after_deadline_without_new_acceptance(
+    world, monkeypatch,
+):
+    """Already-recorded ACCEPTED survives expiry; fresh expired work stays held."""
+    from datetime import datetime, timedelta, timezone
+    from project_orchestrator import iron_god_structured_handoff as handoff
+
+    deadline = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    original = _tracked_engineering_handoff(
+        world, key="crash-then-expire", deadline=deadline,
+    )
+    original_post = mailbox.post_message
+
+    def fail_reply(*args, **kwargs):
+        if kwargs.get("sender_label") == "iron-god":
+            raise OSError("simulated crash before reply")
+        return original_post(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(mailbox, "post_message", fail_reply)
+        assert cycle(world)["status"] == "MAILBOX_UNAVAILABLE"
+
+    with sqlite3.connect(world["db"]) as db:
+        row = db.execute(
+            "SELECT state FROM request_dispositions WHERE request_id=?",
+            (original["request_id"],),
+        ).fetchone()
+    assert row == ("ACCEPTED",)
+    assert mailbox.list_pending_messages(
+        world["db"], recipient_label="iron-god",
+    )["pending_total"] == 1
+
+    real_page = handoff.pending_handoff_page
+
+    def after_deadline(*args, **kwargs):
+        return real_page(
+            *args, now=datetime.now(timezone.utc) + timedelta(days=2), **kwargs,
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(handoff, "pending_handoff_page", after_deadline)
+        result = cycle(world)
+
+    assert result["status"] == "OBSERVED"
+    assert result["structured_handoff_receipts"] == []
+    assert [
+        item["request_id"] for item in result["recovered_previously_recorded_replies"]
+    ] == [original["request_id"]]
+    assert result["pending_unacknowledged"] == 0
+    responses = mailbox.list_messages(world["db"], recipient_label="chatgpt")["messages"]
+    assert len(responses) == 1
+    assert json.loads(responses[0]["body"])["response_to"] == original["request_id"]
+    assert cycle(world)["recovered_previously_recorded_replies"] == []
+
+
+def test_expired_fresh_handoff_still_cannot_be_accepted(world):
+    original = _tracked_engineering_handoff(
+        world, key="never-accepted-expired", deadline="2020-01-01T00:00:00Z",
+    )
+    outcome = cycle(world)
+    assert outcome["recovered_previously_recorded_replies"] == []
+    assert outcome["structured_handoff_receipts"] == []
+    assert outcome["pending_unacknowledged"] == 1
+    with sqlite3.connect(world["db"]) as db:
+        assert db.execute(
+            "SELECT COUNT(*) FROM request_dispositions WHERE request_id=?",
+            (original["request_id"],),
+        ).fetchone()[0] == 0

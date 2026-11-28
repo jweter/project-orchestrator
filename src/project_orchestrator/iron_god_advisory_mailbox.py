@@ -476,6 +476,20 @@ def advisory_supervisor_pass(
             cursor = _inbox_cursor(state_root)
             failures: list[dict[str, str]] = []
             handled = _answer_status_queries(db, state_root, after_seq=cursor, failures=failures) if publish else []
+            # Replay only already-recorded dispositions before checking freshness.
+            # A crash can leave a durable ACCEPTED event without its reply or
+            # receipt; expiry must never strand that existing event.
+            recovered_replies: list[dict[str, str]] = []
+            recovery_error_type: str | None = None
+            if publish:
+                try:
+                    recovered_replies = accountability.recover_pending_replies(
+                        db, actor_label="iron-god", limit=5,
+                    )["recovered"]
+                except (OSError, ValueError) as exc:
+                    # One poisoned historical receipt must not block valid new
+                    # requests or the rest of the supervisor iteration.
+                    recovery_error_type = type(exc).__name__
             handoff_page = structured_handoff.pending_handoff_page(
                 db, participant="iron-god", after_seq=_handoff_cursor(state_root),
             )
@@ -504,6 +518,8 @@ def advisory_supervisor_pass(
                 "backlog": mcp_coordination.backlog_reconciliation(db, recipient_label="iron-god"),
                 "structured_handoffs": handoff_page,
                 "structured_handoff_receipts": handoff_receipts,
+                "recovered_previously_recorded_replies": recovered_replies,
+                "reply_recovery_error_type": recovery_error_type,
                 "structured_handoff_receipt_conflicts": handoff_failures,
                 "status_request_conflicts": failures,
                 "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
