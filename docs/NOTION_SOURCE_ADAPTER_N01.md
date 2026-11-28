@@ -59,7 +59,7 @@ from project_orchestrator.notion_source_adapter import (
 record = project_notion_page(
     page_fixture,
     complete_blocks_fixture,
-    allowed_page_ids=["4269eaf5-47fa-81e6-8bf4-cc62c10d1ca1"],
+    allowed_page_ids=["00000000-0000-4000-8000-000000000001"],
     repository="jweter/project-orchestrator",
     retrieved_at="2026-11-28T15:00:00Z",
 )

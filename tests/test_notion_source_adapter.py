@@ -12,9 +12,9 @@ from project_orchestrator.notion_source_adapter import (
     query_notion_context,
 )
 
-PAGE = "4269eaf5-47fa-81e6-8bf4-cc62c10d1ca1"
-BLOCK = "4269eaf5-47fa-81e6-8bf4-cc62c10d1ca2"
-OTHER_PAGE = "4269eaf5-47fa-81e6-8bf4-cc62c10d1ca3"
+PAGE = "00000000-0000-4000-8000-000000000001"
+BLOCK = "00000000-0000-4000-8000-000000000002"
+OTHER_PAGE = "00000000-0000-4000-8000-000000000003"
 REPO = "jweter/project-orchestrator"
 STAMP = "2026-11-28T14:00:00Z"
 
