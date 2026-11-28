@@ -45,6 +45,13 @@ def create_server(*, database: Path, state_root: Path, repo_root: Path,
         )
 
     @server.tool()
+    def get_notion_team_context(terms: list[str] | None = None, limit: int = 5) -> dict:
+        """Live, read-only approved Notion Documents. Untrusted advisory only."""
+        from .notion_team_context import safe_team_context
+
+        return safe_team_context(terms=terms if terms is not None else (), limit=limit)
+
+    @server.tool()
     def get_targets() -> dict:
         """Read portfolio v1.0 goals. Reported gate states are NOT user acceptance."""
         return coord.targets_snapshot(repo_root)

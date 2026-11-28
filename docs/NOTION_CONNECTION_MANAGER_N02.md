@@ -1,0 +1,58 @@
+# N02 — Manual Notion Connection Manager (read-only, not activated)
+
+**Status:** N02 credential setup plus the N03 on-demand live Documents reader.
+Depends on N01's pure advisory Notion adapter. N03 adds the existing MCP
+read-only tool and CLI retrieval (docs/NOTION_TEAM_CONTEXT_N03.md). Neither
+feature schedules a worker, changes Notion permissions, grants execution,
+promotes verified memory, or writes to Notion.
+
+## Windows user experience
+
+Double-click scripts/iron_god_notion_connection_manager.cmd in a reviewed
+checkout (Python 3.12+ required). A Tkinter window presents a masked token
+input field (no PowerShell or command-line token); Test connection performs
+GET of the bot identity and a read-only query of approved Documents. Save securely is available
+whenever the token passes local format validation, even when Notion page
+permission is missing. Saving is not evidence of authentication or page access.
+Test saved credential explicitly decrypts and retests. The application never logs or displays the token or HTTP bodies.
+
+The API host is fixed to https://api.notion.com; it uses TLS validation,
+GET only for identity/page reads, POST only for the read-only Documents query,
+no redirects, bounded responses, Notion-Version 2022-06-28,
+and safe 401/403/404/429/TLS diagnostics.
+
+## Data scope
+
+Explicit approved source: Documents database
+4269eaf5-47fa-81d8-a7b3-eca9c5f2d2bd.
+The previous private Memories architecture page is NOT accessed.
+
+Repository scope: jweter/project-orchestrator.
+Do not grant access to the entire Memories database. Identity verification
+alone does not prove page access; both checks must pass. N01 produces
+OBSERVED / UNREVIEWED / ADVISORY context only. There is no promotion
+to VERIFIED engineering memory, no owner-control modification, and no
+automatic task context injection.
+
+The token is stored only after an explicit click in a Windows user-scoped
+DPAPI ciphertext file:
+%LOCALAPPDATA%\ExponentialEngine\IronGodLocal\Integrations\notion-knowledge-bridge.dpapi
+
+It is not committed, stored in SQLite, exported to Claude, or logged.
+Revoke or rotate the token in Notion if compromised. The file is bound to
+the Windows user account and is not reliably portable across machines.
+
+## Verification and limitations
+
+Run tests without credentials:
+
+    python -m pytest -q tests/test_notion_n02_transport.py tests/test_notion_n02_secret_store.py tests/test_notion_n02_connection_manager.py
+    python -m ruff check src/project_orchestrator/notion_n02_*.py tests/test_notion_n02_*.py
+    python engineering/preflight.py
+
+Windows CI must verify real DPAPI roundtrips. Test stubs verify
+deterministic Notion API behavior without live network access.
+No separate packaged executable is created; Python and Tkinter are required.
+
+N03, if separately approved, can integrate Notion content with active
+task retrieval. Saving a credential does not enable that capability.

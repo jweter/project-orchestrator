@@ -201,9 +201,23 @@ def test_mcp_adapter_is_read_only_by_default_and_writes_are_opt_in(database, tmp
         "get_engineering_evidence", "get_offload_proposals",
         "get_storage_housekeeping", "list_messages", "get_engineering_handoff", "get_message_processing", "get_handoff_assessment",
         "get_readonly_capabilities", "get_readonly_command",
+        "get_notion_team_context",
     }
     assert read_only.tools["get_readonly_capabilities"]()["generic_shell"] is False
     assert read_only.tools["get_readonly_command"]("take_the_wheel")["status"] == "REFUSED"
+    import project_orchestrator.notion_team_context as notion_team
+    monkeypatch.setattr(
+        notion_team, "safe_team_context",
+        lambda *, terms, limit: {
+            "status": "OK", "terms": list(terms), "limit": limit,
+            "source": "NOTION_DOCUMENTS_DATABASE_ONLY", "can_execute": False,
+        },
+    )
+    live_docs = read_only.tools["get_notion_team_context"](["team"], 2)
+    assert live_docs == {
+        "status": "OK", "terms": ["team"], "limit": 2,
+        "source": "NOTION_DOCUMENTS_DATABASE_ONLY", "can_execute": False,
+    }
     assert read_only.tools["list_messages"]()["status"] == "UNINITIALIZED"
     diagnostics = read_only.tools["get_development_diagnostics"]()
     assert diagnostics["authority"] == "READ_ONLY_NO_OWNER_GRANTS_NO_RECOVERY_EXECUTION"
