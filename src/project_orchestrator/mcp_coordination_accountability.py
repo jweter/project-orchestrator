@@ -325,7 +325,7 @@ def requests_snapshot(path: Path, *, participant: str, role: str = "incoming",
             "note": "Advisory only; overdue is not proof of an offline agent, and a disposition is not verified completion"}
 
 
-def recover_pending_replies(path: Path, *, actor_label: str, limit: int = 10) -> dict:
+def recover_pending_replies(path: Path, *, actor_label: str, limit: int = 10, after_seq: int = 0) -> dict:
     """Replay only already-recorded responses whose reply or receipt was lost.
 
     This is a zero-model, bounded crash-recovery operation. It does NOT
@@ -334,36 +334,48 @@ def recover_pending_replies(path: Path, *, actor_label: str, limit: int = 10) ->
     mail._check_principal(actor_label)
     if type(limit) is not int or not 1 <= limit <= MAX_PAGE:
         raise ValueError("INVALID_PAGE_SIZE")
+    if type(after_seq) is not int or after_seq < 0:
+        raise ValueError("INVALID_RECOVERY_CURSOR")
     db_path = mail._path(path)
     if not db_path.exists():
-        return {"status": "UNINITIALIZED", "recovered": [], "actor": actor_label}
+        return {"status": "UNINITIALIZED", "recovered": [], "failures": [], "next_seq": 0, "actor": actor_label}
     with closing(mail._connect(db_path, read_only=True)) as db:
         available = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='request_dispositions'"
         ).fetchone()
         if not available:
-            return {"status": "NOT_CONFIGURED", "recovered": [], "actor": actor_label}
+            return {"status": "NOT_CONFIGURED", "recovered": [], "failures": [], "next_seq": 0, "actor": actor_label}
         rows = db.execute(
-            "SELECT d.request_id, d.state, d.evidence_reference, d.event_key "
+            "SELECT d.seq, d.request_id, d.state, d.evidence_reference, d.event_key "
             "FROM request_dispositions d JOIN tracked_requests q "
             "ON q.request_id=d.request_id "
             "LEFT JOIN messages reply ON reply.sender_label=d.actor_label "
             "AND reply.idempotency_key=d.reply_key "
             "LEFT JOIN receipts rec ON rec.message_id=d.request_id "
             "AND rec.recipient_label=q.recipient "
-            "WHERE d.actor_label=? AND (reply.message_id IS NULL OR rec.message_id IS NULL) "
+            "WHERE d.actor_label=? AND d.seq>? AND (reply.message_id IS NULL OR rec.message_id IS NULL) "
             "ORDER BY d.seq ASC LIMIT ?",
-            (actor_label, limit),
+            (actor_label, after_seq, limit),
         ).fetchall()
         pending = [dict(row) for row in rows]
     recovered = []
+    failures = []
     for row in pending:
-        result = record_disposition(
-            path, actor_label=actor_label, request_id=row["request_id"],
-            state=row["state"], evidence_reference=row["evidence_reference"],
-            event_key=row["event_key"],
-        )
+        try:
+            result = record_disposition(
+                path, actor_label=actor_label, request_id=row["request_id"],
+                state=row["state"], evidence_reference=row["evidence_reference"],
+                event_key=row["event_key"],
+            )
+        except ValueError as exc:
+            # Invalid immutable events remain pending, never acknowledged.
+            failures.append({"request_id": row["request_id"], "reason":
+                             "IDEMPOTENCY_CONFLICT" if str(exc) == "IDEMPOTENCY_CONFLICT"
+                             else "REPLAY_UNVERIFIED"})
+            continue
         recovered.append({"request_id": result["request_id"],
                           "response_message_id": result["response_message_id"]})
-    return {"status": "OK", "recovered": recovered, "actor": actor_label,
+    return {"status": "OK", "recovered": recovered, "failures": failures,
+            "next_seq": pending[-1]["seq"] if len(pending) == limit else 0,
+            "actor": actor_label,
             "note": "Replayed prior recorded responses only; no fresh work or authority"}

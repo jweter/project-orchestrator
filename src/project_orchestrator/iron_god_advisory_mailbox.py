@@ -20,6 +20,7 @@ from typing import Any, Mapping
 
 from . import mcp_coordination
 from . import iron_god_structured_handoff as structured_handoff
+from . import mcp_coordination_accountability as accountability
 from .state_io import atomic_json
 
 _LANE_STATUSES = frozenset({
@@ -363,6 +364,53 @@ def _answer_status_queries(db: Path, state_root: Path, *, after_seq: int,
     return results
 
 
+def _acknowledge_structured_reviews(
+    db: Path, page: Mapping[str, Any], *, failures: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Confirm only validated tracked handoffs, never arbitrary mailbox prose.
+
+    ACCEPTED means received for *advisory review*, not accepted engineering
+    work. The existing disposition writer posts a correlated response before
+    its acknowledgment. An interrupted response can be replayed safely.
+    """
+    received: list[dict[str, str]] = []
+    for item in page.get("items", []):
+        if item.get("status") != "STRUCTURED_REVIEW":
+            continue  # Expired, legacy, malformed and ambiguous mail stays pending.
+        request_id = item["request_id"]
+        try:
+            handoff = structured_handoff.read_engineering_handoff(
+                db, participant="iron-god", request_id=request_id,
+            )
+            if handoff["recipient"] != "iron-god" or handoff["sender"] not in _RECIPIENTS:
+                continue
+            reply = accountability.record_disposition(
+                db, actor_label="iron-god", request_id=request_id,
+                state="ACCEPTED", event_key="structured-received-v1",
+                evidence_reference="protocol:engineering-handoff-v1",
+            )
+            received.append({
+                "request_id": request_id,
+                "response_id": reply["response_message_id"],
+                "status": "RECEIVED_FOR_REVIEW_ONLY",
+            })
+        except ValueError as exc:
+            # Never forward untrusted body, private path or arbitrary exception.
+            failures.append({
+                "request_id": request_id, "reason": (
+                    str(exc) if str(exc) in {
+                        "PREVIOUS_DISPOSITION_REPLY_PENDING",
+                        "INVALID_DISPOSITION_TRANSITION",
+                        "HANDOFF_ENVELOPE_MISMATCH",
+                        "HANDOFF_REFERENCE_MISMATCH",
+                        "DISPOSITION_REPLAY_CONFLICT",
+                        "IDEMPOTENCY_CONFLICT",
+                    } else "HANDOFF_RECEIPT_UNVERIFIED"
+                ),
+            })
+    return received
+
+
 def _inbox_cursor(state_root: Path) -> int:
     """Recover the last completed scan, not an unpersisted process cursor."""
     path = state_root / "iron-god-mailbox-observation.json"
@@ -385,6 +433,18 @@ def _handoff_cursor(state_root: Path) -> int:
             return 0
         report = json.loads(path.read_text(encoding="utf-8"))
         value = report.get("structured_handoffs", {}).get("next_seq", 0)
+        return value if type(value) is int and value >= 0 else 0
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0
+
+
+def _recovery_cursor(state_root: Path) -> int:
+    path = state_root / "iron-god-mailbox-observation.json"
+    try:
+        if not path.is_file() or path.stat().st_size > 128_000:
+            return 0
+        report = json.loads(path.read_text(encoding="utf-8"))
+        value = report.get("reply_recovery_next_seq", 0)
         return value if type(value) is int and value >= 0 else 0
     except (OSError, ValueError, TypeError, AttributeError):
         return 0
@@ -428,6 +488,33 @@ def advisory_supervisor_pass(
             cursor = _inbox_cursor(state_root)
             failures: list[dict[str, str]] = []
             handled = _answer_status_queries(db, state_root, after_seq=cursor, failures=failures) if publish else []
+            # Replay only already-recorded dispositions before checking freshness.
+            # A crash can leave a durable ACCEPTED event without its reply or
+            # receipt; expiry must never strand that existing event.
+            recovered_replies: list[dict[str, str]] = []
+            recovery_error_type: str | None = None
+            recovery_failures: list[dict[str, str]] = []
+            recovery_next_seq = _recovery_cursor(state_root)
+            if publish:
+                try:
+                    recovery = accountability.recover_pending_replies(
+                        db, actor_label="iron-god", limit=5, after_seq=recovery_next_seq,
+                    )
+                    recovered_replies = recovery["recovered"]
+                    recovery_failures = recovery["failures"]
+                    recovery_next_seq = recovery["next_seq"]
+                except (OSError, ValueError) as exc:
+                    # One poisoned historical receipt must not block valid new
+                    # requests or the rest of the supervisor iteration.
+                    recovery_error_type = type(exc).__name__
+            handoff_page = structured_handoff.pending_handoff_page(
+                db, participant="iron-god", after_seq=_handoff_cursor(state_root),
+            )
+            handoff_failures: list[dict[str, str]] = []
+            handoff_receipts = (
+                _acknowledge_structured_reviews(db, handoff_page, failures=handoff_failures)
+                if publish else []
+            )
             inbox = _read_inbox(db, after_seq=cursor)
             publication_cursor = _publication_cursor(state_root)
             if publish:
@@ -446,9 +533,13 @@ def advisory_supervisor_pass(
                 "inbox": inbox, "published": posted,
                 "handled_status_requests": handled,
                 "backlog": mcp_coordination.backlog_reconciliation(db, recipient_label="iron-god"),
-                "structured_handoffs": structured_handoff.pending_handoff_page(
-                    db, participant="iron-god", after_seq=_handoff_cursor(state_root),
-                ),
+                "structured_handoffs": handoff_page,
+                "structured_handoff_receipts": handoff_receipts,
+                "recovered_previously_recorded_replies": recovered_replies,
+                "reply_recovery_error_type": recovery_error_type,
+                "reply_recovery_failures": recovery_failures,
+                "reply_recovery_next_seq": recovery_next_seq,
+                "structured_handoff_receipt_conflicts": handoff_failures,
                 "status_request_conflicts": failures,
                 "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",
             }
