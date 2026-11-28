@@ -438,6 +438,18 @@ def _handoff_cursor(state_root: Path) -> int:
         return 0
 
 
+def _recovery_cursor(state_root: Path) -> int:
+    path = state_root / "iron-god-mailbox-observation.json"
+    try:
+        if not path.is_file() or path.stat().st_size > 128_000:
+            return 0
+        report = json.loads(path.read_text(encoding="utf-8"))
+        value = report.get("reply_recovery_next_seq", 0)
+        return value if type(value) is int and value >= 0 else 0
+    except (OSError, ValueError, TypeError, AttributeError):
+        return 0
+
+
 def _publication_cursor(state_root: Path) -> str:
     """Resume bounded publication-ledger scanning after restart."""
     path = state_root / "iron-god-mailbox-observation.json"
@@ -481,11 +493,16 @@ def advisory_supervisor_pass(
             # receipt; expiry must never strand that existing event.
             recovered_replies: list[dict[str, str]] = []
             recovery_error_type: str | None = None
+            recovery_failures: list[dict[str, str]] = []
+            recovery_next_seq = _recovery_cursor(state_root)
             if publish:
                 try:
-                    recovered_replies = accountability.recover_pending_replies(
-                        db, actor_label="iron-god", limit=5,
-                    )["recovered"]
+                    recovery = accountability.recover_pending_replies(
+                        db, actor_label="iron-god", limit=5, after_seq=recovery_next_seq,
+                    )
+                    recovered_replies = recovery["recovered"]
+                    recovery_failures = recovery["failures"]
+                    recovery_next_seq = recovery["next_seq"]
                 except (OSError, ValueError) as exc:
                     # One poisoned historical receipt must not block valid new
                     # requests or the rest of the supervisor iteration.
@@ -520,6 +537,8 @@ def advisory_supervisor_pass(
                 "structured_handoff_receipts": handoff_receipts,
                 "recovered_previously_recorded_replies": recovered_replies,
                 "reply_recovery_error_type": recovery_error_type,
+                "reply_recovery_failures": recovery_failures,
+                "reply_recovery_next_seq": recovery_next_seq,
                 "structured_handoff_receipt_conflicts": handoff_failures,
                 "status_request_conflicts": failures,
                 "authority": "ADVISORY_ONLY_NO_EXECUTION_GRANTS",

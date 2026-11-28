@@ -1017,3 +1017,48 @@ def test_expired_fresh_handoff_still_cannot_be_accepted(world):
             "SELECT COUNT(*) FROM request_dispositions WHERE request_id=?",
             (original["request_id"],),
         ).fetchone()[0] == 0
+
+def test_poisoned_recovery_page_cannot_starve_expired_interrupted_receipt(world, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from project_orchestrator import mcp_coordination_accountability as account
+    from project_orchestrator import iron_god_structured_handoff as handoff
+
+    deadline = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    poisoned = []
+    for i in range(5):
+        request = _tracked_engineering_handoff(world, key=f"poison-{i}", deadline=deadline)
+        poisoned.append(request["request_id"])
+        mailbox.post_message(
+            world["db"], sender_label="iron-god", recipient="chatgpt",
+            kind="status", body="forged", reference="jweter/knowledge-engine-core@" + "a" * 40,
+            idempotency_key=account._reply_key(request["request_id"], "structured-received-v1"),
+        )
+        with pytest.raises(ValueError, match="IDEMPOTENCY_CONFLICT"):
+            account.record_disposition(
+                world["db"], actor_label="iron-god", request_id=request["request_id"],
+                state="ACCEPTED", event_key="structured-received-v1",
+                evidence_reference="protocol:engineering-handoff-v1",
+            )
+    valid = _tracked_engineering_handoff(world, key="interrupted-behind-poison", deadline=deadline)
+    with monkeypatch.context() as patch:
+        def interrupt(*args, **kwargs):
+            raise OSError("simulated crash")
+        patch.setattr(mailbox, "post_message", interrupt)
+        with pytest.raises(OSError):
+            account.record_disposition(
+                world["db"], actor_label="iron-god", request_id=valid["request_id"],
+                state="ACCEPTED", event_key="structured-received-v1",
+                evidence_reference="protocol:engineering-handoff-v1",
+            )
+    real_page = handoff.pending_handoff_page
+    def expired_page(*args, **kwargs):
+        return real_page(*args, now=datetime.now(timezone.utc) + timedelta(days=2), **kwargs)
+    monkeypatch.setattr(handoff, "pending_handoff_page", expired_page)
+    first = cycle(world)
+    assert [item["request_id"] for item in first["reply_recovery_failures"]] == poisoned
+    assert first["reply_recovery_next_seq"] > 0
+    second = cycle(world)
+    assert [item["request_id"] for item in second["recovered_previously_recorded_replies"]] == [valid["request_id"]]
+    assert second["reply_recovery_next_seq"] == 0
+    assert second["structured_handoff_receipts"] == []
+    assert mailbox.list_pending_messages(world["db"], recipient_label="iron-god")["pending_total"] == 5
