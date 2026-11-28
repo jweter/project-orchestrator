@@ -104,15 +104,16 @@ def handle_hook(
         # Stop occurs after every turn, NOT just after verified engineering.
         # A stable session key prevents repetitive notices and leaks no ID.
         token = hashlib.sha256(session.encode("utf-8")).hexdigest()
-        mail.post_message(
-            database,
-            sender_label="claude-code",
-            recipient="iron-god",
-            kind="status",
-            reference="protocol:claude-session-yield-v1",
-            body=_YIELD_BODY,
-            idempotency_key="claude-session-yield-" + token,
-        )
+        with mail.resident_wait_budget(seconds=0.25):
+            mail.post_message(
+                database,
+                sender_label="claude-code",
+                recipient="iron-god",
+                kind="status",
+                reference="protocol:claude-session-yield-v1",
+                body=_YIELD_BODY,
+                idempotency_key="claude-session-yield-" + token,
+            )
     return None
 
 

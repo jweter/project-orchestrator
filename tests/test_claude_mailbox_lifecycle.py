@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import json
 import sqlite3
+import time
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -206,3 +208,23 @@ def test_malformed_payload_never_posts_or_blocks(db: Path, monkeypatch, capsys):
     assert capsys.readouterr().out == ""
     with sqlite3.connect(db) as conn:
         assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 0
+
+
+def test_stop_notice_contention_is_bounded_and_can_retry(db, monkeypatch, capsys):
+    event = {"hook_event_name": "Stop", "session_id": "contended-session"}
+    monkeypatch.setenv("IRON_GOD_MAILBOX_DB", str(db))
+    monkeypatch.setenv("IRON_GOD_CLAUDE_STOP_NOTICES", "1")
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(event)))
+    with closing(sqlite3.connect(db, isolation_level=None)) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+        started = time.monotonic()
+        try:
+            assert hook.main() == 0
+            assert time.monotonic() - started < 2.0
+            assert capsys.readouterr().out == ""
+        finally:
+            writer.execute("ROLLBACK")
+    assert mailbox.list_messages(db, recipient_label="iron-god")["messages"] == []
+    for _ in range(2):
+        assert hook.handle_hook(event, database=db, enable_stop_notices=True) is None
+    assert len(mailbox.list_messages(db, recipient_label="iron-god")["messages"]) == 1
