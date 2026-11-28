@@ -69,6 +69,7 @@ TOOL_DELEGATES = {
     "learning-candidate": "project_orchestrator.learning_candidates",
     "handoff-memory": "project_orchestrator.transient_memory",
     "shared-memory": "project_orchestrator.shared_memory_cli",
+    "notion-team": "project_orchestrator.notion_team_cli",
 }
 
 

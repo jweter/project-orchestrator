@@ -1,27 +1,31 @@
 # N02 — Manual Notion Connection Manager (read-only, not activated)
 
-**Status:** Staged code only. Depends on N01's pure advisory Notion adapter.
-It does not automatically connect an active Iron God worker, alter schedules,
-change Notion permissions, publish memory, or write to Notion.
+**Status:** N02 credential setup plus the N03 on-demand live Documents reader.
+Depends on N01's pure advisory Notion adapter. N03 adds the existing MCP
+read-only tool and CLI retrieval (docs/NOTION_TEAM_CONTEXT_N03.md). Neither
+feature schedules a worker, changes Notion permissions, grants execution,
+promotes verified memory, or writes to Notion.
 
 ## Windows user experience
 
 Double-click scripts/iron_god_notion_connection_manager.cmd in a reviewed
 checkout (Python 3.12+ required). A Tkinter window presents a masked token
 input field (no PowerShell or command-line token); Test connection performs
-GET of the bot identity and one approved page. Save securely is available
+GET of the bot identity and a read-only query of approved Documents. Save securely is available
 whenever the token passes local format validation, even when Notion page
 permission is missing. Saving is not evidence of authentication or page access.
 Test saved credential explicitly decrypts and retests. The application never logs or displays the token or HTTP bodies.
 
 The API host is fixed to https://api.notion.com; it uses TLS validation,
-GET only, no redirects, bounded responses, Notion-Version 2022-06-28,
+GET only for identity/page reads, POST only for the read-only Documents query,
+no redirects, bounded responses, Notion-Version 2022-06-28,
 and safe 401/403/404/429/TLS diagnostics.
 
 ## Data scope
 
-Explicit allowlisted test page:
-4269eaf5-47fa-8159-8302-fb53eb164372
+Explicit approved source: Documents database
+4269eaf5-47fa-81d8-a7b3-eca9c5f2d2bd.
+The previous private Memories architecture page is NOT accessed.
 
 Repository scope: jweter/project-orchestrator.
 Do not grant access to the entire Memories database. Identity verification

@@ -13,12 +13,12 @@ from tkinter import ttk
 from .notion_n02_secret_store import CredentialStoreError, load_token, save_token
 from .notion_n02_transport import (
     REPOSITORY,
-    TEST_PAGE_ID,
     NotionReadOnlyClient,
     NotionConnectionError,
     diagnostic,
     validate_token,
 )
+from .notion_team_context import read_team_context
 
 
 def _fingerprint(token: str) -> bytes:
@@ -28,7 +28,7 @@ def _fingerprint(token: str) -> bytes:
 class ConnectionManager:
     def __init__(self, window: tk.Tk):
         self.window = window
-        window.title("Iron God — Notion Connection Manager v2 (manual, read-only)")
+        window.title("Iron God — Notion Connection Manager v3 (Documents, read-only)")
         window.geometry("640x425")
         window.minsize(560, 385)
         self.token_var = tk.StringVar()
@@ -46,7 +46,7 @@ class ConnectionManager:
             outer, text="Manual, read-only Notion connectivity check • No engine activation",
             wraplength=570,
         ).pack(anchor="w", pady=(0, 16))
-        ttk.Label(outer, text="Test page: Iron God multi-agent architecture").pack(anchor="w")
+        ttk.Label(outer, text="Approved source: Notion Documents database").pack(anchor="w")
         ttk.Label(outer, text="Repository: " + REPOSITORY).pack(anchor="w", pady=(0, 12))
         ttk.Label(outer, text="Paste your Notion integration token here (never in chat):").pack(
             anchor="w"
@@ -113,7 +113,7 @@ class ConnectionManager:
             return
         self._verified_fingerprint = None
         self._set_working(True)
-        self.status_var.set("Testing authentication and exact page access…")
+        self.status_var.set("Testing authentication and approved Documents access…")
         threading.Thread(target=self._worker, args=(token, saved), daemon=True).start()
 
     def _worker(self, token: str, saved: bool) -> None:
@@ -124,19 +124,21 @@ class ConnectionManager:
             self._messages.put(("error", "Authentication failed: " + diagnostic(exc), None, saved))
             return
         try:
-            record = client.read_approved_page(
-                TEST_PAGE_ID, repository=REPOSITORY, allowed_page_ids=[TEST_PAGE_ID],
+            summary = read_team_context(
+                credential_loader=lambda: token, limit=1,
             )
             message = (
-                "PASS: Authentication and page retrieval succeeded. "
-                f"Advisory document: {record['title']}; "
-                f"blocks: {len(record['block_ids'])}. "
-                "The Iron God engine remains disconnected."
+                "PASS: Authentication and Documents access confirmed. "
+                f"Documents discovered: {summary['documents_discovered']}; "
+                f"readable: {summary['documents_readable']}; "
+                f"skipped: {sum(summary['documents_skipped'].values())}. "
+                "Live advisory MCP retrieval is available after updating the engine; "
+                "no automatic execution was activated."
             )
             self._messages.put(("success", message, _fingerprint(token), saved))
         except Exception as exc:
             self._messages.put((
-                "page_error", "Authentication PASS. Page access / content validation failed: "
+                "page_error", "Authentication PASS. Documents access / content validation failed: "
                 + diagnostic(exc), None, saved,
             ))
 

@@ -128,6 +128,7 @@ class NotionReadOnlyClient:
     def read_approved_page(
         self, page_id: str, *, repository: str,
         allowed_page_ids: Collection[str],
+        required_parent_database_id: str | None = None,
     ) -> dict[str, Any]:
         target = normalize_page_id(page_id)
         allowed = {normalize_page_id(item) for item in allowed_page_ids}
@@ -137,6 +138,15 @@ class NotionReadOnlyClient:
         if repository != REPOSITORY:
             raise NotionConnectionError("REPOSITORY_NOT_APPROVED")
         page = self._get("/v1/pages/" + target)
+        if required_parent_database_id is not None:
+            expected_parent = normalize_page_id(required_parent_database_id)
+            parent = page.get("parent")
+            if (
+                not isinstance(parent, dict)
+                or parent.get("type") != "database_id"
+                or normalize_page_id(parent.get("database_id")) != expected_parent
+            ):
+                raise NotionConnectionError("DOCUMENT_PARENT_MISMATCH")
         collected: list[Any] = []
         cursor: str | None = None
         seen_cursors: set[str] = set()

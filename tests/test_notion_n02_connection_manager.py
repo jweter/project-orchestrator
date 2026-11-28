@@ -56,18 +56,45 @@ def test_page_404_is_distinguished_from_successful_authentication(
         def check_authentication(self) -> None:
             return
 
-        def read_approved_page(self, *args: object, **kwargs: object) -> None:
-            raise NotionConnectionError("HTTP_404_PAGE_ACCESS")
-
     monkeypatch.setattr(gui, "NotionReadOnlyClient", FakeClient)
+    monkeypatch.setattr(
+        gui, "read_team_context",
+        lambda **kwargs: (_ for _ in ()).throw(NotionConnectionError("HTTP_404_DOCUMENTS_DATABASE")),
+    )
     application._worker(TOKEN, saved=False)
     state, message, fingerprint, saved = application._messages.get_nowait()
     assert state == "page_error"
     assert "Authentication PASS" in message
-    assert "404" in message
+    assert "HTTP_404_DOCUMENTS_DATABASE" in message
     assert TOKEN not in message
     assert fingerprint is None
     assert saved is False
+
+
+def test_documents_success_with_existing_token(
+    application: gui.ConnectionManager, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClient:
+        def __init__(self, _: str) -> None:
+            pass
+
+        def check_authentication(self) -> None:
+            return
+
+    monkeypatch.setattr(gui, "NotionReadOnlyClient", FakeClient)
+    monkeypatch.setattr(
+        gui, "read_team_context",
+        lambda **kwargs: {
+            "documents_discovered": 1, "documents_readable": 1, "documents_skipped": {},
+        },
+    )
+    application._worker(TOKEN, saved=True)
+    state, message, fingerprint, saved = application._messages.get_nowait()
+    assert state == "success"
+    assert "Documents access confirmed" in message
+    assert "readable: 1" in message
+    assert TOKEN not in message
+    assert fingerprint is not None and saved is True
 
 
 def test_authentication_401_is_distinguished_from_page_access(
