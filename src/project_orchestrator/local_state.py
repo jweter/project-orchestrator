@@ -6,6 +6,7 @@ verification receipts remain the authority for code, not this database.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
@@ -15,6 +16,23 @@ from uuid import uuid4
 
 
 SCHEMA_VERSION = 1
+_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+_TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
+
+
+def task_resource_key(repository: str, task_id: str) -> str:
+    """One stable lease resource for a GitHub repo/task across all agents.
+
+    This identifies work; it does not grant worker, owner, or release authority.
+    """
+    if not isinstance(repository, str) or not _REPOSITORY.fullmatch(repository):
+        raise ValueError("canonical owner/repository required")
+    if not isinstance(task_id, str):
+        raise ValueError("canonical task id required")
+    identifier = task_id[1:] if task_id.startswith("#") else task_id
+    if not _TASK_ID.fullmatch(identifier):
+        raise ValueError("canonical task id required")
+    return f"task:{repository.lower()}:{identifier.lower()}"
 
 
 class OwnerControlBlocked(RuntimeError):
@@ -171,6 +189,19 @@ class LocalStateStore:
                         {"lease_id": token, "owner_id": owner_id,
                          "owner_fingerprint": owner_fingerprint})
         return token
+
+    def claim_task(self, repository: str, task_id: str, owner_id: str,
+                   owner_fingerprint: str, *, lease_id: str | None = None) -> str:
+        """Atomically claim canonical work through the existing SQLite fence.
+
+        A task claim is NOT a Take the Wheel grant, dispatch, or lease expiry.
+        Consumers must use the returned token and the same resource key for
+        heartbeat/release, and independently verify execution authority.
+        """
+        return self.claim_lease(
+            task_resource_key(repository, task_id), owner_id, owner_fingerprint,
+            lease_id=lease_id,
+        )
 
     def heartbeat(self, resource: str, lease_id: str, owner_fingerprint: str) -> bool:
         with self._write() as db:
